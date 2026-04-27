@@ -812,8 +812,10 @@ const sanitizeURL = url => {
   catch { return '#'; }
 };
 
-/* ─── RSS Sources — fetched via our backend proxy at /api/news ─── */
-const NEWS_API = "/api/news";
+/* ─── Backend API endpoints ─── */
+const NEWS_API     = "/api/news";
+const MARKETS_API  = "/api/markets";
+const CALENDAR_API = "/api/markets/calendar";
 const SOURCES = [
   {id:"youm7",        name:"اليوم السابع",   icon:"📰",lang:"ar",cat:"egypt",  color:"#0ea5e9"},
   {id:"masrawy",      name:"مصراوي",         icon:"📱",lang:"ar",cat:"egypt",  color:"#10b981"},
@@ -843,50 +845,47 @@ const CATS = [
   {id:"crypto",label:"كريبتو",icon:"₿"},
 ];
 
-/* ─── Market data: Free CoinGecko for crypto, fallback for others ─── */
+/* ─── Market data: live via /api/markets (Stooq, Google Finance, CoinGecko, TradingEconomics) ─── */
+/* These initial placeholders are shown only for the first ~1s before live data lands. */
 const MARKET_STATIC = {
   eg:[
-    {n:"EGX30",v:"31,847",c:"+2.31%",up:true,s:"مؤشر رئيسي",clickable:true},
-    {n:"EGX70",v:"6,204",c:"+1.87%",up:true,s:"أسهم متوسطة"},
-    {n:"USD/EGP",v:"49.85",c:"-0.12%",up:false,s:"دولار/جنيه"},
-    {n:"EUR/EGP",v:"54.20",c:"+0.05%",up:true,s:"يورو/جنيه"},
+    {n:"EGX30",  v:"...",c:"...",up:true,s:"مؤشر رئيسي",clickable:true},
+    {n:"USD/EGP",v:"...",c:"...",up:true,s:"دولار/جنيه"},
+    {n:"EUR/EGP",v:"...",c:"...",up:true,s:"يورو/جنيه"},
+    {n:"GBP/EGP",v:"...",c:"...",up:true,s:"إسترليني/جنيه"},
   ],
   gl:[
-    {n:"S&P 500",v:"5,842",c:"+0.34%",up:true,s:"أمريكي"},
-    {n:"NASDAQ",v:"19,240",c:"+0.52%",up:true,s:"تقني"},
-    {n:"DAX",v:"18,920",c:"-0.18%",up:false,s:"ألماني"},
-    {n:"FTSE",v:"8,341",c:"+0.22%",up:true,s:"بريطاني"},
+    {n:"S&P 500",v:"...",c:"...",up:true,s:"أمريكي"},
+    {n:"NASDAQ", v:"...",c:"...",up:true,s:"تقني"},
+    {n:"DAX",    v:"...",c:"...",up:true,s:"ألماني"},
+    {n:"FTSE",   v:"...",c:"...",up:true,s:"بريطاني"},
   ],
   cm:[
-    {n:"ذهب",v:"$3,312",c:"+0.87%",up:true,s:"أوقية"},
-    {n:"نفط برنت",v:"$84.2",c:"-0.43%",up:false,s:"برميل"},
-    {n:"فضة",v:"$32.8",c:"+1.12%",up:true,s:"أوقية"},
-    {n:"نحاس",v:"$4.52",c:"-0.31%",up:false,s:"رطل"},
+    {n:"ذهب",     v:"...",c:"...",up:true,s:"أوقية"},
+    {n:"نفط برنت",v:"...",c:"...",up:true,s:"برميل"},
+    {n:"فضة",     v:"...",c:"...",up:true,s:"أوقية"},
+    {n:"نحاس",    v:"...",c:"...",up:true,s:"رطل"},
   ],
   cr:[
-    {id:"bitcoin",    n:"BTC",v:"جارٍ التحميل...",c:"...",up:true,s:"بيتكوين"},
-    {id:"ethereum",   n:"ETH",v:"جارٍ التحميل...",c:"...",up:true,s:"إيثريوم"},
-    {id:"binancecoin",n:"BNB",v:"جارٍ التحميل...",c:"...",up:true,s:"بينانس"},
-    {id:"ripple",     n:"XRP",v:"جارٍ التحميل...",c:"...",up:false,s:"ريبل"},
+    {n:"BTC",v:"جارٍ التحميل...",c:"...",up:true,s:"بيتكوين"},
+    {n:"ETH",v:"جارٍ التحميل...",c:"...",up:true,s:"إيثريوم"},
+    {n:"BNB",v:"جارٍ التحميل...",c:"...",up:true,s:"بينانس"},
+    {n:"XRP",v:"جارٍ التحميل...",c:"...",up:true,s:"ريبل"},
   ],
 };
 
 const TICKS_STATIC = [
-  {n:"EGX30",v:"31,847",c:"+2.31%",up:true},
-  {n:"USD/EGP",v:"49.85",c:"-0.12%",up:false},
-  {n:"ذهب",v:"$3,312",c:"+0.87%",up:true},
-  {n:"نفط",v:"$84.2",c:"-0.43%",up:false},
-  {n:"S&P500",v:"5,842",c:"+0.34%",up:true},
-  {n:"BTC",v:"loading...",c:"...",up:true},
-  {n:"ETH",v:"loading...",c:"...",up:true},
+  {n:"EGX30",  v:"...",c:"...",up:true},
+  {n:"USD/EGP",v:"...",c:"...",up:true},
+  {n:"ذهب",    v:"...",c:"...",up:true},
+  {n:"نفط",    v:"...",c:"...",up:true},
+  {n:"S&P500", v:"...",c:"...",up:true},
+  {n:"BTC",    v:"...",c:"...",up:true},
+  {n:"ETH",    v:"...",c:"...",up:true},
 ];
 
-const CAL_DATA = [
-  {t:"الثلاثاء 14:30",ev:"قرار الفائدة الأمريكية",imp:"عالي",c:"#ef4444"},
-  {t:"الأربعاء 12:00",ev:"تقرير التضخم المصري",  imp:"عالي",c:"#ef4444"},
-  {t:"الخميس 10:00", ev:"اجتماع البنك المركزي الأوروبي",imp:"متوسط",c:"#f59e0b"},
-  {t:"الجمعة 15:30", ev:"بيانات الوظائف الأمريكية",imp:"عالي",c:"#ef4444"},
-];
+/* Live calendar — populated from /api/markets/calendar (ForexFactory). */
+let liveCalendar = [];
 
 /* ─── EGX Stocks (realistic data) ─── */
 const EGX_STOCKS = [
@@ -967,17 +966,20 @@ document.addEventListener("DOMContentLoaded",()=>{
   if(s){U=s;bootApp();}
   else{document.getElementById("auth").classList.add("open");}
   buildTicker();buildCalendar();buildFAQ();
+  // Kick off live data immediately so even pre-login users see real numbers
+  fetchMarketsData();fetchCalendarData();
 });
 
 function bootApp(){
   document.getElementById("auth").classList.remove("open");
   document.getElementById("main").style.display="block";
   renderHdrVip();buildCatPills();buildSrcPills();
-  buildMarkets();fetchCryptoData();
+  buildMarkets();fetchMarketsData();fetchCalendarData();
   fetchAllNews(false);
   renderVIP();renderProfile();
-  // Auto-refresh markets every 60s
-  setInterval(fetchCryptoData,60000);
+  // Auto-refresh: markets every 60s, calendar every 30min
+  setInterval(fetchMarketsData,60000);
+  setInterval(fetchCalendarData,30*60*1000);
 }
 
 /* ═══════════════════ AUTH ═══════════════════ */
@@ -1029,44 +1031,52 @@ function doAuth(){
 
 function logout(){DB.d("s");U=null;goNav("home");document.getElementById("main").style.display="none";document.getElementById("auth").classList.add("open");}
 
-/* ═══════════════════ REAL CRYPTO DATA (CoinGecko free) ═══════════════════ */
-async function fetchCryptoData(){
+/* ═══════════════════ LIVE MARKETS (backend proxy → Stooq + Google + CoinGecko + TradingEconomics) ═══════════════════ */
+let liveTicks = [...TICKS_STATIC]; // current ticker items, replaced when /api/markets responds
+
+async function fetchMarketsData(){
   try{
-    const ids=liveMarkets.cr.filter(c=>c.id).map(c=>c.id).join(",");
-    const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
-      {signal:AbortSignal.timeout(8000)});
-    if(!r.ok)throw new Error("API error");
+    const r=await fetch(MARKETS_API,{signal:AbortSignal.timeout(15000),cache:"no-store"});
+    if(!r.ok)throw new Error("HTTP "+r.status);
     const d=await r.json();
-    liveMarkets.cr.forEach(c=>{
-      if(c.id&&d[c.id]){
-        const price=d[c.id].usd;
-        const chgPct=d[c.id].usd_24h_change||0;
-        c.v=price>=1000?`$${(price/1000).toFixed(1)}K`:`$${price.toFixed(2)}`;
-        c.c=`${chgPct>=0?"+":""}${chgPct.toFixed(2)}%`;
-        c.up=chgPct>=0;
+    if(d.status!=="ok"||!d.markets)throw new Error("bad payload");
+
+    // Replace section data, but only for sections that came back non-empty
+    ["eg","gl","cm","cr"].forEach(k=>{
+      if(Array.isArray(d.markets[k])&&d.markets[k].length){
+        liveMarkets[k]=d.markets[k];
       }
     });
-    // Update ticker BTC/ETH
-    const btc=d.bitcoin,eth=d.ethereum;
-    if(btc){
-      TICKS_STATIC[5].v=`$${(btc.usd/1000).toFixed(1)}K`;
-      TICKS_STATIC[5].c=`${btc.usd_24h_change>=0?"+":""}${btc.usd_24h_change.toFixed(1)}%`;
-      TICKS_STATIC[5].up=btc.usd_24h_change>=0;
+
+    // Update ticker
+    if(Array.isArray(d.ticker)&&d.ticker.length){
+      liveTicks=d.ticker;
     }
-    if(eth){
-      TICKS_STATIC[6].v=`$${eth.usd.toFixed(0)}`;
-      TICKS_STATIC[6].c=`${eth.usd_24h_change>=0?"+":""}${eth.usd_24h_change.toFixed(1)}%`;
-      TICKS_STATIC[6].up=eth.usd_24h_change>=0;
-    }
-    buildTicker();buildMarkets();
+
+    buildTicker();buildMarkets();buildMarketStrip();
   }catch(e){
-    // Silently fail, keep static data
+    // Keep last known data — partial UI better than empty
+  }
+}
+
+/* ═══════════════════ LIVE ECONOMIC CALENDAR (backend proxy → ForexFactory) ═══════════════════ */
+async function fetchCalendarData(){
+  try{
+    const r=await fetch(CALENDAR_API,{signal:AbortSignal.timeout(12000),cache:"no-store"});
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    const d=await r.json();
+    if(d.status!=="ok"||!Array.isArray(d.events))throw new Error("bad payload");
+    liveCalendar=d.events;
+    buildCalendar();
+  }catch(e){
+    // Keep last calendar
   }
 }
 
 /* ═══════════════════ TICKER ═══════════════════ */
 function buildTicker(){
-  const items=[...TICKS_STATIC,...TICKS_STATIC,...TICKS_STATIC];
+  const src=(liveTicks&&liveTicks.length)?liveTicks:TICKS_STATIC;
+  const items=[...src,...src,...src];
   document.getElementById("tick-inner").innerHTML=items.map(t=>`
     <span class="ti">
       <span style="color:var(--ink4);font-size:7px;">◆</span>
@@ -1079,7 +1089,9 @@ function buildTicker(){
 /* ═══════════════════ MARKET STRIP ═══════════════════ */
 function buildMarketStrip(){
   const strip=document.getElementById("mstrip");
-  strip.innerHTML=TICKS_STATIC.slice(0,5).map(t=>`
+  if(!strip)return;
+  const src=(liveTicks&&liveTicks.length)?liveTicks:TICKS_STATIC;
+  strip.innerHTML=src.slice(0,5).map(t=>`
     <div class="ms-item">
       <div class="ms-n">${sanitize(t.n)}</div>
       <div class="ms-v">${sanitize(t.v)}</div>
@@ -1370,11 +1382,33 @@ function toggleWL(n){
 }
 
 function buildCalendar(){
-  document.getElementById("cal-wrap").innerHTML=CAL_DATA.map((ev,i)=>`
-    <div class="cal-row" style="${i===CAL_DATA.length-1?"border:none":""}">
-      <div><div style="color:var(--t2);font-size:12.5px;font-weight:600;direction:rtl;">${ev.ev}</div><div style="color:var(--t4);font-size:10.5px;margin-top:1px;">${ev.t}</div></div>
-      <span style="background:${ev.c}18;border:1px solid ${ev.c}35;border-radius:7px;padding:3px 9px;font-size:10px;color:${ev.c};font-weight:700;">${ev.imp}</span>
-    </div>`).join("");
+  const wrap=document.getElementById("cal-wrap");
+  if(!wrap)return;
+  if(!liveCalendar||!liveCalendar.length){
+    wrap.innerHTML=`<div style="padding:18px;text-align:center;color:var(--t4);font-size:12px;">جارٍ تحميل التقويم الاقتصادي...</div>`;
+    return;
+  }
+  // Show next ~12 events
+  const evs=liveCalendar.slice(0,12);
+  wrap.innerHTML=evs.map((ev,i)=>{
+    const c=ev.c||"#64748b";
+    const flag=ev.flag||"🌐";
+    const country=sanitize(ev.countryAr||ev.country||"");
+    const evName=sanitize(ev.ev||ev.evEn||"");
+    const fc=ev.forecast?`متوقع: ${sanitize(ev.forecast)}`:"";
+    const pv=ev.previous?`سابق: ${sanitize(ev.previous)}`:"";
+    const meta=[fc,pv].filter(Boolean).join(" · ");
+    return `
+    <div class="cal-row" style="${i===evs.length-1?"border:none":""};display:flex;align-items:center;gap:10px;">
+      <div style="font-size:18px;line-height:1;flex-shrink:0;">${flag}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="color:var(--t2);font-size:12.5px;font-weight:600;direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${evName}</div>
+        <div style="color:var(--t4);font-size:10.5px;margin-top:1px;">${sanitize(ev.t||"")}${country?` · ${country}`:""}</div>
+        ${meta?`<div style="color:var(--t4);font-size:10px;margin-top:1px;opacity:.8;">${meta}</div>`:""}
+      </div>
+      <span style="background:${c}18;border:1px solid ${c}35;border-radius:7px;padding:3px 9px;font-size:10px;color:${c};font-weight:700;flex-shrink:0;">${sanitize(ev.imp||"")}</span>
+    </div>`;
+  }).join("");
 }
 
 /* ═══════════════════ EGX PAGE ═══════════════════ */

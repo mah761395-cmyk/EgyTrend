@@ -39,10 +39,22 @@ Responsive desktop/laptop layout was added via `@media (min-width: 1024px)` and 
 - Markets grid widens to 4 columns; modals enlarge; detail/EGX pages constrained to ≤980px and respect the sidebar.
 - Mobile layout (≤1023px) and tablet (768–1023px) are untouched / lightly tuned.
 
-External services used by the page: CoinGecko for crypto prices, Anthropic API direct from browser for AI features. RSS news feeds are fetched through our own backend proxy at `/api/news` (see below) — the original `api.rss2json.com` integration was retired because it returned 422 errors and rate-limited heavily.
+External services used by the page: Anthropic API direct from browser for AI features. All market data, currency prices, the economic calendar, and RSS news feeds are now fetched through our own backend proxy at `/api/...` (see below). The previous `api.rss2json.com` (news), direct CoinGecko (crypto-only) and hardcoded static market values were retired in favor of the unified backend.
 
 #### News fetching pipeline
 
 - Backend: `artifacts/api-server/src/routes/news.ts` exposes `GET /api/news?source=<id>` and `GET /api/news/sources`. It fetches RSS/Atom feeds server-side with a browser-like User-Agent, parses them with `fast-xml-parser` (handles CDATA, namespaced tags, atom `<link href>`, `media:thumbnail`, `media:content`, `enclosure`), decodes single- and double-encoded HTML entities, strips HTML, normalizes pubDate to ISO, and returns an `rss2json`-compatible `{status:"ok",items:[...]}` shape so the original frontend rendering code keeps working unchanged. Responses are cached in-memory for 5 minutes per source.
 - Frontend (`artifacts/egytrend/index.html`): the `SOURCES` array (~line 820) lists 18 sources by `id` only; `fetchSource()` (~line 1107) calls `${NEWS_API}?source=${id}` with a 12s timeout. No URLs are baked into the HTML — all upstream feed URLs live on the server.
 - Source list (18): `youm7`, `masrawy`, `amwal`, `elwatan`, `shorouk`, `egnews`, `alarabiya`, `aljazeera`, `bbcar`, `alain`, `reuters`, `cnbc`, `yahoo`, `marketwatch`, `investing`, `ft`, `coindesk`, `cointelegraph`. Several Arabic publishers that block direct RSS or return malformed XML (`elwatan`, `shorouk`, `masrawy`, `alarabiya`, `alain`, plus the new aggregator `egnews`) are sourced through Google News RSS site-search queries, which yields ~100 fresh items per refresh.
+
+#### Markets / currencies / economic calendar pipeline
+
+- Backend: `artifacts/api-server/src/routes/markets.ts` exposes:
+  - `GET /api/markets` — returns `{status, ts, markets:{eg,gl,cm,cr}, ticker}`. Each section is an array of `{n, v, c, up, s, clickable?}`. Cached 60s, with stale-on-failure fallback. Sources: **TradingEconomics** (EGX30 scrape), **Google Finance** HTML scrape (`data-last-price` + `P6K39c` previous-close regex) for FX pairs and global indices, **Stooq CSV** as fallback for indices/forex/commodities (gold xauusd, silver xagusd, brent bz.f→cl.f, copper hg.f→hgusd), and **CoinGecko** for crypto (BTC/ETH/BNB/XRP). All upstream calls are parallelized with `Promise.all`.
+  - `GET /api/markets/calendar` — returns `{status, events:[{ev, evEn, t, tISO, imp, c, country, countryAr, flag, forecast, previous}]}`. Cached 30 min. Source: **ForexFactory** `ff_calendar_thisweek.json`. The route translates 50+ common event titles to Arabic, formats time in Cairo timezone, attaches country flag emoji + Arabic country name, and emits a high/medium importance label with color.
+- Frontend (`artifacts/egytrend/index.html`):
+  - `MARKETS_API`/`CALENDAR_API` constants (~line 820) point at the proxy endpoints.
+  - `fetchMarketsData()` (~line 1037) replaces the old `fetchCryptoData()`. On success it overwrites `liveMarkets[eg|gl|cm|cr]` (only sections with non-empty arrays) and `liveTicks`, then calls `buildTicker(); buildMarkets(); buildMarketStrip();`. Auto-refreshes every 60s.
+  - `fetchCalendarData()` populates `liveCalendar` and calls `buildCalendar()`. Auto-refreshes every 30 min.
+  - `buildCalendar()` renders each event with flag, Arabic title, Cairo time, country name, forecast/previous values, and importance pill colored from the backend.
+  - First fetch fires on `DOMContentLoaded` so even pre-login users see real numbers; second fetch re-fires on `bootApp()` so refresh intervals start once the user is in.
