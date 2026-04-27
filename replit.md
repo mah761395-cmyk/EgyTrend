@@ -39,4 +39,10 @@ Responsive desktop/laptop layout was added via `@media (min-width: 1024px)` and 
 - Markets grid widens to 4 columns; modals enlarge; detail/EGX pages constrained to ≤980px and respect the sidebar.
 - Mobile layout (≤1023px) and tablet (768–1023px) are untouched / lightly tuned.
 
-External services used by the page (no backend in this artifact): rss2json.com proxy for RSS feeds, CoinGecko for crypto prices, Anthropic API direct from browser for AI features.
+External services used by the page: CoinGecko for crypto prices, Anthropic API direct from browser for AI features. RSS news feeds are fetched through our own backend proxy at `/api/news` (see below) — the original `api.rss2json.com` integration was retired because it returned 422 errors and rate-limited heavily.
+
+#### News fetching pipeline
+
+- Backend: `artifacts/api-server/src/routes/news.ts` exposes `GET /api/news?source=<id>` and `GET /api/news/sources`. It fetches RSS/Atom feeds server-side with a browser-like User-Agent, parses them with `fast-xml-parser` (handles CDATA, namespaced tags, atom `<link href>`, `media:thumbnail`, `media:content`, `enclosure`), decodes single- and double-encoded HTML entities, strips HTML, normalizes pubDate to ISO, and returns an `rss2json`-compatible `{status:"ok",items:[...]}` shape so the original frontend rendering code keeps working unchanged. Responses are cached in-memory for 5 minutes per source.
+- Frontend (`artifacts/egytrend/index.html`): the `SOURCES` array (~line 820) lists 18 sources by `id` only; `fetchSource()` (~line 1107) calls `${NEWS_API}?source=${id}` with a 12s timeout. No URLs are baked into the HTML — all upstream feed URLs live on the server.
+- Source list (18): `youm7`, `masrawy`, `amwal`, `elwatan`, `shorouk`, `egnews`, `alarabiya`, `aljazeera`, `bbcar`, `alain`, `reuters`, `cnbc`, `yahoo`, `marketwatch`, `investing`, `ft`, `coindesk`, `cointelegraph`. Several Arabic publishers that block direct RSS or return malformed XML (`elwatan`, `shorouk`, `masrawy`, `alarabiya`, `alain`, plus the new aggregator `egnews`) are sourced through Google News RSS site-search queries, which yields ~100 fresh items per refresh.
