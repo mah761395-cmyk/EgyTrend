@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "EgyTrend"
+version = "1.0.0"
+id = "artifacts/egytrend"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23294
+
+[services.development]
+run = "pnpm --filter @workspace/egytrend run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/egytrend", "run", "build" ]
+publicDir = "artifacts/egytrend/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23294"
+BASE_PATH = "/"
