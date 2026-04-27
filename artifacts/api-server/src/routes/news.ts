@@ -60,15 +60,6 @@ const SOURCES: Record<string, SourceMeta> = {
     color: "#dc2626",
     url: "https://news.google.com/rss/search?q=site:shorouknews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar",
   },
-  masrawy: {
-    id: "masrawy",
-    name: "مصراوي",
-    icon: "📱",
-    lang: "ar",
-    cat: "egypt",
-    color: "#10b981",
-    url: "https://news.google.com/rss/search?q=site:masrawy.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar",
-  },
   alarabiya: {
     id: "alarabiya",
     name: "العربية",
