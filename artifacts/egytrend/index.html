@@ -812,40 +812,27 @@ const sanitizeURL = url => {
   catch { return '#'; }
 };
 
-/* ─── RSS Sources — CORS-safe via rss2json.com ─── */
+/* ─── RSS Sources — fetched via our backend proxy at /api/news ─── */
+const NEWS_API = "/api/news";
 const SOURCES = [
-  {id:"youm7",    name:"اليوم السابع", icon:"📰",lang:"ar",cat:"egypt",  color:"#0ea5e9",
-   url:"https://api.rss2json.com/v1/api.json?count=8&rss_url=https%3A%2F%2Fwww.youm7.com%2Frss%2Frssfeeds%2F98"},
-  {id:"masrawy",  name:"مصراوي",       icon:"📱",lang:"ar",cat:"egypt",  color:"#10b981",
-   url:"https://api.rss2json.com/v1/api.json?count=8&rss_url=https%3A%2F%2Fwww.masrawy.com%2Frss%2Feconomy"},
-  {id:"amwal",    name:"أموال الغد",   icon:"💰",lang:"ar",cat:"egypt",  color:"#7c3aed",
-   url:"https://api.rss2json.com/v1/api.json?count=8&rss_url=https%3A%2F%2Famwalalghad.com%2Ffeed%2F"},
-  {id:"elwatan",  name:"الوطن",        icon:"🗞️",lang:"ar",cat:"egypt",  color:"#b45309",
-   url:"https://api.rss2json.com/v1/api.json?count=6&rss_url=https%3A%2F%2Fwww.elwatannews.com%2Frss%2Feconomy"},
-  {id:"alarabiya",name:"العربية",      icon:"🌍",lang:"ar",cat:"global", color:"#c2410c",
-   url:"https://api.rss2json.com/v1/api.json?count=8&rss_url=https%3A%2F%2Fwww.alarabiya.net%2Ftools%2Frss%2Feconomy.xml"},
-  {id:"aljazeera",name:"الجزيرة",      icon:"🌐",lang:"ar",cat:"global", color:"#f59e0b",
-   url:"https://api.rss2json.com/v1/api.json?count=8&rss_url=https%3A%2F%2Fwww.aljazeera.net%2Frss%2Febusiness%2Findex.xml"},
-  {id:"bbcar",    name:"BBC عربي",     icon:"🔵",lang:"ar",cat:"global", color:"#e2001a",
-   url:"https://api.rss2json.com/v1/api.json?count=8&rss_url=https%3A%2F%2Ffeeds.bbci.co.uk%2Farabic%2Fbusiness%2Frss.xml"},
-  {id:"cnbcar",   name:"CNBC عربية",   icon:"📺",lang:"ar",cat:"global", color:"#0080ff",
-   url:"https://api.rss2json.com/v1/api.json?count=6&rss_url=https%3A%2F%2Fwww.cnbcarabia.com%2Frss"},
-  {id:"alain",    name:"العين",        icon:"👁️",lang:"ar",cat:"global", color:"#6366f1",
-   url:"https://api.rss2json.com/v1/api.json?count=6&rss_url=https%3A%2F%2Fal-ain.com%2Frss%2Feconomy"},
-  {id:"reuters",  name:"Reuters",      icon:"🔴",lang:"en",cat:"global", color:"#ff8c00",
-   url:"https://api.rss2json.com/v1/api.json?count=8&rss_url=https%3A%2F%2Ffeeds.reuters.com%2Freuters%2FbusinessNews"},
-  {id:"cnbc",     name:"CNBC",         icon:"📊",lang:"en",cat:"global", color:"#0080ff",
-   url:"https://api.rss2json.com/v1/api.json?count=8&rss_url=https%3A%2F%2Fwww.cnbc.com%2Fid%2F10000664%2Fdevice%2Frss%2Frss.html"},
-  {id:"yahoo",    name:"Yahoo Finance", icon:"🟣",lang:"en",cat:"global", color:"#7e22ce",
-   url:"https://api.rss2json.com/v1/api.json?count=8&rss_url=https%3A%2F%2Ffinance.yahoo.com%2Fnews%2Frssindex"},
-  {id:"marketwatch",name:"MarketWatch",icon:"📈",lang:"en",cat:"stocks", color:"#1a7f37",
-   url:"https://api.rss2json.com/v1/api.json?count=8&rss_url=https%3A%2F%2Ffeeds.marketwatch.com%2Fmarketwatch%2Ftopstories"},
-  {id:"investing",name:"Investing.com",icon:"💹",lang:"en",cat:"global", color:"#ef4444",
-   url:"https://api.rss2json.com/v1/api.json?count=8&rss_url=https%3A%2F%2Fwww.investing.com%2Frss%2Fnews_25.rss"},
-  {id:"coindesk", name:"CoinDesk",     icon:"₿", lang:"en",cat:"crypto", color:"#f59e0b",
-   url:"https://api.rss2json.com/v1/api.json?count=6&rss_url=https%3A%2F%2Fwww.coindesk.com%2Farc%2Foutboundfeeds%2Frss%2F"},
-  {id:"cointelegraph",name:"CoinTelegraph",icon:"🔗",lang:"en",cat:"crypto",color:"#0891b2",
-   url:"https://api.rss2json.com/v1/api.json?count=6&rss_url=https%3A%2F%2Fcointelegraph.com%2Frss"},
+  {id:"youm7",        name:"اليوم السابع",   icon:"📰",lang:"ar",cat:"egypt",  color:"#0ea5e9"},
+  {id:"masrawy",      name:"مصراوي",         icon:"📱",lang:"ar",cat:"egypt",  color:"#10b981"},
+  {id:"amwal",        name:"أموال الغد",     icon:"💰",lang:"ar",cat:"egypt",  color:"#7c3aed"},
+  {id:"elwatan",      name:"الوطن",          icon:"🗞️",lang:"ar",cat:"egypt",  color:"#b45309"},
+  {id:"shorouk",      name:"الشروق",         icon:"📑",lang:"ar",cat:"egypt",  color:"#dc2626"},
+  {id:"egnews",       name:"أخبار مصر",      icon:"🇪🇬",lang:"ar",cat:"egypt",  color:"#22c55e"},
+  {id:"alarabiya",    name:"العربية",        icon:"🌍",lang:"ar",cat:"global", color:"#c2410c"},
+  {id:"aljazeera",    name:"الجزيرة",        icon:"🌐",lang:"ar",cat:"global", color:"#f59e0b"},
+  {id:"bbcar",        name:"BBC عربي",       icon:"🔵",lang:"ar",cat:"global", color:"#e2001a"},
+  {id:"alain",        name:"العين",          icon:"👁️",lang:"ar",cat:"global", color:"#6366f1"},
+  {id:"reuters",      name:"Reuters",        icon:"🔴",lang:"en",cat:"global", color:"#ff8c00"},
+  {id:"cnbc",         name:"CNBC",           icon:"📊",lang:"en",cat:"global", color:"#0080ff"},
+  {id:"yahoo",        name:"Yahoo Finance",  icon:"🟣",lang:"en",cat:"global", color:"#7e22ce"},
+  {id:"marketwatch",  name:"MarketWatch",    icon:"📈",lang:"en",cat:"stocks", color:"#1a7f37"},
+  {id:"investing",    name:"Investing.com",  icon:"💹",lang:"en",cat:"global", color:"#ef4444"},
+  {id:"ft",           name:"Financial Times",icon:"🟫",lang:"en",cat:"stocks", color:"#9d6e3f"},
+  {id:"coindesk",     name:"CoinDesk",       icon:"₿", lang:"en",cat:"crypto", color:"#f59e0b"},
+  {id:"cointelegraph",name:"CoinTelegraph",  icon:"🔗",lang:"en",cat:"crypto", color:"#0891b2"},
 ];
 
 const CATS = [
@@ -1114,13 +1101,13 @@ function buildCatPills(){
 }
 function setCat(id,el){activeCat=id;document.querySelectorAll(".cp").forEach(b=>b.classList.remove("active"));el.classList.add("active");applyFilters();}
 
-/* ═══════════════════ REAL RSS FETCH ═══════════════════ */
+/* ═══════════════════ REAL RSS FETCH (via backend proxy) ═══════════════════ */
 async function fetchSource(src){
   srcStatus[src.id]="loading";
   try{
     const ctrl=new AbortController();
-    const tid=setTimeout(()=>ctrl.abort(),8000);
-    const r=await fetch(src.url,{signal:ctrl.signal});
+    const tid=setTimeout(()=>ctrl.abort(),12000);
+    const r=await fetch(`${NEWS_API}?source=${encodeURIComponent(src.id)}`,{signal:ctrl.signal,cache:"no-store"});
     clearTimeout(tid);
     if(!r.ok)throw new Error("HTTP "+r.status);
     const data=await r.json();
