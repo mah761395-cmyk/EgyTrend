@@ -351,6 +351,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .n-btn{background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;color:var(--t5);transition:color .18s;font-family:var(--sans);}
 .n-btn.active{color:var(--g);}
 .n-icon{font-size:17px;}
+.nb-badge{position:absolute;top:-7px;right:-12px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--dn);color:#fff;font-size:9.5px;font-weight:800;line-height:17px;text-align:center;font-family:var(--mono);box-shadow:0 0 0 2px var(--bg);display:flex;align-items:center;justify-content:center;}
 .n-label{font-size:8.5px;font-weight:700;}
 
 /* ─── UTILS ─── */
@@ -696,7 +697,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 
   <div id="bnav">
     <div class="bnav-grid">
-      <button class="n-btn active" onclick="goNav('home')" id="nb-home"><span class="n-icon">🏠</span><span class="n-label">الرئيسية</span></button>
+      <button class="n-btn active" onclick="goNav('home')" id="nb-home"><span class="n-icon" style="position:relative;">🏠<span id="nb-news-badge" class="nb-badge" style="display:none;">0</span></span><span class="n-label">الرئيسية</span></button>
       <button class="n-btn" onclick="goNav('markets')" id="nb-markets"><span class="n-icon">📊</span><span class="n-label">الأسواق</span></button>
       <button class="n-btn" onclick="goNav('vip')" id="nb-vip"><span class="n-icon">⭐</span><span class="n-label">VIP</span></button>
       <button class="n-btn" onclick="goNav('support')" id="nb-support"><span class="n-icon">💬</span><span class="n-label">الدعم</span></button>
@@ -779,9 +780,10 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
     <button class="r-btn rej" onclick="closeAdm()">خروج ✕</button>
   </div>
   <div class="adm-stats" id="adm-stats"></div>
-  <div class="adm-tabs">
+  <div class="adm-tabs" style="overflow-x:auto;">
     <button class="adm-tab active" onclick="admTab('reqs')">طلبات الدفع</button>
     <button class="adm-tab" onclick="admTab('users')">المستخدمون</button>
+    <button class="adm-tab" onclick="admTab('articles')">إدارة الأخبار</button>
     <button class="adm-tab" onclick="admTab('sources')">المصادر</button>
     <button class="adm-tab" onclick="admTab('ai')">تقارير AI</button>
   </div>
@@ -802,8 +804,21 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
    ✅ Admin question removed from FAQ
 ═══════════════════════════════════════════════════════ */
 
-const MODEL = "claude-sonnet-4-20250514";
+/* AI is proxied via /api/ai/chat (no client-side key). The backend
+ * picks the canonical model. Frontend just sends system + messages. */
 const WA = "201008605139";
+
+async function callAI({system, messages, max_tokens=600}){
+  const r = await fetch("/api/ai/chat",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({system, messages, max_tokens})
+  });
+  if(!r.ok){ throw new Error("AI HTTP "+r.status); }
+  const d = await r.json();
+  if(d.status!=="ok") throw new Error(d.message||"AI error");
+  return d.text || "";
+}
 
 /* ─── Security: Input sanitization ─── */
 const sanitize = str => String(str||"").replace(/[<>&"']/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
@@ -975,11 +990,14 @@ function bootApp(){
   document.getElementById("main").style.display="block";
   renderHdrVip();buildCatPills();buildSrcPills();
   buildMarkets();fetchMarketsData();fetchCalendarData();
-  fetchAllNews(false);
+  syncSources().then(()=>fetchAllNews(false));
   renderVIP();renderProfile();
-  // Auto-refresh: markets every 60s, calendar every 30min
+  updateNotifBadge();
+  maybeRequestNotifPerm();
+  // Auto-refresh: markets every 60s, calendar every 30min, news every 5min
   setInterval(fetchMarketsData,60000);
   setInterval(fetchCalendarData,30*60*1000);
+  setInterval(()=>fetchAllNews(true), 5*60*1000);
 }
 
 /* ═══════════════════ AUTH ═══════════════════ */
@@ -1000,7 +1018,7 @@ function doAuth(){
   const btn=document.getElementById("a-btn");
   errEl.style.display="none";btn.disabled=true;
   btn.innerHTML='<div class="sp sp-g sp-md"></div> جارٍ...';
-  setTimeout(()=>{
+  setTimeout(async ()=>{
     btn.disabled=false;btn.innerHTML=`<span id="a-btn-txt">${authMode==="login"?"دخول ←":"إنشاء الحساب ←"}</span>`;
     const users=DB.g("u",{});
     function showE(m){errEl.textContent=m;errEl.style.display="block";}
@@ -1014,8 +1032,27 @@ function doAuth(){
       DB.s("u",users);U={name:sanitize(name),phone,plan:"free"};
     } else {
       if(!phone||!pass){showE("أدخل الرقم وكلمة المرور");return;}
-      /* Admin: internal check — not exposed in UI */
-      if(phone==="admin"&&pass==="egytrend2026"){U={name:"المدير",phone:"admin",plan:"admin"};}
+      /* Admin: internal check — not exposed in UI.
+       * Exchanges the password for a server-issued bearer token used
+       * by /api/admin/* endpoints. If the server is unreachable we
+       * still allow local-only admin (read-only of CRUD UI). */
+      if(phone==="admin"){
+        try{
+          const lr = await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pass})});
+          const lj = await lr.json();
+          if(lr.ok && lj.status==="ok" && lj.token){
+            U={name:"المدير",phone:"admin",plan:"admin"};
+            DB.s("admTok", lj.token);
+          } else {
+            showE("كلمة مرور المدير غير صحيحة");
+            return;
+          }
+        }catch{
+          // Offline fallback: legacy local admin (no server CRUD privileges)
+          if(pass==="egytrend2026"){U={name:"المدير",phone:"admin",plan:"admin"};}
+          else{showE("تعذر الاتصال بالخادم");return;}
+        }
+      }
       else{
         const u=users[phone];
         if(!u){showE("الرقم غير مسجّل");return;}
@@ -1029,7 +1066,98 @@ function doAuth(){
   },550);
 }
 
-function logout(){DB.d("s");U=null;goNav("home");document.getElementById("main").style.display="none";document.getElementById("auth").classList.add("open");}
+function logout(){DB.d("s");DB.d("admTok");U=null;goNav("home");document.getElementById("main").style.display="none";document.getElementById("auth").classList.add("open");}
+
+/* ═══════════════════ ADMIN API HELPER ═══════════════════ */
+async function admFetch(url, opts={}){
+  const tok = DB.g("admTok", "");
+  if(!tok) throw new Error("not authenticated");
+  const headers = Object.assign({}, opts.headers||{}, {"x-admin-token":tok});
+  if(opts.body && !headers["Content-Type"]) headers["Content-Type"]="application/json";
+  const r = await fetch(url, Object.assign({}, opts, {headers}));
+  if(r.status===401){
+    showToast("⚠️ انتهت صلاحية جلسة المدير");
+    DB.d("admTok");
+    throw new Error("unauthorized");
+  }
+  return r;
+}
+
+/* ═══════════════════ NOTIFICATIONS (in-app badge + browser Notification API)
+ * Tracks the timestamp of the most-recent article seen by the user. Anything
+ * newer than that on the next refresh is "new" and gets counted/notified.
+ * Designed to be extended to push later — the same `notifyNewArticles` hook
+ * can fan out to a service worker or third-party push provider. */
+let notifNew = 0;
+function lastSeenTs(){ return Number(DB.g("notifSeen", 0)) || 0; }
+function setLastSeenTs(ts){ DB.s("notifSeen", ts); }
+
+function maybeRequestNotifPerm(){
+  if(!("Notification" in window)) return;
+  if(Notification.permission==="default" && (U?.plan==="vip"||U?.plan==="admin")){
+    // Fire-and-forget; user can dismiss the prompt
+    try{ Notification.requestPermission().catch(()=>{}); }catch{}
+  }
+}
+
+function fireBrowserNotif(art){
+  if(!("Notification" in window) || Notification.permission!=="granted") return;
+  try{
+    const n = new Notification(`${art.srcIcon||"📰"} ${art.srcName||"EgyTrend"}`,{
+      body: art.title.slice(0,140),
+      tag: art.id,
+      icon: "/favicon.ico",
+      lang: art.srcLang||"ar",
+      dir: "rtl",
+      silent: false,
+    });
+    n.onclick = ()=>{ window.focus(); openArt(art.id); n.close(); };
+  }catch{}
+}
+
+function updateNotifBadge(){
+  const el=document.getElementById("nb-news-badge");
+  if(!el) return;
+  if(notifNew>0){ el.textContent = notifNew>99?"99+":String(notifNew); el.style.display="flex"; }
+  else el.style.display="none";
+}
+
+function notifyNewArticles(prevSeen){
+  if(!prevSeen){ // first run — just record, never spam
+    if(allArts.length>0) setLastSeenTs(allArts[0].ts);
+    notifNew=0; updateNotifBadge();
+    return;
+  }
+  const fresh = allArts.filter(a => a.ts > prevSeen);
+  notifNew = fresh.length;
+  updateNotifBadge();
+  // Browser notifications: cap at 3 per refresh to avoid spam, VIP/admin only
+  if((U?.plan==="vip"||U?.plan==="admin") && fresh.length>0){
+    fresh.slice(0,3).forEach(fireBrowserNotif);
+  }
+  if(fresh.length>0) showToast(`🔔 ${fresh.length} خبر جديد`, 3500);
+}
+
+function clearNotifs(){
+  if(allArts.length>0) setLastSeenTs(allArts[0].ts);
+  notifNew=0; updateNotifBadge();
+}
+
+/* Sync the source pill list with whatever the server reports — picks up
+ * any sources the admin has added/removed without a hard refresh. */
+async function syncSources(){
+  try{
+    const r = await fetch("/api/news/sources",{cache:"no-store"});
+    if(!r.ok) return;
+    const d = await r.json();
+    if(d.status==="ok" && Array.isArray(d.sources) && d.sources.length){
+      // Replace the in-memory SOURCES array (keep object identity behaviour)
+      SOURCES.length=0;
+      d.sources.forEach(s=>SOURCES.push(s));
+      buildSrcPills();
+    }
+  }catch{ /* keep static fallback */ }
+}
 
 /* ═══════════════════ LIVE MARKETS (backend proxy → Stooq + Google + CoinGecko + TradingEconomics) ═══════════════════ */
 let liveTicks = [...TICKS_STATIC]; // current ticker items, replaced when /api/markets responds
@@ -1186,7 +1314,11 @@ async function fetchAllNews(force=false){
     if(seen.has(key))return false;seen.set(key,true);return true;
   });
   deduped.sort((a,b)=>b.ts-a.ts);
+  const prevSeen = lastSeenTs();
   allArts=deduped;
+
+  // Notifications: count new articles since last visit (and optionally fire browser notifications)
+  notifyNewArticles(prevSeen);
 
   // Breaking
   const brk=allArts.find(a=>a.isBreaking);
@@ -1341,18 +1473,11 @@ async function aiAnalyze(){
   const btn=document.getElementById("ai-det-btn");
   btn.innerHTML='<div class="sp sp-bl sp-sm"></div> جارٍ...';btn.disabled=true;
   try{
-    const r=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        model:MODEL,max_tokens:600,
-        system:"أنت محلل استثماري خبير للسوق المصري. قدّم 3-4 نقاط عملية ومختصرة للمستثمر. لا تتجاوز 300 كلمة.",
-        messages:[{role:"user",content:`حلّل:\nالمصدر: ${curArt.srcName}\nالعنوان: ${curArt.title}\nالخلاصة: ${curArt.summary}\n\nما الأسهم المصرية المتأثرة؟ ما توصيتك للمستثمر المصري؟`}]
-      })
+    const txt = await callAI({
+      max_tokens:600,
+      system:"أنت محلل استثماري خبير للسوق المصري. قدّم 3-4 نقاط عملية ومختصرة للمستثمر. لا تتجاوز 300 كلمة.",
+      messages:[{role:"user",content:`حلّل:\nالمصدر: ${curArt.srcName}\nالعنوان: ${curArt.title}\nالخلاصة: ${curArt.summary}\n\nما الأسهم المصرية المتأثرة؟ ما توصيتك للمستثمر المصري؟`}]
     });
-    if(!r.ok)throw new Error("API "+r.status);
-    const d=await r.json();
-    const txt=d.content?.[0]?.text||"";
     const res=document.getElementById("ai-det-res");
     res.textContent=txt;res.style.display="block";
   }catch{
@@ -1605,17 +1730,12 @@ async function sendChat(){
   const t=document.createElement("div");t.className="msg bot";t.id="chat-typing";t.textContent="⏳ يحلل...";cw.appendChild(t);cw.scrollTop=cw.scrollHeight;
   try{
     const hl=allArts.slice(0,5).map(a=>`${a.srcName}: ${a.title}`).join("\n");
-    const r=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        model:MODEL,max_tokens:500,
-        system:`أنت EgyTrend AI Advisor — مستشار مالي متخصص في السوق المصري. تُجيب باختصار وعملية بالعربية. لا تتجاوز 250 كلمة.\nأبرز أخبار اليوم:\n${hl}\nتُنبّه أن قرارات الاستثمار على مسؤولية المستخدم.`,
-        messages:chatHist.slice(-10).map(m=>({role:m.r==="user"?"user":"assistant",content:m.c}))
-      })
+    const reply = await callAI({
+      max_tokens:500,
+      system:`أنت EgyTrend AI Advisor — مستشار مالي متخصص في السوق المصري. تُجيب باختصار وعملية بالعربية. لا تتجاوز 250 كلمة.\nأبرز أخبار اليوم:\n${hl}\nتُنبّه أن قرارات الاستثمار على مسؤولية المستخدم.`,
+      messages:chatHist.slice(-10).map(m=>({role:m.r==="user"?"user":"assistant",content:m.c}))
     });
-    if(!r.ok)throw new Error("API error "+r.status);
-    const d=await r.json();const reply=d.content?.[0]?.text||"عذراً، حدث خطأ.";
-    chatHist.push({r:"bot",c:reply});
+    chatHist.push({r:"bot",c:reply||"عذراً، حدث خطأ."});
   }catch{chatHist.push({r:"bot",c:"❌ تعذر الاتصال بالخادم. تحقق من اتصالك."});}
   const ti=document.getElementById("chat-typing");if(ti)ti.remove();
   renderChatUI();
@@ -1625,14 +1745,12 @@ async function getSignals(){
   const btn=document.getElementById("sig-btn");btn.innerHTML='<div class="sp sp-g sp-sm"></div>';btn.disabled=true;
   try{
     const hl=allArts.slice(0,4).map(a=>a.title).join(" | ");
-    const r=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:MODEL,max_tokens:600,
-        system:"أنت محلل تقني خبير للبورصة المصرية. أعطِ إشارات تداول عملية ومختصرة.",
-        messages:[{role:"user",content:`إشارات تداول اليوم لأفضل 3 أسهم مصرية مع نقطة الدخول والهدف ووقف الخسارة.\nأخبار اليوم: ${hl}`}]})
+    const txt = await callAI({
+      max_tokens:600,
+      system:"أنت محلل تقني خبير للبورصة المصرية. أعطِ إشارات تداول عملية ومختصرة.",
+      messages:[{role:"user",content:`إشارات تداول اليوم لأفضل 3 أسهم مصرية مع نقطة الدخول والهدف ووقف الخسارة.\nأخبار اليوم: ${hl}`}]
     });
-    if(!r.ok)throw new Error("API error");
-    const d=await r.json();document.getElementById("sig-res").textContent=d.content?.[0]?.text||"";document.getElementById("sig-res").style.display="block";
+    document.getElementById("sig-res").textContent=txt;document.getElementById("sig-res").style.display="block";
   }catch{document.getElementById("sig-res").textContent="❌ تعذر الاتصال. تحقق من اتصالك بالإنترنت.";}
   btn.innerHTML="↻ تحديث";btn.disabled=false;
 }
@@ -1641,13 +1759,12 @@ async function getMorning(){
   const btn=document.getElementById("morn-btn");btn.innerHTML='<div class="sp sp-pu sp-sm"></div> ...';btn.disabled=true;
   try{
     const hl=allArts.slice(0,6).map(a=>`${a.srcName}: ${a.title}`).join("\n");
-    const r=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:MODEL,max_tokens:700,system:"أنت محلل اقتصادي متخصص. أنشئ تقرير صباح احترافياً.",
-        messages:[{role:"user",content:`تقرير صباح ليوم ${new Date().toLocaleDateString("ar-EG")} بناءً على أخبار اليوم:\n${hl}`}]})
+    const txt = await callAI({
+      max_tokens:700,
+      system:"أنت محلل اقتصادي متخصص. أنشئ تقرير صباح احترافياً.",
+      messages:[{role:"user",content:`تقرير صباح ليوم ${new Date().toLocaleDateString("ar-EG")} بناءً على أخبار اليوم:\n${hl}`}]
     });
-    if(!r.ok)throw new Error("API error");
-    const d=await r.json();document.getElementById("rep-res").textContent=d.content?.[0]?.text||"";document.getElementById("rep-res").style.display="block";
+    document.getElementById("rep-res").textContent=txt;document.getElementById("rep-res").style.display="block";
   }catch{document.getElementById("rep-res").textContent="❌ تعذر الاتصال. تحقق من اتصالك.";}
   btn.innerHTML="🌅 تقرير الصباح";btn.disabled=false;
 }
@@ -1656,13 +1773,12 @@ async function getClosing(){
   const btn=document.getElementById("clos-btn");btn.innerHTML='<div class="sp sp-pu sp-sm"></div> ...';btn.disabled=true;
   try{
     const hl=allArts.slice(0,6).map(a=>`${a.srcName}: ${a.title}`).join("\n");
-    const r=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:MODEL,max_tokens:700,system:"أنت محلل اقتصادي متخصص. أنشئ تقرير إغلاق احترافياً.",
-        messages:[{role:"user",content:`تقرير إغلاق ليوم ${new Date().toLocaleDateString("ar-EG")} بناءً على أخبار اليوم:\n${hl}`}]})
+    const txt = await callAI({
+      max_tokens:700,
+      system:"أنت محلل اقتصادي متخصص. أنشئ تقرير إغلاق احترافياً.",
+      messages:[{role:"user",content:`تقرير إغلاق ليوم ${new Date().toLocaleDateString("ar-EG")} بناءً على أخبار اليوم:\n${hl}`}]
     });
-    if(!r.ok)throw new Error("API error");
-    const d=await r.json();document.getElementById("rep-res").textContent=d.content?.[0]?.text||"";document.getElementById("rep-res").style.display="block";
+    document.getElementById("rep-res").textContent=txt;document.getElementById("rep-res").style.display="block";
   }catch{document.getElementById("rep-res").textContent="❌ تعذر الاتصال. تحقق من اتصالك.";}
   btn.innerHTML="🌙 تقرير الإغلاق";btn.disabled=false;
 }
@@ -1696,13 +1812,12 @@ async function analyzePort(){
   const btn=document.getElementById("port-ai-btn");btn.innerHTML='<div class="sp sp-bl sp-sm"></div> جارٍ...';btn.disabled=true;
   try{
     const hl=allArts.slice(0,3).map(a=>a.title).join(" | ");
-    const r=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:MODEL,max_tokens:500,system:"أنت مستشار استثماري. حلّل محفظة وقدّم توصيات عملية مختصرة.",
-        messages:[{role:"user",content:`حلّل محفظتي:\n${portfolio.map(s=>`${s.sym}: ${s.qty} ورقة × ${s.price.toFixed(2)} ج`).join("\n")}\n\nأخبار اليوم: ${hl}`}]})
+    const txt = await callAI({
+      max_tokens:500,
+      system:"أنت مستشار استثماري. حلّل محفظة وقدّم توصيات عملية مختصرة.",
+      messages:[{role:"user",content:`حلّل محفظتي:\n${portfolio.map(s=>`${s.sym}: ${s.qty} ورقة × ${s.price.toFixed(2)} ج`).join("\n")}\n\nأخبار اليوم: ${hl}`}]
     });
-    if(!r.ok)throw new Error("API error");
-    const d=await r.json();document.getElementById("port-ai-res").textContent=d.content?.[0]?.text||"";document.getElementById("port-ai-res").style.display="block";
+    document.getElementById("port-ai-res").textContent=txt;document.getElementById("port-ai-res").style.display="block";
   }catch{document.getElementById("port-ai-res").textContent="❌ تعذر التحليل. تحقق من اتصالك.";}
   btn.innerHTML="🤖 إعادة التحليل";btn.disabled=false;
 }
@@ -1755,21 +1870,18 @@ async function runRw(){
   const btnTxt=document.getElementById("ai-rw-txt");btnTxt.parentElement.disabled=true;btnTxt.textContent="جارٍ المعالجة...";
   document.getElementById("ai-rw-res").style.display="none";
   try{
-    const r=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:MODEL,max_tokens:800,
-        system:`أنت محرر أخبار EgyTrend. أعد الصياغة بالعربية بهذا التنسيق الدقيق:
+    const out = await callAI({
+      max_tokens:800,
+      system:`أنت محرر أخبار EgyTrend. أعد الصياغة بالعربية بهذا التنسيق الدقيق:
 📌 العنوان: [جذاب ومختصر]
 ⚡ TL;DR: [جملة واحدة تحرك السوق]
 📋 الملخص: [3 جمل واضحة]
 📊 التأثير: [إيجابي/سلبي/محايد] · Impact Score: [X/100]
 📈 الأسهم المتأثرة: [إن وجدت، وإلا اكتب "لا يوجد"]
 🏷️ التصنيف: [اقتصاد مصري/عالمي/بورصة/تحليل/كريبتو]`,
-        messages:[{role:"user",content:`أعد صياغة:\n${txt}`}]})
+      messages:[{role:"user",content:`أعد صياغة:\n${txt}`}]
     });
-    if(!r.ok)throw new Error("API "+r.status);
-    const d=await r.json();
-    document.getElementById("ai-rw-out").textContent=d.content?.[0]?.text||"خطأ";
+    document.getElementById("ai-rw-out").textContent=out||"خطأ";
     document.getElementById("ai-rw-res").style.display="block";
   }catch{document.getElementById("ai-rw-out").textContent="❌ تعذر الاتصال. تحقق من اتصالك بالإنترنت.";}
   btnTxt.parentElement.disabled=false;btnTxt.textContent="✨ أعد الصياغة + TL;DR";
@@ -1820,8 +1932,9 @@ function renderAdmStats(){
   ].map(s=>`<div class="astat"><div class="astat-v" style="color:${s.c};">${s.v}</div><div class="astat-l">${s.l}</div></div>`).join("");
 }
 function admTab(tab){
-  document.querySelectorAll(".adm-tab").forEach((t,i)=>t.classList.toggle("active",["reqs","users","sources","ai"][i]===tab));
+  document.querySelectorAll(".adm-tab").forEach((t,i)=>t.classList.toggle("active",["reqs","users","articles","sources","ai"][i]===tab));
   const el=document.getElementById("adm-body");
+  if(tab==="articles"){ renderAdmArticles(el); return; }
   if(tab==="reqs"){
     const reqs=DB.g("reqs",[]);
     if(!reqs.length){el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">📋</div><div>لا توجد طلبات</div></div>`;return;}
@@ -1854,16 +1967,182 @@ function admTab(tab){
         <span class="bdg" style="background:${u.plan==="vip"?"var(--aud)":"var(--s1)"};color:${u.plan==="vip"?"var(--au)":"var(--t4)"};">${u.plan==="vip"?"⭐ VIP":"مجاني"}</span>
       </div>`).join("");
   } else if(tab==="sources"){
-    const ok=Object.values(srcStatus).filter(s=>s==="ok").length;const err=Object.values(srcStatus).filter(s=>s==="error").length;
-    el.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:13px;flex-wrap:wrap;"><span class="bdg" style="background:var(--gd);color:var(--g);">✓ ${ok} مصدر نشط</span>${err?`<span class="bdg" style="background:var(--dnd);color:var(--dn);">✕ ${err} غير متاح</span>`:""}<span class="bdg" style="background:var(--bld);color:#93c5fd;font-family:var(--mono);">${allArts.length} خبر</span></div>`+
-      SOURCES.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--b1);">
-        <div class="row" style="gap:7px;"><span style="font-size:14px;">${s.icon}</span><div><div style="color:var(--t2);font-size:12.5px;font-weight:600;">${s.name}</div><div style="color:var(--t4);font-size:9.5px;">${s.lang==="ar"?"عربي":"English"} · ${s.cat}</div></div></div>
-        <span class="bdg" style="background:${srcStatus[s.id]==="ok"?"var(--gd)":srcStatus[s.id]==="error"?"var(--dnd)":"var(--s1)"};color:${srcStatus[s.id]==="ok"?"var(--g)":srcStatus[s.id]==="error"?"var(--dn)":"var(--t4)"};">${srcStatus[s.id]==="ok"?"✓ نشط":srcStatus[s.id]==="error"?"✕ خطأ":"⏳"}</span>
-      </div>`).join("");
+    renderAdmSources(el);
   } else {
     el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px;"><div style="color:var(--t2);font-weight:700;font-size:14px;">تقارير AI اليومية</div><button class="btn btn-g btn-sm" id="adm-ai-btn" onclick="genAdmReport()">🤖 أنشئ ملخص</button></div><div id="adm-ai-res" style="display:none;background:var(--gd2);border:1px solid rgba(16,185,129,.14);border-radius:14px;padding:17px;"><div style="color:var(--g);font-size:10px;font-weight:700;margin-bottom:10px;">✅ ملخص ${new Date().toLocaleDateString("ar-EG")}</div><div id="adm-ai-txt" style="color:var(--t2);font-size:13px;line-height:1.9;direction:rtl;white-space:pre-line;"></div></div>`;
   }
 }
+/* ─── Admin: Sources CRUD ─── */
+async function renderAdmSources(el){
+  const ok=Object.values(srcStatus).filter(s=>s==="ok").length;
+  const err=Object.values(srcStatus).filter(s=>s==="error").length;
+  const stats = `<div style="display:flex;gap:8px;margin-bottom:13px;flex-wrap:wrap;">
+    <span class="bdg" style="background:var(--gd);color:var(--g);">✓ ${ok} مصدر نشط</span>
+    ${err?`<span class="bdg" style="background:var(--dnd);color:var(--dn);">✕ ${err} غير متاح</span>`:""}
+    <span class="bdg" style="background:var(--bld);color:#93c5fd;font-family:var(--mono);">${allArts.length} خبر</span>
+  </div>`;
+  const addForm = `
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px;margin-bottom:14px;">
+      <div style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:9px;">➕ إضافة مصدر RSS</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
+        <input id="asrc-id" placeholder="معرّف فريد (a-z, 0-9)" maxlength="40" class="a-in" />
+        <input id="asrc-name" placeholder="الاسم الظاهر" maxlength="60" class="a-in" />
+        <input id="asrc-icon" placeholder="📰 (إيموجي)" maxlength="6" class="a-in" value="📰" />
+        <input id="asrc-color" placeholder="#10b981" maxlength="7" class="a-in" value="#10b981" />
+        <select id="asrc-lang" class="a-in"><option value="ar">عربي</option><option value="en">English</option></select>
+        <select id="asrc-cat" class="a-in"><option value="egypt">مصر</option><option value="global">عالمي</option><option value="stocks">بورصة</option><option value="crypto">كريبتو</option></select>
+      </div>
+      <input id="asrc-url" placeholder="https://example.com/feed.xml" class="a-in" style="margin-top:7px;width:100%;box-sizing:border-box;" />
+      <button class="btn btn-g btn-sm" style="margin-top:9px;width:100%;" onclick="saveAdmSource()">حفظ المصدر ✓</button>
+    </div>`;
+  let listHTML = `<div class="empty"><div style="font-size:24px;">⏳</div><div>جارٍ تحميل المصادر...</div></div>`;
+  el.innerHTML = stats + addForm + `<div id="asrc-list">${listHTML}</div>`;
+
+  // Pull authoritative server-side list (admin sees the full source URLs)
+  let sources;
+  try{
+    const r = await admFetch("/api/admin/sources");
+    const j = await r.json();
+    if(!r.ok || j.status!=="ok") throw new Error(j.message||"failed");
+    sources = j.sources;
+  }catch(e){
+    document.getElementById("asrc-list").innerHTML = `<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;
+    return;
+  }
+  document.getElementById("asrc-list").innerHTML = sources.map(s=>{
+    const status = srcStatus[s.id];
+    const badge = status==="ok"?"✓ نشط":status==="error"?"✕ خطأ":"⏳";
+    const badgeBg = status==="ok"?"var(--gd)":status==="error"?"var(--dnd)":"var(--s1)";
+    const badgeFg = status==="ok"?"var(--g)":status==="error"?"var(--dn)":"var(--t4)";
+    return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:10px 12px;margin-bottom:6px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div style="flex:1;min-width:0;">
+          <div class="row" style="gap:7px;"><span style="font-size:14px;">${sanitize(s.icon)}</span>
+            <div style="min-width:0;flex:1;">
+              <div style="color:var(--t2);font-size:12.5px;font-weight:700;">${sanitize(s.name)}</div>
+              <div style="color:var(--t4);font-size:9.5px;font-family:var(--mono);">${sanitize(s.id)} · ${s.lang==="ar"?"عربي":"English"} · ${s.cat}</div>
+              <div style="color:var(--t5);font-size:9px;font-family:var(--mono);overflow-wrap:break-word;margin-top:3px;">${sanitize(s.url)}</div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
+          <span class="bdg" style="background:${badgeBg};color:${badgeFg};">${badge}</span>
+          <button class="r-btn rej" onclick="delAdmSource('${sanitize(s.id)}')">حذف</button>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+async function saveAdmSource(){
+  const body = {
+    id: document.getElementById("asrc-id").value.trim(),
+    name: document.getElementById("asrc-name").value.trim(),
+    icon: document.getElementById("asrc-icon").value.trim()||"📰",
+    color: document.getElementById("asrc-color").value.trim(),
+    lang: document.getElementById("asrc-lang").value,
+    cat: document.getElementById("asrc-cat").value,
+    url: document.getElementById("asrc-url").value.trim(),
+  };
+  try{
+    const r = await admFetch("/api/admin/sources",{method:"POST",body:JSON.stringify(body)});
+    const j = await r.json();
+    if(!r.ok || j.status!=="ok"){ showToast("❌ "+(j.message||"تعذر الحفظ")); return; }
+    showToast("✅ تم حفظ المصدر");
+    await syncSources();
+    admTab("sources");
+  }catch(e){ showToast("❌ "+String(e.message||e)); }
+}
+
+async function delAdmSource(id){
+  if(!confirm(`حذف المصدر "${id}"؟`)) return;
+  try{
+    const r = await admFetch(`/api/admin/sources/${encodeURIComponent(id)}`,{method:"DELETE"});
+    const j = await r.json();
+    if(!r.ok || j.status!=="ok"){ showToast("❌ "+(j.message||"تعذر الحذف")); return; }
+    showToast("✅ تم الحذف");
+    await syncSources();
+    admTab("sources");
+  }catch(e){ showToast("❌ "+String(e.message||e)); }
+}
+
+/* ─── Admin: Custom Articles CRUD ─── */
+async function renderAdmArticles(el){
+  const addForm = `
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px;margin-bottom:14px;">
+      <div style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:9px;">✍️ نشر خبر من تحرير المنصة</div>
+      <input id="aart-title" placeholder="عنوان الخبر" maxlength="300" class="a-in" style="width:100%;box-sizing:border-box;" />
+      <textarea id="aart-desc" placeholder="موجز الخبر (سطرين أو ثلاثة)" maxlength="1500" class="a-in" style="width:100%;box-sizing:border-box;margin-top:7px;min-height:70px;font-family:inherit;"></textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px;">
+        <select id="aart-cat" class="a-in"><option value="egypt">مصر</option><option value="global">عالمي</option><option value="stocks">بورصة</option><option value="crypto">كريبتو</option></select>
+        <input id="aart-link" placeholder="رابط المصدر (اختياري)" class="a-in" />
+      </div>
+      <input id="aart-thumb" placeholder="رابط صورة (اختياري)" class="a-in" style="margin-top:7px;width:100%;box-sizing:border-box;" />
+      <button class="btn btn-g btn-sm" style="margin-top:9px;width:100%;" onclick="saveAdmArticle()">📢 نشر الخبر</button>
+    </div>`;
+  el.innerHTML = addForm + `<div id="aart-list"><div class="empty"><div style="font-size:24px;">⏳</div><div>جارٍ التحميل...</div></div></div>`;
+
+  let articles=[];
+  try{
+    const r = await admFetch("/api/admin/articles");
+    const j = await r.json();
+    if(!r.ok || j.status!=="ok") throw new Error(j.message||"failed");
+    articles = j.articles||[];
+  }catch(e){
+    document.getElementById("aart-list").innerHTML = `<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;
+    return;
+  }
+  if(!articles.length){
+    document.getElementById("aart-list").innerHTML = `<div class="empty"><div style="font-size:28px;margin-bottom:7px;">✍️</div><div>لم تنشر أخباراً بعد</div></div>`;
+    return;
+  }
+  document.getElementById("aart-list").innerHTML = articles.map(a=>`
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:11px 13px;margin-bottom:7px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div style="flex:1;min-width:0;">
+          <div style="color:var(--t2);font-weight:700;font-size:13px;line-height:1.5;">${sanitize(a.title)}</div>
+          <div style="color:var(--t4);font-size:11px;margin-top:4px;line-height:1.7;">${sanitize((a.description||"").slice(0,160))}</div>
+          <div style="color:var(--t5);font-size:9.5px;margin-top:5px;font-family:var(--mono);">${new Date(a.pubDate).toLocaleString("ar-EG")} · ${sanitize(a.cat)}</div>
+        </div>
+        <button class="r-btn rej" onclick="delAdmArticle('${sanitize(a.id)}')">حذف</button>
+      </div>
+    </div>`).join("");
+}
+
+async function saveAdmArticle(){
+  const body = {
+    title: document.getElementById("aart-title").value.trim(),
+    description: document.getElementById("aart-desc").value.trim(),
+    cat: document.getElementById("aart-cat").value,
+    link: document.getElementById("aart-link").value.trim() || "#",
+    thumbnail: document.getElementById("aart-thumb").value.trim() || undefined,
+  };
+  try{
+    const r = await admFetch("/api/admin/articles",{method:"POST",body:JSON.stringify(body)});
+    const j = await r.json();
+    if(!r.ok || j.status!=="ok"){ showToast("❌ "+(j.message||"تعذر النشر")); return; }
+    showToast("✅ تم نشر الخبر");
+    document.getElementById("aart-title").value="";
+    document.getElementById("aart-desc").value="";
+    document.getElementById("aart-link").value="";
+    document.getElementById("aart-thumb").value="";
+    fetchAllNews(true);
+    admTab("articles");
+  }catch(e){ showToast("❌ "+String(e.message||e)); }
+}
+
+async function delAdmArticle(id){
+  if(!confirm("حذف هذا الخبر؟")) return;
+  try{
+    const r = await admFetch(`/api/admin/articles/${encodeURIComponent(id)}`,{method:"DELETE"});
+    const j = await r.json();
+    if(!r.ok || j.status!=="ok"){ showToast("❌ "+(j.message||"تعذر الحذف")); return; }
+    showToast("✅ تم الحذف");
+    fetchAllNews(true);
+    admTab("articles");
+  }catch(e){ showToast("❌ "+String(e.message||e)); }
+}
+
 function admApp(id){
   const reqs=DB.g("reqs",[]);const req=reqs.find(r=>r.id===id);if(!req)return;
   req.status="approved";DB.s("reqs",reqs);
@@ -1876,11 +2155,12 @@ async function genAdmReport(){
   const btn=document.getElementById("adm-ai-btn");btn.innerHTML='<div class="sp sp-g sp-sm"></div> جارٍ...';btn.disabled=true;
   try{
     const hl=allArts.slice(0,8).map(a=>`${a.srcName}: ${a.title}`).join("\n");
-    const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:MODEL,max_tokens:800,system:"أنت محلل اقتصادي. أنشئ ملخصاً يومياً شاملاً للأسواق.",
-        messages:[{role:"user",content:`ملخص شامل للأسواق ليوم ${new Date().toLocaleDateString("ar-EG")} بناءً على:\n${hl}`}]})});
-    if(!r.ok)throw new Error("API error");
-    const d=await r.json();document.getElementById("adm-ai-txt").textContent=d.content?.[0]?.text||"";document.getElementById("adm-ai-res").style.display="block";
+    const txt = await callAI({
+      max_tokens:800,
+      system:"أنت محلل اقتصادي. أنشئ ملخصاً يومياً شاملاً للأسواق.",
+      messages:[{role:"user",content:`ملخص شامل للأسواق ليوم ${new Date().toLocaleDateString("ar-EG")} بناءً على:\n${hl}`}]
+    });
+    document.getElementById("adm-ai-txt").textContent=txt;document.getElementById("adm-ai-res").style.display="block";
   }catch{document.getElementById("adm-ai-txt").textContent="❌ تعذر الاتصال.";}
   btn.innerHTML="🤖 إعادة التوليد";btn.disabled=false;
 }
@@ -1894,6 +2174,7 @@ function goNav(id){
   if(id==="vip")renderVIP();
   if(id==="profile")renderProfile();
   if(id==="markets"){buildMarkets();buildCalendar();}
+  if(id==="home") clearNotifs();
 }
 function toggleSearch(){const b=document.getElementById("search-bar");b.classList.toggle("open");if(b.classList.contains("open"))document.getElementById("search-in").focus();}
 

@@ -39,7 +39,22 @@ Responsive desktop/laptop layout was added via `@media (min-width: 1024px)` and 
 - Markets grid widens to 4 columns; modals enlarge; detail/EGX pages constrained to ≤980px and respect the sidebar.
 - Mobile layout (≤1023px) and tablet (768–1023px) are untouched / lightly tuned.
 
-External services used by the page: Anthropic API direct from browser for AI features. All market data, currency prices, the economic calendar, and RSS news feeds are now fetched through our own backend proxy at `/api/...` (see below). The previous `api.rss2json.com` (news), direct CoinGecko (crypto-only) and hardcoded static market values were retired in favor of the unified backend.
+External services used by the page: AI features now go through our own backend proxy that talks to Anthropic via Replit AI Integrations (no client-side API key). All market data, currency prices, the economic calendar, and RSS news feeds are also fetched through `/api/...` (see below). The previous `api.rss2json.com` (news), direct CoinGecko (crypto-only) and hardcoded static market values were retired in favor of the unified backend.
+
+#### AI proxy
+
+- Backend: `artifacts/api-server/src/routes/ai.ts` exposes `POST /api/ai/chat` (body: `{system?, messages, max_tokens?}`) and `GET /api/ai/status`. Uses the `AI_INTEGRATIONS_*` env vars (proxy URL + token, model `claude-sonnet-4-6`). Per-IP rate-limit of 30 requests/minute. Returns `{status:"ok", text}`.
+- Frontend: a single `callAI({system, messages, max_tokens})` helper replaces all 7 previous direct `fetch("https://api.anthropic.com/...")` calls. No API key in the HTML, and the model name is server-controlled.
+
+#### Notifications system
+
+- New articles are detected after each `fetchAllNews()` by comparing each article's pubDate against `lastSeenTs` in localStorage. A red badge counter renders on the home nav (`#nb-news-badge`, styled via `.nb-badge`), and for users on the VIP plan or for the admin a browser Notification (capped at 3) is also fired via the standard `Notification` API. Permission is requested lazily on first interaction (`maybeRequestNotifPerm`). Tapping the home nav clears the badge. Designed so a future push-notification provider only needs to plug into the same `notifyNewArticles` hook.
+- News auto-refreshes every 5 minutes once a session is active (`setInterval(fetchAllNews, 5*60*1000)`).
+
+#### Admin dashboard
+
+- New tab “إدارة الأخبار” (between Users and Sources). Admin can publish editorial articles directly from the dashboard (`POST /api/admin/articles`), and they are surfaced to all users tagged as “تحرير المنصة”. The Sources tab is now a full CRUD: add an RSS source (id/name/icon/color/lang/cat/url) or delete an existing one — changes persist server-side and are picked up by `fetchAllNews()` after a `syncSources()` round-trip.
+- Backend: `artifacts/api-server/src/routes/admin.ts`. `POST /api/admin/login` takes a password (defaults to `egytrend2026`, override with the `ADMIN_PASSWORD` env var) and returns a bearer token derived from `SESSION_SECRET` (or `ADMIN_TOKEN` if explicitly set). All write endpoints require the `x-admin-token` header. Sources & custom articles are persisted to JSON files via `src/lib/dataStore.ts`, which does atomic writes and watches the files for live reload.
 
 #### News fetching pipeline
 
