@@ -1,0 +1,164 @@
+{
+  "youm7": {
+    "id": "youm7",
+    "name": "اليوم السابع",
+    "icon": "📰",
+    "lang": "ar",
+    "cat": "egypt",
+    "color": "#0ea5e9",
+    "url": "https://www.youm7.com/rss/SectionRss?SectionID=297"
+  },
+  "masrawy": {
+    "id": "masrawy",
+    "name": "مصراوي",
+    "icon": "📱",
+    "lang": "ar",
+    "cat": "egypt",
+    "color": "#10b981",
+    "url": "https://www.masrawy.com/rss/economy"
+  },
+  "amwal": {
+    "id": "amwal",
+    "name": "أموال الغد",
+    "icon": "💰",
+    "lang": "ar",
+    "cat": "egypt",
+    "color": "#7c3aed",
+    "url": "https://amwalalghad.com/category/news/feed"
+  },
+  "elwatan": {
+    "id": "elwatan",
+    "name": "الوطن",
+    "icon": "🗞️",
+    "lang": "ar",
+    "cat": "egypt",
+    "color": "#b45309",
+    "url": "https://news.google.com/rss/search?q=site:elwatannews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
+  },
+  "shorouk": {
+    "id": "shorouk",
+    "name": "الشروق",
+    "icon": "📑",
+    "lang": "ar",
+    "cat": "egypt",
+    "color": "#dc2626",
+    "url": "https://news.google.com/rss/search?q=site:shorouknews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
+  },
+  "alarabiya": {
+    "id": "alarabiya",
+    "name": "العربية",
+    "icon": "🌍",
+    "lang": "ar",
+    "cat": "global",
+    "color": "#c2410c",
+    "url": "https://news.google.com/rss/search?q=site:alarabiya.net+%D8%A3%D8%B3%D9%88%D8%A7%D9%82&hl=ar&gl=SA&ceid=SA:ar"
+  },
+  "aljazeera": {
+    "id": "aljazeera",
+    "name": "الجزيرة",
+    "icon": "🌐",
+    "lang": "ar",
+    "cat": "global",
+    "color": "#f59e0b",
+    "url": "https://www.aljazeera.net/aljazeerarss/2bb46c0f-92a5-44a2-8a78-d5d6814ff139/8c5dc74d-1e01-44c0-aac7-ff320be01f86"
+  },
+  "bbcar": {
+    "id": "bbcar",
+    "name": "BBC عربي",
+    "icon": "🔵",
+    "lang": "ar",
+    "cat": "global",
+    "color": "#e2001a",
+    "url": "https://feeds.bbci.co.uk/arabic/business/rss.xml"
+  },
+  "alain": {
+    "id": "alain",
+    "name": "العين",
+    "icon": "👁️",
+    "lang": "ar",
+    "cat": "global",
+    "color": "#6366f1",
+    "url": "https://news.google.com/rss/search?q=site:al-ain.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=AE&ceid=AE:ar"
+  },
+  "egnews": {
+    "id": "egnews",
+    "name": "أخبار مصر",
+    "icon": "🇪🇬",
+    "lang": "ar",
+    "cat": "egypt",
+    "color": "#22c55e",
+    "url": "https://news.google.com/rss/search?q=%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+%D9%85%D8%B5%D8%B1+%D8%A8%D9%88%D8%B1%D8%B5%D8%A9&hl=ar&gl=EG&ceid=EG:ar"
+  },
+  "reuters": {
+    "id": "reuters",
+    "name": "Reuters Business",
+    "icon": "🔴",
+    "lang": "en",
+    "cat": "global",
+    "color": "#ff8c00",
+    "url": "https://news.google.com/rss/search?q=when:24h+allinurl:reuters.com/business&hl=en-US&gl=US&ceid=US:en"
+  },
+  "cnbc": {
+    "id": "cnbc",
+    "name": "CNBC",
+    "icon": "📊",
+    "lang": "en",
+    "cat": "global",
+    "color": "#0080ff",
+    "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html"
+  },
+  "yahoo": {
+    "id": "yahoo",
+    "name": "Yahoo Finance",
+    "icon": "🟣",
+    "lang": "en",
+    "cat": "global",
+    "color": "#7e22ce",
+    "url": "https://finance.yahoo.com/news/rssindex"
+  },
+  "marketwatch": {
+    "id": "marketwatch",
+    "name": "MarketWatch",
+    "icon": "📈",
+    "lang": "en",
+    "cat": "stocks",
+    "color": "#1a7f37",
+    "url": "https://feeds.content.dowjones.io/public/rss/mw_topstories"
+  },
+  "investing": {
+    "id": "investing",
+    "name": "Investing.com",
+    "icon": "💹",
+    "lang": "en",
+    "cat": "global",
+    "color": "#ef4444",
+    "url": "https://www.investing.com/rss/news_25.rss"
+  },
+  "ft": {
+    "id": "ft",
+    "name": "Financial Times",
+    "icon": "🟫",
+    "lang": "en",
+    "cat": "stocks",
+    "color": "#9d6e3f",
+    "url": "https://www.ft.com/markets?format=rss"
+  },
+  "coindesk": {
+    "id": "coindesk",
+    "name": "CoinDesk",
+    "icon": "₿",
+    "lang": "en",
+    "cat": "crypto",
+    "color": "#f59e0b",
+    "url": "https://www.coindesk.com/arc/outboundfeeds/rss/"
+  },
+  "cointelegraph": {
+    "id": "cointelegraph",
+    "name": "CoinTelegraph",
+    "icon": "🔗",
+    "lang": "en",
+    "cat": "crypto",
+    "color": "#0891b2",
+    "url": "https://cointelegraph.com/rss"
+  }
+}

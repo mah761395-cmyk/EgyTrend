@@ -1,183 +1,15 @@
 import { Router, type IRouter } from "express";
 import { XMLParser } from "fast-xml-parser";
 import { logger } from "../lib/logger";
+import {
+  listSources,
+  getSource,
+  listCustomArticles,
+  type SourceMeta,
+} from "../lib/dataStore";
 
 const router: IRouter = Router();
 
-type SourceMeta = {
-  id: string;
-  name: string;
-  icon: string;
-  lang: "ar" | "en";
-  cat: "egypt" | "global" | "stocks" | "crypto";
-  color: string;
-  url: string;
-};
-
-const SOURCES: Record<string, SourceMeta> = {
-  youm7: {
-    id: "youm7",
-    name: "اليوم السابع",
-    icon: "📰",
-    lang: "ar",
-    cat: "egypt",
-    color: "#0ea5e9",
-    url: "https://www.youm7.com/rss/SectionRss?SectionID=297",
-  },
-  masrawy: {
-    id: "masrawy",
-    name: "مصراوي",
-    icon: "📱",
-    lang: "ar",
-    cat: "egypt",
-    color: "#10b981",
-    url: "https://www.masrawy.com/rss/economy",
-  },
-  amwal: {
-    id: "amwal",
-    name: "أموال الغد",
-    icon: "💰",
-    lang: "ar",
-    cat: "egypt",
-    color: "#7c3aed",
-    url: "https://amwalalghad.com/category/news/feed",
-  },
-  elwatan: {
-    id: "elwatan",
-    name: "الوطن",
-    icon: "🗞️",
-    lang: "ar",
-    cat: "egypt",
-    color: "#b45309",
-    url: "https://news.google.com/rss/search?q=site:elwatannews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar",
-  },
-  shorouk: {
-    id: "shorouk",
-    name: "الشروق",
-    icon: "📑",
-    lang: "ar",
-    cat: "egypt",
-    color: "#dc2626",
-    url: "https://news.google.com/rss/search?q=site:shorouknews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar",
-  },
-  alarabiya: {
-    id: "alarabiya",
-    name: "العربية",
-    icon: "🌍",
-    lang: "ar",
-    cat: "global",
-    color: "#c2410c",
-    url: "https://news.google.com/rss/search?q=site:alarabiya.net+%D8%A3%D8%B3%D9%88%D8%A7%D9%82&hl=ar&gl=SA&ceid=SA:ar",
-  },
-  aljazeera: {
-    id: "aljazeera",
-    name: "الجزيرة",
-    icon: "🌐",
-    lang: "ar",
-    cat: "global",
-    color: "#f59e0b",
-    url: "https://www.aljazeera.net/aljazeerarss/2bb46c0f-92a5-44a2-8a78-d5d6814ff139/8c5dc74d-1e01-44c0-aac7-ff320be01f86",
-  },
-  bbcar: {
-    id: "bbcar",
-    name: "BBC عربي",
-    icon: "🔵",
-    lang: "ar",
-    cat: "global",
-    color: "#e2001a",
-    url: "https://feeds.bbci.co.uk/arabic/business/rss.xml",
-  },
-  alain: {
-    id: "alain",
-    name: "العين",
-    icon: "👁️",
-    lang: "ar",
-    cat: "global",
-    color: "#6366f1",
-    url: "https://news.google.com/rss/search?q=site:al-ain.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=AE&ceid=AE:ar",
-  },
-  egnews: {
-    id: "egnews",
-    name: "أخبار مصر",
-    icon: "🇪🇬",
-    lang: "ar",
-    cat: "egypt",
-    color: "#22c55e",
-    url: "https://news.google.com/rss/search?q=%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+%D9%85%D8%B5%D8%B1+%D8%A8%D9%88%D8%B1%D8%B5%D8%A9&hl=ar&gl=EG&ceid=EG:ar",
-  },
-  reuters: {
-    id: "reuters",
-    name: "Reuters Business",
-    icon: "🔴",
-    lang: "en",
-    cat: "global",
-    color: "#ff8c00",
-    url: "https://news.google.com/rss/search?q=when:24h+allinurl:reuters.com/business&hl=en-US&gl=US&ceid=US:en",
-  },
-  cnbc: {
-    id: "cnbc",
-    name: "CNBC",
-    icon: "📊",
-    lang: "en",
-    cat: "global",
-    color: "#0080ff",
-    url: "https://www.cnbc.com/id/100003114/device/rss/rss.html",
-  },
-  yahoo: {
-    id: "yahoo",
-    name: "Yahoo Finance",
-    icon: "🟣",
-    lang: "en",
-    cat: "global",
-    color: "#7e22ce",
-    url: "https://finance.yahoo.com/news/rssindex",
-  },
-  marketwatch: {
-    id: "marketwatch",
-    name: "MarketWatch",
-    icon: "📈",
-    lang: "en",
-    cat: "stocks",
-    color: "#1a7f37",
-    url: "https://feeds.content.dowjones.io/public/rss/mw_topstories",
-  },
-  investing: {
-    id: "investing",
-    name: "Investing.com",
-    icon: "💹",
-    lang: "en",
-    cat: "global",
-    color: "#ef4444",
-    url: "https://www.investing.com/rss/news_25.rss",
-  },
-  ft: {
-    id: "ft",
-    name: "Financial Times",
-    icon: "🟫",
-    lang: "en",
-    cat: "stocks",
-    color: "#9d6e3f",
-    url: "https://www.ft.com/markets?format=rss",
-  },
-  coindesk: {
-    id: "coindesk",
-    name: "CoinDesk",
-    icon: "₿",
-    lang: "en",
-    cat: "crypto",
-    color: "#f59e0b",
-    url: "https://www.coindesk.com/arc/outboundfeeds/rss/",
-  },
-  cointelegraph: {
-    id: "cointelegraph",
-    name: "CoinTelegraph",
-    icon: "🔗",
-    lang: "en",
-    cat: "crypto",
-    color: "#0891b2",
-    url: "https://cointelegraph.com/rss",
-  },
-};
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -442,27 +274,66 @@ async function fetchSource(src: SourceMeta): Promise<{
   }
 }
 
-router.get("/news/sources", (_req, res) => {
-  res.json({
+/* Build a synthetic feed entry for admin-authored articles so the frontend
+ * can blend them with RSS results without a separate code path. */
+function customArticlesFeed(): {
+  status: "ok";
+  items: FeedItem[];
+  meta: SourceMeta;
+} {
+  const articles = listCustomArticles();
+  const items: FeedItem[] = articles.map((a) => ({
+    title: a.title,
+    link: a.link,
+    description: a.description,
+    pubDate: a.pubDate,
+    guid: a.id,
+    ...(a.thumbnail
+      ? { thumbnail: a.thumbnail, enclosure: { url: a.thumbnail } }
+      : {}),
+  }));
+  return {
     status: "ok",
-    sources: Object.values(SOURCES).map((s) => ({
-      id: s.id,
-      name: s.name,
-      icon: s.icon,
-      lang: s.lang,
-      cat: s.cat,
-      color: s.color,
-    })),
+    items,
+    meta: {
+      id: "admin",
+      name: "تحرير المنصة",
+      icon: "✍️",
+      lang: "ar",
+      cat: "egypt",
+      color: "#a855f7",
+      url: "internal://admin",
+    },
+  };
+}
+
+router.get("/news/sources", (_req, res) => {
+  const sources = listSources().map((s) => ({
+    id: s.id,
+    name: s.name,
+    icon: s.icon,
+    lang: s.lang,
+    cat: s.cat,
+    color: s.color,
+  }));
+  // Always advertise the admin pseudo-source so the UI can filter to it.
+  sources.unshift({
+    id: "admin",
+    name: "تحرير المنصة",
+    icon: "✍️",
+    lang: "ar",
+    cat: "egypt",
+    color: "#a855f7",
   });
+  res.json({ status: "ok", sources });
 });
 
 router.get("/news", async (req, res) => {
   const sourceId = String(req.query["source"] || "").trim();
+  const sources = listSources();
 
   if (!sourceId || sourceId === "all") {
-    const settled = await Promise.allSettled(
-      Object.values(SOURCES).map((s) => fetchSource(s)),
-    );
+    const settled = await Promise.allSettled(sources.map((s) => fetchSource(s)));
     const feeds = settled
       .filter(
         (
@@ -474,11 +345,12 @@ router.get("/news", async (req, res) => {
         }> => r.status === "fulfilled",
       )
       .map((r) => r.value);
+    // Merge admin-authored content as a first-class feed.
+    const custom = customArticlesFeed();
+    if (custom.items.length > 0) feeds.unshift(custom);
+
     const errors = settled
-      .map((r, i) => ({
-        r,
-        id: Object.values(SOURCES)[i]?.id || "?",
-      }))
+      .map((r, i) => ({ r, id: sources[i]?.id || "?" }))
       .filter((x) => x.r.status === "rejected")
       .map((x) => ({
         source: x.id,
@@ -491,7 +363,12 @@ router.get("/news", async (req, res) => {
     return;
   }
 
-  const src = SOURCES[sourceId];
+  if (sourceId === "admin") {
+    res.json(customArticlesFeed());
+    return;
+  }
+
+  const src = getSource(sourceId);
   if (!src) {
     res.status(404).json({ status: "error", message: "unknown source" });
     return;
@@ -500,10 +377,7 @@ router.get("/news", async (req, res) => {
     const data = await fetchSource(src);
     res.json(data);
   } catch (err) {
-    logger.warn(
-      { err, source: sourceId },
-      "failed to fetch news source",
-    );
+    logger.warn({ err, source: sourceId }, "failed to fetch news source");
     res.status(502).json({
       status: "error",
       message: (err as Error).message || "fetch failed",
