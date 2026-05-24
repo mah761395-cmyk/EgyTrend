@@ -640,7 +640,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
       <span style="color:var(--t5);font-size:10px;font-family:var(--mono);" id="cnt"></span>
     </div>
     <div onclick="openAIRw()" class="ai-banner">
-      <div class="row"><span style="font-size:20px;">🤖</span><div><div style="color:#93c5fd;font-weight:700;font-size:13px;">محرر الأخبار الذكي</div><div style="color:var(--t5);font-size:10.5px;">TL;DR + Impact Score + تصنيف تلقائي</div></div></div>
+      <div class="row"><span style="font-size:20px;">🤖</span><div><div style="color:#93c5fd;font-weight:700;font-size:13px;">محرر الأخبار الذكي <span class="bdg bdg-vip" style="font-size:9px;vertical-align:middle;">⭐ VIP</span></div><div style="color:var(--t5);font-size:10.5px;">TL;DR + Impact Score + تصنيف تلقائي</div></div></div>
       <span style="color:#60a5fa;font-size:16px;">←</span>
     </div>
     <div class="news-feed" id="feed"></div>
@@ -719,10 +719,13 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
     <div class="imp-bar" id="det-imp"></div>
     <div id="det-tldr"></div>
     <div id="det-body"></div>
-    <div class="ai-box">
+    <div class="ai-box" id="ai-det-box">
       <div class="row between">
-        <div><div style="color:#93c5fd;font-weight:700;font-size:14px;">🤖 تحليل AI للمستثمر</div><div style="color:var(--t5);font-size:10.5px;">تحليل فوري · أسهم متأثرة · توصية</div></div>
+        <div><div style="color:#93c5fd;font-weight:700;font-size:14px;">🤖 تحليل AI للمستثمر <span class="bdg bdg-vip" style="font-size:9px;vertical-align:middle;">⭐ VIP</span></div><div style="color:var(--t5);font-size:10.5px;">تحليل فوري · أسهم متأثرة · توصية</div></div>
         <button class="btn btn-bl btn-sm" id="ai-det-btn" onclick="aiAnalyze()">حلّل الآن</button>
+      </div>
+      <div id="ai-det-vip-lock" style="display:none;margin-top:10px;text-align:center;padding:10px;background:var(--aud);border-radius:9px;cursor:pointer;" onclick="closeDet();setTimeout(()=>goNav('vip'),300)">
+        <span style="color:var(--au);font-weight:800;font-size:12px;">⭐ اشترك في VIP للوصول إلى تحليل AI الاستثماري</span>
       </div>
       <div id="ai-det-res" class="ai-res" style="display:none;"></div>
     </div>
@@ -1462,7 +1465,10 @@ function openArt(id){
   }
   const srcLink=document.getElementById("src-link");srcLink.href=a.link;srcLink.textContent=`🔗 قراءة الخبر الكامل على ${a.srcName}`;
   document.getElementById("ai-det-res").style.display="none";
-  document.getElementById("ai-det-btn").style.display="inline-flex";document.getElementById("ai-det-btn").innerHTML="حلّل الآن";
+  const canAI = isVIPOrAdmin();
+  document.getElementById("ai-det-btn").style.display=canAI?"inline-flex":"none";
+  document.getElementById("ai-det-btn").innerHTML="حلّل الآن";
+  document.getElementById("ai-det-vip-lock").style.display=canAI?"none":"block";
   const related=allArts.filter(n=>n.cat===a.cat&&n.id!==a.id).slice(0,4);
   document.getElementById("det-rel").innerHTML=related.length?`<div class="rel-hdr">📰 أخبار ذات صلة</div>${related.map(r=>`<div class="rel-row" onclick="openArt('${r.id}')"><div class="rel-thumb"><img src="${r.img}" alt="" onerror="this.src='${catImg(r.cat)}'"/></div><div><div class="rel-title">${r.title}</div><div class="rel-src" style="color:${r.srcColor};">${r.srcIcon} ${r.srcName} · ${timeAgo(r.ts)}</div></div></div>`).join("")}`:"";
 }
@@ -1470,6 +1476,12 @@ function closeDet(){document.getElementById("det").classList.remove("open");curA
 
 async function aiAnalyze(){
   if(!curArt)return;
+  if(!isVIPOrAdmin()){
+    showToast("⭐ تحليل AI متاح لمشتركي VIP فقط");
+    closeDet();
+    setTimeout(()=>goNav("vip"),700);
+    return;
+  }
   const btn=document.getElementById("ai-det-btn");
   btn.innerHTML='<div class="sp sp-bl sp-sm"></div> جارٍ...';btn.disabled=true;
   try{
@@ -1863,9 +1875,19 @@ function submitPay(){
 }
 
 /* ═══════════════════ AI REWRITER ═══════════════════ */
-function openAIRw(){document.getElementById("ai-ov").classList.add("open");}
+function isVIPOrAdmin(){ return U && (U.plan==="vip" || U.role==="admin"); }
+function showVIPGate(){
+  closeAIRw();
+  showToast("⭐ هذه الميزة متاحة لمشتركي VIP فقط");
+  setTimeout(()=>goNav("vip"),800);
+}
+function openAIRw(){
+  if(!isVIPOrAdmin()){ showVIPGate(); return; }
+  document.getElementById("ai-ov").classList.add("open");
+}
 function closeAIRw(){document.getElementById("ai-ov").classList.remove("open");}
 async function runRw(){
+  if(!isVIPOrAdmin()){ closeAIRw(); showVIPGate(); return; }
   const txt=(document.getElementById("ai-txt").value||"").trim().slice(0,2000);if(!txt)return;
   const btnTxt=document.getElementById("ai-rw-txt");btnTxt.parentElement.disabled=true;btnTxt.textContent="جارٍ المعالجة...";
   document.getElementById("ai-rw-res").style.display="none";
