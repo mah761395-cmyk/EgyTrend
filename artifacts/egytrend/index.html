@@ -1958,7 +1958,7 @@ function submitPay(){
 }
 
 /* ═══════════════════ AI REWRITER ═══════════════════ */
-function isVIPOrAdmin(){ return U && (U.plan==="vip" || U.role==="admin"); }
+function isVIPOrAdmin(){ return U && (U.plan==="vip" || U.plan==="admin"); }
 function showVIPGate(){
   closeAIRw();
   showToast("⭐ هذه الميزة متاحة لمشتركي VIP فقط");
