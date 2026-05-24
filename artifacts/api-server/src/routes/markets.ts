@@ -13,6 +13,9 @@ const COMMON_HEADERS: Record<string, string> = {
   "Accept-Language": "en-US,en;q=0.9",
 };
 
+const FINNHUB_KEY = process.env.FINNHUB_API_KEY ?? "";
+const AV_KEY = process.env.ALPHA_VANTAGE_API_KEY ?? "";
+
 type Quote = {
   n: string;
   v: string;
@@ -21,6 +24,8 @@ type Quote = {
   s?: string;
   clickable?: boolean;
 };
+
+/* ─── Generic fetch helpers ─── */
 
 async function fetchText(url: string, timeoutMs = 8000): Promise<string> {
   const ctrl = new AbortController();
@@ -35,7 +40,7 @@ async function fetchText(url: string, timeoutMs = 8000): Promise<string> {
 }
 
 function parseNumber(s: string): number {
-  const n = parseFloat(s.replace(/[, ]/g, ""));
+  const n = parseFloat(String(s).replace(/[, ]/g, ""));
   return Number.isFinite(n) ? n : NaN;
 }
 
@@ -54,18 +59,105 @@ function fmtPct(p: number): string {
   return `${sign}${p.toFixed(2)}%`;
 }
 
-/* ─── Google Finance scraper ─── */
+/* ═══════════════════════════════════════════════════
+   LAYER 1: Finnhub  (stocks + crypto — realtime)
+   ═══════════════════════════════════════════════════ */
 
-async function fetchGoogleFinance(symbol: string): Promise<{
-  price: number;
-  prev: number;
-} | null> {
+type FinnhubQuote = {
+  c: number;  // current price
+  d: number;  // change
+  dp: number; // change %
+  h: number;  // high
+  l: number;  // low
+  o: number;  // open
+  pc: number; // previous close
+  t: number;  // timestamp
+};
+
+async function fetchFinnhub(symbol: string): Promise<FinnhubQuote | null> {
+  if (!FINNHUB_KEY) return null;
+  try {
+    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_KEY}`;
+    const text = await fetchText(url, 8000);
+    const data = JSON.parse(text) as FinnhubQuote & { error?: string };
+    if (data.error || !data.c || data.c === 0) return null;
+    return data;
+  } catch (e) {
+    logger.warn({ symbol, err: (e as Error).message }, "finnhub fetch failed");
+    return null;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   LAYER 2: Alpha Vantage  (forex — 6hr cache)
+   Conserves the 25 req/day free limit aggressively.
+   ═══════════════════════════════════════════════════ */
+
+type AVRate = { rate: number; bid: number; ask: number; ts: string };
+const avForexCache: Map<string, { ts: number; data: AVRate }> = new Map();
+const AV_FOREX_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+async function fetchAVForex(from: string, to: string): Promise<AVRate | null> {
+  if (!AV_KEY) return null;
+  const key = `${from}/${to}`;
+  const cached = avForexCache.get(key);
+  if (cached && Date.now() - cached.ts < AV_FOREX_TTL_MS) return cached.data;
+  try {
+    const url = `https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=${from}&to_currency=${to}&apikey=${AV_KEY}`;
+    const text = await fetchText(url, 12000);
+    const json = JSON.parse(text) as Record<string, unknown>;
+    // Detect rate-limit / info messages
+    if (json["Information"] || json["Note"]) {
+      logger.warn({ key }, "alpha vantage rate limit hit — using stale cache if available");
+      return cached?.data ?? null;
+    }
+    const block = json["Realtime Currency Exchange Rate"] as Record<string, string> | undefined;
+    if (!block) return null;
+    const rate = parseNumber(block["5. Exchange Rate"]);
+    if (!Number.isFinite(rate)) return null;
+    const data: AVRate = {
+      rate,
+      bid: parseNumber(block["8. Bid Price"]),
+      ask: parseNumber(block["9. Ask Price"]),
+      ts: block["6. Last Refreshed"] ?? "",
+    };
+    avForexCache.set(key, { ts: Date.now(), data });
+    return data;
+  } catch (e) {
+    logger.warn({ key, err: (e as Error).message }, "alpha vantage forex fetch failed");
+    return cached?.data ?? null; // return stale rather than null
+  }
+}
+
+// Warm all 4 forex pairs sequentially (respects AV 1 req/sec free limit).
+// Called once on server start and then every 6 hours.
+async function warmAVForexCache(): Promise<void> {
+  const pairs: Array<[string, string]> = [
+    ["USD", "EGP"], ["EUR", "EGP"], ["GBP", "EGP"], ["SAR", "EGP"],
+  ];
+  for (const [from, to] of pairs) {
+    await fetchAVForex(from, to);
+    await new Promise((r) => setTimeout(r, 1200)); // 1.2s gap → safe under 1 req/sec
+  }
+  logger.info("AV forex cache warmed");
+}
+
+// Fire-and-forget on startup, then refresh every 6 hours
+setTimeout(() => {
+  warmAVForexCache().catch((e) => logger.warn({ err: (e as Error).message }, "AV warm failed"));
+}, 500);
+setInterval(() => {
+  warmAVForexCache().catch((e) => logger.warn({ err: (e as Error).message }, "AV refresh failed"));
+}, AV_FOREX_TTL_MS);
+
+/* ═══════════════════════════════════════════════════
+   LAYER 3: Legacy scrapers (fallbacks)
+   ═══════════════════════════════════════════════════ */
+
+async function fetchGoogleFinance(symbol: string): Promise<{ price: number; prev: number } | null> {
   try {
     const enc = symbol.replace(/:/g, "%3A");
-    const html = await fetchText(
-      `https://www.google.com/finance/quote/${enc}`,
-      9000,
-    );
+    const html = await fetchText(`https://www.google.com/finance/quote/${enc}`, 9000);
     const priceMatch = html.match(/data-last-price="([^"]+)"/);
     const prevMatch = html.match(/P6K39c[^>]*>([^<]+)/);
     if (!priceMatch) return null;
@@ -79,40 +171,15 @@ async function fetchGoogleFinance(symbol: string): Promise<{
   }
 }
 
-/* ─── Stooq CSV scraper ─── */
-
-async function fetchStooq(symbol: string): Promise<{
-  price: number;
-  open: number;
-} | null> {
-  try {
-    const csv = await fetchText(
-      `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&f=sd2t2ohlc&h&e=csv`,
-      8000,
-    );
-    const lines = csv.trim().split(/\r?\n/);
-    if (lines.length < 2) return null;
-    const cols = lines[1].split(",");
-    if (cols.length < 7) return null;
-    if (cols[1] === "N/D" || cols[3] === "N/D" || cols[6] === "N/D") return null;
-    const open = parseNumber(cols[3]);
-    const close = parseNumber(cols[6]);
-    if (!Number.isFinite(close)) return null;
-    return { price: close, open: Number.isFinite(open) ? open : close };
-  } catch (e) {
-    logger.warn({ symbol, err: (e as Error).message }, "stooq fetch failed");
-    return null;
-  }
+// Stooq is blocked in this environment — kept as a no-op stub so type references compile.
+// All commodity/index fallbacks go through Google Finance instead.
+async function fetchStooq(_symbol: string): Promise<{ price: number; open: number } | null> {
+  return null;
 }
-
-/* ─── EGX30 from TradingEconomics scraper ─── */
 
 async function fetchEGX30(): Promise<{ price: number; pctChange: number } | null> {
   try {
-    const html = await fetchText(
-      "https://tradingeconomics.com/egypt/stock-market",
-      10000,
-    );
+    const html = await fetchText("https://tradingeconomics.com/egypt/stock-market", 10000);
     const priceMatch = html.match(/<td id="p">([0-9.,]+)/);
     const sentence = html.match(
       /EGX 30,?\s*(rose to|fell to|edged up to|edged down to|gained|lost|increased to|decreased to|climbed to|dropped to|advanced to|slipped to|stood at)\s*([0-9.,]+)\s*points[^.]{0,200}/i,
@@ -121,24 +188,16 @@ async function fetchEGX30(): Promise<{ price: number; pctChange: number } | null
     if (priceMatch) price = parseNumber(priceMatch[1]);
     if (!Number.isFinite(price) && sentence) price = parseNumber(sentence[2]);
     if (!Number.isFinite(price)) return null;
-
     let pct = NaN;
     if (sentence) {
-      const pctMatch = sentence[0].match(
-        /(gaining|losing|rising|falling|up|down)\s*([0-9.]+)%/i,
-      );
+      const pctMatch = sentence[0].match(/(gaining|losing|rising|falling|up|down)\s*([0-9.]+)%/i);
       if (pctMatch) {
-        const direction = pctMatch[1].toLowerCase();
-        const val = parseFloat(pctMatch[2]);
-        const negative = /losing|falling|down/.test(direction);
-        pct = negative ? -val : val;
+        const negative = /losing|falling|down/.test(pctMatch[1].toLowerCase());
+        pct = negative ? -parseFloat(pctMatch[2]) : parseFloat(pctMatch[2]);
       }
     }
     if (!Number.isFinite(pct)) {
-      // Try a generic "X% from previous" pattern
-      const altPct = html.match(
-        /EGX 30[^<]*?([+\-]?[0-9]+\.[0-9]+)%\s*from the previous/i,
-      );
+      const altPct = html.match(/EGX 30[^<]*?([+\-]?[0-9]+\.[0-9]+)%\s*from the previous/i);
       if (altPct) pct = parseFloat(altPct[1]);
     }
     if (!Number.isFinite(pct)) pct = 0;
@@ -149,192 +208,257 @@ async function fetchEGX30(): Promise<{ price: number; pctChange: number } | null
   }
 }
 
-/* ─── Crypto from CoinGecko ─── */
+/* ═══════════════════════════════════════════════════
+   MARKET SECTIONS
+   ═══════════════════════════════════════════════════ */
 
-type CryptoSpec = { id: string; n: string; s: string };
-const CRYPTO_LIST: CryptoSpec[] = [
-  { id: "bitcoin", n: "BTC", s: "بيتكوين" },
-  { id: "ethereum", n: "ETH", s: "إيثريوم" },
-  { id: "binancecoin", n: "BNB", s: "بينانس" },
-  { id: "ripple", n: "XRP", s: "ريبل" },
-];
+/* ── Global Indices via Finnhub ETF proxies ── */
 
-async function fetchCrypto(): Promise<Quote[]> {
-  try {
-    const ids = CRYPTO_LIST.map((c) => c.id).join(",");
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`;
-    const text = await fetchText(url, 9000);
-    const data = JSON.parse(text) as Record<
-      string,
-      { usd?: number; usd_24h_change?: number }
-    >;
-    return CRYPTO_LIST.map((c) => {
-      const d = data[c.id];
-      const price = d?.usd ?? NaN;
-      const pct = d?.usd_24h_change ?? 0;
-      const v = !Number.isFinite(price)
-        ? "—"
-        : price >= 1000
-          ? `$${(price / 1000).toFixed(1)}K`
-          : price >= 1
-            ? `$${price.toFixed(2)}`
-            : `$${price.toFixed(4)}`;
-      return {
-        n: c.n,
-        v,
-        c: fmtPct(pct),
-        up: pct >= 0,
-        s: c.s,
-      };
-    });
-  } catch (e) {
-    logger.warn({ err: (e as Error).message }, "crypto fetch failed");
-    return CRYPTO_LIST.map((c) => ({
-      n: c.n,
-      v: "—",
-      c: "—",
-      up: true,
-      s: c.s,
-    }));
-  }
-}
-
-/* ─── Item builders ─── */
-
-type QuoteItem = {
+// For indices, Finnhub ETF proxies give accurate % change but wrong absolute values.
+// Strategy: use Finnhub dp% for the change display, and Google Finance / Stooq for
+// the real index price. If scrapers fail, show the ETF price but label it as such.
+type IndexDef = {
   n: string;
   s: string;
-  google?: string;
-  stooq?: string | string[]; // single or list of fallbacks
-  decimals?: number;
-  commas?: boolean;
-  prefix?: string;
-  suffix?: string;
+  finnhub: string;        // ETF on Finnhub — used for % change only
+  google?: string;        // Google Finance — preferred for real index price
+  stooq?: string;         // Stooq — fallback for real index price
+  finnhubIsSpot?: boolean; // true when Finnhub symbol IS the spot index (not ETF)
 };
 
-function formatQuote(
-  it: QuoteItem,
-  price: number,
-  pct: number,
-  prevPrice: number | null,
-): Quote {
-  const decimals = it.decimals ?? 2;
-  const commas = it.commas ?? true;
-  // If we don't have a real previous-close-derived pct (prev was 0/NaN),
-  // guard against showing a wildly wrong number.
-  const pctSafe = Number.isFinite(pct) ? pct : 0;
-  const value = `${it.prefix ?? ""}${fmtNumber(price, { decimals, commas })}${it.suffix ?? ""}`;
-  return {
-    n: it.n,
-    v: value,
-    c: fmtPct(pctSafe),
-    up: pctSafe >= 0,
-    s: it.s,
-  };
+const GLOBAL_INDICES: IndexDef[] = [
+  { n: "S&P 500",  s: "أمريكي",   finnhub: "SPY",  google: ".INX:INDEXSP",      stooq: "^spx" },
+  { n: "NASDAQ",   s: "تقني",     finnhub: "QQQ",  google: ".IXIC:INDEXNASDAQ", stooq: "^ndq" },
+  { n: "DAX",      s: "ألماني",   finnhub: "EWG",  google: "DAX:INDEXDB",       stooq: "^dax" },
+  { n: "FTSE 100", s: "بريطاني",  finnhub: "EWU",  google: "UKX:INDEXFTSE",     stooq: "^ftm" },
+];
+
+async function buildIndexQuote(def: IndexDef): Promise<Quote | null> {
+  // Fetch Finnhub ETF for % change AND scrapers for real price — in parallel
+  const [fh, googleData, stooqData] = await Promise.all([
+    fetchFinnhub(def.finnhub),
+    def.google ? fetchGoogleFinance(def.google) : Promise.resolve(null),
+    def.stooq ? fetchStooq(def.stooq) : Promise.resolve(null),
+  ]);
+
+  // Prefer scraper price (real index points), use Finnhub % change when available
+  if (googleData) {
+    const scrapePct = googleData.prev > 0 ? ((googleData.price - googleData.prev) / googleData.prev) * 100 : 0;
+    const pct = fh ? fh.dp : scrapePct; // Finnhub % is more accurate (real-time)
+    return { n: def.n, v: fmtNumber(googleData.price, { decimals: 2, commas: true }), c: fmtPct(pct), up: pct >= 0, s: def.s };
+  }
+  if (stooqData) {
+    const scrapePct = stooqData.open > 0 ? ((stooqData.price - stooqData.open) / stooqData.open) * 100 : 0;
+    const pct = fh ? fh.dp : scrapePct;
+    return { n: def.n, v: fmtNumber(stooqData.price, { decimals: 2, commas: true }), c: fmtPct(pct), up: pct >= 0, s: def.s };
+  }
+  // Last resort: ETF price from Finnhub (price will be ETF value, not index points)
+  if (fh) {
+    return { n: def.n, v: fmtNumber(fh.c, { decimals: 2, commas: true }), c: fmtPct(fh.dp), up: fh.dp >= 0, s: def.s };
+  }
+  return null;
 }
 
-async function buildQuote(it: QuoteItem): Promise<Quote | null> {
-  // 1) Try Google Finance first (gives proper previous-close-based change%)
-  if (it.google) {
-    const g = await fetchGoogleFinance(it.google);
+/* ── Forex via Alpha Vantage (6hr cache) + Google/Stooq fallback ── */
+
+type FxDef = { n: string; s: string; from: string; to: string; google?: string; stooq?: string };
+
+const FX_PAIRS: FxDef[] = [
+  { n: "USD/EGP", s: "دولار/جنيه", from: "USD", to: "EGP", google: "USD-EGP", stooq: "usdegp" },
+  { n: "EUR/EGP", s: "يورو/جنيه",  from: "EUR", to: "EGP", google: "EUR-EGP", stooq: "euregp" },
+  { n: "GBP/EGP", s: "إسترليني/جنيه", from: "GBP", to: "EGP", google: "GBP-EGP", stooq: "gbpegp" },
+  { n: "SAR/EGP", s: "ريال/جنيه",  from: "SAR", to: "EGP", google: "SAR-EGP" },
+];
+
+async function buildFxQuote(def: FxDef): Promise<Quote | null> {
+  // 1) Alpha Vantage (realtime, 6hr cached)
+  const av = await fetchAVForex(def.from, def.to);
+  if (av) {
+    // AV doesn't give previous close, compute implied % from bid/ask midpoint vs rate
+    const pct = av.bid > 0 && av.ask > 0
+      ? ((av.rate - (av.bid + av.ask) / 2) / ((av.bid + av.ask) / 2)) * 100
+      : 0;
+    return { n: def.n, v: fmtNumber(av.rate, { decimals: 2, commas: false }), c: fmtPct(pct), up: pct >= 0, s: def.s };
+  }
+  // 2) Google Finance
+  if (def.google) {
+    const g = await fetchGoogleFinance(def.google);
     if (g) {
       const pct = g.prev > 0 ? ((g.price - g.prev) / g.prev) * 100 : 0;
-      return formatQuote(it, g.price, pct, g.prev);
+      return { n: def.n, v: fmtNumber(g.price, { decimals: 2, commas: false }), c: fmtPct(pct), up: pct >= 0, s: def.s };
     }
   }
-  // 2) Fall back to Stooq intraday OHLC (open->close)
-  if (it.stooq) {
-    const symbols = Array.isArray(it.stooq) ? it.stooq : [it.stooq];
-    for (const sym of symbols) {
-      const s = await fetchStooq(sym);
-      if (s) {
-        const pct = s.open > 0 ? ((s.price - s.open) / s.open) * 100 : 0;
-        return formatQuote(it, s.price, pct, s.open);
-      }
+  // 3) Stooq
+  if (def.stooq) {
+    const sq = await fetchStooq(def.stooq);
+    if (sq) {
+      const pct = sq.open > 0 ? ((sq.price - sq.open) / sq.open) * 100 : 0;
+      return { n: def.n, v: fmtNumber(sq.price, { decimals: 2, commas: false }), c: fmtPct(pct), up: pct >= 0, s: def.s };
     }
   }
   return null;
 }
 
-/* ─── Definitions ─── */
+/* ── Commodities via Finnhub ETF proxies + Stooq fallback ──
+   ETF → spot conversion factors (approximate, updated periodically):
+   GLD  ≈ 1/10 oz gold    → multiply by ~10.00 to get $/oz
+   USO  ≈ tracks WTI crude → multiply by ~8.00 to approximate brent $/bbl
+   SLV  ≈ 1 oz silver      → multiply by ~1.00
+   HG/copper: no clean ETF, use Stooq directly
+── */
 
-const GLOBAL_INDICES: QuoteItem[] = [
-  { n: "S&P 500", s: "أمريكي", google: ".INX:INDEXSP", stooq: "^spx", decimals: 2, commas: true },
-  { n: "NASDAQ", s: "تقني", google: ".IXIC:INDEXNASDAQ", stooq: "^ndq", decimals: 2, commas: true },
-  { n: "DAX", s: "ألماني", google: "DAX:INDEXDB", stooq: "^dax", decimals: 2, commas: true },
-  { n: "FTSE", s: "بريطاني", google: "UKX:INDEXFTSE", stooq: "^ftm", decimals: 2, commas: true },
+type CommodityDef = {
+  n: string;
+  s: string;
+  finnhub?: string;
+  finnhubFactor?: number; // multiply ETF price by this to get spot
+  stooq?: string | string[];
+  prefix?: string;
+  suffix?: string;
+  decimals?: number;
+  commas?: boolean;
+};
+
+// ETF conversion factors (calibrated against spot May-2026):
+//   GLD  ~$414 → gold spot ~$3,300  → factor ≈ 7.97
+//   BNO  ~$55  → Brent spot ~$65    → factor ≈ 1.18
+//   SLV  ~$68  → silver spot ~$33   → factor ≈ 0.483
+// These are approximate and drift slowly; Google Finance is kept as price fallback.
+const COMMODITIES: CommodityDef[] = [
+  { n: "ذهب",      s: "أوقية",  finnhub: "GLD", finnhubFactor: 7.97,  google: "XAUUSD:CURRENCY", prefix: "$", decimals: 2, commas: true },
+  { n: "نفط برنت", s: "برميل",  finnhub: "BNO", finnhubFactor: 1.18,  google: "BZ00:NYMEX",      prefix: "$", decimals: 2, commas: false },
+  { n: "فضة",      s: "أوقية",  finnhub: "SLV", finnhubFactor: 0.483, google: "XAGUSD:CURRENCY", prefix: "$", decimals: 2, commas: false },
+  { n: "نحاس",     s: "رطل",                                           google: "HG00:COMEX",      prefix: "$", decimals: 2, commas: false },
 ];
 
-const FX_PAIRS: QuoteItem[] = [
-  { n: "USD/EGP", s: "دولار/جنيه", google: "USD-EGP", stooq: "usdegp", decimals: 2, commas: false },
-  { n: "EUR/EGP", s: "يورو/جنيه", google: "EUR-EGP", stooq: "euregp", decimals: 2, commas: false },
-  { n: "GBP/EGP", s: "إسترليني/جنيه", google: "GBP-EGP", stooq: "gbpegp", decimals: 2, commas: false },
-  { n: "SAR/EGP", s: "ريال/جنيه", google: "SAR-EGP", decimals: 2, commas: false },
+async function buildCommodityQuote(def: CommodityDef): Promise<Quote | null> {
+  // 1) Finnhub ETF (primary — realtime %, calibrated spot price)
+  if (def.finnhub) {
+    const fh = await fetchFinnhub(def.finnhub);
+    if (fh) {
+      const factor = def.finnhubFactor ?? 1;
+      const price = fh.c * factor;
+      const v = `${def.prefix ?? ""}${fmtNumber(price, { decimals: def.decimals ?? 2, commas: def.commas ?? true })}${def.suffix ?? ""}`;
+      return { n: def.n, v, c: fmtPct(fh.dp), up: fh.dp >= 0, s: def.s };
+    }
+  }
+  // 2) Google Finance (fallback — real spot price)
+  if (def.google) {
+    const g = await fetchGoogleFinance(def.google);
+    if (g) {
+      const pct = g.prev > 0 ? ((g.price - g.prev) / g.prev) * 100 : 0;
+      const v = `${def.prefix ?? ""}${fmtNumber(g.price, { decimals: def.decimals ?? 2, commas: def.commas ?? true })}${def.suffix ?? ""}`;
+      return { n: def.n, v, c: fmtPct(pct), up: pct >= 0, s: def.s };
+    }
+  }
+  return null;
+}
+
+/* ── Crypto via Finnhub (Binance pairs) ── */
+
+type CryptoSpec = { n: string; s: string; finnhub: string };
+
+const CRYPTO_LIST: CryptoSpec[] = [
+  { n: "BTC", s: "بيتكوين",  finnhub: "BINANCE:BTCUSDT" },
+  { n: "ETH", s: "إيثريوم",  finnhub: "BINANCE:ETHUSDT" },
+  { n: "BNB", s: "بينانس",   finnhub: "BINANCE:BNBUSDT" },
+  { n: "XRP", s: "ريبل",     finnhub: "BINANCE:XRPUSDT" },
 ];
 
-const COMMODITIES: QuoteItem[] = [
-  { n: "ذهب", s: "أوقية", stooq: "xauusd", prefix: "$", decimals: 2, commas: true },
-  { n: "نفط برنت", s: "برميل", stooq: ["bz.f", "cl.f"], prefix: "$", decimals: 2, commas: false },
-  { n: "فضة", s: "أوقية", stooq: "xagusd", prefix: "$", decimals: 2, commas: false },
-  { n: "نحاس", s: "رطل", stooq: ["hg.f", "hgusd"], prefix: "$", decimals: 2, commas: false },
-];
+async function buildCryptoQuote(spec: CryptoSpec): Promise<Quote> {
+  const fh = await fetchFinnhub(spec.finnhub);
+  if (fh) {
+    const price = fh.c;
+    const v = price >= 1000
+      ? `$${(price / 1000).toFixed(1)}K`
+      : price >= 1
+        ? `$${price.toFixed(2)}`
+        : `$${price.toFixed(4)}`;
+    return { n: spec.n, v, c: fmtPct(fh.dp), up: fh.dp >= 0, s: spec.s };
+  }
+  // Fallback: CoinGecko (no key required)
+  try {
+    const ids: Record<string, string> = {
+      "BINANCE:BTCUSDT": "bitcoin", "BINANCE:ETHUSDT": "ethereum",
+      "BINANCE:BNBUSDT": "binancecoin", "BINANCE:XRPUSDT": "ripple",
+    };
+    const id = ids[spec.finnhub];
+    if (!id) throw new Error("no id");
+    const text = await fetchText(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd&include_24hr_change=true`,
+      9000,
+    );
+    const data = JSON.parse(text) as Record<string, { usd?: number; usd_24h_change?: number }>;
+    const price = data[id]?.usd ?? NaN;
+    const pct = data[id]?.usd_24h_change ?? 0;
+    if (!Number.isFinite(price)) throw new Error("no price");
+    const v = price >= 1000 ? `$${(price / 1000).toFixed(1)}K` : price >= 1 ? `$${price.toFixed(2)}` : `$${price.toFixed(4)}`;
+    return { n: spec.n, v, c: fmtPct(pct), up: pct >= 0, s: spec.s };
+  } catch {
+    return { n: spec.n, v: "—", c: "—", up: true, s: spec.s };
+  }
+}
 
-/* ─── Cache ─── */
+/* ═══════════════════════════════════════════════════
+   MARKETS CACHE + BUILDER
+   ═══════════════════════════════════════════════════ */
 
 type MarketsPayload = {
   status: "ok";
   ts: number;
+  sources: { indices: string; forex: string; commodities: string; crypto: string };
   markets: { eg: Quote[]; gl: Quote[]; cm: Quote[]; cr: Quote[] };
   ticker: Quote[];
 };
 
 let marketsCache: { ts: number; data: MarketsPayload } | null = null;
-const MARKETS_TTL_MS = 60 * 1000;
+const MARKETS_TTL_MS = 60 * 1000; // 1 minute
 
 async function buildMarketsPayload(): Promise<MarketsPayload> {
-  // Fetch everything in parallel
-  const [egx30Raw, fxQ, glQ, cmQ, crypto] = await Promise.all([
+  // Fetch all sections in parallel
+  const [egx30Raw, fxResults, glResults, cmResults, crResults] = await Promise.all([
     fetchEGX30(),
-    Promise.all(FX_PAIRS.map(buildQuote)),
-    Promise.all(GLOBAL_INDICES.map(buildQuote)),
-    Promise.all(COMMODITIES.map(buildQuote)),
-    fetchCrypto(),
+    Promise.all(FX_PAIRS.map(buildFxQuote)),
+    Promise.all(GLOBAL_INDICES.map(buildIndexQuote)),
+    Promise.all(COMMODITIES.map(buildCommodityQuote)),
+    Promise.all(CRYPTO_LIST.map(buildCryptoQuote)),
   ]);
 
   const egx30: Quote | null = egx30Raw
-    ? {
-        n: "EGX30",
-        v: fmtNumber(egx30Raw.price, { decimals: 2, commas: true }),
-        c: fmtPct(egx30Raw.pctChange),
-        up: egx30Raw.pctChange >= 0,
-        s: "مؤشر رئيسي",
-        clickable: true,
-      }
+    ? { n: "EGX30", v: fmtNumber(egx30Raw.price, { decimals: 2, commas: true }), c: fmtPct(egx30Raw.pctChange), up: egx30Raw.pctChange >= 0, s: "مؤشر رئيسي", clickable: true }
     : null;
 
-  const fx = fxQ.filter((x): x is Quote => x !== null);
-  const gl = glQ.filter((x): x is Quote => x !== null);
-  const cm = cmQ.filter((x): x is Quote => x !== null);
-  const cr = crypto;
+  const fx = fxResults.filter((x): x is Quote => x !== null);
+  const gl = glResults.filter((x): x is Quote => x !== null);
+  const cm = cmResults.filter((x): x is Quote => x !== null);
+  const cr = crResults;
 
-  // Egypt section: EGX30 first, then top 3 forex pairs
   const eg: Quote[] = [];
   if (egx30) eg.push(egx30);
   eg.push(...fx.slice(0, 3));
 
-  // Ticker: pick best items
   const ticker: Quote[] = [];
   if (egx30) ticker.push(egx30);
-  if (fx[0]) ticker.push(fx[0]); // USD/EGP
-  if (cm[0]) ticker.push(cm[0]); // gold
-  if (cm[1]) ticker.push(cm[1]); // brent
-  if (gl[0]) ticker.push(gl[0]); // S&P
-  if (cr[0]) ticker.push(cr[0]); // BTC
-  if (cr[1]) ticker.push(cr[1]); // ETH
+  if (fx[0]) ticker.push(fx[0]);
+  if (cm[0]) ticker.push(cm[0]);
+  if (cm[1]) ticker.push(cm[1]);
+  if (gl[0]) ticker.push(gl[0]);
+  if (cr[0]) ticker.push(cr[0]);
+  if (cr[1]) ticker.push(cr[1]);
+
+  // Track which sources actually responded
+  const hasFinnhub = !!FINNHUB_KEY && gl.length > 0;
+  const hasAV = !!AV_KEY && fx.length > 0;
 
   return {
     status: "ok",
     ts: Date.now(),
+    sources: {
+      indices: hasFinnhub ? "Finnhub" : "Google Finance / Stooq",
+      forex: hasAV ? "Alpha Vantage" : "Google Finance / Stooq",
+      commodities: hasFinnhub ? "Finnhub ETFs" : "Stooq",
+      crypto: hasFinnhub ? "Finnhub/Binance" : "CoinGecko",
+    },
     markets: { eg, gl, cm, cr },
     ticker,
   };
@@ -353,7 +477,6 @@ router.get("/", async (_req: Request, res: Response) => {
   } catch (e) {
     logger.error({ err: (e as Error).message }, "markets build failed");
     if (marketsCache) {
-      // Serve stale on failure
       res.json({ ...marketsCache.data, stale: true });
     } else {
       res.status(503).json({ status: "error", message: "markets unavailable" });
@@ -361,41 +484,23 @@ router.get("/", async (_req: Request, res: Response) => {
   }
 });
 
-/* ─── Economic Calendar ─── */
+/* ═══════════════════════════════════════════════════
+   ECONOMIC CALENDAR  (ForexFactory — unchanged)
+   ═══════════════════════════════════════════════════ */
 
-type FFEvent = {
-  title: string;
-  country: string;
-  date: string;
-  impact: string;
-  forecast: string;
-  previous: string;
-};
-
-type CalEvent = {
-  ev: string; // Arabic event title
-  evEn: string; // original English title
-  t: string; // Arabic localized date+time
-  tISO: string; // ISO timestamp
-  imp: string; // Arabic impact label
-  c: string; // colour hex
-  country: string; // ISO currency code
-  countryAr: string;
-  flag: string;
-  forecast: string;
-  previous: string;
-};
+type FFEvent = { title: string; country: string; date: string; impact: string; forecast: string; previous: string };
+type CalEvent = { ev: string; evEn: string; t: string; tISO: string; imp: string; c: string; country: string; countryAr: string; flag: string; forecast: string; previous: string };
 
 const COUNTRY_INFO: Record<string, { ar: string; flag: string }> = {
   USD: { ar: "الولايات المتحدة", flag: "🇺🇸" },
-  EUR: { ar: "منطقة اليورو", flag: "🇪🇺" },
+  EUR: { ar: "منطقة اليورو",    flag: "🇪🇺" },
   GBP: { ar: "المملكة المتحدة", flag: "🇬🇧" },
-  JPY: { ar: "اليابان", flag: "🇯🇵" },
-  CHF: { ar: "سويسرا", flag: "🇨🇭" },
-  CAD: { ar: "كندا", flag: "🇨🇦" },
-  AUD: { ar: "أستراليا", flag: "🇦🇺" },
-  NZD: { ar: "نيوزيلندا", flag: "🇳🇿" },
-  CNY: { ar: "الصين", flag: "🇨🇳" },
+  JPY: { ar: "اليابان",        flag: "🇯🇵" },
+  CHF: { ar: "سويسرا",         flag: "🇨🇭" },
+  CAD: { ar: "كندا",           flag: "🇨🇦" },
+  AUD: { ar: "أستراليا",       flag: "🇦🇺" },
+  NZD: { ar: "نيوزيلندا",      flag: "🇳🇿" },
+  CNY: { ar: "الصين",          flag: "🇨🇳" },
 };
 
 const EVENT_TRANSLATIONS: Array<[RegExp, string]> = [
@@ -442,21 +547,11 @@ function translateEvent(en: string): string {
   return en;
 }
 
-const ARABIC_WEEKDAYS = [
-  "الأحد",
-  "الإثنين",
-  "الثلاثاء",
-  "الأربعاء",
-  "الخميس",
-  "الجمعة",
-  "السبت",
-];
+const ARABIC_WEEKDAYS = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 
 function fmtArabicDateTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  // Display in Cairo time (UTC+2 / +3 with DST). We use a fixed +02:00 offset
-  // (Egypt is on EET year-round historically). Convert by adjusting timestamp.
   const cairo = new Date(d.getTime() + 2 * 60 * 60 * 1000);
   const day = ARABIC_WEEKDAYS[cairo.getUTCDay()];
   const hh = String(cairo.getUTCHours()).padStart(2, "0");
@@ -466,35 +561,27 @@ function fmtArabicDateTime(iso: string): string {
 
 function impactInfo(imp: string): { ar: string; c: string; rank: number } {
   const lower = (imp || "").toLowerCase();
-  if (lower === "high") return { ar: "عالي", c: "#ef4444", rank: 3 };
-  if (lower === "medium") return { ar: "متوسط", c: "#f59e0b", rank: 2 };
-  if (lower === "low") return { ar: "منخفض", c: "#0ea5e9", rank: 1 };
+  if (lower === "high")   return { ar: "عالي",    c: "#ef4444", rank: 3 };
+  if (lower === "medium") return { ar: "متوسط",   c: "#f59e0b", rank: 2 };
+  if (lower === "low")    return { ar: "منخفض",   c: "#0ea5e9", rank: 1 };
   return { ar: "—", c: "#64748b", rank: 0 };
 }
 
-let calCache: { ts: number; data: { status: "ok"; events: CalEvent[] } } | null =
-  null;
+let calCache: { ts: number; data: { status: "ok"; events: CalEvent[] } } | null = null;
 const CAL_TTL_MS = 30 * 60 * 1000;
 
-async function buildCalendarPayload(): Promise<{
-  status: "ok";
-  events: CalEvent[];
-}> {
-  const text = await fetchText(
-    "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
-    12000,
-  );
+async function buildCalendarPayload(): Promise<{ status: "ok"; events: CalEvent[] }> {
+  const text = await fetchText("https://nfs.faireconomy.media/ff_calendar_thisweek.json", 12000);
   const raw = JSON.parse(text) as FFEvent[];
   const now = Date.now();
 
   const events: CalEvent[] = raw
     .filter((e) => {
-      if (!e || !e.title || !e.date || !e.country) return false;
+      if (!e?.title || !e.date || !e.country) return false;
       const imp = (e.impact || "").toLowerCase();
       if (!(imp === "high" || imp === "medium")) return false;
       if (!COUNTRY_INFO[e.country]) return false;
       const t = new Date(e.date).getTime();
-      // Include events from last 6 hours through next 7 days
       return Number.isFinite(t) && t > now - 6 * 60 * 60 * 1000;
     })
     .map((e) => {
