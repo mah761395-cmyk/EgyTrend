@@ -160,5 +160,77 @@
     "cat": "crypto",
     "color": "#0891b2",
     "url": "https://cointelegraph.com/rss"
+  },
+  "mubasher": {
+    "id": "mubasher",
+    "name": "مباشر",
+    "icon": "📡",
+    "lang": "ar",
+    "cat": "stocks",
+    "color": "#0ea5e9",
+    "url": "https://news.google.com/rss/search?q=site:mubasher.info+%D8%A3%D8%B3%D9%87%D9%85+%D8%A8%D9%88%D8%B1%D8%B5%D8%A9&hl=ar&gl=EG&ceid=EG:ar"
+  },
+  "skynewsar": {
+    "id": "skynewsar",
+    "name": "سكاي نيوز عربية",
+    "icon": "🛰️",
+    "lang": "ar",
+    "cat": "global",
+    "color": "#38bdf8",
+    "url": "https://www.skynewsarabia.com/rss.xml"
+  },
+  "argaam": {
+    "id": "argaam",
+    "name": "أرقام",
+    "icon": "🔢",
+    "lang": "ar",
+    "cat": "stocks",
+    "color": "#16a34a",
+    "url": "https://www.argaam.com/ar/rss"
+  },
+  "aleqtisadiyah": {
+    "id": "aleqtisadiyah",
+    "name": "الاقتصادية",
+    "icon": "📰",
+    "lang": "ar",
+    "cat": "global",
+    "color": "#7c3aed",
+    "url": "https://news.google.com/rss/search?q=site:aleqtisadiyah.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=SA&ceid=SA:ar"
+  },
+  "asharq": {
+    "id": "asharq",
+    "name": "بلومبرج الشرق",
+    "icon": "💼",
+    "lang": "ar",
+    "cat": "global",
+    "color": "#f59e0b",
+    "url": "https://news.google.com/rss/search?q=site:asharq.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=SA&ceid=SA:ar"
+  },
+  "almal": {
+    "id": "almal",
+    "name": "المال",
+    "icon": "🏦",
+    "lang": "ar",
+    "cat": "egypt",
+    "color": "#059669",
+    "url": "https://almalnews.com/feed/"
+  },
+  "dostor": {
+    "id": "dostor",
+    "name": "الدستور",
+    "icon": "🗞️",
+    "lang": "ar",
+    "cat": "egypt",
+    "color": "#b91c1c",
+    "url": "https://news.google.com/rss/search?q=site:dostor.org+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
+  },
+  "cnnar": {
+    "id": "cnnar",
+    "name": "CNN عربي",
+    "icon": "📺",
+    "lang": "ar",
+    "cat": "global",
+    "color": "#cc0000",
+    "url": "https://news.google.com/rss/search?q=site:arabic.cnn.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
   }
 }
