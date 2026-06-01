@@ -860,11 +860,16 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
   </div>
   <div class="adm-stats" id="adm-stats"></div>
   <div class="adm-tabs" style="overflow-x:auto;">
-    <button class="adm-tab active" onclick="admTab('reqs')">طلبات الدفع</button>
-    <button class="adm-tab" onclick="admTab('users')">المستخدمون</button>
-    <button class="adm-tab" onclick="admTab('articles')">إدارة الأخبار</button>
-    <button class="adm-tab" onclick="admTab('sources')">المصادر</button>
-    <button class="adm-tab" onclick="admTab('ai')">تقارير AI</button>
+    <button class="adm-tab active" data-tab="dash" onclick="admTab('dash')">📊 الإحصائيات</button>
+    <button class="adm-tab" data-tab="users" onclick="admTab('users')">👥 المستخدمون</button>
+    <button class="adm-tab" data-tab="reqs" onclick="admTab('reqs')">💰 الدفعات</button>
+    <button class="adm-tab" data-tab="articles" onclick="admTab('articles')">📰 الأخبار</button>
+    <button class="adm-tab" data-tab="sources" onclick="admTab('sources')">🔗 المصادر</button>
+    <button class="adm-tab" data-tab="plans" onclick="admTab('plans')">💎 الاشتراكات</button>
+    <button class="adm-tab" data-tab="coupons" onclick="admTab('coupons')">🎟️ الكوبونات</button>
+    <button class="adm-tab" data-tab="employees" onclick="admTab('employees')">👨‍💼 الموظفون</button>
+    <button class="adm-tab" data-tab="aiconfig" onclick="admTab('aiconfig')">🤖 إدارة AI</button>
+    <button class="adm-tab" data-tab="audit" onclick="admTab('audit')">📋 سجل العمليات</button>
   </div>
   <div class="adm-body" id="adm-body"></div>
 </div>
@@ -2027,8 +2032,13 @@ function renderHdrVip(){
 }
 
 /* ═══════════════════ ADMIN ═══════════════════ */
-function openAdm(){document.getElementById("adm").classList.add("open");renderAdmStats();admTab("reqs");}
+/* ══════════════════════════════════════════════════════════════
+   ADMIN DASHBOARD — FULL PRODUCTION SYSTEM
+══════════════════════════════════════════════════════════════ */
+
+function openAdm(){document.getElementById("adm").classList.add("open");renderAdmStats();admTab("dash");}
 function closeAdm(){document.getElementById("adm").classList.remove("open");}
+
 function renderAdmStats(){
   const users=DB.g("u",{});const reqs=DB.g("reqs",[]);const allU=Object.values(users);const pending=reqs.filter(r=>r.status==="pending");
   document.getElementById("adm-stats").innerHTML=[
@@ -2036,177 +2046,197 @@ function renderAdmStats(){
     {l:"معلّقة",v:pending.length,c:"#ef4444"},{l:"طلبات",v:reqs.length,c:"#10b981"},
   ].map(s=>`<div class="astat"><div class="astat-v" style="color:${s.c};">${s.v}</div><div class="astat-l">${s.l}</div></div>`).join("");
 }
+
+const ADM_TABS=["dash","users","reqs","articles","sources","plans","coupons","employees","aiconfig","audit"];
+
 function admTab(tab){
-  document.querySelectorAll(".adm-tab").forEach((t,i)=>t.classList.toggle("active",["reqs","users","articles","sources","ai"][i]===tab));
+  document.querySelectorAll(".adm-tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===tab));
   const el=document.getElementById("adm-body");
-  if(tab==="articles"){ renderAdmArticles(el); return; }
-  if(tab==="reqs"){
-    const reqs=DB.g("reqs",[]);
-    if(!reqs.length){el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">📋</div><div>لا توجد طلبات</div></div>`;return;}
-    el.innerHTML=reqs.map(req=>`
-      <div class="req-c ${req.status}">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-          <div>
-            <div style="color:var(--t2);font-weight:700;font-size:13px;">${sanitize(req.name)}</div>
-            <div style="color:var(--t4);font-size:10.5px;font-family:var(--mono);">${sanitize(req.phone)}</div>
-            <div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;">
-              <span class="bdg" style="background:var(--aud);color:var(--au);">${PLANS[req.planKey]?.l} — ${req.price} ج</span>
-              <span class="bdg" style="background:var(--bld);color:#93c5fd;">${sanitize(req.payMethod||"")}</span>
-              <span class="bdg" style="background:var(--s1);color:var(--t4);font-family:var(--mono);font-size:9px;">TX:${sanitize(req.tx)}</span>
-            </div>
-            <div style="color:var(--t5);font-size:9.5px;margin-top:3px;">${new Date(req.at).toLocaleString("ar-EG")}</div>
-          </div>
-          <div style="display:flex;gap:4px;">
-            ${req.status==="pending"
-              ?`<button class="r-btn app" onclick="admApp('${req.id}')">✓ قبول</button><button class="r-btn rej" onclick="admRej('${req.id}')">✕ رفض</button>`
-              :`<span class="bdg" style="background:${req.status==="approved"?"var(--gd)":"var(--dnd)"};color:${req.status==="approved"?"var(--g)":"var(--dn)"};">${req.status==="approved"?"✓ مقبول":"✕ مرفوض"}</span>`}
-          </div>
-        </div>
-      </div>`).join("");
-  } else if(tab==="users"){
-    const users=Object.values(DB.g("u",{}));
-    if(!users.length){el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">👥</div><div>لا يوجد مستخدمون</div></div>`;return;}
-    el.innerHTML=users.map(u=>`
-      <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px 14px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center;">
-        <div><div style="color:var(--t2);font-weight:700;font-size:13px;">${sanitize(u.name)}</div><div style="color:var(--t4);font-size:10.5px;font-family:var(--mono);">${sanitize(u.phone)}</div></div>
-        <span class="bdg" style="background:${u.plan==="vip"?"var(--aud)":"var(--s1)"};color:${u.plan==="vip"?"var(--au)":"var(--t4)"};">${u.plan==="vip"?"⭐ VIP":"مجاني"}</span>
-      </div>`).join("");
-  } else if(tab==="sources"){
-    renderAdmSources(el);
-  } else {
-    el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px;"><div style="color:var(--t2);font-weight:700;font-size:14px;">تقارير AI اليومية</div><button class="btn btn-g btn-sm" id="adm-ai-btn" onclick="genAdmReport()">🤖 أنشئ ملخص</button></div><div id="adm-ai-res" style="display:none;background:var(--gd2);border:1px solid rgba(16,185,129,.14);border-radius:14px;padding:17px;"><div style="color:var(--g);font-size:10px;font-weight:700;margin-bottom:10px;">✅ ملخص ${new Date().toLocaleDateString("ar-EG")}</div><div id="adm-ai-txt" style="color:var(--t2);font-size:13px;line-height:1.9;direction:rtl;white-space:pre-line;"></div></div>`;
-  }
+  el.innerHTML=`<div class="empty"><div style="font-size:22px;margin-bottom:8px;">⏳</div><div>جارٍ التحميل...</div></div>`;
+  const fns={dash:renderAdmDash,users:renderAdmUsers,reqs:renderAdmReqs,articles:renderAdmArticles,
+    sources:renderAdmSources,plans:renderAdmPlans,coupons:renderAdmCoupons,
+    employees:renderAdmEmployees,aiconfig:renderAdmAIConfig,audit:renderAdmAudit};
+  if(fns[tab]) fns[tab](el);
 }
-/* ─── Admin: Sources CRUD ─── */
-async function renderAdmSources(el){
-  const ok=Object.values(srcStatus).filter(s=>s==="ok").length;
-  const err=Object.values(srcStatus).filter(s=>s==="error").length;
-  const stats = `<div style="display:flex;gap:8px;margin-bottom:13px;flex-wrap:wrap;">
-    <span class="bdg" style="background:var(--gd);color:var(--g);">✓ ${ok} مصدر نشط</span>
-    ${err?`<span class="bdg" style="background:var(--dnd);color:var(--dn);">✕ ${err} غير متاح</span>`:""}
-    <span class="bdg" style="background:var(--bld);color:#93c5fd;font-family:var(--mono);">${allArts.length} خبر</span>
+
+/* ─── Helpers ─── */
+function aCard(title,val,color,sub=""){
+  return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:14px 16px;flex:1;min-width:120px;">
+    <div style="color:${color};font-size:22px;font-weight:900;font-family:var(--mono);">${val}</div>
+    <div style="color:var(--t3);font-size:11px;font-weight:700;margin-top:3px;">${title}</div>
+    ${sub?`<div style="color:var(--t5);font-size:9px;margin-top:2px;">${sub}</div>`:""}
   </div>`;
-  const addForm = `
-    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px;margin-bottom:14px;">
-      <div style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:9px;">➕ إضافة مصدر RSS</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
-        <input id="asrc-id" placeholder="معرّف فريد (a-z, 0-9)" maxlength="40" class="a-in" />
-        <input id="asrc-name" placeholder="الاسم الظاهر" maxlength="60" class="a-in" />
-        <input id="asrc-icon" placeholder="📰 (إيموجي)" maxlength="6" class="a-in" value="📰" />
-        <input id="asrc-color" placeholder="#10b981" maxlength="7" class="a-in" value="#10b981" />
-        <select id="asrc-lang" class="a-in"><option value="ar">عربي</option><option value="en">English</option></select>
-        <select id="asrc-cat" class="a-in"><option value="egypt">مصر</option><option value="global">عالمي</option><option value="stocks">بورصة</option><option value="crypto">كريبتو</option></select>
-      </div>
-      <input id="asrc-url" placeholder="https://example.com/feed.xml" class="a-in" style="margin-top:7px;width:100%;box-sizing:border-box;" />
-      <button class="btn btn-g btn-sm" style="margin-top:9px;width:100%;" onclick="saveAdmSource()">حفظ المصدر ✓</button>
-    </div>`;
-  let listHTML = `<div class="empty"><div style="font-size:24px;">⏳</div><div>جارٍ تحميل المصادر...</div></div>`;
-  el.innerHTML = stats + addForm + `<div id="asrc-list">${listHTML}</div>`;
+}
+function aRow(label,val){return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--b1);"><span style="color:var(--t3);font-size:12px;">${label}</span><span style="color:var(--t2);font-size:12px;font-weight:700;">${val}</span></div>`;}
+function aSection(title,content){return `<div style="margin-bottom:18px;"><div style="color:var(--t2);font-weight:800;font-size:13px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--b1);">${title}</div>${content}</div>`;}
+function aFormRow(...html){return `<div style="display:grid;grid-template-columns:${html.length>1?"1fr ".repeat(html.length).trim():"1fr"};gap:7px;margin-bottom:7px;">${html.join("")}</div>`;}
+function aIn(id,ph,extra=""){return `<input id="${id}" placeholder="${ph}" class="a-in" ${extra} />`;}
+function aSel(id,opts,extra=""){return `<select id="${id}" class="a-in" ${extra}>${opts.map(o=>`<option value="${o.v}">${o.l}</option>`).join("")}</select>`;}
+function aBtn(label,onclick,color="var(--g)"){return `<button class="btn btn-sm" style="background:${color};color:#000;font-weight:700;border:none;padding:8px 14px;border-radius:9px;cursor:pointer;width:100%;margin-top:9px;font-family:var(--sans);" onclick="${onclick}">${label}</button>`;}
+function aBadge(label,bg,fg="#fff"){return `<span class="bdg" style="background:${bg};color:${fg};">${label}</span>`;}
+function vG(id){return (document.getElementById(id)||{}).value||"";}
 
-  // Pull authoritative server-side list (admin sees the full source URLs)
-  let sources;
+/* ─── Dashboard ─── */
+async function renderAdmDash(el){
+  const users=Object.values(DB.g("u",{}));
+  const reqs=DB.g("reqs",[]);
+  const vipCount=users.filter(u=>u.plan==="vip").length;
+  const pendingCount=reqs.filter(r=>r.status==="pending").length;
+  let serverStats={employees:0,plans:0,coupons:0,auditLogs:0,aiUsage30d:0};
+  let recentAudit=[];
   try{
-    const r = await admFetch("/api/admin/sources");
-    const j = await r.json();
-    if(!r.ok || j.status!=="ok") throw new Error(j.message||"failed");
-    sources = j.sources;
-  }catch(e){
-    document.getElementById("asrc-list").innerHTML = `<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;
-    return;
-  }
-  document.getElementById("asrc-list").innerHTML = sources.map(s=>{
-    const status = srcStatus[s.id];
-    const badge = status==="ok"?"✓ نشط":status==="error"?"✕ خطأ":"⏳";
-    const badgeBg = status==="ok"?"var(--gd)":status==="error"?"var(--dnd)":"var(--s1)";
-    const badgeFg = status==="ok"?"var(--g)":status==="error"?"var(--dn)":"var(--t4)";
-    return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:10px 12px;margin-bottom:6px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-        <div style="flex:1;min-width:0;">
-          <div class="row" style="gap:7px;"><span style="font-size:14px;">${sanitize(s.icon)}</span>
-            <div style="min-width:0;flex:1;">
-              <div style="color:var(--t2);font-size:12.5px;font-weight:700;">${sanitize(s.name)}</div>
-              <div style="color:var(--t4);font-size:9.5px;font-family:var(--mono);">${sanitize(s.id)} · ${s.lang==="ar"?"عربي":"English"} · ${s.cat}</div>
-              <div style="color:var(--t5);font-size:9px;font-family:var(--mono);overflow-wrap:break-word;margin-top:3px;">${sanitize(s.url)}</div>
+    const r=await admFetch("/api/admin/stats");
+    const j=await r.json();
+    if(j.status==="ok"){serverStats=j.stats;recentAudit=j.recentAudit||[];}
+  }catch{}
+
+  el.innerHTML=`
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+    ${aCard("المستخدمون الكل",users.length,"#3b82f6")}
+    ${aCard("VIP نشط",vipCount,"#f59e0b")}
+    ${aCard("طلبات معلّقة",pendingCount,"#ef4444")}
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
+    ${aCard("الموظفون",serverStats.employees,"#8b5cf6")}
+    ${aCard("خطط الاشتراك",serverStats.plans,"#10b981")}
+    ${aCard("الكوبونات",serverStats.coupons,"#06b6d4")}
+    ${aCard("AI (30 يوم)",serverStats.aiUsage30d,"#f59e0b")}
+  </div>
+  ${aSection("📋 آخر العمليات",recentAudit.length?recentAudit.map(l=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--b1);">
+      <div><div style="color:var(--t2);font-size:11.5px;font-weight:700;">${sanitize(String(l.action||""))}</div>
+      <div style="color:var(--t4);font-size:10px;">${sanitize(String(l.actorName||""))} · ${sanitize(String(l.target||""))}</div></div>
+      <div style="color:var(--t5);font-size:9px;font-family:var(--mono);">${l.createdAt?new Date(l.createdAt).toLocaleString("ar-EG"):""}</div>
+    </div>`).join(""):`<div class="empty" style="padding:20px;font-size:12px;">لا توجد عمليات بعد</div>`)}
+  `;
+}
+
+/* ─── Users ─── */
+async function renderAdmUsers(el){
+  const users=Object.values(DB.g("u",{}));
+  let userSearch="";
+  const render=()=>{
+    const filtered=userSearch?users.filter(u=>(u.name||"").includes(userSearch)||(u.phone||"").includes(userSearch)):users;
+    document.getElementById("adm-users-list").innerHTML=filtered.length?filtered.map(u=>`
+      <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:11px 13px;margin-bottom:7px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div style="flex:1;">
+            <div style="color:var(--t2);font-weight:700;font-size:13px;">${sanitize(u.name||"")}</div>
+            <div style="color:var(--t4);font-size:10.5px;font-family:var(--mono);margin-top:2px;">${sanitize(u.phone||"")}</div>
+            <div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap;">
+              ${u.plan==="vip"?aBadge("⭐ VIP","var(--aud)","var(--au)"):aBadge("مجاني","var(--s2)","var(--t4)")}
+              ${u.banned?aBadge("🚫 محظور","var(--dnd)","var(--dn)"):""}
+              ${u.exp?aBadge("حتى "+new Date(u.exp).toLocaleDateString("ar-EG"),"var(--bld)","#93c5fd"):""}
             </div>
           </div>
+          <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
+            ${u.plan!=="vip"&&u.plan!=="admin"?`<button class="r-btn app" style="font-size:10px;" onclick="admUserAction('upgrade_vip','${sanitize(u.phone)}','${sanitize(u.name||"")}')">⭐ ترقية VIP</button>`:`<button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick="admUserAction('downgrade_vip','${sanitize(u.phone)}','${sanitize(u.name||"")}')">↓ إلغاء VIP</button>`}
+            ${u.banned?`<button class="r-btn app" style="font-size:10px;" onclick="admUserAction('unban_user','${sanitize(u.phone)}','${sanitize(u.name||"")}')">✓ فك الحظر</button>`:`<button class="r-btn rej" style="font-size:10px;" onclick="admUserAction('ban_user','${sanitize(u.phone)}','${sanitize(u.name||"")}')">🚫 حظر</button>`}
+          </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
-          <span class="bdg" style="background:${badgeBg};color:${badgeFg};">${badge}</span>
-          <button class="r-btn rej" onclick="delAdmSource('${sanitize(s.id)}')">حذف</button>
-        </div>
-      </div>
-    </div>`;
-  }).join("");
-}
-
-async function saveAdmSource(){
-  const body = {
-    id: document.getElementById("asrc-id").value.trim(),
-    name: document.getElementById("asrc-name").value.trim(),
-    icon: document.getElementById("asrc-icon").value.trim()||"📰",
-    color: document.getElementById("asrc-color").value.trim(),
-    lang: document.getElementById("asrc-lang").value,
-    cat: document.getElementById("asrc-cat").value,
-    url: document.getElementById("asrc-url").value.trim(),
+      </div>`).join(""):
+      `<div class="empty"><div style="font-size:26px;margin-bottom:7px;">👥</div><div>لا يوجد مستخدمون</div></div>`;
   };
-  try{
-    const r = await admFetch("/api/admin/sources",{method:"POST",body:JSON.stringify(body)});
-    const j = await r.json();
-    if(!r.ok || j.status!=="ok"){ showToast("❌ "+(j.message||"تعذر الحفظ")); return; }
-    showToast("✅ تم حفظ المصدر");
-    await syncSources();
-    admTab("sources");
-  }catch(e){ showToast("❌ "+String(e.message||e)); }
+  el.innerHTML=`
+    <input id="adm-user-search" placeholder="🔍 البحث بالاسم أو الهاتف..." class="a-in" style="width:100%;box-sizing:border-box;margin-bottom:12px;" oninput="userSearch=this.value;render()">
+    <div style="color:var(--t4);font-size:11px;margin-bottom:10px;">${users.length} مستخدم مسجّل</div>
+    <div id="adm-users-list"></div>`;
+  document.getElementById("adm-user-search").addEventListener("input",e=>{userSearch=e.target.value;render();});
+  render();
 }
 
-async function delAdmSource(id){
-  if(!confirm(`حذف المصدر "${id}"؟`)) return;
-  try{
-    const r = await admFetch(`/api/admin/sources/${encodeURIComponent(id)}`,{method:"DELETE"});
-    const j = await r.json();
-    if(!r.ok || j.status!=="ok"){ showToast("❌ "+(j.message||"تعذر الحذف")); return; }
-    showToast("✅ تم الحذف");
-    await syncSources();
-    admTab("sources");
-  }catch(e){ showToast("❌ "+String(e.message||e)); }
+async function admUserAction(action,phone,name){
+  const labels={upgrade_vip:"ترقية VIP",downgrade_vip:"إلغاء VIP",ban_user:"حظر",unban_user:"فك الحظر"};
+  if(!confirm(`${labels[action]} للمستخدم: ${name}؟`)) return;
+  // Apply locally
+  const users=DB.g("u",{});
+  const s=DB.g("s",null);
+  if(users[phone]){
+    if(action==="upgrade_vip"){
+      users[phone].plan="vip";
+      const exp=new Date();exp.setMonth(exp.getMonth()+1);
+      users[phone].exp=exp.toISOString();
+    } else if(action==="downgrade_vip"){
+      users[phone].plan="free";delete users[phone].exp;
+    } else if(action==="ban_user"){
+      users[phone].banned=true;
+    } else if(action==="unban_user"){
+      delete users[phone].banned;
+    }
+    DB.s("u",users);
+    if(s&&s.phone===phone){Object.assign(s,users[phone]);DB.s("s",s);}
+  }
+  // Log to server
+  try{await admFetch("/api/admin/users/action",{method:"POST",body:JSON.stringify({action,phone,name})});}catch{}
+  showToast("✅ تم: "+labels[action]);
+  admTab("users");
 }
 
-/* ─── Admin: Custom Articles CRUD ─── */
-async function renderAdmArticles(el){
-  const addForm = `
-    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px;margin-bottom:14px;">
-      <div style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:9px;">✍️ نشر خبر من تحرير المنصة</div>
-      <input id="aart-title" placeholder="عنوان الخبر" maxlength="300" class="a-in" style="width:100%;box-sizing:border-box;" />
-      <textarea id="aart-desc" placeholder="موجز الخبر (سطرين أو ثلاثة)" maxlength="1500" class="a-in" style="width:100%;box-sizing:border-box;margin-top:7px;min-height:70px;font-family:inherit;"></textarea>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px;">
-        <select id="aart-cat" class="a-in"><option value="egypt">مصر</option><option value="global">عالمي</option><option value="stocks">بورصة</option><option value="crypto">كريبتو</option></select>
-        <input id="aart-link" placeholder="رابط المصدر (اختياري)" class="a-in" />
+/* ─── Payment Requests ─── */
+async function renderAdmReqs(el){
+  const reqs=DB.g("reqs",[]);
+  if(!reqs.length){el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">📋</div><div>لا توجد طلبات</div></div>`;return;}
+  el.innerHTML=reqs.map(req=>`
+    <div class="req-c ${req.status}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div>
+          <div style="color:var(--t2);font-weight:700;font-size:13px;">${sanitize(req.name)}</div>
+          <div style="color:var(--t4);font-size:10.5px;font-family:var(--mono);">${sanitize(req.phone)}</div>
+          <div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;">
+            <span class="bdg" style="background:var(--aud);color:var(--au);">${PLANS[req.planKey]?.l||req.planKey} — ${req.price} ج</span>
+            <span class="bdg" style="background:var(--bld);color:#93c5fd;">${sanitize(req.payMethod||"")}</span>
+            <span class="bdg" style="background:var(--s1);color:var(--t4);font-family:var(--mono);font-size:9px;">TX:${sanitize(req.tx)}</span>
+          </div>
+          <div style="color:var(--t5);font-size:9.5px;margin-top:3px;">${new Date(req.at).toLocaleString("ar-EG")}</div>
+        </div>
+        <div style="display:flex;gap:4px;">
+          ${req.status==="pending"
+            ?`<button class="r-btn app" onclick="admApp('${req.id}')">✓ قبول</button><button class="r-btn rej" onclick="admRej('${req.id}')">✕ رفض</button>`
+            :`<span class="bdg" style="background:${req.status==="approved"?"var(--gd)":"var(--dnd)"};color:${req.status==="approved"?"var(--g)":"var(--dn)"};">${req.status==="approved"?"✓ مقبول":"✕ مرفوض"}</span>`}
+        </div>
       </div>
-      <input id="aart-thumb" placeholder="رابط صورة (اختياري)" class="a-in" style="margin-top:7px;width:100%;box-sizing:border-box;" />
-      <button class="btn btn-g btn-sm" style="margin-top:9px;width:100%;" onclick="saveAdmArticle()">📢 نشر الخبر</button>
-    </div>`;
-  el.innerHTML = addForm + `<div id="aart-list"><div class="empty"><div style="font-size:24px;">⏳</div><div>جارٍ التحميل...</div></div></div>`;
+    </div>`).join("");
+}
 
+/* ─── Articles ─── */
+async function renderAdmArticles(el){
+  el.innerHTML=`
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:13px;margin-bottom:14px;">
+      <div style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:10px;">✍️ نشر / تعديل خبر</div>
+      ${aFormRow(aIn("aart-title","عنوان الخبر *","maxlength='300' style='width:100%'"))}
+      <textarea id="aart-desc" placeholder="موجز الخبر *" maxlength="1500" class="a-in" style="width:100%;box-sizing:border-box;margin-bottom:7px;min-height:70px;font-family:inherit;"></textarea>
+      ${aFormRow(
+        aSel("aart-cat",[{v:"egypt",l:"🇪🇬 مصر"},{v:"global",l:"🌍 عالمي"},{v:"stocks",l:"📈 بورصة"},{v:"crypto",l:"₿ كريبتو"}]),
+        aIn("aart-link","رابط المصدر (اختياري)")
+      )}
+      ${aFormRow(aIn("aart-thumb","رابط صورة (اختياري)","style='width:100%'"))}
+      <div style="display:flex;gap:7px;margin-top:5px;align-items:center;">
+        <input type="datetime-local" id="aart-sched" class="a-in" style="flex:1;" title="جدولة النشر (اتركه فارغاً للنشر الفوري)"/>
+        <label style="color:var(--t3);font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="aart-feat" style="accent-color:var(--au);"/> مميّز ⭐</label>
+      </div>
+      ${aBtn("📢 نشر الخبر","saveAdmArticle()")}
+    </div>
+    <div id="aart-list"><div class="empty"><div style="font-size:24px;">⏳</div><div>جارٍ التحميل...</div></div></div>`;
   let articles=[];
   try{
-    const r = await admFetch("/api/admin/articles");
-    const j = await r.json();
-    if(!r.ok || j.status!=="ok") throw new Error(j.message||"failed");
-    articles = j.articles||[];
+    const r=await admFetch("/api/admin/articles");
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok") throw new Error(j.message||"failed");
+    articles=j.articles||[];
   }catch(e){
-    document.getElementById("aart-list").innerHTML = `<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;
+    document.getElementById("aart-list").innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;
     return;
   }
   if(!articles.length){
-    document.getElementById("aart-list").innerHTML = `<div class="empty"><div style="font-size:28px;margin-bottom:7px;">✍️</div><div>لم تنشر أخباراً بعد</div></div>`;
+    document.getElementById("aart-list").innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">✍️</div><div>لم تنشر أخباراً بعد</div></div>`;
     return;
   }
-  document.getElementById("aart-list").innerHTML = articles.map(a=>`
+  document.getElementById("aart-list").innerHTML=articles.map(a=>`
     <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:11px 13px;margin-bottom:7px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
         <div style="flex:1;min-width:0;">
-          <div style="color:var(--t2);font-weight:700;font-size:13px;line-height:1.5;">${sanitize(a.title)}</div>
-          <div style="color:var(--t4);font-size:11px;margin-top:4px;line-height:1.7;">${sanitize((a.description||"").slice(0,160))}</div>
+          <div style="display:flex;align-items:center;gap:5px;"><span style="font-size:13px;">${a.srcIcon||"✍️"}</span><div style="color:var(--t2);font-weight:700;font-size:13px;line-height:1.5;">${sanitize(a.title)}</div></div>
+          <div style="color:var(--t4);font-size:11px;margin-top:4px;line-height:1.7;">${sanitize((a.description||"").slice(0,140))}</div>
           <div style="color:var(--t5);font-size:9.5px;margin-top:5px;font-family:var(--mono);">${new Date(a.pubDate).toLocaleString("ar-EG")} · ${sanitize(a.cat)}</div>
         </div>
         <button class="r-btn rej" onclick="delAdmArticle('${sanitize(a.id)}')">حذف</button>
@@ -2215,60 +2245,521 @@ async function renderAdmArticles(el){
 }
 
 async function saveAdmArticle(){
-  const body = {
-    title: document.getElementById("aart-title").value.trim(),
-    description: document.getElementById("aart-desc").value.trim(),
-    cat: document.getElementById("aart-cat").value,
-    link: document.getElementById("aart-link").value.trim() || "#",
-    thumbnail: document.getElementById("aart-thumb").value.trim() || undefined,
+  const schedVal=vG("aart-sched");
+  const body={
+    title:vG("aart-title"),description:vG("aart-desc"),
+    cat:vG("aart-cat"),link:vG("aart-link")||"#",
+    thumbnail:vG("aart-thumb")||undefined,
+    ...(schedVal?{scheduledAt:new Date(schedVal).toISOString()}:{}),
+    featured:document.getElementById("aart-feat")?.checked||false,
   };
   try{
-    const r = await admFetch("/api/admin/articles",{method:"POST",body:JSON.stringify(body)});
-    const j = await r.json();
-    if(!r.ok || j.status!=="ok"){ showToast("❌ "+(j.message||"تعذر النشر")); return; }
-    showToast("✅ تم نشر الخبر");
-    document.getElementById("aart-title").value="";
-    document.getElementById("aart-desc").value="";
-    document.getElementById("aart-link").value="";
-    document.getElementById("aart-thumb").value="";
-    fetchAllNews(true);
-    admTab("articles");
-  }catch(e){ showToast("❌ "+String(e.message||e)); }
+    const r=await admFetch("/api/admin/articles",{method:"POST",body:JSON.stringify(body)});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر النشر"));return;}
+    showToast("✅ تم نشر الخبر"+(schedVal?" (مجدوَل)":""));
+    ["aart-title","aart-desc","aart-link","aart-thumb","aart-sched"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+    if(document.getElementById("aart-feat"))document.getElementById("aart-feat").checked=false;
+    fetchAllNews(true);admTab("articles");
+  }catch(e){showToast("❌ "+String(e.message||e));}
 }
 
 async function delAdmArticle(id){
   if(!confirm("حذف هذا الخبر؟")) return;
   try{
-    const r = await admFetch(`/api/admin/articles/${encodeURIComponent(id)}`,{method:"DELETE"});
-    const j = await r.json();
-    if(!r.ok || j.status!=="ok"){ showToast("❌ "+(j.message||"تعذر الحذف")); return; }
-    showToast("✅ تم الحذف");
-    fetchAllNews(true);
-    admTab("articles");
-  }catch(e){ showToast("❌ "+String(e.message||e)); }
+    const r=await admFetch(`/api/admin/articles/${encodeURIComponent(id)}`,{method:"DELETE"});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحذف"));return;}
+    showToast("✅ تم الحذف");fetchAllNews(true);admTab("articles");
+  }catch(e){showToast("❌ "+String(e.message||e));}
 }
 
+/* ─── Sources ─── */
+async function renderAdmSources(el){
+  const ok=Object.values(srcStatus).filter(s=>s==="ok").length;
+  const err=Object.values(srcStatus).filter(s=>s==="error").length;
+  el.innerHTML=`
+    <div style="display:flex;gap:6px;margin-bottom:13px;flex-wrap:wrap;">
+      <span class="bdg" style="background:var(--gd);color:var(--g);">✓ ${ok} نشط</span>
+      ${err?`<span class="bdg" style="background:var(--dnd);color:var(--dn);">✕ ${err} خطأ</span>`:""}
+      <span class="bdg" style="background:var(--bld);color:#93c5fd;font-family:var(--mono);">${allArts.length} خبر</span>
+    </div>
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px;margin-bottom:14px;">
+      <div style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:9px;">➕ إضافة مصدر RSS</div>
+      ${aFormRow(aIn("asrc-id","معرّف فريد (a-z)","maxlength='40'"),aIn("asrc-name","الاسم الظاهر","maxlength='60'"))}
+      ${aFormRow(aIn("asrc-icon","📰 إيموجي","maxlength='6' value='📰'"),aIn("asrc-color","#10b981","maxlength='7' value='#10b981'"))}
+      ${aFormRow(
+        aSel("asrc-lang",[{v:"ar",l:"عربي"},{v:"en",l:"English"}]),
+        aSel("asrc-cat",[{v:"egypt",l:"مصر"},{v:"global",l:"عالمي"},{v:"stocks",l:"بورصة"},{v:"crypto",l:"كريبتو"}])
+      )}
+      ${aFormRow(aIn("asrc-url","https://example.com/feed.xml","style='width:100%'"))}
+      ${aBtn("حفظ المصدر ✓","saveAdmSource()")}
+    </div>
+    <div id="asrc-list"><div class="empty"><div style="font-size:24px;">⏳</div><div>جارٍ التحميل...</div></div></div>`;
+  try{
+    const r=await admFetch("/api/admin/sources");
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok") throw new Error(j.message||"failed");
+    document.getElementById("asrc-list").innerHTML=j.sources.map(s=>{
+      const st=srcStatus[s.id];
+      const bg=st==="ok"?"var(--gd)":st==="error"?"var(--dnd)":"var(--s1)";
+      const fg=st==="ok"?"var(--g)":st==="error"?"var(--dn)":"var(--t4)";
+      return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:10px 12px;margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;">${sanitize(s.icon)}<div>
+              <div style="color:var(--t2);font-size:12.5px;font-weight:700;">${sanitize(s.name)}</div>
+              <div style="color:var(--t4);font-size:9px;font-family:var(--mono);">${sanitize(s.id)} · ${s.lang==="ar"?"عربي":"English"} · ${s.cat}</div>
+              <div style="color:var(--t5);font-size:8.5px;font-family:var(--mono);overflow-wrap:break-word;margin-top:2px;">${sanitize(s.url)}</div>
+            </div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
+            <span class="bdg" style="background:${bg};color:${fg};">${st==="ok"?"✓ نشط":st==="error"?"✕ خطأ":"⏳"}</span>
+            <button class="r-btn rej" onclick="delAdmSource('${sanitize(s.id)}')">حذف</button>
+          </div>
+        </div>
+      </div>`;}).join("");
+  }catch(e){
+    document.getElementById("asrc-list").innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;
+  }
+}
+
+async function saveAdmSource(){
+  const body={id:vG("asrc-id"),name:vG("asrc-name"),icon:vG("asrc-icon")||"📰",color:vG("asrc-color"),lang:vG("asrc-lang"),cat:vG("asrc-cat"),url:vG("asrc-url")};
+  try{
+    const r=await admFetch("/api/admin/sources",{method:"POST",body:JSON.stringify(body)});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحفظ"));return;}
+    showToast("✅ تم حفظ المصدر");await syncSources();admTab("sources");
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+async function delAdmSource(id){
+  if(!confirm(`حذف المصدر "${id}"؟`)) return;
+  try{
+    const r=await admFetch(`/api/admin/sources/${encodeURIComponent(id)}`,{method:"DELETE"});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحذف"));return;}
+    showToast("✅ تم الحذف");await syncSources();admTab("sources");
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+/* ─── Subscription Plans ─── */
+async function renderAdmPlans(el){
+  el.innerHTML=`
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:13px;margin-bottom:14px;">
+      <div style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:10px;">💎 إضافة خطة اشتراك</div>
+      ${aFormRow(aIn("apl-key","مفتاح (monthly, yearly...)","maxlength='40'"),aIn("apl-name","الاسم بالعربية","maxlength='100'"))}
+      ${aFormRow(aIn("apl-price","السعر (جنيه)","type='number' min='0'"),aIn("apl-dur","المدة (شهور)","type='number' min='1'"))}
+      ${aFormRow(aIn("apl-badge","شارة (مثل: الأشهر)","maxlength='50'"))}
+      <textarea id="apl-features" placeholder="المزايا (سطر لكل ميزة)" class="a-in" style="width:100%;box-sizing:border-box;margin-bottom:7px;min-height:60px;font-family:inherit;"></textarea>
+      ${aBtn("حفظ الخطة ✓","saveAdmPlan()")}
+    </div>
+    <div id="apl-list"><div class="empty"><div style="font-size:24px;">⏳</div></div></div>`;
+  await loadAdmPlans();
+}
+
+async function loadAdmPlans(){
+  try{
+    const r=await admFetch("/api/admin/plans");
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok") throw new Error(j.message||"failed");
+    const el=document.getElementById("apl-list");
+    if(!el) return;
+    el.innerHTML=j.plans.length?j.plans.map(p=>`
+      <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px 14px;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+              <div style="color:var(--t2);font-weight:800;font-size:13px;">${sanitize(p.nameAr)}</div>
+              ${p.badge?aBadge(sanitize(p.badge),"var(--aud)","var(--au)"):""}
+              ${p.isActive?aBadge("نشطة","var(--gd)","var(--g)"):aBadge("معطّلة","var(--dnd)","var(--dn)")}
+            </div>
+            <div style="color:var(--t3);font-size:11px;font-family:var(--mono);">${sanitize(p.key)} · ${p.price} ج / ${p.durationMonths} شهر</div>
+            ${p.features&&p.features.length?`<div style="color:var(--t4);font-size:10px;margin-top:4px;">${p.features.map(f=>`✓ ${sanitize(f)}`).join(" · ")}</div>`:""}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <button class="r-btn" style="font-size:10px;background:${p.isActive?"var(--dnd)":"var(--gd)"};color:${p.isActive?"var(--dn)":"var(--g)"};" onclick="toggleAdmPlan(${p.id},${!p.isActive})">${p.isActive?"تعطيل":"تفعيل"}</button>
+            <button class="r-btn rej" style="font-size:10px;" onclick="delAdmPlan(${p.id},'${sanitize(p.nameAr)}')">حذف</button>
+          </div>
+        </div>
+      </div>`).join(""):`<div class="empty" style="padding:20px;"><div style="font-size:26px;">💎</div><div>لا توجد خطط بعد</div></div>`;
+  }catch(e){const el=document.getElementById("apl-list");if(el)el.innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;}
+}
+
+async function saveAdmPlan(){
+  const feats=vG("apl-features").split("\n").map(f=>f.trim()).filter(Boolean);
+  const body={key:vG("apl-key"),nameAr:vG("apl-name"),price:Number(vG("apl-price")),durationMonths:Number(vG("apl-dur")),badge:vG("apl-badge")||undefined,features:feats};
+  try{
+    const r=await admFetch("/api/admin/plans",{method:"POST",body:JSON.stringify(body)});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحفظ"));return;}
+    showToast("✅ تم إضافة الخطة");
+    ["apl-key","apl-name","apl-price","apl-dur","apl-badge","apl-features"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+    await loadAdmPlans();
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+async function toggleAdmPlan(id,isActive){
+  try{
+    const r=await admFetch(`/api/admin/plans/${id}`,{method:"PUT",body:JSON.stringify({isActive})});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
+    showToast("✅ تم التحديث");await loadAdmPlans();
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+async function delAdmPlan(id,name){
+  if(!confirm(`حذف خطة "${name}"؟`)) return;
+  try{
+    const r=await admFetch(`/api/admin/plans/${id}`,{method:"DELETE"});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحذف"));return;}
+    showToast("✅ تم الحذف");await loadAdmPlans();
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+/* ─── Coupons ─── */
+async function renderAdmCoupons(el){
+  el.innerHTML=`
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:13px;margin-bottom:14px;">
+      <div style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:10px;">🎟️ إنشاء كوبون خصم</div>
+      ${aFormRow(aIn("acp-code","كود الكوبون (مثل: SAVE50)","maxlength='40' style='text-transform:uppercase'"),
+        aSel("acp-type",[{v:"percent",l:"خصم % نسبة"},{v:"fixed",l:"خصم ثابت (جنيه)"}]))}
+      ${aFormRow(aIn("acp-val","قيمة الخصم","type='number' min='1'"),aIn("acp-uses","الحد الأقصى للاستخدام (فارغ = بلا حد)","type='number' min='1'"))}
+      ${aFormRow(
+        `<div><label style="color:var(--t4);font-size:10px;display:block;margin-bottom:3px;">تاريخ البداية</label><input type="datetime-local" id="acp-start" class="a-in" /></div>`,
+        `<div><label style="color:var(--t4);font-size:10px;display:block;margin-bottom:3px;">تاريخ الانتهاء</label><input type="datetime-local" id="acp-end" class="a-in" /></div>`
+      )}
+      ${aBtn("إنشاء الكوبون ✓","saveAdmCoupon()")}
+    </div>
+    <div id="acp-list"><div class="empty"><div style="font-size:24px;">⏳</div></div></div>`;
+  await loadAdmCoupons();
+}
+
+async function loadAdmCoupons(){
+  try{
+    const r=await admFetch("/api/admin/coupons");
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok") throw new Error(j.message||"failed");
+    const el=document.getElementById("acp-list");
+    if(!el) return;
+    const now=Date.now();
+    el.innerHTML=j.coupons.length?j.coupons.map(c=>{
+      const expired=c.expiresAt&&new Date(c.expiresAt)<new Date();
+      const notStarted=c.startsAt&&new Date(c.startsAt)>new Date();
+      const limitReached=c.maxUses&&c.usedCount>=c.maxUses;
+      const statusLabel=!c.isActive?"معطّل":expired?"منتهي":notStarted?"لم يبدأ":limitReached?"استُنفد":"✓ نشط";
+      const statusBg=!c.isActive||expired||limitReached?"var(--dnd)":notStarted?"var(--bld)":"var(--gd)";
+      const statusFg=!c.isActive||expired||limitReached?"var(--dn)":notStarted?"#93c5fd":"var(--g)";
+      return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px 14px;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+              <code style="color:var(--g);font-size:13px;font-weight:800;font-family:var(--mono);">${sanitize(c.code)}</code>
+              ${aBadge(statusLabel,statusBg,statusFg)}
+            </div>
+            <div style="color:var(--t3);font-size:11px;">خصم: <strong>${c.discountValue}${c.discountType==="percent"?"%":" ج"}</strong> · استُخدم: ${c.usedCount||0}${c.maxUses?"/"+c.maxUses:""}</div>
+            ${c.expiresAt?`<div style="color:var(--t5);font-size:9.5px;margin-top:3px;font-family:var(--mono);">ينتهي: ${new Date(c.expiresAt).toLocaleDateString("ar-EG")}</div>`:""}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <button class="r-btn" style="font-size:10px;background:${c.isActive?"var(--dnd)":"var(--gd)"};color:${c.isActive?"var(--dn)":"var(--g)"};" onclick="toggleAdmCoupon(${c.id},${!c.isActive})">${c.isActive?"تعطيل":"تفعيل"}</button>
+            <button class="r-btn rej" style="font-size:10px;" onclick="delAdmCoupon(${c.id},'${sanitize(c.code)}')">حذف</button>
+          </div>
+        </div>
+      </div>`;}).join(""):`<div class="empty" style="padding:20px;"><div style="font-size:26px;">🎟️</div><div>لا توجد كوبونات بعد</div></div>`;
+  }catch(e){const el=document.getElementById("acp-list");if(el)el.innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;}
+}
+
+async function saveAdmCoupon(){
+  const startVal=vG("acp-start");const endVal=vG("acp-end");const usesVal=vG("acp-uses");
+  const body={code:vG("acp-code").toUpperCase(),discountType:vG("acp-type"),discountValue:Number(vG("acp-val")),
+    ...(usesVal?{maxUses:Number(usesVal)}:{}),
+    ...(startVal?{startsAt:new Date(startVal).toISOString()}:{}),
+    ...(endVal?{expiresAt:new Date(endVal).toISOString()}:{})};
+  try{
+    const r=await admFetch("/api/admin/coupons",{method:"POST",body:JSON.stringify(body)});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الإنشاء"));return;}
+    showToast("✅ تم إنشاء الكوبون");
+    ["acp-code","acp-val","acp-uses","acp-start","acp-end"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+    await loadAdmCoupons();
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+async function toggleAdmCoupon(id,isActive){
+  try{
+    const r=await admFetch(`/api/admin/coupons/${id}`,{method:"PUT",body:JSON.stringify({isActive})});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر"));return;}
+    showToast("✅ تم");await loadAdmCoupons();
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+async function delAdmCoupon(id,code){
+  if(!confirm(`حذف الكوبون "${code}"؟`)) return;
+  try{
+    const r=await admFetch(`/api/admin/coupons/${id}`,{method:"DELETE"});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر"));return;}
+    showToast("✅ تم الحذف");await loadAdmCoupons();
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+/* ─── Employees ─── */
+const ROLE_LABELS={"super_admin":"سوبر أدمن","admin":"أدمن","editor":"محرر","analyst":"محلل","support":"دعم فني","marketing":"تسويق"};
+const ROLE_COLORS={"super_admin":"#8b5cf6","admin":"#ef4444","editor":"#10b981","analyst":"#3b82f6","support":"#f59e0b","marketing":"#ec4899"};
+
+async function renderAdmEmployees(el){
+  el.innerHTML=`
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:13px;margin-bottom:14px;">
+      <div style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:10px;">👨‍💼 إضافة موظف جديد</div>
+      ${aFormRow(aIn("aemp-name","الاسم الكامل","maxlength='100'"),aIn("aemp-email","البريد الإلكتروني","type='email'"))}
+      ${aFormRow(
+        aSel("aemp-role",[
+          {v:"editor",l:"📝 محرر"},{v:"analyst",l:"📊 محلل"},{v:"support",l:"🎧 دعم فني"},
+          {v:"marketing",l:"📣 تسويق"},{v:"admin",l:"🔴 أدمن"},{v:"super_admin",l:"👑 سوبر أدمن"}
+        ]),
+        aIn("aemp-pass","كلمة المرور (8+ أحرف)","type='password' minlength='8'")
+      )}
+      ${aBtn("إضافة الموظف ✓","saveAdmEmployee()")}
+    </div>
+    <div id="aemp-list"><div class="empty"><div style="font-size:24px;">⏳</div></div></div>`;
+  await loadAdmEmployees();
+}
+
+async function loadAdmEmployees(){
+  try{
+    const r=await admFetch("/api/admin/employees");
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok") throw new Error(j.message||"failed");
+    const el=document.getElementById("aemp-list");
+    if(!el) return;
+    el.innerHTML=j.employees.length?j.employees.map(emp=>`
+      <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px 14px;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+              <div style="width:32px;height:32px;border-radius:50%;background:${ROLE_COLORS[emp.role]||"#64748b"}22;border:1px solid ${ROLE_COLORS[emp.role]||"#64748b"}44;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">
+                ${emp.role==="super_admin"?"👑":emp.role==="admin"?"🔴":emp.role==="editor"?"📝":emp.role==="analyst"?"📊":emp.role==="support"?"🎧":"📣"}
+              </div>
+              <div>
+                <div style="color:var(--t2);font-weight:700;font-size:13px;">${sanitize(emp.name)}</div>
+                <div style="color:var(--t4);font-size:10px;font-family:var(--mono);">${sanitize(emp.email)}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px;">
+              ${aBadge(ROLE_LABELS[emp.role]||emp.role,ROLE_COLORS[emp.role]+"22",ROLE_COLORS[emp.role]||"#fff")}
+              ${emp.status==="active"?aBadge("نشط","var(--gd)","var(--g)"):aBadge("معطّل","var(--dnd)","var(--dn)")}
+            </div>
+            ${emp.lastLogin?`<div style="color:var(--t5);font-size:9px;margin-top:5px;font-family:var(--mono);">آخر دخول: ${new Date(emp.lastLogin).toLocaleString("ar-EG")}</div>`:""}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <button class="r-btn" style="font-size:10px;background:${emp.status==="active"?"var(--dnd)":"var(--gd)"};color:${emp.status==="active"?"var(--dn)":"var(--g)"};" onclick="toggleAdmEmployee(${emp.id},'${emp.status==="active"?"inactive":"active"}')">${emp.status==="active"?"تعطيل":"تفعيل"}</button>
+            <button class="r-btn rej" style="font-size:10px;" onclick="delAdmEmployee(${emp.id},'${sanitize(emp.name)}')">حذف</button>
+          </div>
+        </div>
+      </div>`).join(""):`<div class="empty" style="padding:20px;"><div style="font-size:26px;">👨‍💼</div><div>لا يوجد موظفون بعد</div></div>`;
+  }catch(e){const el=document.getElementById("aemp-list");if(el)el.innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;}
+}
+
+async function saveAdmEmployee(){
+  const body={name:vG("aemp-name"),email:vG("aemp-email"),role:vG("aemp-role"),password:vG("aemp-pass")};
+  if(!body.name||!body.email||!body.password){showToast("❌ يرجى ملء جميع الحقول");return;}
+  try{
+    const r=await admFetch("/api/admin/employees",{method:"POST",body:JSON.stringify(body)});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الإضافة"));return;}
+    showToast("✅ تم إضافة الموظف");
+    ["aemp-name","aemp-email","aemp-pass"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+    await loadAdmEmployees();
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+async function toggleAdmEmployee(id,status){
+  try{
+    const r=await admFetch(`/api/admin/employees/${id}`,{method:"PUT",body:JSON.stringify({status})});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر"));return;}
+    showToast("✅ تم");await loadAdmEmployees();
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+async function delAdmEmployee(id,name){
+  if(!confirm(`حذف الموظف "${name}"؟ هذا لا يمكن التراجع عنه.`)) return;
+  try{
+    const r=await admFetch(`/api/admin/employees/${id}`,{method:"DELETE"});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر"));return;}
+    showToast("✅ تم الحذف");await loadAdmEmployees();
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+/* ─── AI Config ─── */
+async function renderAdmAIConfig(el){
+  el.innerHTML=`<div class="empty"><div style="font-size:22px;">⏳</div></div>`;
+  let cfg={analyzerEnabled:true,summaryEnabled:true,rewriterEnabled:true,dailyRequestLimit:1000};
+  let usage={totalRequests:0,byType:[],topUsers:[]};
+  try{
+    const [r1,r2]=await Promise.all([admFetch("/api/admin/ai-config"),admFetch("/api/admin/ai-usage?days=30")]);
+    const j1=await r1.json();const j2=await r2.json();
+    if(j1.status==="ok"&&j1.config)cfg={...cfg,...j1.config};
+    if(j2.status==="ok")usage=j2;
+  }catch{}
+
+  el.innerHTML=`
+    ${aSection("🔧 إعدادات المساعد الذكي",`
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        ${["analyzerEnabled:🤖 محلل الأخبار","summaryEnabled:📄 تلخيص الأخبار","rewriterEnabled:✍️ إعادة صياغة"].map(s=>{
+          const[k,l]=s.split(":");
+          return `<label style="display:flex;justify-content:space-between;align-items:center;background:var(--s2);border-radius:10px;padding:10px 13px;cursor:pointer;">
+            <span style="color:var(--t2);font-size:13px;">${l}</span>
+            <input type="checkbox" id="aicfg-${k}" ${cfg[k]?"checked":""} style="width:18px;height:18px;accent-color:var(--g);cursor:pointer;" onchange="saveAICfgToggle('${k}',this.checked)"/>
+          </label>`;}).join("")}
+        <div style="display:flex;align-items:center;gap:10px;background:var(--s2);border-radius:10px;padding:10px 13px;">
+          <span style="color:var(--t2);font-size:13px;flex:1;">📊 حد الطلبات اليومي</span>
+          <input type="number" id="aicfg-limit" value="${cfg.dailyRequestLimit||1000}" min="0" max="100000" class="a-in" style="width:90px;text-align:center;" />
+          <button class="r-btn app" style="font-size:11px;" onclick="saveAICfgLimit()">حفظ</button>
+        </div>
+      </div>
+    `)}
+    ${aSection("📊 إحصائيات الاستخدام (30 يوم)",`
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+        ${aCard("إجمالي الطلبات",usage.totalRequests,"#10b981","آخر 30 يوم")}
+      </div>
+      ${usage.topUsers&&usage.topUsers.length?`
+        <div style="color:var(--t3);font-size:11.5px;font-weight:700;margin-bottom:7px;">🏆 الأكثر استخداماً</div>
+        ${usage.topUsers.slice(0,5).map(u=>`
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--b1);">
+            <span style="color:var(--t3);font-size:11px;font-family:var(--mono);">${sanitize(String(u.user_id||"غير معروف").slice(-6))}</span>
+            <span style="color:var(--au);font-weight:700;font-size:11px;">${u.count} طلب</span>
+          </div>`).join("")}`:""}
+    `)}
+    ${aSection("🤖 تقارير AI يدوية",`
+      <button class="btn btn-g btn-sm" id="adm-ai-btn" onclick="genAdmReport()">🤖 أنشئ ملخص السوق اليوم</button>
+      <div id="adm-ai-res" style="display:none;background:var(--gd2);border:1px solid rgba(16,185,129,.14);border-radius:14px;padding:17px;margin-top:12px;">
+        <div style="color:var(--g);font-size:10px;font-weight:700;margin-bottom:10px;">✅ ملخص ${new Date().toLocaleDateString("ar-EG")}</div>
+        <div id="adm-ai-txt" style="color:var(--t2);font-size:13px;line-height:1.9;direction:rtl;white-space:pre-line;"></div>
+      </div>
+    `)}
+  `;
+}
+
+async function saveAICfgToggle(key,val){
+  try{
+    const r=await admFetch("/api/admin/ai-config",{method:"PUT",body:JSON.stringify({[key]:val})});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر"));return;}
+    showToast("✅ تم التحديث");
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+async function saveAICfgLimit(){
+  const v=Number(document.getElementById("aicfg-limit")?.value||1000);
+  try{
+    const r=await admFetch("/api/admin/ai-config",{method:"PUT",body:JSON.stringify({dailyRequestLimit:v})});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر"));return;}
+    showToast("✅ تم حفظ الحد اليومي");
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+async function genAdmReport(){
+  const btn=document.getElementById("adm-ai-btn");if(!btn)return;
+  btn.innerHTML='<div class="sp sp-g sp-sm"></div> جارٍ...';btn.disabled=true;
+  try{
+    const hl=allArts.slice(0,8).map(a=>`${a.srcName}: ${a.title}`).join("\n");
+    const txt=await callAI({
+      max_tokens:800,system:"أنت محلل اقتصادي. أنشئ ملخصاً يومياً شاملاً للأسواق.",
+      messages:[{role:"user",content:`ملخص شامل للأسواق ليوم ${new Date().toLocaleDateString("ar-EG")} بناءً على:\n${hl}`}]
+    });
+    document.getElementById("adm-ai-txt").textContent=txt;
+    document.getElementById("adm-ai-res").style.display="block";
+  }catch{if(document.getElementById("adm-ai-txt"))document.getElementById("adm-ai-txt").textContent="❌ تعذر الاتصال.";}
+  btn.innerHTML="🤖 إعادة التوليد";btn.disabled=false;
+}
+
+/* ─── Audit Logs ─── */
+let auditPage=0;
+async function renderAdmAudit(el){
+  auditPage=0;
+  el.innerHTML=`
+    <div style="display:flex;gap:7px;margin-bottom:12px;">
+      <input id="aadit-search" placeholder="🔍 بحث بالمنفذ أو الهدف..." class="a-in" style="flex:1;" oninput="auditPage=0;loadAdmAudit()" />
+      <select id="aadit-action" class="a-in" style="flex:1;" onchange="auditPage=0;loadAdmAudit()">
+        <option value="">كل العمليات</option>
+        <option value="login">تسجيل دخول</option>
+        <option value="create_employee">إضافة موظف</option>
+        <option value="delete_employee">حذف موظف</option>
+        <option value="update_employee">تعديل موظف</option>
+        <option value="create_plan">إضافة خطة</option>
+        <option value="delete_plan">حذف خطة</option>
+        <option value="create_coupon">إنشاء كوبون</option>
+        <option value="upsert_article">نشر خبر</option>
+        <option value="delete_article">حذف خبر</option>
+        <option value="upgrade_vip">ترقية VIP</option>
+        <option value="ban_user">حظر مستخدم</option>
+        <option value="update_ai_config">تعديل AI</option>
+      </select>
+    </div>
+    <div id="aadit-list"><div class="empty"><div style="font-size:22px;">⏳</div></div></div>
+    <div id="aadit-pager" style="display:flex;gap:8px;justify-content:center;margin-top:12px;"></div>`;
+  await loadAdmAudit();
+}
+
+async function loadAdmAudit(){
+  const search=vG("aadit-search");const action=vG("aadit-action");
+  const el=document.getElementById("aadit-list");
+  if(!el)return;
+  el.innerHTML=`<div class="empty"><div style="font-size:22px;margin-bottom:7px;">⏳</div><div>جارٍ التحميل...</div></div>`;
+  try{
+    const params=new URLSearchParams({page:auditPage,limit:25});
+    if(search)params.set("search",search);if(action)params.set("action",action);
+    const r=await admFetch("/api/admin/audit-logs?"+params);
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok") throw new Error(j.message||"failed");
+
+    const ACTION_ICONS={"login":"🔑","create_employee":"👤+","delete_employee":"👤-","update_employee":"👤✎","create_plan":"💎+","delete_plan":"💎-","update_plan":"💎✎","create_coupon":"🎟️+","delete_coupon":"🎟️-","upsert_article":"📰+","delete_article":"📰-","upgrade_vip":"⭐","downgrade_vip":"⭐-","ban_user":"🚫","unban_user":"✓","upsert_source":"🔗+","delete_source":"🔗-","update_ai_config":"🤖","update_coupon":"🎟️✎"};
+
+    el.innerHTML=j.logs.length?j.logs.map(l=>`
+      <div style="background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:10px 12px;margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:14px;">${ACTION_ICONS[l.action]||"⚙️"}</span>
+              <div>
+                <span style="color:var(--t2);font-size:12px;font-weight:700;">${sanitize(String(l.action||""))}</span>
+                ${l.target?`<span style="color:var(--t4);font-size:11px;"> → ${sanitize(String(l.target))}</span>`:""}
+              </div>
+            </div>
+            <div style="color:var(--t4);font-size:10px;margin-top:4px;">
+              <span style="color:${ROLE_COLORS[l.actorRole]||"var(--t4)"};">${sanitize(String(l.actorName||""))}</span>
+              ${l.actorRole?` · <span style="color:var(--t5);">${ROLE_LABELS[l.actorRole]||l.actorRole}</span>`:""}
+              ${l.ip?` · <span style="font-family:var(--mono);color:var(--t5);">${sanitize(String(l.ip))}</span>`:""}
+            </div>
+          </div>
+          <div style="color:var(--t5);font-size:9px;font-family:var(--mono);white-space:nowrap;">${l.createdAt?new Date(l.createdAt).toLocaleString("ar-EG"):""}</div>
+        </div>
+      </div>`).join(""):`<div class="empty" style="padding:20px;"><div style="font-size:26px;">📋</div><div>لا توجد عمليات</div></div>`;
+
+    const total=j.total||0;const pages=Math.ceil(total/25);
+    const pager=document.getElementById("aadit-pager");
+    if(pager)pager.innerHTML=pages>1?`
+      <button class="r-btn" ${auditPage<=0?"disabled":""} onclick="auditPage--;loadAdmAudit()">◀ السابق</button>
+      <span style="color:var(--t4);font-size:11px;">${auditPage+1} / ${pages}</span>
+      <button class="r-btn" ${auditPage>=pages-1?"disabled":""} onclick="auditPage++;loadAdmAudit()">التالي ▶</button>`:"";
+  }catch(e){el.innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;}
+}
+
+/* ─── Keep existing admApp / admRej ─── */
 function admApp(id){
   const reqs=DB.g("reqs",[]);const req=reqs.find(r=>r.id===id);if(!req)return;
   req.status="approved";DB.s("reqs",reqs);
   const users=DB.g("u",{});
-  if(users[req.phone]){users[req.phone].plan="vip";const exp=new Date();exp.setMonth(exp.getMonth()+PLANS[req.planKey].m);users[req.phone].exp=exp.toISOString();DB.s("u",users);const s=DB.g("s",null);if(s&&s.phone===req.phone){s.plan="vip";s.exp=users[req.phone].exp;DB.s("s",s);}}
+  if(users[req.phone]){users[req.phone].plan="vip";const exp=new Date();exp.setMonth(exp.getMonth()+PLANS[req.planKey]?.m||1);users[req.phone].exp=exp.toISOString();DB.s("u",users);const s=DB.g("s",null);if(s&&s.phone===req.phone){s.plan="vip";s.exp=users[req.phone].exp;DB.s("s",s);}}
   renderAdmStats();admTab("reqs");showToast(`✅ تم تفعيل اشتراك ${req.name}`);
 }
 function admRej(id){const reqs=DB.g("reqs",[]);const req=reqs.find(r=>r.id===id);if(req){req.status="rejected";DB.s("reqs",reqs);}admTab("reqs");showToast("❌ تم رفض الطلب");}
-async function genAdmReport(){
-  const btn=document.getElementById("adm-ai-btn");btn.innerHTML='<div class="sp sp-g sp-sm"></div> جارٍ...';btn.disabled=true;
-  try{
-    const hl=allArts.slice(0,8).map(a=>`${a.srcName}: ${a.title}`).join("\n");
-    const txt = await callAI({
-      max_tokens:800,
-      system:"أنت محلل اقتصادي. أنشئ ملخصاً يومياً شاملاً للأسواق.",
-      messages:[{role:"user",content:`ملخص شامل للأسواق ليوم ${new Date().toLocaleDateString("ar-EG")} بناءً على:\n${hl}`}]
-    });
-    document.getElementById("adm-ai-txt").textContent=txt;document.getElementById("adm-ai-res").style.display="block";
-  }catch{document.getElementById("adm-ai-txt").textContent="❌ تعذر الاتصال.";}
-  btn.innerHTML="🤖 إعادة التوليد";btn.disabled=false;
-}
 
 /* ═══════════════════ NAVIGATION ═══════════════════ */
 function goNav(id){
