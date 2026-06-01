@@ -628,4 +628,106 @@ router.get("/calendar", async (_req: Request, res: Response) => {
   }
 });
 
+/* ═══════════════════════════════════════════════════
+   EGX STOCKS — Yahoo Finance  (no API key needed)
+   Quotes: 2-min cache  |  Fundamentals: 24-hr cache
+   ═══════════════════════════════════════════════════ */
+
+type EGXDef = { sym: string; yahoo: string; name: string; sector: string };
+
+const EGX_DEFS: EGXDef[] = [
+  { sym:"CIB",  yahoo:"CIB.CA",  name:"البنك التجاري الدولي",   sector:"بنوك"       },
+  { sym:"COMI", yahoo:"COMI.CA", name:"بنك القاهرة",             sector:"بنوك"       },
+  { sym:"HRHO", yahoo:"HRHO.CA", name:"هيرميس القابضة",          sector:"مالية"      },
+  { sym:"EFIH", yahoo:"EFIH.CA", name:"إي فاينانس",              sector:"تقنية"      },
+  { sym:"OCDI", yahoo:"OCDI.CA", name:"أوراسكوم للتطوير",        sector:"عقارات"     },
+  { sym:"TMGH", yahoo:"TMGH.CA", name:"طلعت مصطفى",             sector:"عقارات"     },
+  { sym:"MNHD", yahoo:"MNHD.CA", name:"مدينة نصر للإسكان",       sector:"عقارات"     },
+  { sym:"PHDC", yahoo:"PHDC.CA", name:"بالم هيلز",               sector:"عقارات"     },
+  { sym:"ABUK", yahoo:"ABUK.CA", name:"أبوقير للأسمدة",          sector:"صناعة"      },
+  { sym:"ETEL", yahoo:"ETEL.CA", name:"المصرية للاتصالات",       sector:"اتصالات"    },
+  { sym:"SWDY", yahoo:"SWDY.CA", name:"السويدي إليكتريك",        sector:"صناعة"      },
+  { sym:"ESRS", yahoo:"ESRS.CA", name:"عز للصلب",                sector:"صناعة"      },
+  { sym:"AMOC", yahoo:"AMOC.CA", name:"النصر للكيماويات",        sector:"صناعة"      },
+  { sym:"CLHO", yahoo:"CLHO.CA", name:"كليوباترا للمستشفيات",    sector:"صحة"        },
+  { sym:"PHAR", yahoo:"PHAR.CA", name:"إيبي فارما",              sector:"أدوية"      },
+  { sym:"EAST", yahoo:"EAST.CA", name:"الشرق للدخان",            sector:"غذائية"     },
+  { sym:"JUFO", yahoo:"JUFO.CA", name:"جهينة للأغذية",           sector:"غذائية"     },
+  { sym:"EKHO", yahoo:"EKHO.CA", name:"إيديتا للصناعات الغذائية",sector:"غذائية"     },
+  { sym:"ASCM", yahoo:"ASCM.CA", name:"سيناء للصناعة",           sector:"مواد بناء"  },
+  { sym:"GGHE", yahoo:"GGHE.CA", name:"جلوبال تيليكوم",          sector:"اتصالات"    },
+];
+
+export type StockQuote = {
+  sym: string; name: string; sector: string;
+  price: number; prevClose: number; chg: number; chgPct: number;
+  vol: number; high: number; low: number; open: number;
+  mktCapM?: number;  // market cap in EGP millions
+  pe?: number; divYield?: number; eps?: number;
+  ts: number;
+};
+
+/* yahoo-finance2 v3 — handles cookie+crumb auth internally.
+   The default export is the YahooFinance class; must use `new`. */
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const YFClass = require("yahoo-finance2").default as new(opts?: Record<string, unknown>) => { quote: (symbol: string, queryOptions?: Record<string, unknown>, moduleOptions?: Record<string, unknown>) => Promise<Record<string, unknown>> };
+const yf = new YFClass({ suppressNotices: ["yahooSurvey"] });
+
+async function fetchYahooQuote(def: EGXDef): Promise<StockQuote | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const q = await yf.quote(def.yahoo, {}, { validateResult: false }) as any;
+    if (!q || !q.regularMarketPrice || q.regularMarketPrice === 0) return null;
+    const price    = q.regularMarketPrice;
+    const prev     = q.regularMarketPreviousClose ?? price;
+    const chg      = price - prev;
+    const chgPct   = prev > 0 ? (chg / prev) * 100 : 0;
+    return {
+      sym:     def.sym,
+      name:    def.name,
+      sector:  def.sector,
+      price,
+      prevClose: prev,
+      chg,
+      chgPct,
+      vol:     q.regularMarketVolume ?? 0,
+      high:    q.regularMarketDayHigh ?? price,
+      low:     q.regularMarketDayLow  ?? price,
+      open:    q.regularMarketOpen    ?? price,
+      mktCapM: q.marketCap ? Math.round(q.marketCap / 1_000_000) : undefined,
+      pe:      q.trailingPE ?? undefined,
+      divYield:q.trailingAnnualDividendYield != null ? q.trailingAnnualDividendYield * 100 : undefined,
+      eps:     q.epsTrailingTwelveMonths ?? undefined,
+      ts:      Date.now(),
+    };
+  } catch (e) {
+    logger.warn({ sym: def.sym, err: (e as Error).message }, "yf2 quote failed");
+    return null;
+  }
+}
+
+let stocksCache: { ts: number; stocks: StockQuote[] } | null = null;
+const STOCKS_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
+router.get("/stocks", async (_req: Request, res: Response) => {
+  const now = Date.now();
+  if (stocksCache && now - stocksCache.ts < STOCKS_TTL_MS) {
+    res.json({ status: "ok", ts: stocksCache.ts, stocks: stocksCache.stocks });
+    return;
+  }
+  try {
+    const rawQuotes = await Promise.all(EGX_DEFS.map(fetchYahooQuote));
+    const quotes = rawQuotes.filter((q): q is StockQuote => q !== null);
+    stocksCache = { ts: now, stocks: quotes };
+    res.json({ status: "ok", ts: now, stocks: quotes });
+  } catch (e) {
+    logger.error({ err: (e as Error).message }, "stocks build failed");
+    if (stocksCache) {
+      res.json({ status: "ok", ts: stocksCache.ts, stocks: stocksCache.stocks, stale: true });
+    } else {
+      res.status(503).json({ status: "error", message: "stocks data unavailable" });
+    }
+  }
+});
+
 export default router;
