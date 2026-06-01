@@ -1,1 +1,2 @@
 - [Admin Dashboard Architecture](admin-dashboard.md) — full production admin overhaul: JWT auth, RBAC, PostgreSQL, 10 tabs (plans/coupons/employees/AI/audit)
+- [yahoo-finance2 v3 usage](yahoo-finance2-v3.md) — default export is the YahooFinance class; must use `new`; EGX stocks use `.CA` suffix and return real data

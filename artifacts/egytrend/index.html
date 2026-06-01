@@ -994,24 +994,8 @@ const TICKS_STATIC = [
 /* Live calendar — populated from /api/markets/calendar (ForexFactory). */
 let liveCalendar = [];
 
-/* ─── EGX Stocks (realistic data) ─── */
-const EGX_STOCKS = [
-  {sym:"CIB",  name:"البنك التجاري الدولي",    price:72.50, chg:4.2,  vol:"34.2M",sector:"بنوك"},
-  {sym:"COMI", name:"البنك الأهلي المتحد",      price:52.30, chg:3.8,  vol:"22.1M",sector:"بنوك"},
-  {sym:"EFIH", name:"إي فاينانس",               price:15.20, chg:3.1,  vol:"18.5M",sector:"تقنية"},
-  {sym:"OCDI", name:"أوراسكوم للتطوير",         price:24.80, chg:5.1,  vol:"41.3M",sector:"عقارات"},
-  {sym:"PHDC", name:"رؤية للتطوير العقاري",     price:12.40, chg:6.2,  vol:"28.7M",sector:"عقارات"},
-  {sym:"MNHD", name:"مدينة نصر للإسكان",        price:18.30, chg:2.7,  vol:"15.2M",sector:"عقارات"},
-  {sym:"ABUK", name:"أبوقير للأسمدة",           price:44.20, chg:1.8,  vol:"7.3M", sector:"صناعة"},
-  {sym:"ETEL", name:"المصرية للاتصالات",        price:19.80, chg:0.9,  vol:"11.4M",sector:"اتصالات"},
-  {sym:"HRHO", name:"هيرميس القابضة",           price:63.20, chg:2.4,  vol:"16.8M",sector:"مالية"},
-  {sym:"SWDY", name:"السويدي إليكتريك",         price:31.50, chg:-1.3, vol:"9.8M", sector:"صناعة"},
-  {sym:"TMGH", name:"طلعت مصطفى",              price:27.50, chg:-0.8, vol:"8.2M", sector:"عقارات"},
-  {sym:"EKHO", name:"إيكو للصناعات الغذائية",   price:8.70,  chg:-0.5, vol:"5.1M", sector:"غذائية"},
-  {sym:"CLHO", name:"سيلاه للصناعات الدوائية",  price:22.30, chg:1.4,  vol:"6.7M", sector:"أدوية"},
-  {sym:"ESRS", name:"الإسكندرية للصلب",         price:16.80, chg:-2.1, vol:"12.3M",sector:"صناعة"},
-  {sym:"GGHE", name:"جلوبال تيليكوم",          price:9.40,  chg:0.5,  vol:"3.8M", sector:"اتصالات"},
-];
+/* ─── EGX Stocks — loaded live from /api/markets/stocks ─── */
+const STOCKS_API = "/api/markets/stocks";
 
 const PLANS = {
   monthly:  {l:"شهري",    p:99,  per:"شهر",  m:1},
@@ -1037,7 +1021,7 @@ const FAQ = [
   {q:"ماذا أفعل إذا لم يُفعَّل اشتراكي؟",
    a:"تواصل فوراً عبر واتساب 01008605139 مع كود العملية وسنُفعّل اشتراكك خلال دقائق."},
   {q:"هل بيانات الأسواق حقيقية؟",
-   a:"نعم، يتم جلب بيانات الكريبتو من CoinGecko API في الوقت الفعلي. وسيتم إضافة المزيد من المصادر المباشرة قريباً."},
+   a:"نعم! بيانات أسهم EGX حقيقية من Yahoo Finance (20 سهم، تُحدَّث كل دقيقتين)، بيانات الكريبتو من CoinGecko، وأسعار الصرف من Alpha Vantage. جميع البيانات تلقائية وحقيقية."},
 ];
 
 /* ─── FALLBACK IMAGES ─── */
@@ -1057,6 +1041,8 @@ let chatHist=[];
 let subStep=1, selPlan="monthly", selPay="vodafone";
 let srcStatus={};
 let liveMarkets = JSON.parse(JSON.stringify(MARKET_STATIC)); // deep copy
+let liveStocks = []; // EGX stocks — populated from /api/markets/stocks
+let scrFilters = {sector:"all",perf:"all",priceMin:"",priceMax:"",volMin:"",peFilter:"all",sortBy:"chgPct",sortDir:-1};
 
 /* ═══════════════════ DB (secure localStorage) ═══════════════════ */
 const DB = {
@@ -1082,13 +1068,46 @@ function bootApp(){
   renderHdrVip();buildCatPills();buildSrcPills();
   buildMarkets();fetchMarketsData();fetchCalendarData();
   syncSources().then(()=>fetchAllNews(false));
+  fetchStocksData();
   renderVIP();renderProfile();
   updateNotifBadge();
   maybeRequestNotifPerm();
-  // Auto-refresh: markets every 60s, calendar every 30min, news every 5min
   setInterval(fetchMarketsData,60000);
   setInterval(fetchCalendarData,30*60*1000);
   setInterval(()=>fetchAllNews(true), 5*60*1000);
+  setInterval(fetchStocksData, 2*60*1000);
+}
+
+/* ─── EGX Stocks live fetch ─── */
+async function fetchStocksData(){
+  try{
+    const r=await fetch(STOCKS_API);
+    if(!r.ok) return;
+    const j=await r.json();
+    if(j.status==="ok" && Array.isArray(j.stocks) && j.stocks.length){
+      liveStocks=j.stocks;
+      // If EGX page open, refresh it
+      const ep=document.getElementById("egx-page");
+      if(ep&&ep.classList.contains("open")) renderStocks();
+      // If VIP screener visible, refresh it
+      const scr=document.getElementById("scr-results");
+      if(scr) renderScrResults();
+    }
+  }catch{}
+}
+
+/* ─── Helpers for stocks ─── */
+function fmtVol(v){
+  if(!v||v===0) return "—";
+  if(v>=1e9) return (v/1e9).toFixed(1)+"B";
+  if(v>=1e6) return (v/1e6).toFixed(1)+"M";
+  if(v>=1e3) return (v/1e3).toFixed(0)+"K";
+  return String(v);
+}
+function fmtMktCap(m){
+  if(!m) return "—";
+  if(m>=1000) return (m/1000).toFixed(1)+"B";
+  return m+"M";
 }
 
 /* ═══════════════════ AUTH ═══════════════════ */
@@ -1637,13 +1656,13 @@ function buildCalendar(){
 }
 
 /* ═══════════════════ EGX PAGE ═══════════════════ */
-let curStocks=[...EGX_STOCKS];
+let curStocks=[];
 function openEgx(name){
   const m=liveMarkets.eg.find(x=>x.n===name);
   document.getElementById("egx-name").textContent=name;
   document.getElementById("egx-val").textContent=m?.v||"";
   document.getElementById("egx-chg").innerHTML=`<span style="color:${m?.up?"var(--up)":"var(--dn)"};">${m?.up?"▲":"▼"} ${m?.c||""}</span>`;
-  curStocks=[...EGX_STOCKS];
+  curStocks=[...liveStocks];
   document.querySelectorAll(".sort-btn").forEach((b,i)=>b.classList.toggle("active",i===0));
   renderStocks();document.getElementById("egx-page").classList.add("open");
 }
@@ -1651,23 +1670,51 @@ function closeEgx(){document.getElementById("egx-page").classList.remove("open")
 
 function sortStocks(type,btn){
   document.querySelectorAll(".sort-btn").forEach(b=>b.classList.remove("active"));btn.classList.add("active");
-  if(type==="up")curStocks=[...EGX_STOCKS].sort((a,b)=>b.chg-a.chg);
-  else if(type==="dn")curStocks=[...EGX_STOCKS].sort((a,b)=>a.chg-b.chg);
-  else if(type==="vol")curStocks=[...EGX_STOCKS].sort((a,b)=>parseFloat(b.vol)-parseFloat(a.vol));
-  else if(type==="wl")curStocks=EGX_STOCKS.filter(s=>wl.includes(s.sym));
-  else curStocks=[...EGX_STOCKS];
+  if(type==="up")curStocks=[...liveStocks].sort((a,b)=>b.chgPct-a.chgPct);
+  else if(type==="dn")curStocks=[...liveStocks].sort((a,b)=>a.chgPct-b.chgPct);
+  else if(type==="vol")curStocks=[...liveStocks].sort((a,b)=>b.vol-a.vol);
+  else if(type==="wl")curStocks=liveStocks.filter(s=>wl.includes(s.sym));
+  else curStocks=[...liveStocks];
   renderStocks();
 }
 function renderStocks(){
   const el=document.getElementById("stocks-list");
+  if(!el) return;
+  if(!liveStocks.length){
+    el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">⏳</div><div>جارٍ تحميل بيانات الأسهم...</div></div>`;
+    return;
+  }
   if(!curStocks.length){el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">📋</div><div>لا توجد أسهم مطابقة</div></div>`;return;}
-  el.innerHTML=curStocks.map(s=>{
-    const up=s.chg>=0;
-    return`<div class="stock-row" onclick="showToast('📊 ${s.sym} — ${s.name}')">
-      <div><div class="st-sym">${s.sym} ${wl.includes(s.sym)?"⭐":""}</div><div class="st-name">${s.name}</div><div style="color:var(--t5);font-size:9px;font-family:var(--mono);">${s.sector}</div></div>
-      <div><div class="st-price">${s.price.toFixed(2)} ج</div><div class="st-chg" style="color:${up?"var(--up)":"var(--dn)"};">${up?"+":""}${s.chg.toFixed(1)}%</div><div class="st-vol">${s.vol}</div></div>
+  const ts=liveStocks[0]?.ts;
+  const age=ts?Math.round((Date.now()-ts)/1000):null;
+  el.innerHTML=(age!==null?`<div style="color:var(--t5);font-size:9px;text-align:center;padding:4px 0 2px;font-family:var(--mono);">آخر تحديث: ${age<60?age+"ث":Math.round(age/60)+"د"} · بيانات حقيقية من Yahoo Finance</div>`:"")
+  +curStocks.map(s=>{
+    const up=s.chgPct>=0;
+    return`<div class="stock-row" onclick="openStockDetail('${s.sym}')">
+      <div>
+        <div class="st-sym">${sanitize(s.sym)} ${wl.includes(s.sym)?"⭐":""}</div>
+        <div class="st-name">${sanitize(s.name)}</div>
+        <div style="color:var(--t5);font-size:9px;font-family:var(--mono);">${sanitize(s.sector)} · حجم: ${fmtVol(s.vol)}</div>
+      </div>
+      <div>
+        <div class="st-price">${s.price.toFixed(2)} ج</div>
+        <div class="st-chg" style="color:${up?"var(--up)":"var(--dn)"};">${up?"+":""}${s.chgPct.toFixed(2)}%</div>
+        <div style="color:var(--t5);font-size:9px;font-family:var(--mono);">H:${s.high.toFixed(1)} L:${s.low.toFixed(1)}</div>
+      </div>
     </div>`;
   }).join("");
+}
+
+function openStockDetail(sym){
+  const s=liveStocks.find(x=>x.sym===sym);
+  if(!s){showToast("📊 "+sym);return;}
+  const up=s.chgPct>=0;
+  const inWL=wl.includes(sym);
+  const msg=`${sanitize(s.sym)} — ${sanitize(s.name)}\n💰 ${s.price.toFixed(2)} ج (${up?"+":""}${s.chgPct.toFixed(2)}%)\n📊 فتح: ${s.open.toFixed(2)} | أعلى: ${s.high.toFixed(2)} | أقل: ${s.low.toFixed(2)}\n🔄 الحجم: ${fmtVol(s.vol)}${s.pe?"\n📈 P/E: "+s.pe.toFixed(1):""}${s.divYield?"\n💵 عائد توزيعات: "+s.divYield.toFixed(2)+"%":""}${s.mktCapM?"\n🏦 رأس المال: "+fmtMktCap(s.mktCapM)+" ج.م":""}`;
+  showToast(msg.split("\n")[0]);
+  if(confirm(`${msg}\n\n${inWL?"إزالة من":"إضافة إلى"} القائمة المفضلة؟`)){
+    toggleWL(sym);
+  }
 }
 
 /* ═══════════════════ VIP PAGE ═══════════════════ */
@@ -1679,10 +1726,10 @@ function renderVIP(){
       <div style="text-align:center;padding:10px 0 22px;">
         <div style="font-size:50px;margin-bottom:8px;animation:float 3s ease infinite;">⭐</div>
         <div style="color:var(--au);font-weight:900;font-size:21px;margin-bottom:5px;">EgyTrend VIP</div>
-        <div style="color:var(--t3);font-size:12.5px;line-height:1.8;">AI Advisor + إشارات + Screener + 16+ مصدر</div>
+        <div style="color:var(--t3);font-size:12.5px;line-height:1.8;">AI Advisor + إشارات + Screener احترافي + بيانات حقيقية</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;">
-        ${[["🤖","AI Advisor","مستشار مالي ذكي"],["📡","إشارات التداول","شراء/بيع يومية"],["🔍","Stock Screener","ماسح الأسهم"],["🎯","مستهدفات","أسعار وأهداف"],["🌅","Morning Brief","تقرير الصباح"],["📊","تقارير حصرية","تحليلات معمّقة"]].map(f=>`
+        ${[["🤖","AI Advisor","مستشار مالي ذكي"],["📡","إشارات التداول","مبنية على بيانات حقيقية"],["🔍","Stock Screener","فلاتر احترافية (Investing-style)"],["💼","متابع المحفظة","تحليل AI للمحفظة"],["🌅","تقارير يومية","صباح وإغلاق"],["📊","بيانات حقيقية","Yahoo Finance · Finnhub"]].map(f=>`
           <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:15px 12px;text-align:center;">
             <div style="font-size:28px;margin-bottom:5px;">${f[0]}</div>
             <div style="color:var(--t2);font-weight:700;font-size:12.5px;margin-bottom:2px;">${f[1]}</div>
@@ -1718,42 +1765,134 @@ function renderVIP(){
       <div id="sig-res" style="display:none;color:#a7f3d0;font-size:13px;line-height:1.85;direction:rtl;white-space:pre-line;margin-top:8px;"></div>
     </div>
 
-    <!-- STOCK SCREENER (Investing-style) -->
-    <div class="vbox bl">
+    <!-- PROFESSIONAL STOCK SCREENER -->
+    <div class="vbox bl" id="scr-box">
       <div class="scr-header">
         <div style="color:#93c5fd;font-weight:700;font-size:14px;">🔍 Stock Screener</div>
-        <span style="color:var(--t5);font-size:10px;font-family:var(--mono);">${EGX_STOCKS.length} سهم</span>
+        <div style="display:flex;align-items:center;gap:7px;">
+          <button class="btn btn-sm" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.2);color:#93c5fd;font-size:10px;padding:4px 9px;border-radius:7px;cursor:pointer;" onclick="refreshScreener()">↻ تحديث</button>
+          <span id="scr-count" style="color:var(--t5);font-size:10px;font-family:var(--mono);">...</span>
+        </div>
       </div>
-      <div class="scr-filters" id="scr-filters">
-        <button class="scr-f active" onclick="runScr('all',this)">الكل</button>
-        <button class="scr-f" onclick="runScr('up',this)">فرص صعود 📈</button>
-        <button class="scr-f" onclick="runScr('dn',this)">أعلى هبوط 📉</button>
-        <button class="scr-f" onclick="runScr('vol',this)">الأعلى تداولاً 🔥</button>
-        <button class="scr-f" onclick="runScr('banks',this)">بنوك 🏦</button>
-        <button class="scr-f" onclick="runScr('real',this)">عقارات 🏢</button>
-        <button class="scr-f" onclick="runScr('tech',this)">تقنية 💻</button>
+
+      <!-- Sector Filter -->
+      <div style="margin-bottom:8px;">
+        <div style="color:var(--t5);font-size:9.5px;font-weight:700;margin-bottom:4px;font-family:var(--mono);">القطاع</div>
+        <div class="scr-filters" id="scr-sector-row">
+          ${["all:الكل","بنوك:🏦 بنوك","عقارات:🏢 عقارات","صناعة:🏭 صناعة","تقنية:💻 تقنية","اتصالات:📡 اتصالات","مالية:💹 مالية","صحة:🏥 صحة","غذائية:🌾 غذائية","أدوية:💊 أدوية"].map((x,i)=>{const[v,l]=x.split(":");return`<button class="scr-f${i===0?" active":""}" onclick="setScrFilter('sector','${v}',this)">${l}</button>`;}).join("")}
+        </div>
       </div>
-      <div class="scr-cols">
-        <div class="scr-col-hdr">السهم</div>
-        <div class="scr-col-hdr">السعر</div>
-        <div class="scr-col-hdr">التغير %</div>
-        <div class="scr-col-hdr">التداول</div>
+
+      <!-- Performance Filter -->
+      <div style="margin-bottom:8px;">
+        <div style="color:var(--t5);font-size:9.5px;font-weight:700;margin-bottom:4px;font-family:var(--mono);">الأداء اليومي</div>
+        <div class="scr-filters">
+          ${[["all","الكل"],["up","صاعد ▲"],["dn","هابط ▼"],["up3","أكثر من +3%"],["dn3","أكثر من -3%"],["up5","أكثر من +5%"]].map((x,i)=>`<button class="scr-f${i===0?" active":""}" onclick="setScrFilter('perf','${x[0]}',this)">${x[1]}</button>`).join("")}
+        </div>
       </div>
-      <div id="scr-list"></div>
+
+      <!-- Advanced Filters Toggle -->
+      <div id="scr-adv" style="display:none;border-top:1px solid var(--b1);padding-top:9px;margin-bottom:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px;">
+          <div>
+            <div style="color:var(--t5);font-size:9px;margin-bottom:3px;">السعر من (ج)</div>
+            <input id="scr-pr-min" type="number" min="0" placeholder="0" class="mini-in" oninput="renderScrResults()" style="margin-bottom:0;"/>
+          </div>
+          <div>
+            <div style="color:var(--t5);font-size:9px;margin-bottom:3px;">السعر إلى (ج)</div>
+            <input id="scr-pr-max" type="number" min="0" placeholder="∞" class="mini-in" oninput="renderScrResults()" style="margin-bottom:0;"/>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px;">
+          <div>
+            <div style="color:var(--t5);font-size:9px;margin-bottom:3px;">حجم التداول الأدنى</div>
+            <select id="scr-vol-min" class="mini-in" onchange="renderScrResults()" style="margin-bottom:0;">
+              <option value="0">أي حجم</option>
+              <option value="500000">500K+</option>
+              <option value="1000000">1M+</option>
+              <option value="5000000">5M+</option>
+              <option value="10000000">10M+</option>
+            </select>
+          </div>
+          <div>
+            <div style="color:var(--t5);font-size:9px;margin-bottom:3px;">P/E Ratio</div>
+            <select id="scr-pe" class="mini-in" onchange="renderScrResults()" style="margin-bottom:0;">
+              <option value="all">الكل</option>
+              <option value="0-15">أقل من 15</option>
+              <option value="15-30">15 – 30</option>
+              <option value="30+">أكثر من 30</option>
+              <option value="neg">سالب / غير متاح</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <div style="color:var(--t5);font-size:9px;margin-bottom:3px;">رأس المال السوقي</div>
+          <div class="scr-filters" style="margin:0;">
+            ${[["all","الكل"],["large","كبير >10B"],["mid","متوسط 1-10B"],["small","صغير <1B"]].map((x,i)=>`<button class="scr-f${i===0?" active":""}" id="scrf-cap-${x[0]}" onclick="setScrMktCap('${x[0]}',this)">${x[1]}</button>`).join("")}
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;">
+        <button onclick="document.getElementById('scr-adv').style.display=document.getElementById('scr-adv').style.display==='none'?'block':'none'" style="background:none;border:1px solid var(--b1);border-radius:7px;padding:4px 10px;color:var(--t3);font-size:10px;cursor:pointer;font-family:var(--sans);">⚙️ فلاتر متقدمة</button>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="color:var(--t5);font-size:9px;">ترتيب:</span>
+          <select id="scr-sort" class="mini-in" style="font-size:10px;padding:3px 7px;margin:0;width:auto;" onchange="scrFilters.sortBy=this.value;renderScrResults()">
+            <option value="chgPct">التغيير %</option>
+            <option value="price">السعر</option>
+            <option value="vol">الحجم</option>
+            <option value="mktCapM">رأس المال</option>
+            <option value="pe">P/E</option>
+          </select>
+          <button onclick="scrFilters.sortDir*=-1;renderScrResults()" style="background:none;border:1px solid var(--b1);border-radius:6px;padding:3px 7px;color:var(--t3);font-size:10px;cursor:pointer;" id="scr-dir-btn">↓ تنازلي</button>
+        </div>
+      </div>
+
+      <!-- Saved Filters -->
+      <div id="scr-saved-row" style="margin-bottom:7px;display:none;">
+        <div style="color:var(--t5);font-size:9px;margin-bottom:3px;">فلاتر محفوظة:</div>
+        <div id="scr-saved-pills" class="scr-filters"></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <button onclick="saveScrFilter()" style="background:none;border:1px solid var(--b1);border-radius:7px;padding:4px 10px;color:var(--t3);font-size:10px;cursor:pointer;font-family:var(--sans);">💾 حفظ الفلتر</button>
+        <button onclick="resetScrFilters()" style="background:none;border:1px solid var(--b1);border-radius:7px;padding:4px 10px;color:var(--t5);font-size:10px;cursor:pointer;font-family:var(--sans);">✕ إعادة ضبط</button>
+      </div>
+
+      <!-- Table Header -->
+      <div style="display:grid;grid-template-columns:1fr 70px 68px 52px 40px 32px;gap:0;padding:5px 4px;border-bottom:2px solid var(--b2);">
+        <div style="color:var(--t5);font-size:9px;font-weight:700;font-family:var(--mono);">السهم</div>
+        <div style="color:var(--t5);font-size:9px;font-weight:700;font-family:var(--mono);text-align:left;">السعر</div>
+        <div style="color:var(--t5);font-size:9px;font-weight:700;font-family:var(--mono);text-align:left;">تغيير%</div>
+        <div style="color:var(--t5);font-size:9px;font-weight:700;font-family:var(--mono);text-align:left;">حجم</div>
+        <div style="color:var(--t5);font-size:9px;font-weight:700;font-family:var(--mono);text-align:left;">P/E</div>
+        <div style="color:var(--t5);font-size:9px;font-weight:700;text-align:left;">⭐</div>
+      </div>
+      <div id="scr-results"></div>
+
+      <div style="margin-top:8px;padding:7px;background:rgba(59,130,246,.05);border-radius:8px;border:1px solid rgba(59,130,246,.1);">
+        <div style="color:var(--t5);font-size:9px;text-align:center;direction:rtl;">📡 بيانات حقيقية من Yahoo Finance · تُحدَّث كل دقيقتين</div>
+      </div>
     </div>
 
-    <!-- PRICE TARGETS -->
+    <!-- AI STOCK ANALYSIS (replaces fake price targets) -->
     <div class="vbox au">
-      <div class="vbox-title" style="color:var(--au);">🎯 مستهدفات الأسعار</div>
-      ${[{sym:"CIB",curr:"72.5",t:"85",r:"شراء",u:"+17.2%"},{sym:"COMI",curr:"52.3",t:"61",r:"شراء",u:"+16.6%"},{sym:"EFIH",curr:"15.2",t:"18",r:"شراء",u:"+18.4%"},{sym:"OCDI",curr:"24.8",t:"30",r:"شراء",u:"+20.9%"},{sym:"SWDY",curr:"31.5",t:"28",r:"بيع",u:"-11.1%"}].map((s,i,arr)=>`
-        <div class="t-row" style="${i===arr.length-1?"border:none":""}">
-          <div><span style="color:var(--au);font-weight:800;font-size:13px;font-family:var(--mono);">${s.sym}</span><span style="color:var(--t4);font-size:11px;margin-right:6px;">${s.curr} ج</span></div>
-          <div class="row" style="gap:6px;">
-            <span style="color:var(--t4);font-size:10px;">هدف: ${s.t}ج</span>
-            <span class="bdg" style="background:${s.r==="شراء"?"var(--upd)":"var(--dnd)"};color:${s.r==="شراء"?"var(--up)":"var(--dn)"};">${s.r}</span>
-            <span style="color:${s.r==="شراء"?"var(--up)":"var(--dn)"};font-size:10px;font-weight:700;">${s.u}</span>
-          </div>
-        </div>`).join("")}
+      <div class="vbox-title" style="color:var(--au);">🎯 تحليل AI للأسهم</div>
+      <div style="color:var(--t4);font-size:11.5px;line-height:1.7;margin-bottom:10px;direction:rtl;">
+        التحليل مبني على بيانات السوق الفعلية الحالية وأخبار اليوم. للأغراض التعليمية والتحليلية فقط — ليس نصيحة استثمارية ملزمة.
+      </div>
+      <button class="btn btn-au btn-full" style="padding:10px;font-size:12.5px;" id="ai-analysis-btn" onclick="getAIStockAnalysis()">
+        🤖 اطلب تحليل AI للأسهم الآن
+      </button>
+      <div id="ai-analysis-res" style="display:none;margin-top:12px;background:rgba(245,158,11,.05);border-radius:12px;padding:13px;border:1px solid rgba(245,158,11,.15);">
+        <div style="color:var(--au);font-size:10px;font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;">
+          <span>🤖 تحليل AI · بيانات حقيقية</span>
+          <span id="ai-analysis-ts" style="color:var(--t5);font-family:var(--mono);font-size:9px;"></span>
+        </div>
+        <div id="ai-analysis-txt" style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;"></div>
+        <div style="margin-top:10px;padding:7px;background:rgba(245,158,11,.08);border-radius:8px;">
+          <div style="color:var(--au);font-size:9.5px;text-align:center;">⚠️ تنبيه: هذا تحليل تعليمي ومعلوماتي فقط. قرارات الاستثمار على مسؤوليتك الكاملة.</div>
+        </div>
+      </div>
     </div>
 
     <!-- PORTFOLIO TRACKER -->
@@ -1782,33 +1921,184 @@ function renderVIP(){
       <div id="rep-res" style="display:none;margin-top:11px;color:var(--t2);font-size:13px;line-height:1.88;direction:rtl;white-space:pre-line;"></div>
     </div>`;
 
-  renderChatUI();renderPortList();runScr('all',document.querySelector(".scr-f.active"));
+  renderChatUI();renderPortList();
+  renderScrResults();
 }
 
-/* Stock Screener */
-function runScr(type,btn){
-  document.querySelectorAll(".scr-f").forEach(b=>b.classList.remove("active"));
-  if(btn)btn.classList.add("active");
-  let stocks;
-  if(type==="up")stocks=[...EGX_STOCKS].filter(s=>s.chg>0).sort((a,b)=>b.chg-a.chg);
-  else if(type==="dn")stocks=[...EGX_STOCKS].filter(s=>s.chg<0).sort((a,b)=>a.chg-b.chg);
-  else if(type==="vol")stocks=[...EGX_STOCKS].sort((a,b)=>parseFloat(b.vol)-parseFloat(a.vol)).slice(0,8);
-  else if(type==="banks")stocks=EGX_STOCKS.filter(s=>s.sector==="بنوك");
-  else if(type==="real")stocks=EGX_STOCKS.filter(s=>s.sector==="عقارات");
-  else if(type==="tech")stocks=EGX_STOCKS.filter(s=>s.sector==="تقنية"||s.sector==="اتصالات");
-  else stocks=[...EGX_STOCKS];
+/* ══════════════ PRO STOCK SCREENER LOGIC ══════════════ */
 
-  const el=document.getElementById("scr-list");
-  if(!stocks.length){el.innerHTML=`<div class="scr-empty">لا توجد أسهم مطابقة</div>`;return;}
+let scrMktCap="all";
+
+function setScrFilter(type,val,btn){
+  scrFilters[type]=val;
+  const row=btn.closest(".scr-filters")||btn.parentElement;
+  row.querySelectorAll(".scr-f").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
+  renderScrResults();
+}
+
+function setScrMktCap(val,btn){
+  scrMktCap=val;
+  document.querySelectorAll("[id^='scrf-cap-']").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
+  renderScrResults();
+}
+
+function renderScrResults(){
+  const el=document.getElementById("scr-results");
+  if(!el) return;
+  const countEl=document.getElementById("scr-count");
+  if(!liveStocks.length){
+    el.innerHTML=`<div class="scr-empty">⏳ جارٍ تحميل بيانات الأسهم...</div>`;
+    if(countEl) countEl.textContent="جارٍ...";
+    return;
+  }
+
+  const prMin=parseFloat(document.getElementById("scr-pr-min")?.value||"0")||0;
+  const prMax=parseFloat(document.getElementById("scr-pr-max")?.value||"0")||Infinity;
+  const volMin=parseInt(document.getElementById("scr-vol-min")?.value||"0")||0;
+  const peFilter=document.getElementById("scr-pe")?.value||"all";
+  const sortBy=document.getElementById("scr-sort")?.value||scrFilters.sortBy;
+
+  let stocks=[...liveStocks];
+
+  // Sector
+  if(scrFilters.sector!=="all") stocks=stocks.filter(s=>s.sector===scrFilters.sector);
+  // Performance
+  if(scrFilters.perf==="up") stocks=stocks.filter(s=>s.chgPct>0);
+  else if(scrFilters.perf==="dn") stocks=stocks.filter(s=>s.chgPct<0);
+  else if(scrFilters.perf==="up3") stocks=stocks.filter(s=>s.chgPct>=3);
+  else if(scrFilters.perf==="dn3") stocks=stocks.filter(s=>s.chgPct<=-3);
+  else if(scrFilters.perf==="up5") stocks=stocks.filter(s=>s.chgPct>=5);
+  // Price range
+  if(prMin>0) stocks=stocks.filter(s=>s.price>=prMin);
+  if(prMax<Infinity) stocks=stocks.filter(s=>s.price<=prMax);
+  // Volume
+  if(volMin>0) stocks=stocks.filter(s=>s.vol>=volMin);
+  // P/E
+  if(peFilter==="0-15") stocks=stocks.filter(s=>s.pe&&s.pe>0&&s.pe<=15);
+  else if(peFilter==="15-30") stocks=stocks.filter(s=>s.pe&&s.pe>15&&s.pe<=30);
+  else if(peFilter==="30+") stocks=stocks.filter(s=>s.pe&&s.pe>30);
+  else if(peFilter==="neg") stocks=stocks.filter(s=>!s.pe||s.pe<=0);
+  // Market Cap
+  if(scrMktCap==="large") stocks=stocks.filter(s=>s.mktCapM&&s.mktCapM>=10000);
+  else if(scrMktCap==="mid") stocks=stocks.filter(s=>s.mktCapM&&s.mktCapM>=1000&&s.mktCapM<10000);
+  else if(scrMktCap==="small") stocks=stocks.filter(s=>!s.mktCapM||s.mktCapM<1000);
+
+  // Sort
+  stocks.sort((a,b)=>{
+    const av=a[sortBy]??0, bv=b[sortBy]??0;
+    return scrFilters.sortDir*(bv-av);
+  });
+
+  if(countEl) countEl.textContent=`${stocks.length} سهم`;
+  const dirBtn=document.getElementById("scr-dir-btn");
+  if(dirBtn) dirBtn.textContent=scrFilters.sortDir<0?"↓ تنازلي":"↑ تصاعدي";
+
+  if(!stocks.length){el.innerHTML=`<div class="scr-empty">🔍 لا توجد أسهم مطابقة للفلاتر المحددة</div>`;return;}
+
   el.innerHTML=stocks.map(s=>{
-    const up=s.chg>=0;
-    return`<div class="scr-row" onclick="showToast('📊 ${s.sym}: ${s.price.toFixed(2)} ج')">
-      <div><div class="scr-sym">${s.sym}</div><div class="scr-name">${s.name}</div></div>
-      <div class="scr-price">${s.price.toFixed(2)}</div>
-      <div class="scr-chg" style="color:${up?"var(--up)":"var(--dn)"};">${up?"+":""}${s.chg.toFixed(1)}%</div>
-      <div class="scr-vol">${s.vol}</div>
+    const up=s.chgPct>=0;
+    const inWL=wl.includes(s.sym);
+    return`<div class="scr-row" onclick="openStockDetail('${s.sym}')">
+      <div>
+        <div class="scr-sym">${sanitize(s.sym)}</div>
+        <div class="scr-name">${sanitize(s.name.slice(0,14))}</div>
+      </div>
+      <div class="scr-price" style="text-align:left;">${s.price.toFixed(2)}</div>
+      <div class="scr-chg" style="color:${up?"var(--up)":"var(--dn)"};text-align:left;">${up?"+":""}${s.chgPct.toFixed(2)}%</div>
+      <div class="scr-vol" style="text-align:left;">${fmtVol(s.vol)}</div>
+      <div style="color:var(--t4);font-size:9.5px;font-family:var(--mono);text-align:left;">${s.pe?s.pe.toFixed(1):"—"}</div>
+      <button onclick="event.stopPropagation();toggleWL('${s.sym}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;opacity:${inWL?1:.4};" title="إضافة للمفضلة">${inWL?"⭐":"☆"}</button>
     </div>`;
   }).join("");
+}
+
+function refreshScreener(){
+  fetchStocksData().then(()=>renderScrResults());
+}
+
+function resetScrFilters(){
+  scrFilters={sector:"all",perf:"all",priceMin:"",priceMax:"",volMin:"",peFilter:"all",sortBy:"chgPct",sortDir:-1};
+  scrMktCap="all";
+  ["scr-pr-min","scr-pr-max"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+  document.querySelectorAll("[id^='scrf-cap-']").forEach(b=>b.classList.toggle("active",b.id.includes("all")));
+  document.getElementById("scr-vol-min")&&(document.getElementById("scr-vol-min").value="0");
+  document.getElementById("scr-pe")&&(document.getElementById("scr-pe").value="all");
+  document.getElementById("scr-sort")&&(document.getElementById("scr-sort").value="chgPct");
+  // Reset pill buttons
+  document.querySelectorAll("#scr-sector-row .scr-f").forEach((b,i)=>b.classList.toggle("active",i===0));
+  document.querySelectorAll(".scr-filters .scr-f").forEach((b,i)=>{
+    if(b.closest("#scr-sector-row"))b.classList.toggle("active",i===0);
+  });
+  renderScrResults();
+  showToast("✅ تم إعادة ضبط الفلاتر");
+}
+
+/* Saved Filters */
+function saveScrFilter(){
+  const name=prompt("اسم الفلتر:");
+  if(!name) return;
+  const saved=DB.g("scr_saved",[]);
+  saved.push({name,filters:{...scrFilters},mktCap:scrMktCap,ts:Date.now()});
+  DB.s("scr_saved",saved);
+  renderSavedFilters();
+  showToast("✅ تم حفظ الفلتر: "+name);
+}
+
+function renderSavedFilters(){
+  const saved=DB.g("scr_saved",[]);
+  const row=document.getElementById("scr-saved-row");
+  const pills=document.getElementById("scr-saved-pills");
+  if(!row||!pills) return;
+  if(!saved.length){row.style.display="none";return;}
+  row.style.display="block";
+  pills.innerHTML=saved.map((f,i)=>`
+    <button class="scr-f" onclick="loadScrFilter(${i})" style="gap:4px;">${sanitize(f.name)}</button>
+    <button onclick="deleteScrFilter(${i})" style="background:var(--dnd);border:none;border-radius:6px;padding:2px 6px;color:var(--dn);font-size:9px;cursor:pointer;margin-right:2px;">×</button>
+  `).join("");
+}
+
+function loadScrFilter(i){
+  const saved=DB.g("scr_saved",[]);
+  if(!saved[i]) return;
+  Object.assign(scrFilters,saved[i].filters);
+  scrMktCap=saved[i].mktCap||"all";
+  renderScrResults();
+  showToast("✅ تم تحميل الفلتر: "+saved[i].name);
+}
+
+function deleteScrFilter(i){
+  const saved=DB.g("scr_saved",[]);
+  saved.splice(i,1);
+  DB.s("scr_saved",saved);
+  renderSavedFilters();
+}
+
+/* AI Stock Analysis (replaces fake price targets) */
+async function getAIStockAnalysis(){
+  const btn=document.getElementById("ai-analysis-btn");
+  if(!btn) return;
+  btn.innerHTML='<div class="sp sp-au sp-sm"></div> جارٍ التحليل...';btn.disabled=true;
+  try{
+    const topStocks=liveStocks.slice(0,10).map(s=>`${s.sym} (${s.name}): ${s.price.toFixed(2)} ج (${s.chgPct>=0?"+":""}${s.chgPct.toFixed(2)}%)${s.pe?" P/E:"+s.pe.toFixed(1):""}${s.vol?" حجم:"+fmtVol(s.vol):""}`).join("\n");
+    const news=allArts.slice(0,5).map(a=>a.title).join(" | ");
+    const txt=await callAI({
+      max_tokens:900,
+      system:"أنت محلل مالي متخصص في البورصة المصرية. تُحلّل بناءً على البيانات الحقيقية فقط. تُقدّم تحليلاً تعليمياً ومعلوماتياً بالعربية. لا تُعطي توصيات استثمارية قاطعة. تُوضح دائماً أن التحليل للأغراض التعليمية.",
+      messages:[{role:"user",content:`حلّل هذه الأسهم بناءً على البيانات الحقيقية الحالية:\n${topStocks}\n\nأخبار السوق اليوم:\n${news}\n\nقدّم:\n1. نظرة عامة على أداء السوق اليوم\n2. أبرز الأسهم أداءً (صاعدة وهابطة) مع ذكر السبب المحتمل\n3. تحليل مستوى الخطر لكل سهم\n4. ملاحظات على مؤشرات التقييم (P/E)\n5. تنبيه واضح أن هذا تحليل تعليمي فقط`}]
+    });
+    const txtEl=document.getElementById("ai-analysis-txt");
+    const tsEl=document.getElementById("ai-analysis-ts");
+    if(txtEl) txtEl.textContent=txt;
+    if(tsEl) tsEl.textContent=new Date().toLocaleTimeString("ar-EG");
+    document.getElementById("ai-analysis-res").style.display="block";
+  }catch{
+    const txtEl=document.getElementById("ai-analysis-txt");
+    if(txtEl) txtEl.textContent="❌ تعذر الاتصال بالخادم. تحقق من اتصالك بالإنترنت.";
+    document.getElementById("ai-analysis-res").style.display="block";
+  }
+  btn.innerHTML="🔄 إعادة التحليل";btn.disabled=false;
 }
 
 /* Chat */
