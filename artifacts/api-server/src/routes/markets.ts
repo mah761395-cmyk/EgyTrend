@@ -313,6 +313,7 @@ type CommodityDef = {
   finnhub?: string;
   finnhubFactor?: number; // multiply ETF price by this to get spot
   stooq?: string | string[];
+  google?: string;
   prefix?: string;
   suffix?: string;
   decimals?: number;

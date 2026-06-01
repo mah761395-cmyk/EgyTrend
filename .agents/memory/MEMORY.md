@@ -1,0 +1,1 @@
+- [Admin Dashboard Architecture](admin-dashboard.md) — full production admin overhaul: JWT auth, RBAC, PostgreSQL, 10 tabs (plans/coupons/employees/AI/audit)
