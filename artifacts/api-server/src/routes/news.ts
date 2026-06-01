@@ -235,6 +235,8 @@ type CacheEntry = {
 };
 const CACHE = new Map<string, CacheEntry>();
 const TTL_MS = 5 * 60 * 1000;
+/* Stale entries are served for up to 2 hours when upstream is unavailable */
+const STALE_TTL_MS = 2 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 9000;
 
 const UA =
@@ -269,6 +271,14 @@ async function fetchSource(src: SourceMeta): Promise<{
     const data = { status: "ok" as const, items, meta: src };
     if (items.length > 0) CACHE.set(src.id, { ts: Date.now(), data });
     return data;
+  } catch (err) {
+    clearTimeout(t);
+    /* Serve stale cache (up to 2 hr) rather than crashing when upstream fails */
+    if (cached && Date.now() - cached.ts < STALE_TTL_MS) {
+      logger.warn({ source: src.id }, "upstream failed — serving stale cache");
+      return cached.data;
+    }
+    throw err;
   } finally {
     clearTimeout(t);
   }
