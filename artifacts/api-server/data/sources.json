@@ -15,7 +15,7 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#10b981",
-    "url": "https://www.masrawy.com/rss/economy"
+    "url": "https://news.google.com/rss/search?q=site:masrawy.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
   },
   "amwal": {
     "id": "amwal",
@@ -213,7 +213,7 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#059669",
-    "url": "https://almalnews.com/feed/"
+    "url": "https://news.google.com/rss/search?q=site:almalnews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
   },
   "dostor": {
     "id": "dostor",
