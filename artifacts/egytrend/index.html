@@ -661,6 +661,60 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
   .hdr-row{padding:12px 18px;}
   #bnav{max-width:760px;}
 }
+
+/* ─── NOTIFICATION SYSTEM ─── */
+.bell-btn{position:relative;background:none;border:none;cursor:pointer;font-size:19px;padding:4px 6px;border-radius:8px;transition:background .15s;color:var(--t2);}
+.bell-btn:active{background:var(--s2);}
+.bell-badge{position:absolute;top:-2px;right:-2px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:var(--dn);color:#fff;font-size:9px;font-weight:800;line-height:16px;text-align:center;font-family:var(--mono);box-shadow:0 0 0 2px var(--bg);display:none;align-items:center;justify-content:center;}
+.bell-badge.show{display:flex;}
+
+#notif-panel{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;z-index:600;background:var(--ink2);border-bottom:1px solid var(--b1);box-shadow:0 8px 40px rgba(0,0,0,.6);max-height:85vh;overflow-y:auto;transition:transform .28s cubic-bezier(.22,1,.36,1),opacity .22s ease;transform:translateX(-50%) translateY(-110%);opacity:0;pointer-events:none;}
+#notif-panel.open{transform:translateX(-50%) translateY(0);opacity:1;pointer-events:all;}
+.notif-hdr{padding:14px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--b1);position:sticky;top:0;background:var(--ink2);z-index:1;}
+.notif-title{color:var(--t1);font-weight:800;font-size:14px;}
+.notif-acts{display:flex;gap:8px;align-items:center;}
+.notif-item{padding:13px 16px;border-bottom:1px solid var(--b1);cursor:pointer;transition:background .15s;display:flex;gap:11px;align-items:flex-start;}
+.notif-item:last-child{border-bottom:none;}
+.notif-item:active{background:var(--s1);}
+.notif-item.unread{background:rgba(16,185,129,.035);}
+.notif-icon{font-size:22px;flex-shrink:0;width:32px;text-align:center;}
+.notif-body{flex:1;min-width:0;}
+.notif-ntitle{color:var(--t1);font-weight:700;font-size:12.5px;line-height:1.4;margin-bottom:3px;}
+.notif-ntext{color:var(--t3);font-size:11px;line-height:1.5;}
+.notif-time{color:var(--t5);font-size:10px;margin-top:3px;font-family:var(--mono);}
+.notif-dot{width:7px;height:7px;border-radius:50%;background:var(--g);flex-shrink:0;margin-top:5px;}
+.notif-empty{text-align:center;padding:36px 16px;color:var(--t4);font-size:13px;}
+
+/* ─── OPPORTUNITIES PAGE ─── */
+.opps-page{padding:14px 14px 88px;}
+.opps-filter-row{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;scrollbar-width:none;margin-bottom:12px;}
+.opps-filter-row::-webkit-scrollbar{display:none;}
+.opp-filter{flex-shrink:0;background:var(--s1);border:1px solid var(--b1);border-radius:20px;padding:5px 13px;font-size:11px;font-weight:700;color:var(--t3);cursor:pointer;font-family:var(--sans);transition:all .15s;}
+.opp-filter.active{background:var(--gd);border-color:rgba(16,185,129,.3);color:var(--g);}
+.opp-card{background:var(--ink2);border:1px solid var(--b1);border-radius:18px;padding:16px;margin-bottom:12px;cursor:pointer;transition:border-color .18s,background .18s;}
+.opp-card:active{background:var(--s1);}
+.opp-card.featured{border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.03);}
+.opp-card.vip-locked{opacity:.7;}
+.opp-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px;}
+.opp-badges{display:flex;gap:5px;flex-wrap:wrap;}
+.opp-type-badge{border-radius:6px;padding:2px 8px;font-size:9.5px;font-weight:800;letter-spacing:.3px;}
+.opp-market-badge{border-radius:6px;padding:2px 8px;font-size:9.5px;font-weight:700;}
+.opp-title{color:var(--t1);font-weight:800;font-size:14px;line-height:1.4;margin-bottom:6px;}
+.opp-summary{color:var(--t3);font-size:12px;line-height:1.6;margin-bottom:12px;}
+.opp-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}
+.opp-meta-item{background:var(--s1);border-radius:9px;padding:7px 10px;}
+.opp-meta-label{color:var(--t5);font-size:9px;font-weight:700;margin-bottom:2px;}
+.opp-meta-val{color:var(--t2);font-size:11.5px;font-weight:700;font-family:var(--mono);}
+.opp-risk{display:flex;gap:3px;margin-top:2px;}
+.opp-risk-dot{width:8px;height:8px;border-radius:50%;}
+.opp-actions{display:flex;gap:7px;padding-top:10px;border-top:1px solid var(--b1);}
+.opp-actions .btn{flex:1;padding:7px;font-size:11px;}
+.opp-deadline{display:flex;align-items:center;gap:5px;color:var(--dn);font-size:11px;font-weight:700;}
+.opp-vip-lock{text-align:center;padding:14px;background:var(--aud);border-radius:12px;cursor:pointer;margin-bottom:12px;}
+
+/* Admin opportunities form */
+.adm-opp-form{background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:14px;margin-bottom:14px;}
+.adm-opp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
 </style>
 </head>
 <body>
@@ -700,6 +754,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
       <div class="hdr-acts">
         <button class="ibtn" onclick="toggleSearch()">🔍</button>
         <button class="ibtn" id="rfbtn" onclick="fetchAllNews(true)" title="تحديث">↻</button>
+        <button class="bell-btn" onclick="toggleNotifPanel()" id="bell-btn" title="الإشعارات">🔔<span class="bell-badge" id="bell-badge">0</span></button>
         <div id="vip-hdr"></div>
       </div>
     </div>
@@ -742,17 +797,37 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
   <!-- VIP -->
   <div id="page-vip" class="page hidden vip-page"><div id="vip-el"></div></div>
 
-  <!-- SUPPORT -->
-  <div id="page-support" class="page hidden sup-page">
-    <div style="color:var(--t1);font-weight:800;font-size:17px;text-align:center;margin-bottom:16px;">الدعم الفني</div>
-    <a href="https://wa.me/201008605139?text=مرحباً، أحتاج مساعدة في EgyTrend" target="_blank" class="wa-card">
-      <div style="font-size:30px;margin-bottom:4px;">💬</div>
-      <div style="color:#fff;font-weight:900;font-size:15px;">تواصل واتساب مباشر</div>
-      <div style="color:rgba(255,255,255,.8);font-size:14px;font-family:var(--mono);">01008605139</div>
-      <div style="color:rgba(255,255,255,.5);font-size:11px;margin-top:2px;">ردّ خلال دقائق · 24/7</div>
-    </a>
-    <div id="faq-el"></div>
-    <div style="margin-top:18px;text-align:center;color:var(--t5);font-size:10.5px;line-height:2;">EgyTrend v6.0 © 2026<br/>"الخلاصة التي تحرك السوق"</div>
+  <!-- OPPORTUNITIES -->
+  <div id="page-opps" class="page hidden">
+    <div class="opps-page">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div>
+          <div style="color:var(--t1);font-weight:900;font-size:18px;">💡 آخر الفرص</div>
+          <div style="color:var(--t4);font-size:11px;margin-top:2px;">اكتتابات · أسهم · عقارات · صناديق</div>
+        </div>
+        <button class="ibtn" onclick="loadOpps(true)" title="تحديث">↻</button>
+      </div>
+      <!-- Type filters -->
+      <div class="opps-filter-row" id="opp-type-filters">
+        <button class="opp-filter active" onclick="setOppFilter('type','all',this)">الكل</button>
+        <button class="opp-filter" onclick="setOppFilter('type','ipo',this)">🏦 اكتتابات</button>
+        <button class="opp-filter" onclick="setOppFilter('type','stock',this)">📈 أسهم</button>
+        <button class="opp-filter" onclick="setOppFilter('type','realestate',this)">🏢 عقارات</button>
+        <button class="opp-filter" onclick="setOppFilter('type','fund',this)">💼 صناديق</button>
+        <button class="opp-filter" onclick="setOppFilter('type','etf',this)">📊 ETF</button>
+        <button class="opp-filter" onclick="setOppFilter('type','bond',this)">🏛️ سندات</button>
+      </div>
+      <!-- Market filters -->
+      <div class="opps-filter-row" id="opp-market-filters">
+        <button class="opp-filter active" onclick="setOppFilter('market','all',this)">🌍 كل الأسواق</button>
+        <button class="opp-filter" onclick="setOppFilter('market','egypt',this)">🇪🇬 مصر</button>
+        <button class="opp-filter" onclick="setOppFilter('market','us',this)">🇺🇸 أمريكا</button>
+        <button class="opp-filter" onclick="setOppFilter('market','gulf',this)">🌙 الخليج</button>
+        <button class="opp-filter" onclick="setOppFilter('market','crypto',this)">₿ كريبتو</button>
+        <button class="opp-filter" onclick="setOppFilter('market','global',this)">🌐 عالمي</button>
+      </div>
+      <div id="opps-list"></div>
+    </div>
   </div>
 
   <!-- PROFILE -->
@@ -772,6 +847,24 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
         <div><div style="color:var(--bl);font-size:20px;font-weight:900;font-family:var(--mono);" id="st-src">0</div><div style="color:var(--t4);font-size:10px;">مصادر</div></div>
       </div>
     </div>
+    <a href="https://wa.me/201008605139?text=مرحباً، أحتاج مساعدة في EgyTrend" target="_blank" style="display:flex;align-items:center;gap:10px;margin-top:12px;background:rgba(37,211,102,.08);border:1px solid rgba(37,211,102,.18);border-radius:14px;padding:13px 15px;text-decoration:none;">
+      <span style="font-size:22px;">💬</span>
+      <div><div style="color:#25d366;font-weight:800;font-size:13px;">الدعم الفني</div><div style="color:var(--t4);font-size:11px;">واتساب · 01008605139 · ردّ خلال دقائق</div></div>
+    </a>
+    <div style="margin-top:14px;text-align:center;color:var(--t5);font-size:10px;">EgyTrend v6.0 © 2026 · "الخلاصة التي تحرك السوق"</div>
+  </div>
+
+  <!-- NOTIFICATION PANEL -->
+  <div id="notif-panel">
+    <div class="notif-hdr">
+      <div class="notif-title">🔔 الإشعارات</div>
+      <div class="notif-acts">
+        <button onclick="markAllNotifsRead()" style="background:none;border:none;color:var(--g);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--sans);">قراءة الكل</button>
+        <button onclick="openNotifSettings()" style="background:none;border:none;color:var(--t4);font-size:16px;cursor:pointer;">⚙️</button>
+        <button onclick="toggleNotifPanel()" style="background:none;border:none;color:var(--t3);font-size:18px;cursor:pointer;">✕</button>
+      </div>
+    </div>
+    <div id="notif-list"></div>
   </div>
 
   <div id="bnav">
@@ -779,7 +872,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
       <button class="n-btn active" onclick="goNav('home')" id="nb-home"><span class="n-icon" style="position:relative;">🏠<span id="nb-news-badge" class="nb-badge" style="display:none;">0</span></span><span class="n-label">الرئيسية</span></button>
       <button class="n-btn" onclick="goNav('markets')" id="nb-markets"><span class="n-icon">📊</span><span class="n-label">الأسواق</span></button>
       <button class="n-btn" onclick="goNav('vip')" id="nb-vip"><span class="n-icon">⭐</span><span class="n-label">VIP</span></button>
-      <button class="n-btn" onclick="goNav('support')" id="nb-support"><span class="n-icon">💬</span><span class="n-label">الدعم</span></button>
+      <button class="n-btn" onclick="goNav('opps')" id="nb-opps"><span class="n-icon" style="position:relative;">💡<span id="nb-opps-badge" class="nb-badge" style="display:none;">0</span></span><span class="n-label">فرص</span></button>
       <button class="n-btn" onclick="goNav('profile')" id="nb-profile"><span class="n-icon">👤</span><span class="n-label">حسابي</span></button>
     </div>
   </div>
@@ -873,6 +966,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
     <button class="adm-tab" data-tab="employees" onclick="admTab('employees')">👨‍💼 الموظفون</button>
     <button class="adm-tab" data-tab="aiconfig" onclick="admTab('aiconfig')">🤖 إدارة AI</button>
     <button class="adm-tab" data-tab="audit" onclick="admTab('audit')">📋 سجل العمليات</button>
+    <button class="adm-tab" data-tab="opps" onclick="admTab('opps')">💡 الفرص</button>
   </div>
   <div class="adm-body" id="adm-body"></div>
 </div>
@@ -1075,6 +1169,8 @@ function bootApp(){
   renderVIP();renderProfile();
   updateNotifBadge();
   maybeRequestNotifPerm();
+  updateBellBadge();
+  checkAutoNotifs();
   setInterval(fetchMarketsData,60000);
   setInterval(fetchCalendarData,30*60*1000);
   setInterval(()=>fetchAllNews(true), 5*60*1000);
@@ -1309,6 +1405,7 @@ async function fetchCalendarData(){
     if(d.status!=="ok"||!Array.isArray(d.events))throw new Error("bad payload");
     liveCalendar=d.events;
     buildCalendar();
+    checkCalendarNotifs(liveCalendar);
   }catch(e){
     // Keep last calendar
   }
@@ -1432,6 +1529,7 @@ async function fetchAllNews(force=false){
 
   // Notifications: count new articles since last visit (and optionally fire browser notifications)
   notifyNewArticles(prevSeen);
+  notifyBreakingNews(allArts);
 
   // Breaking
   const brk=allArts.find(a=>a.isBreaking);
@@ -2297,7 +2395,8 @@ async function runRw(){
 
 /* ═══════════════════ FAQ ═══════════════════ */
 function buildFAQ(){
-  document.getElementById("faq-el").innerHTML=FAQ.map(f=>`
+  const faqEl=document.getElementById("faq-el");if(!faqEl)return;
+  faqEl.innerHTML=FAQ.map(f=>`
     <details class="faq-item">
       <summary class="faq-q">${f.q}<span style="color:var(--g);font-size:14px;flex-shrink:0;">+</span></summary>
       <div class="faq-a">${f.a}</div>
@@ -2393,7 +2492,7 @@ function admTab(tab){
   el.innerHTML=`<div class="empty"><div style="font-size:22px;margin-bottom:8px;">⏳</div><div>جارٍ التحميل...</div></div>`;
   const fns={dash:renderAdmDash,users:renderAdmUsers,reqs:renderAdmReqs,articles:renderAdmArticles,
     sources:renderAdmSources,plans:renderAdmPlans,coupons:renderAdmCoupons,
-    employees:renderAdmEmployees,aiconfig:renderAdmAIConfig,audit:renderAdmAudit};
+    employees:renderAdmEmployees,aiconfig:renderAdmAIConfig,audit:renderAdmAudit,opps:renderAdmOpps};
   if(fns[tab]) fns[tab](el);
 }
 
@@ -3138,7 +3237,7 @@ async function admRej(id){
 
 /* ═══════════════════ NAVIGATION ═══════════════════ */
 function goNav(id){
-  ["home","markets","vip","support","profile"].forEach(n=>{
+  ["home","markets","vip","opps","profile"].forEach(n=>{
     document.getElementById(`page-${n}`).classList.toggle("hidden",n!==id);
     document.getElementById(`nb-${n}`)?.classList.toggle("active",n===id);
   });
@@ -3146,6 +3245,460 @@ function goNav(id){
   if(id==="profile")renderProfile();
   if(id==="markets"){buildMarkets();buildCalendar();}
   if(id==="home") clearNotifs();
+  if(id==="opps") loadOpps();
+  closeNotifPanel();
+}
+
+/* ═══════════════════ NOTIFICATION SYSTEM ═══════════════════ */
+const NOTIF_KEY="notifs_v1";
+let notifOpen=false;
+
+function getNotifsStore(){return DB.g(NOTIF_KEY,{items:[],unread:0,prefs:{news:true,opps:true,calendar:true,sub:true}});}
+function saveNotifsStore(s){DB.s(NOTIF_KEY,s);}
+
+function addNotif(type,title,body,link="",icon="🔔"){
+  const store=getNotifsStore();
+  if(!store.prefs[type]&&type!=="sub")return;
+  const id=Date.now()+"_"+Math.random().toString(36).slice(2,6);
+  store.items.unshift({id,type,title,body,link,icon,read:false,ts:Date.now()});
+  if(store.items.length>50)store.items=store.items.slice(0,50);
+  store.unread=(store.items.filter(n=>!n.read)).length;
+  saveNotifsStore(store);
+  updateBellBadge();
+  if(notifOpen)renderNotifList();
+  if(store.prefs[type]!==false)tryBrowserNotif(title,body);
+}
+
+function updateBellBadge(){
+  const store=getNotifsStore();
+  const b=document.getElementById("bell-badge");if(!b)return;
+  if(store.unread>0){b.textContent=store.unread>9?"9+":store.unread;b.classList.add("show");}
+  else{b.classList.remove("show");}
+}
+
+function toggleNotifPanel(){
+  const p=document.getElementById("notif-panel");
+  notifOpen=!notifOpen;
+  p.classList.toggle("open",notifOpen);
+  if(notifOpen)renderNotifList();
+}
+function closeNotifPanel(){
+  notifOpen=false;
+  document.getElementById("notif-panel")?.classList.remove("open");
+}
+
+function renderNotifList(){
+  const store=getNotifsStore();
+  const el=document.getElementById("notif-list");if(!el)return;
+  if(!store.items.length){el.innerHTML=`<div class="notif-empty">📭<br/>لا توجد إشعارات بعد</div>`;return;}
+  el.innerHTML=store.items.map(n=>{
+    const ago=timeAgoNotif(n.ts);
+    return`<div class="notif-item${n.read?"":" unread"}" onclick="clickNotif('${n.id}','${n.link}')">
+      <div class="notif-icon">${n.icon}</div>
+      <div class="notif-body">
+        <div class="notif-ntitle">${n.title}</div>
+        <div class="notif-ntext">${n.body}</div>
+        <div class="notif-time">${ago}</div>
+      </div>
+      ${n.read?"":"<div class='notif-dot'></div>"}
+    </div>`;
+  }).join("");
+}
+
+function clickNotif(id,link){
+  const store=getNotifsStore();
+  const n=store.items.find(x=>x.id===id);if(n){n.read=true;}
+  store.unread=store.items.filter(x=>!x.read).length;
+  saveNotifsStore(store);
+  updateBellBadge();
+  renderNotifList();
+  if(link&&link.startsWith("nav:")){closeNotifPanel();goNav(link.replace("nav:",""));}
+}
+
+function markAllNotifsRead(){
+  const store=getNotifsStore();
+  store.items.forEach(n=>n.read=true);store.unread=0;
+  saveNotifsStore(store);
+  updateBellBadge();
+  renderNotifList();
+}
+
+function timeAgoNotif(ts){
+  const d=Math.floor((Date.now()-ts)/1000);
+  if(d<60)return"الآن";if(d<3600)return`منذ ${Math.floor(d/60)} دقيقة`;
+  if(d<86400)return`منذ ${Math.floor(d/3600)} ساعة`;
+  return`منذ ${Math.floor(d/86400)} يوم`;
+}
+
+function tryBrowserNotif(title,body){
+  if(!("Notification"in window)||Notification.permission!=="granted")return;
+  try{new Notification("EgyTrend — "+title,{body,icon:"/favicon.ico"});}catch(e){}
+}
+
+function requestNotifPermission(){
+  if(!("Notification"in window))return;
+  if(Notification.permission==="default"){
+    Notification.requestPermission().then(p=>{
+      if(p==="granted")showToast("✅ تم تفعيل إشعارات المتصفح");
+    });
+  }
+}
+
+function openNotifSettings(){
+  const store=getNotifsStore();
+  const labels={news:"📰 أخبار عاجلة",opps:"💡 فرص جديدة",calendar:"📅 التقويم الاقتصادي",sub:"⭐ تجديد الاشتراك"};
+  const ov=document.createElement("div");ov.id="notif-set-ov";
+  ov.style.cssText="position:fixed;inset:0;z-index:700;background:rgba(3,7,18,.92);display:flex;align-items:flex-end;";
+  ov.innerHTML=`<div style="width:100%;max-width:430px;margin:0 auto;background:var(--ink2);border-radius:22px 22px 0 0;padding:20px 18px 30px;">
+    <div style="color:var(--t2);font-weight:800;font-size:15px;margin-bottom:16px;">⚙️ إعدادات الإشعارات</div>
+    ${Object.entries(labels).map(([k,l])=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--b1);">
+      <div style="color:var(--t2);font-size:13px;">${l}</div>
+      <label style="position:relative;width:40px;height:22px;cursor:pointer;">
+        <input type="checkbox" ${store.prefs[k]?"checked":""} onchange="toggleNotifPref('${k}',this.checked)" style="opacity:0;width:0;height:0;"/>
+        <span style="position:absolute;inset:0;background:${store.prefs[k]?"var(--g)":"var(--s2)"};border-radius:11px;transition:background .2s;"></span>
+        <span style="position:absolute;top:2px;${store.prefs[k]?"left":"right"}:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:all .2s;"></span>
+      </label>
+    </div>`).join("")}
+    <div style="margin-top:14px;padding:10px;background:var(--bld);border-radius:10px;cursor:pointer;" onclick="requestNotifPermission()">
+      <div style="color:#93c5fd;font-size:12px;font-weight:700;">🔔 تفعيل إشعارات المتصفح</div>
+      <div style="color:var(--t4);font-size:10.5px;margin-top:2px;">تلقّ إشعارات حتى عند إغلاق التطبيق</div>
+    </div>
+    <button onclick="document.getElementById('notif-set-ov').remove()" style="width:100%;margin-top:14px;background:none;border:none;color:var(--t4);font-size:12px;cursor:pointer;font-family:var(--sans);">إغلاق</button>
+  </div>`;
+  document.body.appendChild(ov);
+}
+
+function toggleNotifPref(key,val){
+  const store=getNotifsStore();store.prefs[key]=val;saveNotifsStore(store);
+}
+
+function checkAutoNotifs(){
+  if(!U)return;
+  const isVip=U.plan==="vip"||U.plan==="admin";
+  if(isVip&&U.exp&&U.plan!=="admin"){
+    const daysLeft=Math.ceil((new Date(U.exp)-new Date())/(1000*60*60*24));
+    if(daysLeft<=7&&daysLeft>=0){
+      const key="sub_exp_notif_"+U.phone;
+      const last=localStorage.getItem(key);
+      if(!last||Date.now()-parseInt(last)>86400000){
+        addNotif("sub","تجديد الاشتراك القادم",`باقي ${daysLeft} يوم فقط على انتهاء اشتراكك VIP — جدّد الآن للاستمرار.`,"nav:profile","⭐");
+        localStorage.setItem(key,Date.now().toString());
+      }
+    }
+    if(daysLeft<0){
+      const key="sub_exp_end_"+U.phone;
+      if(!localStorage.getItem(key)){
+        addNotif("sub","انتهى اشتراكك VIP","انتهى اشتراكك في EgyTrend. جدّد الآن للاستمرار في استخدام مزايا VIP.","nav:profile","🔔");
+        localStorage.setItem(key,Date.now().toString());
+      }
+    }
+  }
+}
+
+function checkCalendarNotifs(events){
+  if(!events||!events.length)return;
+  const now=new Date();
+  events.slice(0,5).forEach(ev=>{
+    if(!ev.date)return;
+    const evDate=new Date(ev.date);
+    const diff=Math.floor((evDate-now)/(1000*60));
+    if(diff>=0&&diff<=120){
+      const key="cal_notif_"+ev.date+"_"+(ev.name||"").slice(0,10);
+      if(!localStorage.getItem(key)){
+        addNotif("calendar","حدث اقتصادي قادم",`${ev.name||"حدث"}${ev.currency?" ("+ev.currency+")":""} · خلال ${diff} دقيقة`,"nav:markets","📅");
+        localStorage.setItem(key,"1");
+      }
+    }
+  });
+}
+
+function notifyBreakingNews(articles){
+  if(!articles||!articles.length)return;
+  const store=getNotifsStore();if(!store.prefs.news)return;
+  const breakingKey="breaking_notif_last";
+  const lastTs=parseInt(localStorage.getItem(breakingKey)||"0");
+  const fresh=articles.filter(a=>a.impact>=4&&a.ts&&a.ts>lastTs&&a.ts>Date.now()-3600000);
+  if(!fresh.length)return;
+  const top=fresh[0];
+  addNotif("news","⚡ خبر عاجل",top.title||"خبر جديد ذو تأثير عالٍ","","🚨");
+  localStorage.setItem(breakingKey,Date.now().toString());
+}
+
+/* ═══════════════════ OPPORTUNITIES ═══════════════════ */
+let oppsData=[];let oppFilters={type:"all",market:"all"};
+
+const OPP_TYPES={ipo:{l:"اكتتاب",c:"#f59e0b",bg:"rgba(245,158,11,.12)"},stock:{l:"أسهم",c:"#10b981",bg:"rgba(16,185,129,.12)"},realestate:{l:"عقارات",c:"#3b82f6",bg:"rgba(59,130,246,.12)"},fund:{l:"صندوق",c:"#8b5cf6",bg:"rgba(139,92,246,.12)"},etf:{l:"ETF",c:"#06b6d4",bg:"rgba(6,182,212,.12)"},bond:{l:"سندات",c:"#64748b",bg:"rgba(100,116,139,.12)"}};
+const OPP_MARKETS={egypt:"🇪🇬",us:"🇺🇸",gulf:"🌙",crypto:"₿",global:"🌐"};
+const RISK_LABELS={1:"منخفضة جداً",2:"منخفضة",3:"متوسطة",4:"عالية",5:"عالية جداً"};
+const RISK_COLORS=["#22c55e","#84cc16","#f59e0b","#f97316","#ef4444"];
+
+async function loadOpps(force=false){
+  const el=document.getElementById("opps-list");if(!el)return;
+  el.innerHTML=`<div style="padding:20px;text-align:center;"><div class="sp sp-g"></div></div>`;
+  try{
+    const r=await fetch("/api/opportunities");
+    if(!r.ok)throw new Error("server");
+    const d=await r.json();
+    oppsData=(d.opportunities||[]).filter(o=>o.status!=="deleted");
+    const newCount=DB.g("opps_seen_count",0);
+    if(oppsData.length>newCount){
+      const diff=oppsData.length-newCount;
+      if(newCount>0){
+        const newest=oppsData.slice(0,diff);
+        newest.forEach(o=>addNotif("opps","فرصة استثمارية جديدة",o.title,"nav:opps","💡"));
+      }
+      DB.s("opps_seen_count",oppsData.length);
+      const badge=document.getElementById("nb-opps-badge");
+      if(badge&&diff>0&&newCount>0){badge.textContent=diff>9?"9+":diff;badge.style.display="flex";}
+    }
+  }catch(e){
+    if(oppsData.length===0){el.innerHTML=`<div class="notif-empty">⚠️<br/>تعذر تحميل الفرص<br/><button class="btn btn-g btn-sm" style="margin-top:10px;" onclick="loadOpps(true)">إعادة المحاولة</button></div>`;return;}
+  }
+  renderOpps();
+}
+
+function setOppFilter(dim,val,btn){
+  oppFilters[dim]=val;
+  const row=document.getElementById(dim==="type"?"opp-type-filters":"opp-market-filters");
+  if(row)row.querySelectorAll(".opp-filter").forEach(b=>b.classList.toggle("active",b===btn));
+  renderOpps();
+}
+
+function renderOpps(){
+  const el=document.getElementById("opps-list");if(!el)return;
+  const isVip=U?.plan==="vip"||U?.plan==="admin";
+  let list=oppsData;
+  if(oppFilters.type!=="all")list=list.filter(o=>o.type===oppFilters.type);
+  if(oppFilters.market!=="all")list=list.filter(o=>o.market===oppFilters.market);
+  if(!list.length){
+    el.innerHTML=`<div class="notif-empty">💡<br/>لا توجد فرص في هذه الفئة حالياً<br/><div style="font-size:10px;margin-top:6px;">تحقق لاحقاً أو تواصل معنا عبر واتساب</div></div>`;
+    return;
+  }
+  const saved=DB.g("saved_opps",[]);
+  el.innerHTML=list.map(o=>{
+    const t=OPP_TYPES[o.type]||{l:o.type,c:"#64748b",bg:"rgba(100,116,139,.12)"};
+    const mIcon=OPP_MARKETS[o.market]||"🌐";
+    const locked=o.vipOnly&&!isVip;
+    const rColor=RISK_COLORS[(o.riskLevel||3)-1];
+    const rLabel=RISK_LABELS[o.riskLevel||3]||"متوسطة";
+    const isSaved=saved.includes(o.id);
+    const daysLeft=o.deadline?Math.ceil((new Date(o.deadline)-new Date())/(1000*60*60*24)):null;
+    return`<div class="opp-card${o.featured?" featured":""}${locked?" vip-locked":""}" onclick="openOppDetail('${o.id}')">
+      <div class="opp-top">
+        <div class="opp-badges">
+          <span class="opp-type-badge" style="color:${t.c};background:${t.bg};">${t.l}</span>
+          <span class="opp-market-badge" style="background:var(--s2);color:var(--t3);">${mIcon} ${o.market==="egypt"?"مصر":o.market==="us"?"أمريكا":o.market==="gulf"?"الخليج":o.market==="crypto"?"كريبتو":"عالمي"}</span>
+          ${o.featured?`<span class="opp-type-badge" style="color:#f59e0b;background:rgba(245,158,11,.12);">⭐ مميزة</span>`:""}
+          ${o.vipOnly?`<span class="opp-type-badge" style="color:#a78bfa;background:rgba(139,92,246,.12);">VIP</span>`:""}
+        </div>
+        ${locked?`<span style="font-size:18px;">🔒</span>`:""}
+      </div>
+      <div class="opp-title">${o.title}</div>
+      ${locked?`<div class="opp-vip-lock" onclick="event.stopPropagation();goNav('vip')"><span style="color:var(--au);font-weight:800;font-size:12px;">⭐ اشترك في VIP لرؤية تفاصيل هذه الفرصة</span></div>`:
+      `<div class="opp-summary">${o.summary}</div>
+      <div class="opp-meta">
+        ${o.expectedReturn?`<div class="opp-meta-item"><div class="opp-meta-label">العائد المتوقع</div><div class="opp-meta-val" style="color:var(--g);">${o.expectedReturn}</div></div>`:""}
+        ${o.sector?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${o.sector}</div></div>`:""}
+        ${o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">مدة الاستثمار</div><div class="opp-meta-val">${o.duration}</div></div>`:""}
+        <div class="opp-meta-item">
+          <div class="opp-meta-label">درجة المخاطرة</div>
+          <div><div class="opp-risk">${[1,2,3,4,5].map(i=>`<div class="opp-risk-dot" style="background:${i<=(o.riskLevel||3)?rColor:"var(--b2)"};"></div>`).join("")}</div>
+          <div style="color:${rColor};font-size:9px;margin-top:2px;">${rLabel}</div></div>
+        </div>
+      </div>
+      ${daysLeft!==null?`<div class="opp-deadline">⏰ ${daysLeft<=0?"آخر يوم":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>`:""}`}
+      <div class="opp-actions">
+        <button class="btn btn-sm" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);" onclick="event.stopPropagation();toggleSaveOpp('${o.id}',this)">${isSaved?"🔖 محفوظة":"📌 حفظ"}</button>
+        ${!locked?`<button class="btn btn-g btn-sm" onclick="event.stopPropagation();openOppDetail('${o.id}')">التفاصيل ←</button>`:""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function toggleSaveOpp(id,btn){
+  const saved=DB.g("saved_opps",[]);
+  const idx=saved.indexOf(id);
+  if(idx>=0){saved.splice(idx,1);btn.textContent="📌 حفظ";showToast("تمت إزالة الفرصة");}
+  else{saved.push(id);btn.textContent="🔖 محفوظة";showToast("✅ تم حفظ الفرصة");}
+  DB.s("saved_opps",saved);
+}
+
+function openOppDetail(id){
+  const o=oppsData.find(x=>x.id===id);if(!o)return;
+  const isVip=U?.plan==="vip"||U?.plan==="admin";
+  const locked=o.vipOnly&&!isVip;
+  const t=OPP_TYPES[o.type]||{l:o.type,c:"#64748b",bg:"rgba(100,116,139,.12)"};
+  const rColor=RISK_COLORS[(o.riskLevel||3)-1];
+  const rLabel=RISK_LABELS[o.riskLevel||3]||"متوسطة";
+  const daysLeft=o.deadline?Math.ceil((new Date(o.deadline)-new Date())/(1000*60*60*24)):null;
+  const ov=document.createElement("div");ov.id="opp-detail-ov";
+  ov.style.cssText="position:fixed;inset:0;z-index:650;background:rgba(3,7,18,.95);overflow-y:auto;";
+  ov.innerHTML=`<div style="max-width:430px;margin:0 auto;padding:20px 16px 60px;">
+    <button onclick="document.getElementById('opp-detail-ov').remove()" style="background:none;border:none;color:var(--t3);font-size:14px;cursor:pointer;margin-bottom:16px;display:flex;align-items:center;gap:5px;font-family:var(--sans);">← رجوع</button>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+      <span class="opp-type-badge" style="color:${t.c};background:${t.bg};font-size:11px;padding:3px 10px;">${t.l}</span>
+      ${o.vipOnly?`<span class="opp-type-badge" style="color:#a78bfa;background:rgba(139,92,246,.12);font-size:11px;padding:3px 10px;">VIP فقط</span>`:""}
+      ${o.featured?`<span class="opp-type-badge" style="color:#f59e0b;background:rgba(245,158,11,.12);font-size:11px;padding:3px 10px;">⭐ مميزة</span>`:""}
+    </div>
+    <h2 style="color:var(--t1);font-size:20px;font-weight:900;line-height:1.4;margin-bottom:12px;">${o.title}</h2>
+    ${locked?`<div style="text-align:center;padding:30px;background:var(--aud);border-radius:16px;cursor:pointer;" onclick="document.getElementById('opp-detail-ov').remove();goNav('vip')"><div style="font-size:40px;margin-bottom:8px;">⭐</div><div style="color:var(--au);font-weight:800;font-size:15px;">هذه الفرصة لأعضاء VIP فقط</div><div style="color:var(--t4);font-size:12px;margin-top:5px;">اشترك الآن للوصول الكامل</div></div>`
+    :`<p style="color:var(--t2);font-size:13.5px;line-height:1.8;margin-bottom:18px;direction:rtl;">${o.summary}</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px;">
+      ${o.expectedReturn?`<div class="opp-meta-item"><div class="opp-meta-label">العائد المتوقع</div><div class="opp-meta-val" style="color:var(--g);font-size:14px;">${o.expectedReturn}</div></div>`:""}
+      ${o.sector?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${o.sector}</div></div>`:""}
+      ${o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">مدة الاستثمار</div><div class="opp-meta-val">${o.duration}</div></div>`:""}
+      <div class="opp-meta-item">
+        <div class="opp-meta-label">درجة المخاطرة</div>
+        <div><div class="opp-risk">${[1,2,3,4,5].map(i=>`<div class="opp-risk-dot" style="background:${i<=(o.riskLevel||3)?rColor:"var(--b2)"};width:10px;height:10px;"></div>`).join("")}</div>
+        <div style="color:${rColor};font-size:10px;margin-top:3px;">${rLabel}</div></div>
+      </div>
+    </div>
+    ${daysLeft!==null?`<div style="background:var(--dnd);border:1px solid rgba(239,68,68,.2);border-radius:11px;padding:11px;margin-bottom:14px;display:flex;align-items:center;gap:8px;"><span style="font-size:18px;">⏰</span><div><div style="color:var(--dn);font-weight:700;font-size:12.5px;">${daysLeft<=0?"آخر يوم للاكتتاب":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>${o.deadline?`<div style="color:var(--t4);font-size:10.5px;">الموعد النهائي: ${o.deadline}</div>`:""}</div></div>`:""}
+    ${o.details?`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:15px;margin-bottom:16px;"><div style="color:var(--g);font-size:11px;font-weight:700;margin-bottom:8px;">📋 تفاصيل إضافية</div><div style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;">${o.details}</div></div>`:""}
+    <div style="display:flex;gap:8px;margin-top:6px;">
+      <button class="btn btn-g btn-full" style="padding:13px;" onclick="toggleSaveOppFromDetail('${o.id}',this)">📌 حفظ الفرصة</button>
+      <a href="https://wa.me/201008605139?text=أريد معرفة المزيد عن: ${encodeURIComponent(o.title)}" target="_blank" class="btn btn-full" style="padding:13px;background:rgba(37,211,102,.12);border:1px solid rgba(37,211,102,.2);color:#25d366;text-decoration:none;text-align:center;">💬 استفسار</a>
+    </div>`}
+  </div>`;
+  document.body.appendChild(ov);
+}
+
+function toggleSaveOppFromDetail(id,btn){
+  const saved=DB.g("saved_opps",[]);
+  const idx=saved.indexOf(id);
+  if(idx>=0){saved.splice(idx,1);btn.textContent="📌 حفظ الفرصة";showToast("تمت إزالة الفرصة");}
+  else{saved.push(id);btn.textContent="🔖 محفوظة ✓";showToast("✅ تم حفظ الفرصة");}
+  DB.s("saved_opps",saved);
+}
+
+/* ═══════════════════ ADMIN OPPORTUNITIES ═══════════════════ */
+async function renderAdmOpps(){
+  const el=document.getElementById("adm-body");
+  el.innerHTML=`<div style="padding:14px;">
+    <div class="row between" style="margin-bottom:14px;">
+      <div style="color:var(--t2);font-weight:800;">💡 إدارة الفرص الاستثمارية</div>
+      <button class="btn btn-g btn-sm" onclick="openAddOppForm()">+ إضافة فرصة</button>
+    </div>
+    <div id="adm-opps-form"></div>
+    <div id="adm-opps-list"><div class="sp sp-g" style="margin:20px auto;display:block;"></div></div>
+  </div>`;
+  await loadAdmOpps();
+}
+
+async function loadAdmOpps(){
+  const el=document.getElementById("adm-opps-list");if(!el)return;
+  try{
+    const r=await admFetch("/api/opportunities");
+    const d=await r.json();
+    const all=(d.opportunities||[]);
+    if(!all.length){el.innerHTML=`<div style="text-align:center;padding:20px;color:var(--t4);font-size:12px;">لا توجد فرص بعد</div>`;return;}
+    el.innerHTML=all.map(o=>{
+      const t=OPP_TYPES[o.type]||{l:o.type,c:"#64748b"};
+      return`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px;margin-bottom:9px;">
+        <div class="row between">
+          <div><span style="color:${t.c};font-size:10px;font-weight:700;">${t.l}</span> · <span style="color:var(--t4);font-size:10px;">${o.market}</span>
+          ${o.featured?` · <span style="color:var(--au);font-size:10px;">⭐ مميزة</span>`:""}
+          ${o.vipOnly?` · <span style="color:#a78bfa;font-size:10px;">VIP</span>`:""}
+          <span style="color:${o.status==="active"?"var(--g)":o.status==="coming"?"var(--au)":"var(--dn)"};font-size:10px;margin-right:6px;">● ${o.status==="active"?"نشطة":o.status==="coming"?"قادمة":"مغلقة"}</span></div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm" style="background:rgba(59,130,246,.1);color:#93c5fd;font-size:10px;padding:3px 8px;" onclick="openEditOppForm('${o.id}')">تعديل</button>
+            <button class="btn btn-sm rej" style="font-size:10px;padding:3px 8px;" onclick="deleteOpp('${o.id}')">حذف</button>
+          </div>
+        </div>
+        <div style="color:var(--t2);font-size:12px;font-weight:700;margin-top:5px;">${o.title}</div>
+        <div style="color:var(--t4);font-size:11px;margin-top:3px;">${(o.summary||"").slice(0,80)}${o.summary?.length>80?"...":""}</div>
+      </div>`;
+    }).join("");
+  }catch(e){el.innerHTML=`<div style="color:var(--dn);font-size:12px;padding:14px;">خطأ في تحميل الفرص</div>`;}
+}
+
+function openAddOppForm(existing=null){
+  const el=document.getElementById("adm-opps-form");if(!el)return;
+  const o=existing||{};
+  el.innerHTML=`<div class="adm-opp-form">
+    <div style="color:var(--g);font-weight:700;font-size:13px;margin-bottom:12px;">${existing?"✏️ تعديل فرصة":"➕ إضافة فرصة جديدة"}</div>
+    <input class="a-in" id="of-title" placeholder="عنوان الفرصة *" value="${o.title||""}" style="margin-bottom:7px;"/>
+    <textarea class="a-in" id="of-summary" placeholder="ملخص سريع *" style="margin-bottom:7px;height:70px;resize:none;">${o.summary||""}</textarea>
+    <textarea class="a-in" id="of-details" placeholder="تفاصيل إضافية (اختياري)" style="margin-bottom:7px;height:80px;resize:none;">${o.details||""}</textarea>
+    <div class="adm-opp-grid">
+      <select class="a-in" id="of-type" style="margin-bottom:7px;">
+        ${Object.entries(OPP_TYPES).map(([k,v])=>`<option value="${k}" ${o.type===k?"selected":""}>${v.l}</option>`).join("")}
+      </select>
+      <select class="a-in" id="of-market" style="margin-bottom:7px;">
+        ${Object.entries(OPP_MARKETS).map(([k,v])=>`<option value="${k}" ${o.market===k?"selected":""}>${v} ${k}</option>`).join("")}
+      </select>
+      <input class="a-in" id="of-ret" placeholder="العائد المتوقع" value="${o.expectedReturn||""}" style="margin-bottom:7px;"/>
+      <input class="a-in" id="of-sector" placeholder="القطاع" value="${o.sector||""}" style="margin-bottom:7px;"/>
+      <input class="a-in" id="of-dur" placeholder="مدة الاستثمار" value="${o.duration||""}" style="margin-bottom:7px;"/>
+      <input class="a-in" id="of-deadline" placeholder="الموعد النهائي (مثال: 30 يونيو 2026)" value="${o.deadline||""}" style="margin-bottom:7px;"/>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+      <div style="font-size:11px;color:var(--t3);">درجة المخاطرة:</div>
+      ${[1,2,3,4,5].map(i=>`<label style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--t3);cursor:pointer;"><input type="radio" name="of-risk" value="${i}" ${(o.riskLevel||3)===i?"checked":""}> ${i}</label>`).join("")}
+    </div>
+    <div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap;">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--t3);cursor:pointer;"><input type="checkbox" id="of-featured" ${o.featured?"checked":""}> ⭐ مميزة</label>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--t3);cursor:pointer;"><input type="checkbox" id="of-vip" ${o.vipOnly?"checked":""}> 🔒 VIP فقط</label>
+    </div>
+    <select class="a-in" id="of-status" style="margin-bottom:10px;">
+      <option value="active" ${(o.status||"active")==="active"?"selected":""}>نشطة</option>
+      <option value="coming" ${o.status==="coming"?"selected":""}>قادمة</option>
+      <option value="closed" ${o.status==="closed"?"selected":""}>مغلقة</option>
+    </select>
+    <div style="display:flex;gap:7px;">
+      <button class="btn btn-g btn-full" style="padding:10px;" onclick="submitOppForm('${o.id||""}')">${existing?"💾 حفظ التعديلات":"✅ إضافة الفرصة"}</button>
+      <button class="btn btn-sm" style="background:var(--s1);color:var(--t4);" onclick="document.getElementById('adm-opps-form').innerHTML=''">إلغاء</button>
+    </div>
+  </div>`;
+}
+
+function openEditOppForm(id){
+  const o=oppsData.find(x=>x.id===id)||{id};
+  if(!o.title){admFetch(`/api/opportunities`).then(r=>r.json()).then(d=>{const found=d.opportunities?.find(x=>x.id===id);if(found)openAddOppForm(found);});}
+  else openAddOppForm(o);
+}
+
+async function submitOppForm(existingId){
+  const title=document.getElementById("of-title")?.value.trim();
+  const summary=document.getElementById("of-summary")?.value.trim();
+  if(!title||!summary){showToast("⚠️ العنوان والملخص مطلوبان");return;}
+  const risk=document.querySelector("input[name='of-risk']:checked")?.value||"3";
+  const body={
+    title,summary,
+    details:document.getElementById("of-details")?.value.trim()||null,
+    type:document.getElementById("of-type")?.value||"stock",
+    market:document.getElementById("of-market")?.value||"egypt",
+    expectedReturn:document.getElementById("of-ret")?.value.trim()||null,
+    sector:document.getElementById("of-sector")?.value.trim()||null,
+    duration:document.getElementById("of-dur")?.value.trim()||null,
+    deadline:document.getElementById("of-deadline")?.value.trim()||null,
+    riskLevel:parseInt(risk),
+    status:document.getElementById("of-status")?.value||"active",
+    featured:document.getElementById("of-featured")?.checked||false,
+    vipOnly:document.getElementById("of-vip")?.checked||false,
+  };
+  try{
+    const url=existingId?`/api/opportunities/${existingId}`:"/api/opportunities";
+    const method=existingId?"PUT":"POST";
+    const r=await admFetch(url,{method,body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.status==="ok"){
+      showToast(existingId?"✅ تم تحديث الفرصة":"✅ تمت إضافة الفرصة");
+      document.getElementById("adm-opps-form").innerHTML="";
+      await loadAdmOpps();
+    }else showToast("❌ خطأ: "+d.message);
+  }catch(e){showToast("❌ خطأ في الاتصال بالسيرفر");}
+}
+
+async function deleteOpp(id){
+  if(!confirm("هل تريد حذف هذه الفرصة؟"))return;
+  try{
+    const r=await admFetch(`/api/opportunities/${id}`,{method:"DELETE"});
+    const d=await r.json();
+    if(d.status==="ok"){showToast("🗑️ تم حذف الفرصة");await loadAdmOpps();}
+    else showToast("❌ "+d.message);
+  }catch(e){showToast("❌ خطأ في الاتصال");}
 }
 function toggleSearch(){const b=document.getElementById("search-bar");b.classList.toggle("open");if(b.classList.contains("open"))document.getElementById("search-in").focus();}
 
