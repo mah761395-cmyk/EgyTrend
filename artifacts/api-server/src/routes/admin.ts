@@ -10,7 +10,7 @@ import {
 import { db } from "@workspace/db";
 import {
   employeesTable, subscriptionPlansTable, couponsTable,
-  auditLogsTable, aiConfigTable, aiUsageTable,
+  auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, like, or, sql } from "drizzle-orm";
 
@@ -632,6 +632,72 @@ router.post("/users/action", requireAuth, requireRole("super_admin", "admin", "s
   if (!phone) { res.status(400).json({ status: "error", message: "phone required" }); return; }
   await auditLog(String(action), req.actor, String(phone), { name: name || phone, reason: reason || "" }, req.ip);
   res.json({ status: "ok", action, phone });
+});
+
+/* ══════════════════════════════════════════════
+   PAYMENT REQUESTS (subscription sign-ups)
+══════════════════════════════════════════════ */
+
+/* Public: any logged-in user can submit a payment request */
+router.post("/requests", async (req: Request, res: Response) => {
+  const b = req.body || {};
+  const id = String(b.id || `req-${Date.now()}`).trim().slice(0, 60);
+  const phone = String(b.phone || "").trim().slice(0, 30);
+  const name = String(b.name || "").trim().slice(0, 80);
+  const planKey = String(b.planKey || "").trim().slice(0, 30);
+  const payMethod = String(b.payMethod || "").trim().slice(0, 30);
+  const price = Math.max(0, Number(b.price) || 0);
+  const tx = String(b.tx || "").trim().slice(0, 100);
+  if (!phone || !name || !planKey || !tx) {
+    res.status(400).json({ status: "error", message: "phone, name, planKey, tx required" });
+    return;
+  }
+  try {
+    await db.insert(paymentRequestsTable).values({ id, phone, name, planKey, payMethod, price, tx, status: "pending" })
+      .onConflictDoUpdate({ target: paymentRequestsTable.id, set: { phone, name, planKey, payMethod, price, tx, status: "pending", updatedAt: new Date() } });
+    res.json({ status: "ok", id });
+  } catch (e) {
+    logger.error({ err: e }, "payment request create error");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
+});
+
+/* Protected: list all payment requests */
+router.get("/requests", requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const statusFilter = String(req.query["status"] || "").trim();
+    let rows;
+    if (statusFilter && ["pending", "approved", "rejected"].includes(statusFilter)) {
+      rows = await db.select().from(paymentRequestsTable).where(eq(paymentRequestsTable.status, statusFilter)).orderBy(desc(paymentRequestsTable.createdAt)).limit(300);
+    } else {
+      rows = await db.select().from(paymentRequestsTable).orderBy(desc(paymentRequestsTable.createdAt)).limit(300);
+    }
+    res.json({ status: "ok", requests: rows });
+  } catch (e) {
+    res.status(500).json({ status: "error", message: String(e) });
+  }
+});
+
+/* Protected: approve or reject a request */
+router.put("/requests/:id", requireAuth, async (req: AuthRequest, res: Response) => {
+  const id = String(req.params["id"] || "").trim();
+  const { status, notes } = req.body || {};
+  if (!["approved", "rejected"].includes(String(status))) {
+    res.status(400).json({ status: "error", message: "status must be approved|rejected" });
+    return;
+  }
+  try {
+    const [existing] = await db.select().from(paymentRequestsTable).where(eq(paymentRequestsTable.id, id));
+    if (!existing) { res.status(404).json({ status: "error", message: "request not found" }); return; }
+    await db.update(paymentRequestsTable)
+      .set({ status: String(status), notes: notes ? String(notes).slice(0, 200) : null, updatedAt: new Date() })
+      .where(eq(paymentRequestsTable.id, id));
+    await auditLog(`request_${status}`, req.actor, existing.phone, { id, planKey: existing.planKey, tx: existing.tx }, req.ip);
+    res.json({ status: "ok" });
+  } catch (e) {
+    logger.error({ err: e }, "payment request update error");
+    res.status(500).json({ status: "error", message: String(e) });
+  }
 });
 
 export default router;

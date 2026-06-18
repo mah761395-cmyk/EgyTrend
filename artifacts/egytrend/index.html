@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="theme-color" content="#030712"/>
 <meta name="description" content="EgyTrend — منصة الأخبار الاقتصادية والأسواق المالية"/>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23030712'/%3E%3Cpath d='M4 22 L10 15 L16 18 L22 9 L28 12' stroke='%2310b981' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='28' cy='12' r='2' fill='%2310b981'/%3E%3C/svg%3E"/>
 <title>EgyTrend — نبض الأسواق</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
@@ -674,14 +675,16 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
   </div>
   <div class="auth-card">
     <div class="auth-tabs">
-      <button class="a-tab active" onclick="swAuth('login')">تسجيل الدخول</button>
-      <button class="a-tab" onclick="swAuth('register')">حساب جديد</button>
+      <button type="button" class="a-tab active" onclick="swAuth('login')">تسجيل الدخول</button>
+      <button type="button" class="a-tab" onclick="swAuth('register')">حساب جديد</button>
     </div>
-    <div id="reg-wrap" style="display:none;"><input class="a-in" id="a-name" placeholder="الاسم الكامل" dir="rtl"/></div>
-    <input class="a-in" id="a-phone" placeholder="رقم الموبايل" style="font-family:var(--mono);direction:ltr;"/>
-    <input class="a-in" id="a-pass" placeholder="كلمة المرور" type="password" dir="rtl"/>
+    <form id="auth-form" onsubmit="doAuth();return false;" autocomplete="on">
+    <div id="reg-wrap" style="display:none;"><input class="a-in" id="a-name" name="name" placeholder="الاسم الكامل" dir="rtl" autocomplete="name"/></div>
+    <input class="a-in" id="a-phone" name="username" placeholder="رقم الموبايل" style="font-family:var(--mono);direction:ltr;" autocomplete="username"/>
+    <input class="a-in" id="a-pass" name="password" placeholder="كلمة المرور" type="password" dir="rtl" autocomplete="current-password"/>
     <div class="a-err" id="a-err"></div>
-    <button class="a-btn" id="a-btn" onclick="doAuth()"><span id="a-btn-txt">دخول ←</span></button>
+    <button type="submit" class="a-btn" id="a-btn"><span id="a-btn-txt">دخول ←</span></button>
+    </form>
     <div style="margin-top:13px;text-align:center;color:var(--t5);font-size:11px;">دعم: <a href="https://wa.me/201008605139" target="_blank" style="color:var(--g);text-decoration:none;">واتساب 01008605139</a></div>
   </div>
 </div>
@@ -2245,11 +2248,16 @@ function sPay(id){
   selPay=id;document.querySelectorAll(".pay-c").forEach((c,i)=>c.classList.toggle("active",PAYS[i].id===id));
   const pm=PAYS.find(p=>p.id===id);const el=document.getElementById("pay-num");if(el&&pm)el.textContent=pm.num;
 }
-function submitPay(){
+async function submitPay(){
   const tx=(document.getElementById("tx-in")?.value||"").trim().slice(0,50);if(!tx){showToast("⚠️ أدخل كود العملية");return;}
+  const reqData={id:Date.now()+"",phone:U.phone,name:U.name,planKey:selPlan,payMethod:selPay,price:PLANS[selPlan].p,tx,status:"pending",at:new Date().toISOString()};
   const reqs=DB.g("reqs",[]);
-  reqs.unshift({id:Date.now()+"",phone:U.phone,name:U.name,planKey:selPlan,payMethod:selPay,price:PLANS[selPlan].p,tx,status:"pending",at:new Date().toISOString()});
-  DB.s("reqs",reqs);subStep=3;renderSub();
+  reqs.unshift(reqData);
+  DB.s("reqs",reqs);
+  try{
+    await fetch("/api/admin/requests",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(reqData)});
+  }catch{}
+  subStep=3;renderSub();
 }
 
 /* ═══════════════════ AI REWRITER ═══════════════════ */
@@ -2303,13 +2311,53 @@ function renderProfile(){
   document.getElementById("pav").textContent=isVip?"⭐":"👤";
   document.getElementById("pname").textContent=U.name||"—";
   document.getElementById("pphone").textContent=U.phone||"—";
-  document.getElementById("pchip").innerHTML=`<div class="plan-chip ${isVip?"vip":"free"}">${isVip?"⭐ عضو VIP نشط":"مستخدم مجاني"}</div>`;
+  let chipHtml=`<div class="plan-chip ${isVip?"vip":"free"}">${isVip?"⭐ عضو VIP نشط":"مستخدم مجاني"}</div>`;
+  if(isVip&&U.exp&&U.plan!=="admin"){
+    const expD=new Date(U.exp);const now=new Date();const daysLeft=Math.max(0,Math.ceil((expD-now)/(1000*60*60*24)));
+    chipHtml+=`<div style="color:${daysLeft<=7?"var(--dn)":"var(--t4)"};font-size:10px;margin-top:4px;">ينتهي: ${expD.toLocaleDateString("ar-EG")} ${daysLeft<=30?`(${daysLeft<=7?"⚠️":"⏱"} ${daysLeft} يوم)`:""}</div>`;
+  }
+  document.getElementById("pchip").innerHTML=chipHtml;
   let btns="";
   if(!isVip)btns+=`<button class="prof-btn sub" onclick="openSub()">⭐ اشترك في VIP الآن</button>`;
   if(isAdm)btns+=`<button class="prof-btn" style="background:var(--gd);border:1px solid rgba(16,185,129,.15);color:var(--g);margin-bottom:9px;" onclick="openAdm()">⚙️ لوحة التحكم</button>`;
+  if(U.phone!=="admin")btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openChangePass()">🔒 تغيير كلمة المرور</button>`;
   btns+=`<button class="prof-btn out" onclick="logout()">تسجيل الخروج</button>`;
   document.getElementById("pbtns").innerHTML=btns;
   updateStats();
+}
+
+function openChangePass(){
+  const overlay=document.getElementById("chpass-ov");if(!overlay){
+    const ov=document.createElement("div");ov.id="chpass-ov";
+    ov.style.cssText="position:fixed;inset:0;z-index:700;background:rgba(3,7,18,.92);display:flex;align-items:flex-end;";
+    ov.innerHTML=`<div style="width:100%;max-width:430px;margin:0 auto;background:var(--ink2);border-radius:22px 22px 0 0;padding:20px 18px 30px;">
+      <div style="color:var(--t2);font-weight:800;font-size:15px;margin-bottom:14px;">🔒 تغيير كلمة المرور</div>
+      <input class="a-in" id="cp-cur" type="password" placeholder="كلمة المرور الحالية" style="margin-bottom:9px;"/>
+      <input class="a-in" id="cp-new" type="password" placeholder="كلمة المرور الجديدة (6+ أحرف)" style="margin-bottom:9px;"/>
+      <input class="a-in" id="cp-con" type="password" placeholder="تأكيد كلمة المرور الجديدة" style="margin-bottom:12px;"/>
+      <div id="cp-err" style="display:none;color:var(--dn);font-size:12px;margin-bottom:9px;"></div>
+      <button class="btn btn-g btn-full" onclick="doChangePass()" style="padding:12px;">تغيير كلمة المرور</button>
+      <button onclick="document.getElementById('chpass-ov').remove()" style="width:100%;margin-top:8px;background:none;border:none;color:var(--t4);font-size:12px;cursor:pointer;font-family:var(--sans);">إلغاء</button>
+    </div>`;
+    document.body.appendChild(ov);
+  } else {overlay.style.display="flex";}
+}
+
+function doChangePass(){
+  const cur=document.getElementById("cp-cur")?.value||"";
+  const nw=document.getElementById("cp-new")?.value||"";
+  const con=document.getElementById("cp-con")?.value||"";
+  const err=document.getElementById("cp-err");
+  function showErr(m){err.textContent=m;err.style.display="block";}
+  err.style.display="none";
+  const users=DB.g("u",{});const u=users[U.phone];
+  if(!u){showErr("تعذر العثور على الحساب");return;}
+  if(u.pass!==cur){showErr("كلمة المرور الحالية غير صحيحة");return;}
+  if(nw.length<6){showErr("كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل");return;}
+  if(nw!==con){showErr("كلمات المرور غير متطابقة");return;}
+  u.pass=nw;DB.s("u",users);
+  document.getElementById("chpass-ov")?.remove();
+  showToast("✅ تم تغيير كلمة المرور بنجاح");
 }
 function updateStats(){
   const s1=document.getElementById("st-sv"),s2=document.getElementById("st-wl"),s3=document.getElementById("st-src");
@@ -2464,7 +2512,20 @@ async function admUserAction(action,phone,name){
 
 /* ─── Payment Requests ─── */
 async function renderAdmReqs(el){
-  const reqs=DB.g("reqs",[]);
+  el.innerHTML=`<div class="empty"><div style="font-size:22px;">⏳</div><div>جارٍ التحميل...</div></div>`;
+  let reqs=[];
+  try{
+    const r=await admFetch("/api/admin/requests");
+    const j=await r.json();
+    if(r.ok&&j.status==="ok") reqs=j.requests||[];
+    else throw new Error(j.message||"failed");
+    // Merge local requests not yet synced to server
+    const localReqs=DB.g("reqs",[]);
+    localReqs.forEach(lr=>{if(!reqs.find(sr=>sr.id===lr.id))reqs.push({...lr,createdAt:lr.at});});
+    reqs.sort((a,b)=>new Date(b.createdAt||b.at)-new Date(a.createdAt||a.at));
+  }catch{
+    reqs=DB.g("reqs",[]).map(r=>({...r,createdAt:r.at}));
+  }
   if(!reqs.length){el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">📋</div><div>لا توجد طلبات</div></div>`;return;}
   el.innerHTML=reqs.map(req=>`
     <div class="req-c ${req.status}">
@@ -2473,15 +2534,15 @@ async function renderAdmReqs(el){
           <div style="color:var(--t2);font-weight:700;font-size:13px;">${sanitize(req.name)}</div>
           <div style="color:var(--t4);font-size:10.5px;font-family:var(--mono);">${sanitize(req.phone)}</div>
           <div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;">
-            <span class="bdg" style="background:var(--aud);color:var(--au);">${PLANS[req.planKey]?.l||req.planKey} — ${req.price} ج</span>
+            <span class="bdg" style="background:var(--aud);color:var(--au);">${PLANS[req.planKey]?.l||sanitize(req.planKey)} — ${req.price||""} ج</span>
             <span class="bdg" style="background:var(--bld);color:#93c5fd;">${sanitize(req.payMethod||"")}</span>
             <span class="bdg" style="background:var(--s1);color:var(--t4);font-family:var(--mono);font-size:9px;">TX:${sanitize(req.tx)}</span>
           </div>
-          <div style="color:var(--t5);font-size:9.5px;margin-top:3px;">${new Date(req.at).toLocaleString("ar-EG")}</div>
+          <div style="color:var(--t5);font-size:9.5px;margin-top:3px;">${new Date(req.createdAt||req.at).toLocaleString("ar-EG")}</div>
         </div>
         <div style="display:flex;gap:4px;">
           ${req.status==="pending"
-            ?`<button class="r-btn app" onclick="admApp('${req.id}')">✓ قبول</button><button class="r-btn rej" onclick="admRej('${req.id}')">✕ رفض</button>`
+            ?`<button class="r-btn app" onclick="admApp('${sanitize(req.id)}')">✓ قبول</button><button class="r-btn rej" onclick="admRej('${sanitize(req.id)}')">✕ رفض</button>`
             :`<span class="bdg" style="background:${req.status==="approved"?"var(--gd)":"var(--dnd)"};color:${req.status==="approved"?"var(--g)":"var(--dn)"};">${req.status==="approved"?"✓ مقبول":"✕ مرفوض"}</span>`}
         </div>
       </div>
@@ -3041,15 +3102,39 @@ async function loadAdmAudit(){
   }catch(e){el.innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;}
 }
 
-/* ─── Keep existing admApp / admRej ─── */
-function admApp(id){
-  const reqs=DB.g("reqs",[]);const req=reqs.find(r=>r.id===id);if(!req)return;
-  req.status="approved";DB.s("reqs",reqs);
-  const users=DB.g("u",{});
-  if(users[req.phone]){users[req.phone].plan="vip";const exp=new Date();exp.setMonth(exp.getMonth()+PLANS[req.planKey]?.m||1);users[req.phone].exp=exp.toISOString();DB.s("u",users);const s=DB.g("s",null);if(s&&s.phone===req.phone){s.plan="vip";s.exp=users[req.phone].exp;DB.s("s",s);}}
-  renderAdmStats();admTab("reqs");showToast(`✅ تم تفعيل اشتراك ${req.name}`);
+/* ─── admApp / admRej — server + localStorage ─── */
+async function admApp(id){
+  try{
+    const r=await admFetch(`/api/admin/requests/${encodeURIComponent(id)}`,{method:"PUT",body:JSON.stringify({status:"approved"})});
+    const j=await r.json();
+    if(!r.ok){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
+  }catch(e){showToast("❌ "+String(e.message||e));return;}
+  // Also update localStorage mirror
+  const reqs=DB.g("reqs",[]);const req=reqs.find(r=>r.id===id);
+  if(req){
+    req.status="approved";DB.s("reqs",reqs);
+    const users=DB.g("u",{});
+    if(users[req.phone]){
+      users[req.phone].plan="vip";
+      const exp=new Date();exp.setMonth(exp.getMonth()+(PLANS[req.planKey]?.m||1));
+      users[req.phone].exp=exp.toISOString();
+      DB.s("u",users);
+      const s=DB.g("s",null);if(s&&s.phone===req.phone){s.plan="vip";s.exp=users[req.phone].exp;DB.s("s",s);}
+    }
+    showToast(`✅ تم تفعيل اشتراك ${req.name}`);
+  } else {showToast("✅ تم القبول");}
+  renderAdmStats();admTab("reqs");
 }
-function admRej(id){const reqs=DB.g("reqs",[]);const req=reqs.find(r=>r.id===id);if(req){req.status="rejected";DB.s("reqs",reqs);}admTab("reqs");showToast("❌ تم رفض الطلب");}
+async function admRej(id){
+  try{
+    const r=await admFetch(`/api/admin/requests/${encodeURIComponent(id)}`,{method:"PUT",body:JSON.stringify({status:"rejected"})});
+    const j=await r.json();
+    if(!r.ok){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
+  }catch(e){showToast("❌ "+String(e.message||e));return;}
+  const reqs=DB.g("reqs",[]);const req=reqs.find(r=>r.id===id);
+  if(req){req.status="rejected";DB.s("reqs",reqs);}
+  admTab("reqs");showToast("❌ تم رفض الطلب");
+}
 
 /* ═══════════════════ NAVIGATION ═══════════════════ */
 function goNav(id){
