@@ -800,22 +800,27 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
   <!-- OPPORTUNITIES -->
   <div id="page-opps" class="page hidden">
     <div class="opps-page">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <div>
-          <div style="color:var(--t1);font-weight:900;font-size:18px;">💡 آخر الفرص</div>
-          <div style="color:var(--t4);font-size:11px;margin-top:2px;">اكتتابات · أسهم · عقارات · صناديق</div>
+          <div style="display:flex;align-items:center;gap:7px;">
+            <div style="color:var(--t1);font-weight:900;font-size:18px;">💡 الفرص الاستثمارية</div>
+            <span id="opps-live-badge" style="display:none;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);border-radius:20px;padding:2px 8px;font-size:9.5px;font-weight:700;color:var(--g);letter-spacing:.3px;"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--g);margin-left:3px;animation:pulse 1.5s infinite;"></span>LIVE</span>
+          </div>
+          <div id="opps-last-updated" style="color:var(--t5);font-size:10px;margin-top:2px;">جاري التحميل...</div>
         </div>
         <button class="ibtn" onclick="loadOpps(true)" title="تحديث">↻</button>
       </div>
       <!-- Type filters -->
       <div class="opps-filter-row" id="opp-type-filters">
         <button class="opp-filter active" onclick="setOppFilter('type','all',this)">الكل</button>
-        <button class="opp-filter" onclick="setOppFilter('type','ipo',this)">🏦 اكتتابات</button>
         <button class="opp-filter" onclick="setOppFilter('type','stock',this)">📈 أسهم</button>
-        <button class="opp-filter" onclick="setOppFilter('type','realestate',this)">🏢 عقارات</button>
-        <button class="opp-filter" onclick="setOppFilter('type','fund',this)">💼 صناديق</button>
-        <button class="opp-filter" onclick="setOppFilter('type','etf',this)">📊 ETF</button>
         <button class="opp-filter" onclick="setOppFilter('type','bond',this)">🏛️ سندات</button>
+        <button class="opp-filter" onclick="setOppFilter('type','crypto',this)">₿ كريبتو</button>
+        <button class="opp-filter" onclick="setOppFilter('type','commodity',this)">🥇 سلع</button>
+        <button class="opp-filter" onclick="setOppFilter('type','realestate',this)">🏢 عقارات</button>
+        <button class="opp-filter" onclick="setOppFilter('type','etf',this)">📊 ETF</button>
+        <button class="opp-filter" onclick="setOppFilter('type','fund',this)">💼 صناديق</button>
+        <button class="opp-filter" onclick="setOppFilter('type','ipo',this)">🏦 اكتتابات</button>
       </div>
       <!-- Market filters -->
       <div class="opps-filter-row" id="opp-market-filters">
@@ -3461,21 +3466,30 @@ function notifyBreakingNews(articles){
 }
 
 /* ═══════════════════ OPPORTUNITIES ═══════════════════ */
-let oppsData=[];let oppFilters={type:"all",market:"all"};
+let oppsData=[];let oppFilters={type:"all",market:"all"};let oppsRefreshTimer=null;
 
-const OPP_TYPES={ipo:{l:"اكتتاب",c:"#f59e0b",bg:"rgba(245,158,11,.12)"},stock:{l:"أسهم",c:"#10b981",bg:"rgba(16,185,129,.12)"},realestate:{l:"عقارات",c:"#3b82f6",bg:"rgba(59,130,246,.12)"},fund:{l:"صندوق",c:"#8b5cf6",bg:"rgba(139,92,246,.12)"},etf:{l:"ETF",c:"#06b6d4",bg:"rgba(6,182,212,.12)"},bond:{l:"سندات",c:"#64748b",bg:"rgba(100,116,139,.12)"}};
+const OPP_TYPES={
+  stock:    {l:"أسهم",     c:"#10b981",bg:"rgba(16,185,129,.12)"},
+  bond:     {l:"سندات",    c:"#64748b",bg:"rgba(100,116,139,.12)"},
+  crypto:   {l:"كريبتو",  c:"#f59e0b",bg:"rgba(245,158,11,.12)"},
+  commodity:{l:"سلع",     c:"#fbbf24",bg:"rgba(251,191,36,.12)"},
+  realestate:{l:"عقارات", c:"#3b82f6",bg:"rgba(59,130,246,.12)"},
+  etf:      {l:"ETF",     c:"#06b6d4",bg:"rgba(6,182,212,.12)"},
+  fund:     {l:"صندوق",   c:"#8b5cf6",bg:"rgba(139,92,246,.12)"},
+  ipo:      {l:"اكتتاب",  c:"#ec4899",bg:"rgba(236,72,153,.12)"},
+};
 const OPP_MARKETS={egypt:"🇪🇬",us:"🇺🇸",gulf:"🌙",crypto:"₿",global:"🌐"};
 const RISK_LABELS={1:"منخفضة جداً",2:"منخفضة",3:"متوسطة",4:"عالية",5:"عالية جداً"};
 const RISK_COLORS=["#22c55e","#84cc16","#f59e0b","#f97316","#ef4444"];
 
 async function loadOpps(force=false){
   const el=document.getElementById("opps-list");if(!el)return;
-  el.innerHTML=`<div style="padding:20px;text-align:center;"><div class="sp sp-g"></div></div>`;
+  if(force||oppsData.length===0)el.innerHTML=`<div style="padding:20px;text-align:center;"><div class="sp sp-g"></div></div>`;
   try{
     const r=await fetch("/api/opportunities");
     if(!r.ok)throw new Error("server");
     const d=await r.json();
-    oppsData=(d.opportunities||[]).filter(o=>o.status!=="deleted");
+    oppsData=(d.opportunities||[]).filter(o=>o.status!=="deleted"&&o.status!=="closed");
     const newCount=DB.g("opps_seen_count",0);
     if(oppsData.length>newCount){
       const diff=oppsData.length-newCount;
@@ -3487,10 +3501,23 @@ async function loadOpps(force=false){
       const badge=document.getElementById("nb-opps-badge");
       if(badge&&diff>0&&newCount>0){badge.textContent=diff>9?"9+":diff;badge.style.display="flex";}
     }
+    // Update live badge + last-updated text
+    const liveBadge=document.getElementById("opps-live-badge");
+    const lastUpd=document.getElementById("opps-last-updated");
+    if(liveBadge)liveBadge.style.display="inline-flex";
+    if(lastUpd){
+      const now=new Date();
+      lastUpd.textContent=`${oppsData.length} فرصة · آخر تحديث ${now.toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"})}`;
+    }
   }catch(e){
+    const lastUpd=document.getElementById("opps-last-updated");
+    if(lastUpd)lastUpd.textContent="تعذر التحديث — بيانات مؤقتة";
     if(oppsData.length===0){el.innerHTML=`<div class="notif-empty">⚠️<br/>تعذر تحميل الفرص<br/><button class="btn btn-g btn-sm" style="margin-top:10px;" onclick="loadOpps(true)">إعادة المحاولة</button></div>`;return;}
   }
   renderOpps();
+  // Auto-refresh every 15 minutes
+  if(oppsRefreshTimer)clearTimeout(oppsRefreshTimer);
+  oppsRefreshTimer=setTimeout(()=>loadOpps(false),15*60*1000);
 }
 
 function setOppFilter(dim,val,btn){
@@ -3513,17 +3540,21 @@ function renderOpps(){
   const saved=DB.g("saved_opps",[]);
   el.innerHTML=list.map(o=>{
     const t=OPP_TYPES[o.type]||{l:o.type,c:"#64748b",bg:"rgba(100,116,139,.12)"};
-    const mIcon=OPP_MARKETS[o.market]||"🌐";
+    const mName={egypt:"🇪🇬 مصر",us:"🇺🇸 أمريكا",gulf:"🌙 الخليج",crypto:"₿ كريبتو",global:"🌐 عالمي"};
     const locked=o.vipOnly&&!isVip;
     const rColor=RISK_COLORS[(o.riskLevel||3)-1];
     const rLabel=RISK_LABELS[o.riskLevel||3]||"متوسطة";
     const isSaved=saved.includes(o.id);
     const daysLeft=o.deadline?Math.ceil((new Date(o.deadline)-new Date())/(1000*60*60*24)):null;
+    const ageHrs=o.createdAt?Math.floor((Date.now()-new Date(o.createdAt))/(1000*3600)):999;
+    const isNew=ageHrs<48;
+    const sectorClean=(o.sector||"").replace(/^\[AI\]\s*/,"");
     return`<div class="opp-card${o.featured?" featured":""}${locked?" vip-locked":""}" onclick="openOppDetail('${o.id}')">
       <div class="opp-top">
         <div class="opp-badges">
           <span class="opp-type-badge" style="color:${t.c};background:${t.bg};">${t.l}</span>
-          <span class="opp-market-badge" style="background:var(--s2);color:var(--t3);">${mIcon} ${o.market==="egypt"?"مصر":o.market==="us"?"أمريكا":o.market==="gulf"?"الخليج":o.market==="crypto"?"كريبتو":"عالمي"}</span>
+          <span class="opp-market-badge" style="background:var(--s2);color:var(--t3);">${mName[o.market]||o.market}</span>
+          ${isNew?`<span class="opp-type-badge" style="color:#22c55e;background:rgba(34,197,94,.12);">🟢 جديدة</span>`:""}
           ${o.featured?`<span class="opp-type-badge" style="color:#f59e0b;background:rgba(245,158,11,.12);">⭐ مميزة</span>`:""}
           ${o.vipOnly?`<span class="opp-type-badge" style="color:#a78bfa;background:rgba(139,92,246,.12);">VIP</span>`:""}
         </div>
@@ -3534,7 +3565,7 @@ function renderOpps(){
       `<div class="opp-summary">${o.summary}</div>
       <div class="opp-meta">
         ${o.expectedReturn?`<div class="opp-meta-item"><div class="opp-meta-label">العائد المتوقع</div><div class="opp-meta-val" style="color:var(--g);">${o.expectedReturn}</div></div>`:""}
-        ${o.sector?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${o.sector}</div></div>`:""}
+        ${sectorClean?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${sectorClean}</div></div>`:""}
         ${o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">مدة الاستثمار</div><div class="opp-meta-val">${o.duration}</div></div>`:""}
         <div class="opp-meta-item">
           <div class="opp-meta-label">درجة المخاطرة</div>
@@ -3611,14 +3642,44 @@ function toggleSaveOppFromDetail(id,btn){
 async function renderAdmOpps(){
   const el=document.getElementById("adm-body");
   el.innerHTML=`<div style="padding:14px;">
-    <div class="row between" style="margin-bottom:14px;">
+    <div class="row between" style="margin-bottom:10px;">
       <div style="color:var(--t2);font-weight:800;">💡 إدارة الفرص الاستثمارية</div>
-      <button class="btn btn-g btn-sm" onclick="openAddOppForm()">+ إضافة فرصة</button>
+      <button class="btn btn-g btn-sm" onclick="openAddOppForm()">+ إضافة</button>
+    </div>
+    <div style="background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.2);border-radius:12px;padding:11px 13px;margin-bottom:12px;">
+      <div style="color:#c084fc;font-size:11.5px;font-weight:700;margin-bottom:6px;">🤖 توليد AI تلقائي</div>
+      <div style="color:var(--t4);font-size:10.5px;margin-bottom:9px;line-height:1.6;">يقرأ بيانات السوق الحالية والأخبار ويولّد 8 فرص جديدة. يُغلق الفرص القديمة التلقائية ويضيف الجديدة.</div>
+      <button class="btn btn-sm" style="background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.3);color:#c084fc;width:100%;padding:8px;" id="ai-gen-opps-btn" onclick="generateAIOpps()">🤖 توليد فرص بـ AI الآن</button>
+      <div id="ai-gen-status" style="display:none;color:var(--t4);font-size:10px;margin-top:7px;text-align:center;"></div>
     </div>
     <div id="adm-opps-form"></div>
     <div id="adm-opps-list"><div class="sp sp-g" style="margin:20px auto;display:block;"></div></div>
   </div>`;
   await loadAdmOpps();
+}
+
+async function generateAIOpps(){
+  const btn=document.getElementById("ai-gen-opps-btn");
+  const status=document.getElementById("ai-gen-status");
+  if(btn)btn.disabled=true,btn.textContent="⏳ جاري التوليد...";
+  if(status){status.style.display="block";status.textContent="يقرأ بيانات السوق والأخبار...";}
+  try{
+    const r=await admFetch("/api/opportunities/generate",{method:"POST",body:JSON.stringify({})});
+    const d=await r.json();
+    if(d.status==="ok"){
+      if(status)status.textContent=`✅ تم إضافة ${d.inserted} فرصة جديدة (أُغلق ${d.closedOld} قديمة)`;
+      if(btn)btn.textContent="🤖 توليد فرص بـ AI الآن";
+      await loadAdmOpps();
+    } else {
+      if(status)status.textContent=`⚠️ خطأ: ${d.message}`;
+      if(btn)btn.textContent="🤖 توليد فرص بـ AI الآن";
+    }
+  }catch(e){
+    if(status)status.textContent="⚠️ فشل الاتصال بـ AI";
+    if(btn)btn.textContent="🤖 توليد فرص بـ AI الآن";
+  } finally {
+    if(btn)btn.disabled=false;
+  }
 }
 
 async function loadAdmOpps(){
