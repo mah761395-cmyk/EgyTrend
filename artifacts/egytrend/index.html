@@ -3483,6 +3483,33 @@ const RISK_LABELS={1:"منخفضة جداً",2:"منخفضة",3:"متوسطة",4
 const RISK_COLORS=["#22c55e","#84cc16","#f59e0b","#f97316","#ef4444"];
 
 async function loadOpps(force=false){
+  const isVip=U?.plan==="vip"||U?.plan==="admin";
+
+  // Non-VIP → show upsell gate instead of list
+  if(!isVip){
+    const wrapper=document.getElementById("page-opps");
+    if(wrapper){
+      wrapper.querySelector(".opps-page").innerHTML=`
+        <div style="display:flex;flex-direction:column;align-items:center;padding:28px 16px 40px;text-align:center;">
+          <div style="font-size:48px;margin-bottom:10px;">💡</div>
+          <div style="color:var(--au);font-weight:900;font-size:20px;margin-bottom:6px;">الفرص الاستثمارية</div>
+          <div style="color:var(--t3);font-size:13px;margin-bottom:18px;">ميزة حصرية لأعضاء VIP</div>
+          <div style="background:var(--s1);border:1px solid var(--b1);border-radius:18px;padding:18px;width:100%;max-width:360px;margin-bottom:20px;text-align:right;">
+            <div style="color:var(--au);font-weight:800;font-size:13px;margin-bottom:14px;text-align:center;">ما الذي ستحصل عليه ⭐</div>
+            ${["📈 أسهم مصرية مختارة بعناية — أفضل فرص الدخول","🏛️ أذون خزانة وسندات — عائد 27-28% بدون مخاطر","₿ فرص كريبتو في التوقيت الصحيح","🥇 ذهب وسلع قيّمة — تحوط ضد التضخم","🏢 عقارات وصناديق REIT","📊 ETFs عالمية — تنويع دولاري","🤖 كل فرصة مدعومة بتحليل AI حقيقي","🔔 تُحدَّث تلقائياً بناءً على السوق"].map(f=>`
+              <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:9px;font-size:12px;color:var(--t2);">${f}</div>`).join("")}
+          </div>
+          <div style="background:var(--gd);border:1px solid rgba(16,185,129,.2);border-radius:14px;padding:14px;width:100%;max-width:360px;margin-bottom:20px;">
+            <div style="color:var(--g);font-size:22px;font-weight:900;">149 جنيه<span style="font-size:13px;font-weight:400;color:var(--t4);"> / شهر</span></div>
+            <div style="color:var(--t4);font-size:11px;margin-top:3px;">وصول كامل لكل الفرص + كل أدوات VIP</div>
+          </div>
+          <button class="btn btn-au btn-full" style="max-width:360px;padding:14px;font-size:14px;font-weight:800;" onclick="goNav('vip')">⭐ اشترك الآن واحصل على كل الفرص</button>
+          <a href="https://wa.me/201008605139?text=أريد الاشتراك في EgyTrend VIP" target="_blank" style="margin-top:10px;color:#25d366;font-size:12px;text-decoration:none;">💬 أو تواصل معنا على واتساب</a>
+        </div>`;
+    }
+    return;
+  }
+
   const el=document.getElementById("opps-list");if(!el)return;
   if(force||oppsData.length===0)el.innerHTML=`<div style="padding:20px;text-align:center;"><div class="sp sp-g"></div></div>`;
   try{
@@ -3501,7 +3528,6 @@ async function loadOpps(force=false){
       const badge=document.getElementById("nb-opps-badge");
       if(badge&&diff>0&&newCount>0){badge.textContent=diff>9?"9+":diff;badge.style.display="flex";}
     }
-    // Update live badge + last-updated text
     const liveBadge=document.getElementById("opps-live-badge");
     const lastUpd=document.getElementById("opps-last-updated");
     if(liveBadge)liveBadge.style.display="inline-flex";
@@ -3515,7 +3541,6 @@ async function loadOpps(force=false){
     if(oppsData.length===0){el.innerHTML=`<div class="notif-empty">⚠️<br/>تعذر تحميل الفرص<br/><button class="btn btn-g btn-sm" style="margin-top:10px;" onclick="loadOpps(true)">إعادة المحاولة</button></div>`;return;}
   }
   renderOpps();
-  // Auto-refresh every 15 minutes
   if(oppsRefreshTimer)clearTimeout(oppsRefreshTimer);
   oppsRefreshTimer=setTimeout(()=>loadOpps(false),15*60*1000);
 }

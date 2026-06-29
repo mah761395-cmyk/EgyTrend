@@ -238,7 +238,7 @@ ${newsSummary || "لا توجد أخبار"}
         deadline: null,
         status: "active",
         featured: opp.featured ?? false,
-        vipOnly: opp.vipOnly ?? false,
+        vipOnly: true, // All opportunities are VIP-only
       });
       inserted++;
     }
@@ -482,7 +482,7 @@ router.post("/opportunities/seed", requireAuth, async (req, res) => {
         deadline: (s as any).deadline || null,
         status: "active",
         featured: s.featured,
-        vipOnly: s.vipOnly,
+        vipOnly: true, // All opportunities are VIP-only
       });
       inserted++;
     }
