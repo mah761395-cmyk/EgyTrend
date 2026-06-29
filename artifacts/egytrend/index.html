@@ -199,6 +199,14 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .mc-loading{color:var(--t5);font-size:11px;animation:pulse .8s infinite;font-family:var(--mono);}
 .cal-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--b1);}
 .cal-row:last-child{border-bottom:none;}
+/* Market detail overlay */
+.mkt-ov{position:fixed;inset:0;z-index:650;background:#030712;overflow-y:auto;animation:fadeIn .18s ease;}
+.mkt-ov-back{background:none;border:none;color:var(--t3);font-size:14px;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:var(--sans);padding:0;margin-bottom:18px;}
+.mkt-ov-back:hover{color:var(--t1);}
+.mkt-stat{background:var(--s2);border-radius:10px;padding:10px;}
+.mkt-stat label{color:var(--t5);font-size:9.5px;display:block;margin-bottom:3px;}
+.mkt-stat .sv{color:var(--t2);font-size:12px;font-weight:700;}
+.tv-wrap{background:var(--s1);border:1px solid var(--b1);border-radius:14px;overflow:hidden;margin-bottom:16px;min-height:240px;display:flex;align-items:center;justify-content:center;}
 
 /* ─── EGX Page ─── */
 #egx-page{position:fixed;inset:0;background:var(--ink);z-index:250;overflow-y:auto;display:none;}
@@ -782,15 +790,28 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 
   <!-- MARKETS -->
   <div id="page-markets" class="page hidden mkt-page">
-    <div class="sec-h">الأسواق المصرية</div>
+    <!-- Markets header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div>
+        <div style="display:flex;align-items:center;gap:7px;">
+          <div style="color:var(--t1);font-weight:900;font-size:18px;">📊 الأسواق</div>
+          <span id="mkt-live-dot" style="display:inline-flex;align-items:center;gap:4px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.22);border-radius:20px;padding:2px 8px;font-size:9.5px;font-weight:700;color:var(--g);">
+            <span style="width:6px;height:6px;border-radius:50%;background:var(--g);display:inline-block;animation:pulse 1.5s infinite;"></span>LIVE
+          </span>
+        </div>
+        <div id="mkt-last-upd" style="color:var(--t5);font-size:10px;margin-top:2px;">جاري التحميل...</div>
+      </div>
+      <button class="ibtn" onclick="fetchMarketsData(true)" title="تحديث">↻</button>
+    </div>
+    <div class="sec-h">🇪🇬 الأسواق المصرية</div>
     <div class="mkt-grid" id="mkt-eg"></div>
-    <div class="sec-h" style="--g:var(--bl);">الأسواق العالمية</div>
+    <div class="sec-h" style="--g:var(--bl);">🌍 الأسواق العالمية</div>
     <div class="mkt-grid" id="mkt-gl"></div>
-    <div class="sec-h" style="--g:var(--au);">السلع والمعادن</div>
+    <div class="sec-h" style="--g:var(--au);">🥇 السلع والمعادن</div>
     <div class="mkt-grid" id="mkt-cm"></div>
-    <div class="sec-h" style="--g:var(--pu);">كريبتو</div>
+    <div class="sec-h" style="--g:var(--pu);">₿ كريبتو</div>
     <div class="mkt-grid" id="mkt-cr"></div>
-    <div class="sec-h">التقويم الاقتصادي</div>
+    <div class="sec-h">📅 التقويم الاقتصادي</div>
     <div style="background:var(--s1);border:1px solid var(--b1);border-radius:15px;padding:13px 14px;" id="cal-wrap"></div>
   </div>
 
@@ -1379,7 +1400,7 @@ async function syncSources(){
 /* ═══════════════════ LIVE MARKETS (backend proxy → Stooq + Google + CoinGecko + TradingEconomics) ═══════════════════ */
 let liveTicks = [...TICKS_STATIC]; // current ticker items, replaced when /api/markets responds
 
-async function fetchMarketsData(){
+async function fetchMarketsData(force){
   try{
     const r=await fetch(MARKETS_API,{signal:AbortSignal.timeout(15000),cache:"no-store"});
     if(!r.ok)throw new Error("HTTP "+r.status);
@@ -1716,22 +1737,208 @@ async function aiAnalyze(){
 }
 
 /* ═══════════════════ MARKETS ═══════════════════ */
+/* ─── TradingView symbol map ─── */
+const TV_SYMS={
+  "EGX30":"EGX:EGX30",
+  "USD/EGP":"FX_IDC:USDEGP",
+  "EUR/EGP":"FX_IDC:EUREGP",
+  "GBP/EGP":"FX_IDC:GBPEGP",
+  "SAR/EGP":"FX_IDC:SAREGP",
+  "S&P 500":"SP:SPX",
+  "NASDAQ":"NASDAQ:COMP",
+  "DAX":"XETR:DAX",
+  "FTSE 100":"INDEX:UKX",
+  "ذهب":"TVC:GOLD",
+  "فضة":"TVC:SILVER",
+  "نفط برنت":"TVC:UKOIL",
+  "نفط خام":"TVC:USOIL",
+  "BTC":"BINANCE:BTCUSDT",
+  "ETH":"BINANCE:ETHUSDT",
+  "SOL":"BINANCE:SOLUSDT",
+  "XRP":"BINANCE:XRPUSDT",
+};
+const MKT_CTX={
+  "EGX30":{icon:"🇪🇬",en:"EGX30 Index",desc:"مؤشر بورصة مصر الرئيسي — يضم أكبر 30 شركة من حيث القيمة السوقية والسيولة. يُعدّ المرجع الأساسي لقياس أداء سوق الأسهم المصري.",cat:"مؤشر",trading:"الأحد–الخميس 10:00–15:30"},
+  "USD/EGP":{icon:"💵",en:"US Dollar / EGP",desc:"سعر صرف الدولار الأمريكي مقابل الجنيه المصري — المرجع الأول لتسعير السلع والاستيراد والمعاملات الدولية في مصر.",cat:"فوركس",trading:"24/7"},
+  "EUR/EGP":{icon:"💶",en:"Euro / EGP",desc:"سعر صرف اليورو الأوروبي مقابل الجنيه المصري — مهم لاستيراد السلع الأوروبية والسياحة.",cat:"فوركس",trading:"24/7"},
+  "GBP/EGP":{icon:"💷",en:"British Pound / EGP",desc:"سعر صرف الجنيه الإسترليني مقابل الجنيه المصري — مرجع مهم للتعاملات مع المملكة المتحدة.",cat:"فوركس",trading:"24/7"},
+  "SAR/EGP":{icon:"🇸🇦",en:"Saudi Riyal / EGP",desc:"سعر صرف الريال السعودي مقابل الجنيه المصري — ذو أهمية كبيرة لتحويلات المصريين العاملين في السعودية.",cat:"فوركس",trading:"24/7"},
+  "S&P 500":{icon:"🇺🇸",en:"S&P 500",desc:"المؤشر الأمريكي الأبرز — يضم أكبر 500 شركة أمريكية مدرجة. يُعتبر المقياس الذهبي لأداء الاقتصاد الأمريكي عالمياً.",cat:"مؤشر",trading:"الاثنين–الجمعة 9:30–16:00 ET"},
+  "NASDAQ":{icon:"💻",en:"Nasdaq Composite",desc:"مؤشر ناسداك للتقنية — يضم كبرى شركات التكنولوجيا مثل Apple وMicrosoft وNVIDIA. مرجع القطاع التقني عالمياً.",cat:"مؤشر",trading:"الاثنين–الجمعة 9:30–16:00 ET"},
+  "DAX":{icon:"🇩🇪",en:"DAX 40",desc:"مؤشر البورصة الألمانية — يضم 40 من كبرى الشركات الألمانية. يعكس قوة أكبر اقتصاد في أوروبا.",cat:"مؤشر",trading:"9:00–17:30 CET"},
+  "FTSE 100":{icon:"🇬🇧",en:"FTSE 100",desc:"مؤشر بورصة لندن — يضم 100 من أكبر الشركات البريطانية. من أعرق المؤشرات الأوروبية.",cat:"مؤشر",trading:"8:00–16:30 GMT"},
+  "ذهب":{icon:"🥇",en:"Gold (XAU/USD)",desc:"الذهب — الملاذ الآمن الأول عالمياً. يرتفع في أوقات الأزمات والتضخم، ويُعدّ أفضل تحوط ضد انخفاض العملات.",cat:"سلعة",trading:"24/5 (OTC)"},
+  "فضة":{icon:"🪙",en:"Silver (XAG/USD)",desc:"الفضة — معدن ثمين يجمع الاستثمار والاستخدام الصناعي في الإلكترونيات والطاقة الشمسية. أكثر تقلباً من الذهب.",cat:"سلعة",trading:"24/5 (OTC)"},
+  "نفط برنت":{icon:"🛢️",en:"Brent Crude Oil",desc:"نفط برنت — المرجع العالمي لتسعير النفط الخام. يؤثر مباشرة على أسعار الطاقة والتضخم في مصر والعالم.",cat:"سلعة",trading:"24/5"},
+  "نفط خام":{icon:"⛽",en:"WTI Crude Oil",desc:"النفط الخام الأمريكي (WTI) — المرجع الأمريكي لأسعار النفط. يتحرك بالتوازي مع نفط برنت مع فارق بسيط.",cat:"سلعة",trading:"24/5"},
+  "BTC":{icon:"₿",en:"Bitcoin",desc:"البيتكوين — أول عملة رقمية لامركزية في العالم. يُعتبر 'الذهب الرقمي' وأكثر الأصول الكريبتو انتشاراً وقيمةً.",cat:"كريبتو",trading:"24/7"},
+  "ETH":{icon:"Ξ",en:"Ethereum",desc:"الإيثريوم — منصة العقود الذكية الأولى عالمياً. تُشغّل معظم تطبيقات DeFi والـ NFT والـ Web3.",cat:"كريبتو",trading:"24/7"},
+  "SOL":{icon:"◎",en:"Solana",desc:"سولانا — شبكة بلوكتشين فائقة السرعة برسوم منخفضة جداً. منافس قوي للإيثريوم في NFTs وتطبيقات DeFi.",cat:"كريبتو",trading:"24/7"},
+  "XRP":{icon:"◈",en:"XRP / Ripple",desc:"ريبل XRP — عملة مصممة لتسريع التحويلات المصرفية الدولية. تستخدمها بنوك عالمية كبرى.",cat:"كريبتو",trading:"24/7"},
+};
+const SEC_COL={eg:"var(--g)",gl:"var(--bl)",cm:"var(--au)",cr:"var(--pu)"};
+
 function buildMarkets(){
   const secs={eg:"mkt-eg",gl:"mkt-gl",cm:"mkt-cm",cr:"mkt-cr"};
   Object.entries(secs).forEach(([key,elId])=>{
     const el=document.getElementById(elId);if(!el)return;
-    el.innerHTML=liveMarkets[key].map(m=>`
-      <div class="mc${wl.includes(m.n)?" wl":""}${m.clickable?" clickable":""}" onclick="${m.clickable?`openEgx('${m.n}')`:""}" >
+    el.innerHTML=liveMarkets[key].map((m,idx)=>`
+      <div class="mc clickable${wl.includes(m.n)?" wl":""}" onclick="openMarketDetail('${key}',${idx})">
         <div class="mc-hdr"><div class="mc-name">${sanitize(m.n)}</div><button class="wl-btn" onclick="event.stopPropagation();toggleWL('${m.n}')">${wl.includes(m.n)?"⭐":"☆"}</button></div>
         <div class="mc-val">${sanitize(m.v)}</div>
         <div class="mc-chg" style="color:${m.up?"var(--up)":"var(--dn)"};">${m.up?"▲":"▼"} ${sanitize(m.c)}</div>
         <div class="mc-sub">${sanitize(m.s||"")}</div>
       </div>`).join("");
   });
+  // Update last-updated label
+  const upd=document.getElementById("mkt-last-upd");
+  if(upd)upd.textContent="آخر تحديث: "+new Date().toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"});
 }
 function toggleWL(n){
   const i=wl.indexOf(n);if(i>=0)wl.splice(i,1);else wl.push(n);
   DB.s("wl",wl);buildMarkets();showToast(wl.includes(n)?`⭐ تمت إضافة ${n}`:`تمت إزالة ${n}`);updateStats();
+}
+
+/* ═══════════════════ MARKET DETAIL OVERLAY ═══════════════════ */
+function openMarketDetail(sec,idx){
+  const arr=liveMarkets[sec];
+  const m=arr?arr[idx]:null;
+  if(!m)return;
+  const ctx=MKT_CTX[m.n]||{icon:"📊",en:m.n,desc:"",cat:"سوق",trading:"—"};
+  const tvSym=TV_SYMS[m.n]||null;
+  const col=SEC_COL[sec]||"var(--g)";
+  const inWL=wl.includes(m.n);
+
+  const ov=document.createElement("div");
+  ov.id="mkt-detail-ov";
+  ov.className="mkt-ov";
+  ov.innerHTML=`
+    <div style="max-width:440px;margin:0 auto;padding:18px 16px 90px;">
+      <button class="mkt-ov-back" onclick="document.getElementById('mkt-detail-ov').remove()">← رجوع</button>
+
+      <!-- Asset Header -->
+      <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:18px;">
+        <div style="font-size:36px;line-height:1;">${ctx.icon}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="color:var(--t1);font-size:20px;font-weight:900;line-height:1.1;">${sanitize(m.n)}</div>
+          <div style="color:var(--t4);font-size:11px;margin-top:3px;">${ctx.en}</div>
+          <span style="display:inline-block;margin-top:5px;background:${col}18;border:1px solid ${col}35;border-radius:20px;padding:1px 9px;font-size:10px;color:${col};font-weight:700;">${ctx.cat}</span>
+        </div>
+        <div style="text-align:left;flex-shrink:0;">
+          <div style="color:var(--t1);font-size:22px;font-weight:900;font-family:var(--mono);">${sanitize(m.v)}</div>
+          <div style="font-size:13px;font-weight:700;font-family:var(--mono);color:${m.up?"var(--up)":"var(--dn)"};">${m.up?"▲":"▼"} ${sanitize(m.c)}</div>
+        </div>
+      </div>
+
+      <!-- TradingView Chart -->
+      <div class="tv-wrap" id="tv-chart-wrap" style="min-height:250px;">
+        <div style="color:var(--t5);font-size:12px;animation:pulse 1s infinite;">⏳ جاري تحميل الرسم البياني...</div>
+      </div>
+
+      <!-- Stats Grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+        <div class="mkt-stat">
+          <label>آخر سعر</label>
+          <div class="sv" style="color:${col};font-family:var(--mono);font-size:13px;">${sanitize(m.v)}</div>
+        </div>
+        <div class="mkt-stat">
+          <label>التغيير</label>
+          <div class="sv" style="color:${m.up?"var(--up)":"var(--dn)"};font-family:var(--mono);font-size:13px;">${m.up?"▲":"▼"} ${sanitize(m.c)}</div>
+        </div>
+        <div class="mkt-stat">
+          <label>نوع الأصل</label>
+          <div class="sv">${ctx.cat}</div>
+        </div>
+        <div class="mkt-stat">
+          <label>أوقات التداول</label>
+          <div class="sv" style="font-size:10px;">${ctx.trading}</div>
+        </div>
+      </div>
+
+      <!-- Description -->
+      <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:14px;margin-bottom:14px;">
+        <div style="color:var(--t5);font-size:10px;font-weight:700;margin-bottom:7px;letter-spacing:.5px;">ℹ️ عن هذا الأصل</div>
+        <div style="color:var(--t3);font-size:12.5px;line-height:1.75;direction:rtl;">${ctx.desc}</div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex;gap:8px;">
+        <button id="wl-toggle-btn" class="btn btn-sm" style="flex:1;background:var(--s1);border:1px solid var(--b1);color:var(--t3);padding:11px;font-size:12px;" onclick="toggleWLDetail('${m.n}')">
+          ${inWL?"⭐ في المفضلة":"☆ أضف للمفضلة"}
+        </button>
+        <button class="btn btn-sm" style="flex:1;background:${col}18;border:1px solid ${col}35;color:${col};padding:11px;font-size:12px;" onclick="refreshMktDetail('${sec}',${idx})">
+          ↻ تحديث
+        </button>
+      </div>
+    </div>`;
+
+  document.getElementById("mkt-detail-ov")?.remove();
+  document.body.appendChild(ov);
+
+  // Inject TradingView chart after DOM is ready
+  if(tvSym){
+    setTimeout(()=>loadTVChart("tv-chart-wrap",tvSym,col),80);
+  } else {
+    document.getElementById("tv-chart-wrap").innerHTML=`<div style="color:var(--t5);font-size:12px;padding:20px;">📊 الرسم البياني غير متاح</div>`;
+  }
+}
+
+function toggleWLDetail(name){
+  const i=wl.indexOf(name);
+  if(i>=0)wl.splice(i,1);else wl.push(name);
+  DB.s("wl",wl);
+  const btn=document.getElementById("wl-toggle-btn");
+  if(btn)btn.textContent=wl.includes(name)?"⭐ في المفضلة":"☆ أضف للمفضلة";
+  showToast(wl.includes(name)?`⭐ تمت إضافة ${name}`:`تمت إزالة ${name}`);
+  buildMarkets();
+}
+
+function loadTVChart(containerId,symbol,accentColor){
+  const container=document.getElementById(containerId);
+  if(!container)return;
+  container.innerHTML="";
+  container.style.display="block";
+
+  const wrap=document.createElement("div");
+  wrap.className="tradingview-widget-container";
+  wrap.style.cssText="width:100%;height:260px;";
+
+  const inner=document.createElement("div");
+  inner.className="tradingview-widget-container__widget";
+  inner.style.cssText="width:100%;height:260px;";
+  wrap.appendChild(inner);
+
+  const sc=document.createElement("script");
+  sc.type="text/javascript";
+  sc.async=true;
+  sc.src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js";
+  const colorMap={"var(--g)":["#10b981","rgba(16,185,129,.2)"],"var(--bl)":["#3b82f6","rgba(59,130,246,.2)"],"var(--au)":["#f59e0b","rgba(245,158,11,.2)"],"var(--pu)":["#c084fc","rgba(192,132,252,.2)"]};
+  const colors=colorMap[accentColor]||["#10b981","rgba(16,185,129,.2)"];
+  const cfg={
+    symbol:symbol,
+    width:"100%",
+    height:260,
+    locale:"ar",
+    dateRange:"3M",
+    colorTheme:"dark",
+    trendLineColor:colors[0],
+    underLineColor:colors[1],
+    underLineBottomColor:"rgba(0,0,0,0)",
+    isTransparent:true,
+    autosize:true,
+    chartOnly:false,
+    noTimeScale:false,
+  };
+  sc.innerHTML=JSON.stringify(cfg);
+  wrap.appendChild(sc);
+  container.appendChild(wrap);
+}
+
+async function refreshMktDetail(sec,idx){
+  const ov=document.getElementById("mkt-detail-ov");
+  if(ov)ov.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;"><div style="color:var(--t4);font-size:14px;animation:pulse 1s infinite;">⏳ جاري التحديث...</div></div>`;
+  await fetchMarketsData();
+  openMarketDetail(sec,idx);
 }
 
 function buildCalendar(){
