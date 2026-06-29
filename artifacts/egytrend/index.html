@@ -1018,27 +1018,30 @@ const SOURCES = [
   {id:"amwal",        name:"أموال الغد",     icon:"💰",lang:"ar",cat:"egypt",  color:"#7c3aed"},
   {id:"elwatan",      name:"الوطن",          icon:"🗞️",lang:"ar",cat:"egypt",  color:"#b45309"},
   {id:"shorouk",      name:"الشروق",         icon:"📑",lang:"ar",cat:"egypt",  color:"#dc2626"},
-  {id:"egnews",       name:"أخبار مصر",      icon:"🇪🇬",lang:"ar",cat:"egypt",  color:"#22c55e"},
+  {id:"almasryalyoum",name:"المصري اليوم",   icon:"🇪🇬",lang:"ar",cat:"egypt",  color:"#22c55e"},
+  {id:"almal",        name:"المال",           icon:"🏦", lang:"ar",cat:"egypt",  color:"#059669"},
+  {id:"dostor",       name:"الدستور",         icon:"🗞️",lang:"ar",cat:"egypt",  color:"#b91c1c"},
+  {id:"enterprise",   name:"Enterprise Egypt",icon:"🏢",lang:"en",cat:"egypt",  color:"#1d4ed8"},
+  {id:"arabfinance",  name:"Arab Finance",    icon:"💱",lang:"en",cat:"egypt",  color:"#15803d"},
   {id:"alarabiya",    name:"العربية",        icon:"🌍",lang:"ar",cat:"global", color:"#c2410c"},
   {id:"aljazeera",    name:"الجزيرة",        icon:"🌐",lang:"ar",cat:"global", color:"#f59e0b"},
   {id:"bbcar",        name:"BBC عربي",       icon:"🔵",lang:"ar",cat:"global", color:"#e2001a"},
   {id:"alain",        name:"العين",          icon:"👁️",lang:"ar",cat:"global", color:"#6366f1"},
+  {id:"skynewsar",    name:"سكاي نيوز عربية",icon:"🛰️",lang:"ar",cat:"global", color:"#38bdf8"},
+  {id:"aleqtisadiyah",name:"الاقتصادية",     icon:"📰", lang:"ar",cat:"global", color:"#7c3aed"},
+  {id:"asharq",       name:"بلومبرج الشرق",  icon:"💼", lang:"ar",cat:"global", color:"#f59e0b"},
+  {id:"cnnar",        name:"CNN عربي",        icon:"📺", lang:"ar",cat:"global", color:"#cc0000"},
   {id:"reuters",      name:"Reuters",        icon:"🔴",lang:"en",cat:"global", color:"#ff8c00"},
   {id:"cnbc",         name:"CNBC",           icon:"📊",lang:"en",cat:"global", color:"#0080ff"},
   {id:"yahoo",        name:"Yahoo Finance",  icon:"🟣",lang:"en",cat:"global", color:"#7e22ce"},
-  {id:"marketwatch",  name:"MarketWatch",    icon:"📈",lang:"en",cat:"stocks", color:"#1a7f37"},
+  {id:"zawya",        name:"زاوية",          icon:"🌏",lang:"en",cat:"global", color:"#0369a1"},
   {id:"investing",    name:"Investing.com",  icon:"💹",lang:"en",cat:"global", color:"#ef4444"},
+  {id:"mubasher",     name:"مباشر",           icon:"📡", lang:"ar",cat:"stocks", color:"#0ea5e9"},
+  {id:"argaam",       name:"أرقام",           icon:"🔢", lang:"ar",cat:"stocks", color:"#16a34a"},
+  {id:"marketwatch",  name:"MarketWatch",    icon:"📈",lang:"en",cat:"stocks", color:"#1a7f37"},
   {id:"ft",           name:"Financial Times",icon:"🟫",lang:"en",cat:"stocks", color:"#9d6e3f"},
   {id:"coindesk",     name:"CoinDesk",        icon:"₿",  lang:"en",cat:"crypto", color:"#f59e0b"},
   {id:"cointelegraph",name:"CoinTelegraph",   icon:"🔗", lang:"en",cat:"crypto", color:"#0891b2"},
-  {id:"mubasher",     name:"مباشر",           icon:"📡", lang:"ar",cat:"stocks", color:"#0ea5e9"},
-  {id:"skynewsar",    name:"سكاي نيوز عربية",icon:"🛰️",lang:"ar",cat:"global", color:"#38bdf8"},
-  {id:"argaam",       name:"أرقام",           icon:"🔢", lang:"ar",cat:"stocks", color:"#16a34a"},
-  {id:"aleqtisadiyah",name:"الاقتصادية",     icon:"📰", lang:"ar",cat:"global", color:"#7c3aed"},
-  {id:"asharq",       name:"بلومبرج الشرق",  icon:"💼", lang:"ar",cat:"global", color:"#f59e0b"},
-  {id:"almal",        name:"المال",           icon:"🏦", lang:"ar",cat:"egypt",  color:"#059669"},
-  {id:"dostor",       name:"الدستور",         icon:"🗞️",lang:"ar",cat:"egypt",  color:"#b91c1c"},
-  {id:"cnnar",        name:"CNN عربي",        icon:"📺", lang:"ar",cat:"global", color:"#cc0000"},
 ];
 
 const CATS = [
@@ -1824,20 +1827,40 @@ function renderVIP(){
   const el=document.getElementById("vip-el");
   if(!isVip){
     el.innerHTML=`
-      <div style="text-align:center;padding:10px 0 22px;">
-        <div style="font-size:50px;margin-bottom:8px;animation:float 3s ease infinite;">⭐</div>
-        <div style="color:var(--au);font-weight:900;font-size:21px;margin-bottom:5px;">EgyTrend VIP</div>
-        <div style="color:var(--t3);font-size:12.5px;line-height:1.8;">AI Advisor + إشارات + Screener احترافي + بيانات حقيقية</div>
+      <div style="text-align:center;padding:10px 0 18px;">
+        <div style="font-size:48px;margin-bottom:8px;animation:float 3s ease infinite;">⭐</div>
+        <div style="color:var(--au);font-weight:900;font-size:22px;margin-bottom:6px;">EgyTrend VIP</div>
+        <div style="color:var(--t3);font-size:12px;line-height:1.9;max-width:280px;margin:0 auto;">كل الأدوات التي يحتاجها المستثمر المصري في مكان واحد — مدعومة ببيانات حقيقية وذكاء اصطناعي</div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;">
-        ${[["🤖","AI Advisor","مستشار مالي ذكي"],["📡","إشارات التداول","مبنية على بيانات حقيقية"],["🔍","Stock Screener","فلاتر احترافية (Investing-style)"],["💼","متابع المحفظة","تحليل AI للمحفظة"],["🌅","تقارير يومية","صباح وإغلاق"],["📊","بيانات حقيقية","Yahoo Finance · Finnhub"]].map(f=>`
-          <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:15px 12px;text-align:center;">
-            <div style="font-size:28px;margin-bottom:5px;">${f[0]}</div>
-            <div style="color:var(--t2);font-weight:700;font-size:12.5px;margin-bottom:2px;">${f[1]}</div>
-            <div style="color:var(--t4);font-size:10.5px;">${f[2]}</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px;">
+        ${[
+          ["🤖","AI Advisor","اسأل عن أي سهم أو قطاع — يجيب بناءً على بيانات السوق وأخبار اليوم الفعلية"],
+          ["📡","إشارات التداول","إشارات شراء وبيع يومية مبنية على تحليل فني وأخبار السوق — لا تضيّع فرصة"],
+          ["🔍","Stock Screener","فلتر 20 سهم مصري بعشرات المعايير: P/E، الحجم، القطاع — مثل Investing.com تماماً"],
+          ["💼","متابع المحفظة","أدخل أسهمك وأسعار شرائها — AI يحلل أداءك ويوصي بقرارات مبنية على بيانات"],
+          ["🌅","تقارير يومية","تقرير صباحي قبل فتح السوق وتقرير إغلاق مسائي — لا تبدأ يومك بدونه"],
+          ["📊","بيانات حقيقية","Yahoo Finance · Finnhub · Alpha Vantage — أسعار مباشرة وليست مؤخرة"]
+        ].map(f=>`
+          <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:13px 11px;text-align:center;">
+            <div style="font-size:26px;margin-bottom:5px;">${f[0]}</div>
+            <div style="color:var(--au);font-weight:800;font-size:12px;margin-bottom:4px;">${f[1]}</div>
+            <div style="color:var(--t4);font-size:10px;line-height:1.5;">${f[2]}</div>
           </div>`).join("")}
       </div>
-      <button class="btn btn-au btn-full" style="padding:14px;font-size:15px;" onclick="openSub()">اشترك الآن من 99 جنيه / شهر</button>`;
+
+      <div style="background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(16,185,129,.05));border:1px solid rgba(245,158,11,.2);border-radius:16px;padding:16px;margin-bottom:14px;">
+        <div style="color:var(--au);font-weight:800;font-size:13px;margin-bottom:10px;text-align:center;">✨ ما الذي ستحصل عليه؟</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${["🤖 محادثة مع AI مستشار مالي — 24/7 بدون قيود","📡 إشارات تداول يومية على أسهم EGX","🔍 Stock Screener احترافي بفلاتر متقدمة","💼 تحليل AI لمحفظتك الشخصية","🌅 تقارير صباح وإغلاق يومية","🔔 تنبيهات أسبقية لأهم الأحداث الاقتصادية","💡 فرص استثمارية منتقاة يدوياً","💬 دعم واتساب مباشر"].map(f=>`
+          <div style="display:flex;align-items:flex-start;gap:8px;"><span style="flex-shrink:0;">${f.slice(0,2)}</span><span style="color:var(--t2);font-size:11.5px;">${f.slice(3)}</span></div>`).join("")}
+        </div>
+      </div>
+
+      <button class="btn btn-au btn-full" style="padding:15px;font-size:15px;font-weight:900;" onclick="openSub()">
+        ⭐ اشترك الآن — من 99 جنيه / شهر
+      </button>
+      <div style="text-align:center;color:var(--t5);font-size:10px;margin-top:8px;">يُفعَّل خلال دقائق بعد تأكيد الدفع · دعم واتساب 01008605139</div>`;
     return;
   }
 
@@ -1850,6 +1873,9 @@ function renderVIP(){
     <!-- AI ADVISOR -->
     <div class="vbox pu">
       <div class="vbox-title" style="color:#c084fc;">🤖 EgyTrend AI Advisor</div>
+      <div style="background:rgba(192,132,252,.06);border:1px solid rgba(192,132,252,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
+        💡 <strong style="color:#c084fc;">كيف تستخدمه؟</strong> — اسأله عن أي سهم: "ما رأيك في CIB؟" أو "هل الآن وقت شراء العقارات؟" أو "ما أقوى القطاعات هذا الأسبوع؟" — الإجابات مبنية على بيانات السوق الحقيقية وأخبار اليوم.
+      </div>
       <div class="chat-area" id="chat-area"></div>
       <div class="chat-row">
         <input class="chat-in" id="chat-in" placeholder="اسألني عن أي سهم أو قرار استثماري..." onkeydown="if(event.key==='Enter')sendChat()"/>
@@ -1862,6 +1888,9 @@ function renderVIP(){
       <div class="vbox-title" style="color:var(--g);">
         <span>📡 إشارات التداول</span>
         <button class="btn btn-g btn-sm" id="sig-btn" onclick="getSignals()">توليد ←</button>
+      </div>
+      <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
+        💡 <strong style="color:var(--g);">ماذا تعطيك؟</strong> — تحليل يومي لأبرز أسهم EGX: فرص الدخول والخروج بناءً على الزخم الفني وأخبار السوق الحالية. اضغط "توليد" بعد فتح البورصة للحصول على أدق النتائج.
       </div>
       <div id="sig-res" style="display:none;color:#a7f3d0;font-size:13px;line-height:1.85;direction:rtl;white-space:pre-line;margin-top:8px;"></div>
     </div>
@@ -1978,8 +2007,8 @@ function renderVIP(){
     <!-- AI STOCK ANALYSIS (replaces fake price targets) -->
     <div class="vbox au">
       <div class="vbox-title" style="color:var(--au);">🎯 تحليل AI للأسهم</div>
-      <div style="color:var(--t4);font-size:11.5px;line-height:1.7;margin-bottom:10px;direction:rtl;">
-        التحليل مبني على بيانات السوق الفعلية الحالية وأخبار اليوم. للأغراض التعليمية والتحليلية فقط — ليس نصيحة استثمارية ملزمة.
+      <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
+        💡 <strong style="color:var(--au);">ماذا يحلل؟</strong> — يأخذ أسعار أسهم EGX الحالية + أخبار اليوم من 29 مصدر ويعطيك رأياً شاملاً: القطاعات القوية، الأسهم الواعدة، والمخاطر الموجودة. للتثقيف الاستثماري فقط.
       </div>
       <button class="btn btn-au btn-full" style="padding:10px;font-size:12.5px;" id="ai-analysis-btn" onclick="getAIStockAnalysis()">
         🤖 اطلب تحليل AI للأسهم الآن
@@ -1999,6 +2028,9 @@ function renderVIP(){
     <!-- PORTFOLIO TRACKER -->
     <div class="vbox bl">
       <div class="vbox-title" style="color:#93c5fd;">💼 متابع المحفظة</div>
+      <div style="background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
+        💡 <strong style="color:#93c5fd;">كيف يعمل؟</strong> — أدخل رمز السهم وسعر شرائك والكمية، ثم اضغط "حلّل بـ AI" — يقارن محفظتك بأداء السوق ويعطيك توصيات مخصصة لوضعك الفعلي.
+      </div>
       <div class="p-inputs">
         <input class="mini-in" id="p-sym" placeholder="رمز السهم" oninput="this.value=this.value.toUpperCase().slice(0,10)"/>
         <input class="mini-in" id="p-pr" placeholder="سعر الشراء" type="number" min="0" step="0.01"/>
@@ -2015,6 +2047,9 @@ function renderVIP(){
     <!-- DAILY REPORTS -->
     <div class="vbox pu">
       <div class="vbox-title" style="color:#c084fc;">📊 التقارير اليومية</div>
+      <div style="background:rgba(192,132,252,.06);border:1px solid rgba(192,132,252,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
+        💡 <strong style="color:#c084fc;">متى تستخدمهم؟</strong> — <strong>تقرير الصباح</strong> قبل 10:00 صباحاً: ملخص ما ستشهده البورصة. <strong>تقرير الإغلاق</strong> بعد 3:00 عصراً: تحليل ما حدث والتوقعات للغد.
+      </div>
       <div style="display:flex;gap:7px;">
         <button class="btn btn-pu btn-full" style="padding:9px;font-size:12px;" id="morn-btn" onclick="getMorning()">🌅 تقرير الصباح</button>
         <button class="btn btn-pu btn-full" style="padding:9px;font-size:12px;" id="clos-btn" onclick="getClosing()">🌙 تقرير الإغلاق</button>

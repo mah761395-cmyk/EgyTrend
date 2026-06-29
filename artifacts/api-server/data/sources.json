@@ -44,6 +44,15 @@
     "color": "#dc2626",
     "url": "https://news.google.com/rss/search?q=site:shorouknews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
   },
+  "almasryalyoum": {
+    "id": "almasryalyoum",
+    "name": "المصري اليوم",
+    "icon": "🇪🇬",
+    "lang": "ar",
+    "cat": "egypt",
+    "color": "#22c55e",
+    "url": "https://www.almasryalyoum.com/rss/rssfeed.aspx?SectionID=24"
+  },
   "alarabiya": {
     "id": "alarabiya",
     "name": "العربية",
@@ -80,15 +89,6 @@
     "color": "#6366f1",
     "url": "https://news.google.com/rss/search?q=site:al-ain.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=AE&ceid=AE:ar"
   },
-  "egnews": {
-    "id": "egnews",
-    "name": "أخبار مصر",
-    "icon": "🇪🇬",
-    "lang": "ar",
-    "cat": "egypt",
-    "color": "#22c55e",
-    "url": "https://news.google.com/rss/search?q=%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+%D9%85%D8%B5%D8%B1+%D8%A8%D9%88%D8%B1%D8%B5%D8%A9&hl=ar&gl=EG&ceid=EG:ar"
-  },
   "reuters": {
     "id": "reuters",
     "name": "Reuters Business",
@@ -96,7 +96,7 @@
     "lang": "en",
     "cat": "global",
     "color": "#ff8c00",
-    "url": "https://news.google.com/rss/search?q=when:24h+allinurl:reuters.com/business&hl=en-US&gl=US&ceid=US:en"
+    "url": "https://news.google.com/rss/search?q=site:reuters.com/business&hl=en-US&gl=US&ceid=US:en"
   },
   "cnbc": {
     "id": "cnbc",
@@ -195,7 +195,7 @@
     "lang": "ar",
     "cat": "global",
     "color": "#7c3aed",
-    "url": "https://news.google.com/rss/search?q=site:aleqtisadiyah.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=SA&ceid=SA:ar"
+    "url": "https://news.google.com/rss/search?q=site:aleqtisadiyah.com&hl=ar&gl=SA&ceid=SA:ar"
   },
   "asharq": {
     "id": "asharq",
@@ -204,7 +204,7 @@
     "lang": "ar",
     "cat": "global",
     "color": "#f59e0b",
-    "url": "https://news.google.com/rss/search?q=site:asharq.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=SA&ceid=SA:ar"
+    "url": "https://news.google.com/rss/search?q=site:asharq.com&hl=ar&gl=SA&ceid=SA:ar"
   },
   "almal": {
     "id": "almal",
@@ -232,5 +232,32 @@
     "cat": "global",
     "color": "#cc0000",
     "url": "https://news.google.com/rss/search?q=site:arabic.cnn.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
+  },
+  "zawya": {
+    "id": "zawya",
+    "name": "زاوية",
+    "icon": "🌏",
+    "lang": "en",
+    "cat": "global",
+    "color": "#0369a1",
+    "url": "https://news.google.com/rss/search?q=site:zawya.com+egypt+finance&hl=en&gl=AE&ceid=AE:en"
+  },
+  "enterprise": {
+    "id": "enterprise",
+    "name": "Enterprise Egypt",
+    "icon": "🏢",
+    "lang": "en",
+    "cat": "egypt",
+    "color": "#1d4ed8",
+    "url": "https://news.google.com/rss/search?q=site:enterprise.press+egypt+business&hl=en&gl=EG&ceid=EG:en"
+  },
+  "arabfinance": {
+    "id": "arabfinance",
+    "name": "Arab Finance",
+    "icon": "💱",
+    "lang": "en",
+    "cat": "egypt",
+    "color": "#15803d",
+    "url": "https://news.google.com/rss/search?q=site:arabfinance.com+egypt&hl=en&gl=EG&ceid=EG:en"
   }
 }

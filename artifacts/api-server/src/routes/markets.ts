@@ -362,7 +362,7 @@ type CryptoSpec = { n: string; s: string; finnhub: string };
 const CRYPTO_LIST: CryptoSpec[] = [
   { n: "BTC", s: "بيتكوين",  finnhub: "BINANCE:BTCUSDT" },
   { n: "ETH", s: "إيثريوم",  finnhub: "BINANCE:ETHUSDT" },
-  { n: "BNB", s: "بينانس",   finnhub: "BINANCE:BNBUSDT" },
+  { n: "SOL", s: "سولانا",   finnhub: "BINANCE:SOLUSDT" },
   { n: "XRP", s: "ريبل",     finnhub: "BINANCE:XRPUSDT" },
 ];
 
@@ -382,6 +382,7 @@ async function buildCryptoQuote(spec: CryptoSpec): Promise<Quote> {
     const ids: Record<string, string> = {
       "BINANCE:BTCUSDT": "bitcoin", "BINANCE:ETHUSDT": "ethereum",
       "BINANCE:BNBUSDT": "binancecoin", "BINANCE:XRPUSDT": "ripple",
+      "BINANCE:SOLUSDT": "solana",
     };
     const id = ids[spec.finnhub];
     if (!id) throw new Error("no id");
@@ -728,6 +729,53 @@ router.get("/stocks", async (_req: Request, res: Response) => {
       res.status(503).json({ status: "error", message: "stocks data unavailable" });
     }
   }
+});
+
+/* ═══════════════════════════════════════════════════
+   HEALTH / DATA QUALITY MONITOR
+   Returns freshness and data source status so the admin
+   dashboard (or an external uptime check) can detect stale data.
+   ═══════════════════════════════════════════════════ */
+
+router.get("/health", (_req: Request, res: Response) => {
+  const now = Date.now();
+  const marketsAge = marketsCache ? Math.round((now - marketsCache.ts) / 1000) : null;
+  const stocksAge  = stocksCache  ? Math.round((now - stocksCache.ts)  / 1000) : null;
+  const calAge     = calCache     ? Math.round((now - calCache.ts)     / 1000) : null;
+
+  const ok = (age: number | null, ttlMs: number) =>
+    age === null ? "no_data" : age < ttlMs / 1000 * 2 ? "fresh" : "stale";
+
+  res.json({
+    status: "ok",
+    ts: now,
+    sources: {
+      markets: {
+        status: ok(marketsAge, MARKETS_TTL_MS),
+        ageSeconds: marketsAge,
+        ttlSeconds: MARKETS_TTL_MS / 1000,
+        data: marketsCache
+          ? { sections: Object.keys(marketsCache.data.markets) }
+          : null,
+      },
+      stocks: {
+        status: ok(stocksAge, STOCKS_TTL_MS),
+        ageSeconds: stocksAge,
+        ttlSeconds: STOCKS_TTL_MS / 1000,
+        count: stocksCache?.stocks.length ?? 0,
+      },
+      calendar: {
+        status: ok(calAge, CAL_TTL_MS),
+        ageSeconds: calAge,
+        ttlSeconds: CAL_TTL_MS / 1000,
+        count: calCache?.data.events.length ?? 0,
+      },
+    },
+    keys: {
+      finnhub: !!FINNHUB_KEY,
+      alphaVantage: !!AV_KEY,
+    },
+  });
 });
 
 export default router;
