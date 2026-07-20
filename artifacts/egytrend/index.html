@@ -1015,16 +1015,40 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
  * picks the canonical model. Frontend just sends system + messages. */
 const WA = "201008605139";
 
-async function callAI({system, messages, max_tokens=600}){
-  const r = await fetch("/api/ai/chat",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({system, messages, max_tokens})
-  });
-  if(!r.ok){ throw new Error("AI HTTP "+r.status); }
-  const d = await r.json();
-  if(d.status!=="ok") throw new Error(d.message||"AI error");
-  return d.text || "";
+async function callAI({system, messages, max_tokens=2000}){
+  const ctrl = new AbortController();
+  const tid = setTimeout(()=>ctrl.abort(), 85000);
+  try{
+    const r = await fetch("/api/ai/chat",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({system, messages, max_tokens}),
+      signal: ctrl.signal
+    });
+    if(!r.ok){
+      const d = await r.json().catch(()=>({}));
+      if(r.status===429) throw new Error("rate_limit");
+      if(r.status===504) throw new Error("timeout");
+      throw new Error(d.message||"HTTP "+r.status);
+    }
+    const d = await r.json();
+    if(d.status!=="ok") throw new Error(d.message||"AI error");
+    if(!d.text) throw new Error("empty_response");
+    return d.text;
+  } catch(e){
+    if(e.name==="AbortError") throw new Error("timeout");
+    throw e;
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
+function aiErrMsg(e){
+  const m = e?.message||"";
+  if(m==="timeout"||m.includes("timeout")) return "⌛ انتهت مهلة الاتصال — حاول مرة أخرى.";
+  if(m==="rate_limit") return "⚠️ وصلت للحد الأقصى من الطلبات — انتظر دقيقة ثم حاول.";
+  if(m==="empty_response") return "⚠️ لم يُنتج AI رداً — حاول مجدداً.";
+  return "❌ تعذر الاتصال بالخادم — تحقق من اتصالك بالإنترنت.";
 }
 
 /* ─── Security: Input sanitization ─── */
@@ -1720,20 +1744,25 @@ async function aiAnalyze(){
     return;
   }
   const btn=document.getElementById("ai-det-btn");
-  btn.innerHTML='<div class="sp sp-bl sp-sm"></div> جارٍ...';btn.disabled=true;
+  const artSnap={srcName:curArt.srcName,title:curArt.title,summary:curArt.summary};
+  btn.innerHTML='<div class="sp sp-bl sp-sm"></div> جارٍ التحليل...';btn.disabled=true;
+  const res=document.getElementById("ai-det-res");
+  res.style.display="none";
   try{
     const txt = await callAI({
-      max_tokens:600,
-      system:"أنت محلل استثماري خبير للسوق المصري. قدّم 3-4 نقاط عملية ومختصرة للمستثمر. لا تتجاوز 300 كلمة.",
-      messages:[{role:"user",content:`حلّل:\nالمصدر: ${curArt.srcName}\nالعنوان: ${curArt.title}\nالخلاصة: ${curArt.summary}\n\nما الأسهم المصرية المتأثرة؟ ما توصيتك للمستثمر المصري؟`}]
+      max_tokens:2000,
+      system:"أنت محلل استثماري متخصص في البورصة المصرية والأسواق العربية. تُقدّم تحليلاً شاملاً ومفصّلاً بالعربية. اذكر الأسهم والقطاعات المتأثرة، التوصيات العملية، والمخاطر والفرص.",
+      messages:[{role:"user",content:`حلّل هذا الخبر بعمق:\nالمصدر: ${artSnap.srcName}\nالعنوان: ${artSnap.title}\nالخلاصة: ${artSnap.summary}\n\nالمطلوب:\n1. ما الأسهم والقطاعات المصرية المتأثرة مباشرةً؟\n2. هل التأثير إيجابي أم سلبي؟ ولماذا؟\n3. توصيتك للمستثمر المصري في الأجل القريب\n4. المخاطر التي يجب مراعاتها\n5. خلاصة القرار`}]
     });
-    const res=document.getElementById("ai-det-res");
-    res.textContent=txt;res.style.display="block";
-  }catch{
-    document.getElementById("ai-det-res").textContent="❌ تعذر التحليل حالياً. تحقق من اتصالك بالإنترنت.";
-    document.getElementById("ai-det-res").style.display="block";
+    res.textContent=txt;
+    res.style.display="block";
+  }catch(e){
+    res.textContent=aiErrMsg(e);
+    res.style.display="block";
   }
-  btn.style.display="none";
+  /* CRITICAL FIX: restore button — never hide it permanently */
+  btn.innerHTML="🔄 إعادة التحليل";
+  btn.disabled=false;
 }
 
 /* ═══════════════════ MARKETS ═══════════════════ */
@@ -2423,28 +2452,30 @@ function deleteScrFilter(i){
   renderSavedFilters();
 }
 
-/* AI Stock Analysis (replaces fake price targets) */
+/* AI Stock Analysis */
 async function getAIStockAnalysis(){
   const btn=document.getElementById("ai-analysis-btn");
   if(!btn) return;
   btn.innerHTML='<div class="sp sp-au sp-sm"></div> جارٍ التحليل...';btn.disabled=true;
+  const resEl=document.getElementById("ai-analysis-res");
+  if(resEl) resEl.style.display="none";
   try{
-    const topStocks=liveStocks.slice(0,10).map(s=>`${s.sym} (${s.name}): ${s.price.toFixed(2)} ج (${s.chgPct>=0?"+":""}${s.chgPct.toFixed(2)}%)${s.pe?" P/E:"+s.pe.toFixed(1):""}${s.vol?" حجم:"+fmtVol(s.vol):""}`).join("\n");
-    const news=allArts.slice(0,5).map(a=>a.title).join(" | ");
+    const topStocks=liveStocks.slice(0,12).map(s=>`${s.sym} (${s.name}): ${s.price.toFixed(2)} ج (${s.chgPct>=0?"+":""}${s.chgPct.toFixed(2)}%)${s.pe?" P/E:"+s.pe.toFixed(1):""}${s.mktCapM?" رأس المال:"+fmtMktCap(s.mktCapM)+" ج":""}${s.vol?" حجم:"+fmtVol(s.vol):""}`).join("\n");
+    const news=allArts.slice(0,6).map(a=>`${a.srcName}: ${a.title}`).join("\n");
     const txt=await callAI({
-      max_tokens:900,
-      system:"أنت محلل مالي متخصص في البورصة المصرية. تُحلّل بناءً على البيانات الحقيقية فقط. تُقدّم تحليلاً تعليمياً ومعلوماتياً بالعربية. لا تُعطي توصيات استثمارية قاطعة. تُوضح دائماً أن التحليل للأغراض التعليمية.",
-      messages:[{role:"user",content:`حلّل هذه الأسهم بناءً على البيانات الحقيقية الحالية:\n${topStocks}\n\nأخبار السوق اليوم:\n${news}\n\nقدّم:\n1. نظرة عامة على أداء السوق اليوم\n2. أبرز الأسهم أداءً (صاعدة وهابطة) مع ذكر السبب المحتمل\n3. تحليل مستوى الخطر لكل سهم\n4. ملاحظات على مؤشرات التقييم (P/E)\n5. تنبيه واضح أن هذا تحليل تعليمي فقط`}]
+      max_tokens:3000,
+      system:"أنت محلل مالي متخصص في البورصة المصرية. تُحلّل بناءً على البيانات الحقيقية. تُقدّم تحليلاً تعليمياً شاملاً بالعربية. التحليل للأغراض التعليمية والمعلوماتية فقط.",
+      messages:[{role:"user",content:`حلّل بيانات البورصة المصرية الحالية بعمق:\n\n${topStocks}\n\nأخبار السوق اليوم:\n${news}\n\nقدّم تحليلاً شاملاً يتضمن:\n1. نظرة عامة على مزاج السوق اليوم\n2. أبرز الأسهم صعوداً وهبوطاً مع السبب المحتمل\n3. تحليل مؤشرات التقييم (P/E) — أيها رخيص وأيها غالٍ نسبياً\n4. القطاعات الأكثر نشاطاً والأسباب\n5. العلاقة بين الأخبار وحركة الأسهم\n6. ملاحظات المستثمر الذكي ليوم غد\n7. تنبيه: هذا تحليل تعليمي فقط`}]
     });
     const txtEl=document.getElementById("ai-analysis-txt");
     const tsEl=document.getElementById("ai-analysis-ts");
     if(txtEl) txtEl.textContent=txt;
     if(tsEl) tsEl.textContent=new Date().toLocaleTimeString("ar-EG");
-    document.getElementById("ai-analysis-res").style.display="block";
-  }catch{
+    if(resEl) resEl.style.display="block";
+  }catch(e){
     const txtEl=document.getElementById("ai-analysis-txt");
-    if(txtEl) txtEl.textContent="❌ تعذر الاتصال بالخادم. تحقق من اتصالك بالإنترنت.";
-    document.getElementById("ai-analysis-res").style.display="block";
+    if(txtEl) txtEl.textContent=aiErrMsg(e);
+    if(resEl) resEl.style.display="block";
   }
   btn.innerHTML="🔄 إعادة التحليل";btn.disabled=false;
 }
@@ -2461,63 +2492,79 @@ function renderChatUI(){
 
 async function sendChat(){
   const inp=document.getElementById("chat-in");if(!inp)return;
-  const txt=inp.value.trim().slice(0,500);if(!txt)return;
+  const txt=inp.value.trim().slice(0,800);if(!txt)return;
   inp.value="";
+  const sendBtn=document.getElementById("chat-send");
+  if(sendBtn){sendBtn.disabled=true;}
   chatHist.push({r:"user",c:txt});renderChatUI();
   const cw=document.getElementById("chat-area");
-  const t=document.createElement("div");t.className="msg bot";t.id="chat-typing";t.textContent="⏳ يحلل...";cw.appendChild(t);cw.scrollTop=cw.scrollHeight;
+  const typingEl=document.createElement("div");typingEl.className="msg bot";typingEl.id="chat-typing";typingEl.innerHTML='<span style="opacity:.6">⏳ EgyTrend AI يفكر...</span>';
+  cw.appendChild(typingEl);cw.scrollTop=cw.scrollHeight;
   try{
     const hl=allArts.slice(0,5).map(a=>`${a.srcName}: ${a.title}`).join("\n");
     const reply = await callAI({
-      max_tokens:500,
-      system:`أنت EgyTrend AI Advisor — مستشار مالي متخصص في السوق المصري. تُجيب باختصار وعملية بالعربية. لا تتجاوز 250 كلمة.\nأبرز أخبار اليوم:\n${hl}\nتُنبّه أن قرارات الاستثمار على مسؤولية المستخدم.`,
-      messages:chatHist.slice(-10).map(m=>({role:m.r==="user"?"user":"assistant",content:m.c}))
+      max_tokens:2000,
+      system:`أنت EgyTrend AI Advisor — مستشار مالي متخصص في السوق المصري والبورصة المصرية. تُجيب بالعربية بشكل شامل ومفيد. إذا سُئلت عن سهم أو قطاع أو قرار استثماري، أجب بعمق وتفصيل مع ذكر المخاطر.\nأبرز أخبار اليوم:\n${hl}\nتذكر: قرارات الاستثمار على مسؤولية المستخدم وهذا تحليل تعليمي.`,
+      messages:chatHist.slice(-14).map(m=>({role:m.r==="user"?"user":"assistant",content:m.c}))
     });
-    chatHist.push({r:"bot",c:reply||"عذراً، حدث خطأ."});
-  }catch{chatHist.push({r:"bot",c:"❌ تعذر الاتصال بالخادم. تحقق من اتصالك."});}
+    chatHist.push({r:"bot",c:reply});
+  }catch(e){
+    chatHist.push({r:"bot",c:aiErrMsg(e)});
+  }
   const ti=document.getElementById("chat-typing");if(ti)ti.remove();
+  if(sendBtn){sendBtn.disabled=false;}
   renderChatUI();
 }
 
 async function getSignals(){
-  const btn=document.getElementById("sig-btn");btn.innerHTML='<div class="sp sp-g sp-sm"></div>';btn.disabled=true;
+  const btn=document.getElementById("sig-btn");
+  btn.innerHTML='<div class="sp sp-g sp-sm"></div> جارٍ...';btn.disabled=true;
+  const res=document.getElementById("sig-res");res.style.display="none";
   try{
-    const hl=allArts.slice(0,4).map(a=>a.title).join(" | ");
+    const hl=allArts.slice(0,6).map(a=>`${a.srcName}: ${a.title}`).join("\n");
+    const stks=liveStocks.slice(0,8).map(s=>`${s.sym}: ${s.price.toFixed(2)} ج (${s.chgPct>=0?"+":""}${s.chgPct.toFixed(2)}%)`).join("\n");
     const txt = await callAI({
-      max_tokens:600,
-      system:"أنت محلل تقني خبير للبورصة المصرية. أعطِ إشارات تداول عملية ومختصرة.",
-      messages:[{role:"user",content:`إشارات تداول اليوم لأفضل 3 أسهم مصرية مع نقطة الدخول والهدف ووقف الخسارة.\nأخبار اليوم: ${hl}`}]
+      max_tokens:2000,
+      system:"أنت محلل تقني خبير للبورصة المصرية. تُقدّم إشارات تداول مفصّلة وعملية مبنية على البيانات.",
+      messages:[{role:"user",content:`أعطِ إشارات تداول ليوم ${new Date().toLocaleDateString("ar-EG")} لأفضل 3-5 أسهم مصرية مع:\n- نقطة الدخول المثالية\n- الهدف السعري الأول والثاني\n- وقف الخسارة\n- مستوى الخطر (منخفض/متوسط/مرتفع)\n- السبب والمنطق التحليلي\n\nبيانات الأسهم الحالية:\n${stks}\n\nأخبار السوق اليوم:\n${hl}`}]
     });
-    document.getElementById("sig-res").textContent=txt;document.getElementById("sig-res").style.display="block";
-  }catch{document.getElementById("sig-res").textContent="❌ تعذر الاتصال. تحقق من اتصالك بالإنترنت.";}
-  btn.innerHTML="↻ تحديث";btn.disabled=false;
+    res.textContent=txt;res.style.display="block";
+  }catch(e){res.textContent=aiErrMsg(e);res.style.display="block";}
+  btn.innerHTML="↻ تحديث الإشارات";btn.disabled=false;
 }
 
 async function getMorning(){
-  const btn=document.getElementById("morn-btn");btn.innerHTML='<div class="sp sp-pu sp-sm"></div> ...';btn.disabled=true;
+  const btn=document.getElementById("morn-btn");
+  btn.innerHTML='<div class="sp sp-pu sp-sm"></div> جارٍ...';btn.disabled=true;
+  const res=document.getElementById("rep-res");res.style.display="none";
   try{
-    const hl=allArts.slice(0,6).map(a=>`${a.srcName}: ${a.title}`).join("\n");
+    const hl=allArts.slice(0,8).map(a=>`${a.srcName}: ${a.title}`).join("\n");
+    const mktSummary=liveMarkets.eg.slice(0,3).map(m=>`${m.n}: ${m.v} (${m.c})`).join(" | ");
     const txt = await callAI({
-      max_tokens:700,
-      system:"أنت محلل اقتصادي متخصص. أنشئ تقرير صباح احترافياً.",
-      messages:[{role:"user",content:`تقرير صباح ليوم ${new Date().toLocaleDateString("ar-EG")} بناءً على أخبار اليوم:\n${hl}`}]
+      max_tokens:2500,
+      system:"أنت محلل اقتصادي متخصص في الأسواق المصرية. تُنشئ تقارير صباحية احترافية ومفصّلة تساعد المستثمرين على بدء يومهم.",
+      messages:[{role:"user",content:`أنشئ تقرير صباح شامل ليوم ${new Date().toLocaleDateString("ar-EG")} يتضمن:\n1. نظرة عامة على السوق المتوقع اليوم\n2. أبرز الأخبار التي ستؤثر على البورصة\n3. القطاعات والأسهم الجديرة بالمتابعة\n4. توصيات عملية للمستثمرين\n5. عوامل الخطر التي يجب مراقبتها\n\nبيانات السوق الحالية:\n${mktSummary}\n\nأبرز أخبار اليوم:\n${hl}`}]
     });
-    document.getElementById("rep-res").textContent=txt;document.getElementById("rep-res").style.display="block";
-  }catch{document.getElementById("rep-res").textContent="❌ تعذر الاتصال. تحقق من اتصالك.";}
+    res.textContent=txt;res.style.display="block";
+  }catch(e){res.textContent=aiErrMsg(e);res.style.display="block";}
   btn.innerHTML="🌅 تقرير الصباح";btn.disabled=false;
 }
 
 async function getClosing(){
-  const btn=document.getElementById("clos-btn");btn.innerHTML='<div class="sp sp-pu sp-sm"></div> ...';btn.disabled=true;
+  const btn=document.getElementById("clos-btn");
+  btn.innerHTML='<div class="sp sp-pu sp-sm"></div> جارٍ...';btn.disabled=true;
+  const res=document.getElementById("rep-res");res.style.display="none";
   try{
-    const hl=allArts.slice(0,6).map(a=>`${a.srcName}: ${a.title}`).join("\n");
+    const hl=allArts.slice(0,8).map(a=>`${a.srcName}: ${a.title}`).join("\n");
+    const egx=liveMarkets.eg.find(m=>m.n==="EGX30");
+    const egxInfo=egx?`EGX30: ${egx.v} (${egx.c})`:"";
     const txt = await callAI({
-      max_tokens:700,
-      system:"أنت محلل اقتصادي متخصص. أنشئ تقرير إغلاق احترافياً.",
-      messages:[{role:"user",content:`تقرير إغلاق ليوم ${new Date().toLocaleDateString("ar-EG")} بناءً على أخبار اليوم:\n${hl}`}]
+      max_tokens:2500,
+      system:"أنت محلل اقتصادي متخصص في الأسواق المصرية. تُنشئ تقارير إغلاق احترافية ومفصّلة تُلخّص يوم التداول.",
+      messages:[{role:"user",content:`أنشئ تقرير إغلاق شامل ليوم ${new Date().toLocaleDateString("ar-EG")} يتضمن:\n1. تقييم أداء السوق خلال اليوم\n2. أبرز الأسهم الصاعدة والهابطة ولماذا\n3. تحليل الأخبار وتأثيرها على السوق\n4. توقعات ليوم الغد\n5. نصيحة للمستثمرين\n\n${egxInfo}\n\nأبرز أخبار اليوم:\n${hl}`}]
     });
-    document.getElementById("rep-res").textContent=txt;document.getElementById("rep-res").style.display="block";
-  }catch{document.getElementById("rep-res").textContent="❌ تعذر الاتصال. تحقق من اتصالك.";}
+    res.textContent=txt;res.style.display="block";
+  }catch(e){res.textContent=aiErrMsg(e);res.style.display="block";}
   btn.innerHTML="🌙 تقرير الإغلاق";btn.disabled=false;
 }
 
@@ -2547,16 +2594,24 @@ function renderPortList(){
 }
 async function analyzePort(){
   if(!portfolio.length)return;
-  const btn=document.getElementById("port-ai-btn");btn.innerHTML='<div class="sp sp-bl sp-sm"></div> جارٍ...';btn.disabled=true;
+  const btn=document.getElementById("port-ai-btn");
+  btn.innerHTML='<div class="sp sp-bl sp-sm"></div> جارٍ التحليل...';btn.disabled=true;
+  const res=document.getElementById("port-ai-res");res.style.display="none";
   try{
-    const hl=allArts.slice(0,3).map(a=>a.title).join(" | ");
+    const hl=allArts.slice(0,5).map(a=>a.title).join("\n");
+    const portLines=portfolio.map(s=>{
+      const live=liveStocks.find(x=>x.sym===s.sym||x.sym===s.sym+".CA");
+      const curPrice=live?live.price:null;
+      const pnl=curPrice?((curPrice-s.price)/s.price*100).toFixed(2):null;
+      return `${s.sym}: ${s.qty} سهم × ${s.price.toFixed(2)} ج${curPrice?` | سعر حالي: ${curPrice.toFixed(2)} ج (${pnl>=0?"+":""}${pnl}%)`:""}`;
+    }).join("\n");
     const txt = await callAI({
-      max_tokens:500,
-      system:"أنت مستشار استثماري. حلّل محفظة وقدّم توصيات عملية مختصرة.",
-      messages:[{role:"user",content:`حلّل محفظتي:\n${portfolio.map(s=>`${s.sym}: ${s.qty} ورقة × ${s.price.toFixed(2)} ج`).join("\n")}\n\nأخبار اليوم: ${hl}`}]
+      max_tokens:2500,
+      system:"أنت مستشار استثماري متخصص في البورصة المصرية. تُحلّل المحافظ الاستثمارية بدقة وعمق وتُقدّم توصيات مبنية على البيانات الحقيقية.",
+      messages:[{role:"user",content:`حلّل محفظتي الاستثمارية بعمق:\n${portLines}\n\nأخبار السوق الحالية:\n${hl}\n\nالمطلوب:\n1. تقييم أداء كل سهم في المحفظة\n2. نقاط القوة والضعف في توزيع المحفظة\n3. هل التوزيع متنوع بما يكفي؟\n4. توصيات محددة: ما تبيعه، تحتفظ به، تزيد منه\n5. مستوى الخطر الإجمالي للمحفظة\n6. ملاحظات بناءً على أخبار السوق الحالية`}]
     });
-    document.getElementById("port-ai-res").textContent=txt;document.getElementById("port-ai-res").style.display="block";
-  }catch{document.getElementById("port-ai-res").textContent="❌ تعذر التحليل. تحقق من اتصالك.";}
+    res.textContent=txt;res.style.display="block";
+  }catch(e){res.textContent=aiErrMsg(e);res.style.display="block";}
   btn.innerHTML="🤖 إعادة التحليل";btn.disabled=false;
 }
 
@@ -2619,25 +2674,26 @@ function openAIRw(){
 function closeAIRw(){document.getElementById("ai-ov").classList.remove("open");}
 async function runRw(){
   if(!isVIPOrAdmin()){ closeAIRw(); showVIPGate(); return; }
-  const txt=(document.getElementById("ai-txt").value||"").trim().slice(0,2000);if(!txt)return;
-  const btnTxt=document.getElementById("ai-rw-txt");btnTxt.parentElement.disabled=true;btnTxt.textContent="جارٍ المعالجة...";
+  const txt=(document.getElementById("ai-txt").value||"").trim().slice(0,3000);if(!txt)return;
+  const btnTxt=document.getElementById("ai-rw-txt");
+  const btnEl=btnTxt?.parentElement;
+  if(btnEl) btnEl.disabled=true;
+  if(btnTxt) btnTxt.textContent="جارٍ المعالجة...";
   document.getElementById("ai-rw-res").style.display="none";
   try{
     const out = await callAI({
-      max_tokens:800,
-      system:`أنت محرر أخبار EgyTrend. أعد الصياغة بالعربية بهذا التنسيق الدقيق:
-📌 العنوان: [جذاب ومختصر]
-⚡ TL;DR: [جملة واحدة تحرك السوق]
-📋 الملخص: [3 جمل واضحة]
-📊 التأثير: [إيجابي/سلبي/محايد] · Impact Score: [X/100]
-📈 الأسهم المتأثرة: [إن وجدت، وإلا اكتب "لا يوجد"]
-🏷️ التصنيف: [اقتصاد مصري/عالمي/بورصة/تحليل/كريبتو]`,
-      messages:[{role:"user",content:`أعد صياغة:\n${txt}`}]
+      max_tokens:2000,
+      system:`أنت محرر أخبار EgyTrend المتخصص في المحتوى الاقتصادي. أعد صياغة المحتوى بالعربية بهذا التنسيق:\n📌 العنوان: [عنوان جذاب]\n⚡ TL;DR: [جملة واحدة عن أهم تأثير اقتصادي]\n📋 الملخص: [3-4 جمل واضحة]\n📊 التأثير: [إيجابي/سلبي/محايد] · Impact Score: [X/100]\n📈 الأسهم والقطاعات المتأثرة: [اذكرها أو "لا يوجد"]\n💡 ما يعنيه للمستثمر: [جملتان عمليتان]\n🏷️ التصنيف: [اقتصاد مصري/أسواق عالمية/بورصة/تحليل/كريبتو]`,
+      messages:[{role:"user",content:`أعد صياغة هذا المحتوى:\n${txt}`}]
     });
-    document.getElementById("ai-rw-out").textContent=out||"خطأ";
+    document.getElementById("ai-rw-out").textContent=out;
     document.getElementById("ai-rw-res").style.display="block";
-  }catch{document.getElementById("ai-rw-out").textContent="❌ تعذر الاتصال. تحقق من اتصالك بالإنترنت.";}
-  btnTxt.parentElement.disabled=false;btnTxt.textContent="✨ أعد الصياغة + TL;DR";
+  }catch(e){
+    document.getElementById("ai-rw-out").textContent=aiErrMsg(e);
+    document.getElementById("ai-rw-res").style.display="block";
+  }
+  if(btnTxt) btnTxt.textContent="✨ إعادة معالجة";
+  if(btnEl) btnEl.disabled=false;
 }
 
 /* ═══════════════════ FAQ ═══════════════════ */

@@ -3,18 +3,15 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
-/* Anthropic AI integration via Replit AI Integrations proxy.
- * Env vars are auto-set by the platform — never log them. */
 const ANTHROPIC_BASE = process.env["AI_INTEGRATIONS_ANTHROPIC_BASE_URL"];
 const ANTHROPIC_KEY = process.env["AI_INTEGRATIONS_ANTHROPIC_API_KEY"];
 const DEFAULT_MODEL = "claude-sonnet-4-6";
-const REQUEST_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 90_000;
 
-/* Lightweight per-IP rate-limit so a runaway client can't drain the budget.
- * 30 calls per IP per minute is plenty for a single user with chat + news analysis. */
+/* Per-IP rate limit: 60 calls/min is generous for real usage */
 const RATE: Map<string, { ts: number; count: number }> = new Map();
 const RATE_WINDOW_MS = 60_000;
-const RATE_MAX = 30;
+const RATE_MAX = 60;
 
 function rateLimited(ip: string): boolean {
   const now = Date.now();
@@ -38,15 +35,14 @@ router.post("/chat", async (req: Request, res: Response) => {
   if (!ANTHROPIC_BASE || !ANTHROPIC_KEY) {
     res.status(503).json({
       status: "error",
-      message:
-        "AI integration not provisioned. Run setupReplitAIIntegrations for anthropic.",
+      message: "AI integration not provisioned. Run setupReplitAIIntegrations for anthropic.",
     });
     return;
   }
 
   const ip = req.ip || req.socket.remoteAddress || "unknown";
   if (rateLimited(ip)) {
-    res.status(429).json({ status: "error", message: "Too many AI requests, slow down." });
+    res.status(429).json({ status: "error", message: "rate_limit" });
     return;
   }
 
@@ -56,14 +52,14 @@ router.post("/chat", async (req: Request, res: Response) => {
     res.status(400).json({ status: "error", message: "messages array required" });
     return;
   }
-  // Bound message size aggressively — protects upstream + budget.
+
   const safeMessages = messages
     .filter(
       (m): m is { role: "user" | "assistant"; content: string } =>
         m && typeof m.content === "string" && (m.role === "user" || m.role === "assistant"),
     )
     .slice(-20)
-    .map((m) => ({ role: m.role, content: m.content.slice(0, 8000) }));
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 12000) }));
 
   if (!safeMessages.length) {
     res.status(400).json({ status: "error", message: "no valid messages" });
@@ -71,12 +67,14 @@ router.post("/chat", async (req: Request, res: Response) => {
   }
 
   const systemPrompt =
-    typeof body.system === "string" ? body.system.slice(0, 4000) : undefined;
+    typeof body.system === "string" ? body.system.slice(0, 6000) : undefined;
+
+  /* Allow up to 8192 tokens — Claude Sonnet supports it and long Arabic responses need it */
   const maxTokens =
     typeof body.max_tokens === "number" && body.max_tokens > 0
-      ? Math.min(Math.floor(body.max_tokens), 4096)
-      : 1024;
-  // Frontend may pass legacy/invalid model names; keep us in known-good territory.
+      ? Math.min(Math.floor(body.max_tokens), 8192)
+      : 2000;
+
   const model = DEFAULT_MODEL;
 
   const ctrl = new AbortController();
@@ -97,41 +95,50 @@ router.post("/chat", async (req: Request, res: Response) => {
         messages: safeMessages,
       }),
     });
+
     const txt = await upstream.text();
     if (!upstream.ok) {
-      logger.warn(
-        { status: upstream.status, body: txt.slice(0, 400) },
-        "ai upstream error",
-      );
-      res.status(502).json({
+      logger.warn({ status: upstream.status, body: txt.slice(0, 400) }, "ai upstream error");
+      const isRateLimit = upstream.status === 429;
+      res.status(isRateLimit ? 429 : 502).json({
         status: "error",
-        message: "AI upstream error",
+        message: isRateLimit ? "rate_limit" : "AI upstream error",
         upstreamStatus: upstream.status,
       });
       return;
     }
-    let data: { content?: Array<{ type: string; text?: string }> };
+
+    let data: {
+      content?: Array<{ type: string; text?: string }>;
+      stop_reason?: string;
+    };
     try {
       data = JSON.parse(txt);
     } catch {
-      res
-        .status(502)
-        .json({ status: "error", message: "AI returned invalid JSON" });
+      res.status(502).json({ status: "error", message: "AI returned invalid JSON" });
       return;
     }
+
     const text =
       (data.content || [])
         .filter((c) => c.type === "text" && typeof c.text === "string")
         .map((c) => c.text as string)
         .join("\n")
         .trim() || "";
-    res.json({ status: "ok", text, model });
+
+    if (!text) {
+      logger.warn({ stop_reason: data.stop_reason }, "ai returned empty text");
+      res.status(502).json({ status: "error", message: "AI returned empty response" });
+      return;
+    }
+
+    res.json({ status: "ok", text, model, stop_reason: data.stop_reason });
   } catch (err) {
     const aborted = (err as Error)?.name === "AbortError";
-    logger.warn({ err }, "ai request failed");
+    logger.warn({ err }, aborted ? "ai request timed out" : "ai request failed");
     res.status(aborted ? 504 : 502).json({
       status: "error",
-      message: aborted ? "AI request timed out" : "AI request failed",
+      message: aborted ? "timeout" : "AI request failed",
     });
   } finally {
     clearTimeout(t);
