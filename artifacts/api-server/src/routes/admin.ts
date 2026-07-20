@@ -21,6 +21,54 @@ const JWT_SECRET = process.env["SESSION_SECRET"] || "egytrend-secret-2026";
 const ADMIN_PASSWORD = process.env["ADMIN_PASSWORD"] || "egytrend2026";
 const LEGACY_TOKEN = process.env["ADMIN_TOKEN"] || process.env["SESSION_SECRET"] || "";
 
+/* ─── Brute-force protection on /login ─── */
+const loginAttempts = new Map<string, { count: number; until: number }>();
+const MAX_LOGIN_ATTEMPTS = 10;
+const LOGIN_LOCKOUT_MS   = 15 * 60 * 1000; // 15 min
+
+function checkLoginBruteForce(ip: string): "ok" | "locked" {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry) return "ok";
+  // Locked only after reaching max attempts within the window
+  if (entry.count >= MAX_LOGIN_ATTEMPTS && now < entry.until) return "locked";
+  // Reset if window expired
+  if (now >= entry.until) { loginAttempts.delete(ip); }
+  return "ok";
+}
+function recordLoginFailure(ip: string): void {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || now >= entry.until) {
+    // Start new window
+    loginAttempts.set(ip, { count: 1, until: now + LOGIN_LOCKOUT_MS });
+  } else {
+    entry.count++;
+  }
+}
+function clearLoginFailures(ip: string): void {
+  loginAttempts.delete(ip);
+}
+
+/* ─── Rate limiting on payment requests (per phone, 3 per 10 min) ─── */
+const payReqMap = new Map<string, number[]>();
+const PAY_REQ_MAX    = 3;
+const PAY_REQ_WINDOW = 10 * 60 * 1000; // 10 min
+
+function checkPayRateLimit(phone: string): "ok" | "limited" {
+  const now  = Date.now();
+  const hits = (payReqMap.get(phone) || []).filter(t => now - t < PAY_REQ_WINDOW);
+  if (hits.length >= PAY_REQ_MAX) return "limited";
+  hits.push(now);
+  payReqMap.set(phone, hits);
+  return "ok";
+}
+
+/* ─── Input sanitizer (strip HTML tags) ─── */
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]*>/g, "").replace(/[<>]/g, "");
+}
+
 /* ─── JWT helpers ─── */
 interface JWTPayload { sub: number; name: string; role: string; email: string; }
 
@@ -172,6 +220,14 @@ router.get("/bootstrap", (_req, res: Response) => {
 
 /* Legacy password login → returns static token */
 router.post("/login", async (req: AuthRequest, res: Response) => {
+  const ip = req.ip || "unknown";
+
+  // Brute-force check
+  if (checkLoginBruteForce(ip) === "locked") {
+    res.status(429).json({ status: "error", message: "too many failed attempts — try again in 15 minutes" });
+    return;
+  }
+
   const password = String((req.body || {}).password || "");
 
   // Check if this matches an employee email/password (new JWT flow)
@@ -184,21 +240,25 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
         res.status(403).json({ status: "error", message: "account disabled" });
         return;
       }
+      clearLoginFailures(ip);
       await db.update(employeesTable).set({ lastLogin: new Date() }).where(eq(employeesTable.id, emp.id));
       const token = signToken({ sub: emp.id, name: emp.name, role: emp.role, email: emp.email });
       await auditLog("login", { sub: emp.id, name: emp.name, role: emp.role, email: emp.email }, "employee", { email }, req.ip);
       res.json({ status: "ok", token, employee: { id: emp.id, name: emp.name, role: emp.role, email: emp.email } });
       return;
     }
+    recordLoginFailure(ip);
     res.status(401).json({ status: "error", message: "invalid credentials" });
     return;
   }
 
   // Legacy password-only login
   if (password !== ADMIN_PASSWORD) {
+    recordLoginFailure(ip);
     res.status(401).json({ status: "error", message: "invalid password" });
     return;
   }
+  clearLoginFailures(ip);
   if (!LEGACY_TOKEN) {
     res.status(503).json({ status: "error", message: "ADMIN_TOKEN not configured on server" });
     return;
@@ -642,19 +702,32 @@ router.post("/users/action", requireAuth, requireRole("super_admin", "admin", "s
 router.post("/requests", async (req: Request, res: Response) => {
   const b = req.body || {};
   const id = String(b.id || `req-${Date.now()}`).trim().slice(0, 60);
-  const phone = String(b.phone || "").trim().slice(0, 30);
-  const name = String(b.name || "").trim().slice(0, 80);
-  const planKey = String(b.planKey || "").trim().slice(0, 30);
-  const payMethod = String(b.payMethod || "").trim().slice(0, 30);
-  const price = Math.max(0, Number(b.price) || 0);
-  const tx = String(b.tx || "").trim().slice(0, 100);
+  const phone    = String(b.phone    || "").trim().slice(0, 30);
+  const name     = stripHtml(String(b.name    || "").trim()).slice(0, 80);
+  const planKey  = String(b.planKey  || "").trim().replace(/[^a-z0-9_\-]/gi, "").slice(0, 30);
+  const payMethod= String(b.payMethod|| "").trim().slice(0, 30);
+  const price    = Math.max(0, Number(b.price) || 0);
+  const tx       = stripHtml(String(b.tx || "").trim()).slice(0, 100);
+
   if (!phone || !name || !planKey || !tx) {
     res.status(400).json({ status: "error", message: "phone, name, planKey, tx required" });
     return;
   }
+  if (!/^01[0-9]{9}$/.test(phone.replace(/\s/g, ""))) {
+    res.status(400).json({ status: "error", message: "رقم الهاتف غير صحيح — يجب أن يبدأ بـ 01 ويكون 11 رقماً" });
+    return;
+  }
+
+  // Rate limit: max 3 requests per phone per 10 minutes
+  if (checkPayRateLimit(phone) === "limited") {
+    res.status(429).json({ status: "error", message: "تم إرسال طلبات كثيرة — يرجى الانتظار 10 دقائق" });
+    return;
+  }
+
   try {
     await db.insert(paymentRequestsTable).values({ id, phone, name, planKey, payMethod, price, tx, status: "pending" })
       .onConflictDoUpdate({ target: paymentRequestsTable.id, set: { phone, name, planKey, payMethod, price, tx, status: "pending", updatedAt: new Date() } });
+    logger.info({ phone, planKey }, "payment request submitted");
     res.json({ status: "ok", id });
   } catch (e) {
     logger.error({ err: e }, "payment request create error");
