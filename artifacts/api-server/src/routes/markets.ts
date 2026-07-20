@@ -630,76 +630,199 @@ router.get("/calendar", async (_req: Request, res: Response) => {
 });
 
 /* ═══════════════════════════════════════════════════
-   EGX STOCKS — Yahoo Finance  (no API key needed)
-   Quotes: 2-min cache  |  Fundamentals: 24-hr cache
+   STOCKS — Yahoo Finance  (EGX + US, no API key needed)
+   Quotes: 3-min cache  |  Batched in groups of 25
    ═══════════════════════════════════════════════════ */
 
-type EGXDef = { sym: string; yahoo: string; name: string; sector: string };
+type StockDef = { sym: string; yahoo: string; name: string; sector: string };
 
-const EGX_DEFS: EGXDef[] = [
-  { sym:"CIB",  yahoo:"CIB.CA",  name:"البنك التجاري الدولي",   sector:"بنوك"       },
-  { sym:"COMI", yahoo:"COMI.CA", name:"بنك القاهرة",             sector:"بنوك"       },
-  { sym:"HRHO", yahoo:"HRHO.CA", name:"هيرميس القابضة",          sector:"مالية"      },
-  { sym:"EFIH", yahoo:"EFIH.CA", name:"إي فاينانس",              sector:"تقنية"      },
-  { sym:"OCDI", yahoo:"OCDI.CA", name:"أوراسكوم للتطوير",        sector:"عقارات"     },
-  { sym:"TMGH", yahoo:"TMGH.CA", name:"طلعت مصطفى",             sector:"عقارات"     },
-  { sym:"MNHD", yahoo:"MNHD.CA", name:"مدينة نصر للإسكان",       sector:"عقارات"     },
-  { sym:"PHDC", yahoo:"PHDC.CA", name:"بالم هيلز",               sector:"عقارات"     },
-  { sym:"ABUK", yahoo:"ABUK.CA", name:"أبوقير للأسمدة",          sector:"صناعة"      },
-  { sym:"ETEL", yahoo:"ETEL.CA", name:"المصرية للاتصالات",       sector:"اتصالات"    },
-  { sym:"SWDY", yahoo:"SWDY.CA", name:"السويدي إليكتريك",        sector:"صناعة"      },
-  { sym:"ESRS", yahoo:"ESRS.CA", name:"عز للصلب",                sector:"صناعة"      },
-  { sym:"AMOC", yahoo:"AMOC.CA", name:"النصر للكيماويات",        sector:"صناعة"      },
-  { sym:"CLHO", yahoo:"CLHO.CA", name:"كليوباترا للمستشفيات",    sector:"صحة"        },
-  { sym:"PHAR", yahoo:"PHAR.CA", name:"إيبي فارما",              sector:"أدوية"      },
-  { sym:"EAST", yahoo:"EAST.CA", name:"الشرق للدخان",            sector:"غذائية"     },
-  { sym:"JUFO", yahoo:"JUFO.CA", name:"جهينة للأغذية",           sector:"غذائية"     },
-  { sym:"EKHO", yahoo:"EKHO.CA", name:"إيديتا للصناعات الغذائية",sector:"غذائية"     },
-  { sym:"ASCM", yahoo:"ASCM.CA", name:"سيناء للصناعة",           sector:"مواد بناء"  },
-  { sym:"GGHE", yahoo:"GGHE.CA", name:"جلوبال تيليكوم",          sector:"اتصالات"    },
+/* ─── EGX Stocks (~65 most-liquid listings) ─── */
+const EGX_DEFS: StockDef[] = [
+  // بنوك
+  { sym:"CIB",   yahoo:"CIB.CA",   name:"البنك التجاري الدولي",        sector:"بنوك"       },
+  { sym:"COMI",  yahoo:"COMI.CA",  name:"بنك القاهرة",                 sector:"بنوك"       },
+  { sym:"HBCO",  yahoo:"HBCO.CA",  name:"HSBC مصر",                    sector:"بنوك"       },
+  { sym:"ADIB",  yahoo:"ADIB.CA",  name:"مصرف أبوظبي الإسلامي",        sector:"بنوك"       },
+  { sym:"AIBC",  yahoo:"AIBC.CA",  name:"بنك الاستثمار العربي",         sector:"بنوك"       },
+  { sym:"ABCB",  yahoo:"ABCB.CA",  name:"بنك ABC مصر",                 sector:"بنوك"       },
+  { sym:"EDBE",  yahoo:"EDBE.CA",  name:"بنك تنمية الصادرات",           sector:"بنوك"       },
+  { sym:"MCQE",  yahoo:"MCQE.CA",  name:"مصر كابيتال",                 sector:"بنوك"       },
+  { sym:"FAWRY", yahoo:"FAWRY.CA", name:"فوري للتكنولوجيا",             sector:"تقنية"      },
+  // مالية
+  { sym:"HRHO",  yahoo:"HRHO.CA",  name:"هيرميس القابضة",              sector:"مالية"      },
+  { sym:"GBCO",  yahoo:"GBCO.CA",  name:"الخليج لإدارة الاستثمار",      sector:"مالية"      },
+  { sym:"SFAP",  yahoo:"SFAP.CA",  name:"مصر للتأمين",                 sector:"مالية"      },
+  { sym:"CIEB",  yahoo:"CIEB.CA",  name:"سي آي كابيتال",               sector:"مالية"      },
+  { sym:"IDKO",  yahoo:"IDKO.CA",  name:"إيدكو للغاز",                 sector:"مالية"      },
+  // تقنية
+  { sym:"EFIH",  yahoo:"EFIH.CA",  name:"إي فاينانس",                  sector:"تقنية"      },
+  { sym:"OTLQ",  yahoo:"OTLQ.CA",  name:"أوراسكوم TMT",                sector:"تقنية"      },
+  // اتصالات
+  { sym:"ETEL",  yahoo:"ETEL.CA",  name:"المصرية للاتصالات",           sector:"اتصالات"    },
+  { sym:"GGHE",  yahoo:"GGHE.CA",  name:"جلوبال تيليكوم",              sector:"اتصالات"    },
+  { sym:"MTEL",  yahoo:"MTEL.CA",  name:"أورنج مصر",                   sector:"اتصالات"    },
+  // عقارات
+  { sym:"OCDI",  yahoo:"OCDI.CA",  name:"أوراسكوم للتطوير",            sector:"عقارات"     },
+  { sym:"TMGH",  yahoo:"TMGH.CA",  name:"طلعت مصطفى",                 sector:"عقارات"     },
+  { sym:"MNHD",  yahoo:"MNHD.CA",  name:"مدينة نصر للإسكان",           sector:"عقارات"     },
+  { sym:"PHDC",  yahoo:"PHDC.CA",  name:"بالم هيلز",                   sector:"عقارات"     },
+  { sym:"HELI",  yahoo:"HELI.CA",  name:"هيليوبوليس للإسكان",          sector:"عقارات"     },
+  { sym:"CIRA",  yahoo:"CIRA.CA",  name:"القاهرة للاستثمار والتعمير",   sector:"عقارات"     },
+  { sym:"PRSM",  yahoo:"PRSM.CA",  name:"سوديك",                      sector:"عقارات"     },
+  { sym:"CCAP",  yahoo:"CCAP.CA",  name:"القاهرة للعقارات والتعمير",    sector:"عقارات"     },
+  // صناعة
+  { sym:"ABUK",  yahoo:"ABUK.CA",  name:"أبوقير للأسمدة",              sector:"صناعة"      },
+  { sym:"SWDY",  yahoo:"SWDY.CA",  name:"السويدي إليكتريك",             sector:"صناعة"      },
+  { sym:"ESRS",  yahoo:"ESRS.CA",  name:"عز للصلب",                    sector:"صناعة"      },
+  { sym:"AMOC",  yahoo:"AMOC.CA",  name:"النصر للكيماويات",            sector:"صناعة"      },
+  { sym:"ACGC",  yahoo:"ACGC.CA",  name:"الأهلية للكيماويات والأدوية",  sector:"صناعة"      },
+  { sym:"SKPC",  yahoo:"SKPC.CA",  name:"سيدي كرير للبتروكيماويات",    sector:"صناعة"      },
+  { sym:"ORWE",  yahoo:"ORWE.CA",  name:"أوروبا للصناعات",             sector:"صناعة"      },
+  { sym:"ARPH",  yahoo:"ARPH.CA",  name:"العربية للأوراق",              sector:"صناعة"      },
+  { sym:"SPIN",  yahoo:"SPIN.CA",  name:"سبينس",                       sector:"صناعة"      },
+  { sym:"KABO",  yahoo:"KABO.CA",  name:"القابضة للاستثمارات",          sector:"صناعة"      },
+  // صحة
+  { sym:"CLHO",  yahoo:"CLHO.CA",  name:"كليوباترا للمستشفيات",         sector:"صحة"        },
+  { sym:"ISPH",  yahoo:"ISPH.CA",  name:"الصناعات الدوائية الدولية",    sector:"صحة"        },
+  { sym:"ACDP",  yahoo:"ACDP.CA",  name:"أكوردا إيجيبت",               sector:"صحة"        },
+  { sym:"BMWO",  yahoo:"BMWO.CA",  name:"بيوميديكال للرعاية",           sector:"صحة"        },
+  // أدوية
+  { sym:"PHAR",  yahoo:"PHAR.CA",  name:"إيبي فارما",                  sector:"أدوية"      },
+  { sym:"EGCH",  yahoo:"EGCH.CA",  name:"إيجيبت للصناعات الكيماوية",   sector:"أدوية"      },
+  // غذائية
+  { sym:"EAST",  yahoo:"EAST.CA",  name:"الشرق للدخان",               sector:"غذائية"     },
+  { sym:"JUFO",  yahoo:"JUFO.CA",  name:"جهينة للأغذية",               sector:"غذائية"     },
+  { sym:"EKHO",  yahoo:"EKHO.CA",  name:"إيديتا للصناعات الغذائية",    sector:"غذائية"     },
+  { sym:"POUL",  yahoo:"POUL.CA",  name:"القاهرة للدواجن",             sector:"غذائية"     },
+  { sym:"DOMTY", yahoo:"DOMTY.CA", name:"دومتي",                      sector:"غذائية"     },
+  { sym:"OLFI",  yahoo:"OLFI.CA",  name:"الأولفى للتجارة والتوزيع",    sector:"غذائية"     },
+  { sym:"AMER",  yahoo:"AMER.CA",  name:"أمريكانا للمطاعم",             sector:"غذائية"     },
+  // مواد بناء
+  { sym:"ASCM",  yahoo:"ASCM.CA",  name:"سيناء للصناعة",               sector:"مواد بناء"  },
+  { sym:"ARCO",  yahoo:"ARCO.CA",  name:"العربية للمقاولات",           sector:"مواد بناء"  },
+  { sym:"HELB",  yahoo:"HELB.CA",  name:"هيلنان للفنادق",              sector:"مواد بناء"  },
+  { sym:"KAHA",  yahoo:"KAHA.CA",  name:"قها للمحاصيل الغذائية",       sector:"غذائية"     },
+  // طاقة
+  { sym:"SCOM",  yahoo:"SCOM.CA",  name:"سيدي كرير للصناعات",          sector:"طاقة"       },
+  { sym:"AMCO",  yahoo:"AMCO.CA",  name:"أموك للطاقة",                 sector:"طاقة"       },
+];
+
+/* ─── US Stocks (~60 S&P 500 heavyweights) ─── */
+const US_DEFS: StockDef[] = [
+  // Technology
+  { sym:"AAPL",  yahoo:"AAPL",  name:"Apple",                    sector:"Technology"  },
+  { sym:"MSFT",  yahoo:"MSFT",  name:"Microsoft",                sector:"Technology"  },
+  { sym:"NVDA",  yahoo:"NVDA",  name:"NVIDIA",                   sector:"Technology"  },
+  { sym:"GOOGL", yahoo:"GOOGL", name:"Alphabet (Google)",        sector:"Technology"  },
+  { sym:"META",  yahoo:"META",  name:"Meta Platforms",           sector:"Technology"  },
+  { sym:"AVGO",  yahoo:"AVGO",  name:"Broadcom",                 sector:"Technology"  },
+  { sym:"ADBE",  yahoo:"ADBE",  name:"Adobe",                    sector:"Technology"  },
+  { sym:"CRM",   yahoo:"CRM",   name:"Salesforce",               sector:"Technology"  },
+  { sym:"ORCL",  yahoo:"ORCL",  name:"Oracle",                   sector:"Technology"  },
+  { sym:"QCOM",  yahoo:"QCOM",  name:"Qualcomm",                 sector:"Technology"  },
+  { sym:"AMD",   yahoo:"AMD",   name:"AMD",                      sector:"Technology"  },
+  { sym:"INTC",  yahoo:"INTC",  name:"Intel",                    sector:"Technology"  },
+  { sym:"CSCO",  yahoo:"CSCO",  name:"Cisco",                    sector:"Technology"  },
+  { sym:"IBM",   yahoo:"IBM",   name:"IBM",                      sector:"Technology"  },
+  { sym:"NFLX",  yahoo:"NFLX",  name:"Netflix",                  sector:"Technology"  },
+  // Consumer
+  { sym:"AMZN",  yahoo:"AMZN",  name:"Amazon",                   sector:"Consumer"    },
+  { sym:"TSLA",  yahoo:"TSLA",  name:"Tesla",                    sector:"Consumer"    },
+  { sym:"WMT",   yahoo:"WMT",   name:"Walmart",                  sector:"Consumer"    },
+  { sym:"HD",    yahoo:"HD",    name:"Home Depot",               sector:"Consumer"    },
+  { sym:"MCD",   yahoo:"MCD",   name:"McDonald's",               sector:"Consumer"    },
+  { sym:"NKE",   yahoo:"NKE",   name:"Nike",                     sector:"Consumer"    },
+  { sym:"SBUX",  yahoo:"SBUX",  name:"Starbucks",                sector:"Consumer"    },
+  { sym:"COST",  yahoo:"COST",  name:"Costco",                   sector:"Consumer"    },
+  { sym:"DIS",   yahoo:"DIS",   name:"Walt Disney",              sector:"Consumer"    },
+  { sym:"LOW",   yahoo:"LOW",   name:"Lowe's",                   sector:"Consumer"    },
+  { sym:"TGT",   yahoo:"TGT",   name:"Target",                   sector:"Consumer"    },
+  // Finance
+  { sym:"BRK-B", yahoo:"BRK-B", name:"Berkshire Hathaway",      sector:"Finance"     },
+  { sym:"JPM",   yahoo:"JPM",   name:"JPMorgan Chase",           sector:"Finance"     },
+  { sym:"V",     yahoo:"V",     name:"Visa",                     sector:"Finance"     },
+  { sym:"MA",    yahoo:"MA",    name:"Mastercard",               sector:"Finance"     },
+  { sym:"BAC",   yahoo:"BAC",   name:"Bank of America",          sector:"Finance"     },
+  { sym:"GS",    yahoo:"GS",    name:"Goldman Sachs",            sector:"Finance"     },
+  { sym:"MS",    yahoo:"MS",    name:"Morgan Stanley",           sector:"Finance"     },
+  { sym:"AXP",   yahoo:"AXP",   name:"American Express",         sector:"Finance"     },
+  { sym:"C",     yahoo:"C",     name:"Citigroup",                sector:"Finance"     },
+  { sym:"PYPL",  yahoo:"PYPL",  name:"PayPal",                   sector:"Finance"     },
+  // Healthcare
+  { sym:"UNH",   yahoo:"UNH",   name:"UnitedHealth Group",       sector:"Healthcare"  },
+  { sym:"LLY",   yahoo:"LLY",   name:"Eli Lilly",                sector:"Healthcare"  },
+  { sym:"JNJ",   yahoo:"JNJ",   name:"Johnson & Johnson",        sector:"Healthcare"  },
+  { sym:"ABBV",  yahoo:"ABBV",  name:"AbbVie",                   sector:"Healthcare"  },
+  { sym:"MRK",   yahoo:"MRK",   name:"Merck",                    sector:"Healthcare"  },
+  { sym:"TMO",   yahoo:"TMO",   name:"Thermo Fisher",            sector:"Healthcare"  },
+  { sym:"PFE",   yahoo:"PFE",   name:"Pfizer",                   sector:"Healthcare"  },
+  { sym:"ABT",   yahoo:"ABT",   name:"Abbott Labs",              sector:"Healthcare"  },
+  { sym:"BMY",   yahoo:"BMY",   name:"Bristol-Myers Squibb",     sector:"Healthcare"  },
+  // Staples & Energy
+  { sym:"PG",    yahoo:"PG",    name:"Procter & Gamble",         sector:"Consumer"    },
+  { sym:"KO",    yahoo:"KO",    name:"Coca-Cola",                sector:"Consumer"    },
+  { sym:"PEP",   yahoo:"PEP",   name:"PepsiCo",                  sector:"Consumer"    },
+  { sym:"XOM",   yahoo:"XOM",   name:"ExxonMobil",               sector:"Energy"      },
+  { sym:"CVX",   yahoo:"CVX",   name:"Chevron",                  sector:"Energy"      },
+  // Industrials & Telecom
+  { sym:"BA",    yahoo:"BA",    name:"Boeing",                   sector:"Industrials" },
+  { sym:"CAT",   yahoo:"CAT",   name:"Caterpillar",              sector:"Industrials" },
+  { sym:"HON",   yahoo:"HON",   name:"Honeywell",                sector:"Industrials" },
+  { sym:"GE",    yahoo:"GE",    name:"GE Aerospace",             sector:"Industrials" },
+  { sym:"F",     yahoo:"F",     name:"Ford Motor",               sector:"Industrials" },
+  { sym:"GM",    yahoo:"GM",    name:"General Motors",           sector:"Industrials" },
+  { sym:"T",     yahoo:"T",     name:"AT&T",                     sector:"Telecom"     },
+  { sym:"VZ",    yahoo:"VZ",    name:"Verizon",                  sector:"Telecom"     },
 ];
 
 export type StockQuote = {
   sym: string; name: string; sector: string;
   price: number; prevClose: number; chg: number; chgPct: number;
   vol: number; high: number; low: number; open: number;
-  mktCapM?: number;  // market cap in EGP millions
-  pe?: number; divYield?: number; eps?: number;
+  mktCapM?: number;
+  pe?: number; forwardPE?: number; divYield?: number; eps?: number;
+  bookValue?: number; priceToBook?: number; sharesM?: number;
+  high52w?: number; low52w?: number;
   ts: number;
 };
 
-/* yahoo-finance2 v3 — handles cookie+crumb auth internally.
-   The default export is the YahooFinance class; must use `new`. */
+/* yahoo-finance2 v3 — default export is the YahooFinance class; must use `new`. */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const YFClass = require("yahoo-finance2").default as new(opts?: Record<string, unknown>) => { quote: (symbol: string, queryOptions?: Record<string, unknown>, moduleOptions?: Record<string, unknown>) => Promise<Record<string, unknown>> };
 const yf = new YFClass({ suppressNotices: ["yahooSurvey"] });
 
-async function fetchYahooQuote(def: EGXDef): Promise<StockQuote | null> {
+async function fetchYahooQuote(def: StockDef): Promise<StockQuote | null> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const q = await yf.quote(def.yahoo, {}, { validateResult: false }) as any;
     if (!q || !q.regularMarketPrice || q.regularMarketPrice === 0) return null;
-    const price    = q.regularMarketPrice;
-    const prev     = q.regularMarketPreviousClose ?? price;
-    const chg      = price - prev;
-    const chgPct   = prev > 0 ? (chg / prev) * 100 : 0;
+    const price  = q.regularMarketPrice;
+    const prev   = q.regularMarketPreviousClose ?? price;
+    const chg    = price - prev;
+    const chgPct = prev > 0 ? (chg / prev) * 100 : 0;
     return {
-      sym:     def.sym,
-      name:    def.name,
-      sector:  def.sector,
+      sym:        def.sym,
+      name:       def.name,
+      sector:     def.sector,
       price,
-      prevClose: prev,
+      prevClose:  prev,
       chg,
       chgPct,
-      vol:     q.regularMarketVolume ?? 0,
-      high:    q.regularMarketDayHigh ?? price,
-      low:     q.regularMarketDayLow  ?? price,
-      open:    q.regularMarketOpen    ?? price,
-      mktCapM: q.marketCap ? Math.round(q.marketCap / 1_000_000) : undefined,
-      pe:      q.trailingPE ?? undefined,
-      divYield:q.trailingAnnualDividendYield != null ? q.trailingAnnualDividendYield * 100 : undefined,
-      eps:     q.epsTrailingTwelveMonths ?? undefined,
-      ts:      Date.now(),
+      vol:        q.regularMarketVolume ?? 0,
+      high:       q.regularMarketDayHigh ?? price,
+      low:        q.regularMarketDayLow  ?? price,
+      open:       q.regularMarketOpen    ?? price,
+      mktCapM:    q.marketCap ? Math.round(q.marketCap / 1_000_000) : undefined,
+      pe:         q.trailingPE ?? undefined,
+      forwardPE:  q.forwardPE ?? undefined,
+      divYield:   q.trailingAnnualDividendYield != null ? q.trailingAnnualDividendYield * 100 : undefined,
+      eps:        q.epsTrailingTwelveMonths ?? undefined,
+      bookValue:  q.bookValue ?? undefined,
+      priceToBook:q.priceToBook ?? undefined,
+      sharesM:    q.sharesOutstanding ? Math.round(q.sharesOutstanding / 1_000_000) : undefined,
+      high52w:    q.fiftyTwoWeekHigh ?? undefined,
+      low52w:     q.fiftyTwoWeekLow  ?? undefined,
+      ts:         Date.now(),
     };
   } catch (e) {
     logger.warn({ sym: def.sym, err: (e as Error).message }, "yf2 quote failed");
@@ -707,8 +830,22 @@ async function fetchYahooQuote(def: EGXDef): Promise<StockQuote | null> {
   }
 }
 
-let stocksCache: { ts: number; stocks: StockQuote[] } | null = null;
-const STOCKS_TTL_MS = 2 * 60 * 1000; // 2 minutes
+/* Batch fetching — avoid Yahoo Finance rate limits */
+async function fetchStocksBatched(defs: StockDef[], batchSize = 25, delayMs = 400): Promise<StockQuote[]> {
+  const results: StockQuote[] = [];
+  for (let i = 0; i < defs.length; i += batchSize) {
+    const batch = defs.slice(i, i + batchSize);
+    const settled = await Promise.allSettled(batch.map(fetchYahooQuote));
+    settled.forEach(r => { if (r.status === "fulfilled" && r.value) results.push(r.value); });
+    if (i + batchSize < defs.length) await new Promise(r => setTimeout(r, delayMs));
+  }
+  return results;
+}
+
+let stocksCache:   { ts: number; stocks: StockQuote[] } | null = null;
+let usStocksCache: { ts: number; stocks: StockQuote[] } | null = null;
+const STOCKS_TTL_MS    = 3 * 60 * 1000; // 3 minutes
+const US_STOCKS_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 router.get("/stocks", async (_req: Request, res: Response) => {
   const now = Date.now();
@@ -717,16 +854,35 @@ router.get("/stocks", async (_req: Request, res: Response) => {
     return;
   }
   try {
-    const rawQuotes = await Promise.all(EGX_DEFS.map(fetchYahooQuote));
-    const quotes = rawQuotes.filter((q): q is StockQuote => q !== null);
-    stocksCache = { ts: now, stocks: quotes };
-    res.json({ status: "ok", ts: now, stocks: quotes });
+    const stocks = await fetchStocksBatched(EGX_DEFS);
+    stocksCache = { ts: now, stocks };
+    res.json({ status: "ok", ts: now, stocks });
   } catch (e) {
-    logger.error({ err: (e as Error).message }, "stocks build failed");
+    logger.error({ err: (e as Error).message }, "egx-stocks build failed");
     if (stocksCache) {
       res.json({ status: "ok", ts: stocksCache.ts, stocks: stocksCache.stocks, stale: true });
     } else {
-      res.status(503).json({ status: "error", message: "stocks data unavailable" });
+      res.status(503).json({ status: "error", message: "EGX stocks data unavailable" });
+    }
+  }
+});
+
+router.get("/us-stocks", async (_req: Request, res: Response) => {
+  const now = Date.now();
+  if (usStocksCache && now - usStocksCache.ts < US_STOCKS_TTL_MS) {
+    res.json({ status: "ok", ts: usStocksCache.ts, stocks: usStocksCache.stocks });
+    return;
+  }
+  try {
+    const stocks = await fetchStocksBatched(US_DEFS, 20, 500);
+    usStocksCache = { ts: now, stocks };
+    res.json({ status: "ok", ts: now, stocks });
+  } catch (e) {
+    logger.error({ err: (e as Error).message }, "us-stocks build failed");
+    if (usStocksCache) {
+      res.json({ status: "ok", ts: usStocksCache.ts, stocks: usStocksCache.stocks, stale: true });
+    } else {
+      res.status(503).json({ status: "error", message: "US stocks data unavailable" });
     }
   }
 });
