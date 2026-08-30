@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { logger } from "../lib/logger";
+import { currentUser } from "../lib/userAuth";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import {
@@ -10,16 +11,16 @@ import {
 import { db } from "@workspace/db";
 import {
   employeesTable, subscriptionPlansTable, couponsTable,
-  auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable,
+  auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable, appUsersTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, like, or, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
 /* ─── Secrets ─── */
-const JWT_SECRET = process.env["SESSION_SECRET"] || "egytrend-secret-2026";
-const ADMIN_PASSWORD = process.env["ADMIN_PASSWORD"] || "egytrend2026";
-const LEGACY_TOKEN = process.env["ADMIN_TOKEN"] || process.env["SESSION_SECRET"] || "";
+const JWT_SECRET = process.env["SESSION_SECRET"];
+const ADMIN_PASSWORD = process.env["ADMIN_PASSWORD"];
+const LEGACY_TOKEN = process.env["ADMIN_TOKEN"] || "";
 
 /* ─── Brute-force protection on /login ─── */
 const loginAttempts = new Map<string, { count: number; until: number }>();
@@ -73,10 +74,12 @@ function stripHtml(s: string): string {
 interface JWTPayload { sub: number; name: string; role: string; email: string; }
 
 function signToken(payload: JWTPayload): string {
+  if (!JWT_SECRET) throw new Error("SESSION_SECRET is not configured");
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "24h" });
 }
 
 function verifyToken(token: string): JWTPayload | null {
+  if (!JWT_SECRET) return null;
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     if (typeof decoded === "string") return null;
@@ -253,17 +256,23 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
   }
 
   // Legacy password-only login
+  if (!ADMIN_PASSWORD) {
+    res.status(503).json({ status: "error", message: "admin password is not configured" });
+    return;
+  }
   if (password !== ADMIN_PASSWORD) {
     recordLoginFailure(ip);
     res.status(401).json({ status: "error", message: "invalid password" });
     return;
   }
   clearLoginFailures(ip);
-  if (!LEGACY_TOKEN) {
-    res.status(503).json({ status: "error", message: "ADMIN_TOKEN not configured on server" });
-    return;
-  }
-  res.json({ status: "ok", token: LEGACY_TOKEN });
+  const token = LEGACY_TOKEN || signToken({
+    sub: 0,
+    name: "Super Admin",
+    role: "super_admin",
+    email: "admin@egytrend",
+  });
+  res.json({ status: "ok", token });
 });
 
 /* Public: check AI config (for frontend to know what's enabled) */
@@ -672,14 +681,16 @@ router.get("/audit-logs", requireAuth, requireRole("super_admin", "admin"), asyn
 
 /* ─── User Management (via localStorage sync) ─── */
 router.get("/users", requireAuth, requireRole("super_admin", "admin", "support"), async (req: Request, res: Response) => {
-  // Users are stored client-side; this endpoint returns a lookup of server-side user states
-  const states = await db.execute(sql`
-    SELECT target as phone, detail, created_at
-    FROM audit_logs
-    WHERE action IN ('ban_user', 'unban_user', 'upgrade_vip', 'downgrade_vip')
-    ORDER BY created_at DESC
-  `);
-  res.json({ status: "ok", userEvents: states.rows });
+  const users = await db.select({
+    id: appUsersTable.id,
+    phone: appUsersTable.phone,
+    name: appUsersTable.name,
+    plan: appUsersTable.plan,
+    vipExpiresAt: appUsersTable.vipExpiresAt,
+    status: appUsersTable.status,
+    createdAt: appUsersTable.createdAt,
+  }).from(appUsersTable).orderBy(desc(appUsersTable.createdAt)).limit(1000);
+  res.json({ status: "ok", users });
 });
 
 router.post("/users/action", requireAuth, requireRole("super_admin", "admin", "support"), async (req: AuthRequest, res: Response) => {
@@ -690,6 +701,23 @@ router.post("/users/action", requireAuth, requireRole("super_admin", "admin", "s
     return;
   }
   if (!phone) { res.status(400).json({ status: "error", message: "phone required" }); return; }
+  const [user] = await db.select().from(appUsersTable).where(eq(appUsersTable.phone, String(phone))).limit(1);
+  if (!user) { res.status(404).json({ status: "error", message: "user not found" }); return; }
+  const updates: Partial<typeof appUsersTable.$inferInsert> = { updatedAt: new Date() };
+  if (action === "upgrade_vip") {
+    const expires = new Date();
+    expires.setMonth(expires.getMonth() + 1);
+    updates.plan = "vip";
+    updates.vipExpiresAt = expires;
+  } else if (action === "downgrade_vip") {
+    updates.plan = "free";
+    updates.vipExpiresAt = null;
+  } else if (action === "ban_user") {
+    updates.status = "banned";
+  } else if (action === "unban_user") {
+    updates.status = "active";
+  }
+  await db.update(appUsersTable).set(updates).where(eq(appUsersTable.id, user.id));
   await auditLog(String(action), req.actor, String(phone), { name: name || phone, reason: reason || "" }, req.ip);
   res.json({ status: "ok", action, phone });
 });
@@ -700,8 +728,13 @@ router.post("/users/action", requireAuth, requireRole("super_admin", "admin", "s
 
 /* Public: any logged-in user can submit a payment request */
 router.post("/requests", async (req: Request, res: Response) => {
+  const user = currentUser(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   const b = req.body || {};
-  const id = String(b.id || `req-${Date.now()}`).trim().slice(0, 60);
+  const id = `req-${Date.now()}-${crypto.randomBytes(5).toString("hex")}`;
   const phone    = String(b.phone    || "").trim().slice(0, 30);
   const name     = stripHtml(String(b.name    || "").trim()).slice(0, 80);
   const planKey  = String(b.planKey  || "").trim().replace(/[^a-z0-9_\-]/gi, "").slice(0, 30);
@@ -717,6 +750,26 @@ router.post("/requests", async (req: Request, res: Response) => {
     res.status(400).json({ status: "error", message: "رقم الهاتف غير صحيح — يجب أن يبدأ بـ 01 ويكون 11 رقماً" });
     return;
   }
+  if (phone !== user.phone) {
+    res.status(403).json({ status: "error", message: "phone does not match authenticated user" });
+    return;
+  }
+
+  const [plan] = await db.select({
+    key: subscriptionPlansTable.key,
+    price: subscriptionPlansTable.price,
+    isActive: subscriptionPlansTable.isActive,
+  }).from(subscriptionPlansTable)
+    .where(and(eq(subscriptionPlansTable.key, planKey), eq(subscriptionPlansTable.isActive, true)))
+    .limit(1);
+  if (!plan) {
+    res.status(400).json({ status: "error", message: "invalid or inactive plan" });
+    return;
+  }
+  if (price !== plan.price) {
+    res.status(400).json({ status: "error", message: "plan price mismatch" });
+    return;
+  }
 
   // Rate limit: max 3 requests per phone per 10 minutes
   if (checkPayRateLimit(phone) === "limited") {
@@ -725,8 +778,7 @@ router.post("/requests", async (req: Request, res: Response) => {
   }
 
   try {
-    await db.insert(paymentRequestsTable).values({ id, phone, name, planKey, payMethod, price, tx, status: "pending" })
-      .onConflictDoUpdate({ target: paymentRequestsTable.id, set: { phone, name, planKey, payMethod, price, tx, status: "pending", updatedAt: new Date() } });
+    await db.insert(paymentRequestsTable).values({ id, phone, name, planKey, payMethod, price, tx, status: "pending" });
     logger.info({ phone, planKey }, "payment request submitted");
     res.json({ status: "ok", id });
   } catch (e) {
@@ -736,7 +788,7 @@ router.post("/requests", async (req: Request, res: Response) => {
 });
 
 /* Protected: list all payment requests */
-router.get("/requests", requireAuth, async (req: AuthRequest, res: Response) => {
+router.get("/requests", requireAuth, requireRole("super_admin", "admin", "support"), async (req: AuthRequest, res: Response) => {
   try {
     const statusFilter = String(req.query["status"] || "").trim();
     let rows;
@@ -752,7 +804,7 @@ router.get("/requests", requireAuth, async (req: AuthRequest, res: Response) => 
 });
 
 /* Protected: approve or reject a request */
-router.put("/requests/:id", requireAuth, async (req: AuthRequest, res: Response) => {
+router.put("/requests/:id", requireAuth, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = String(req.params["id"] || "").trim();
   const { status, notes } = req.body || {};
   if (!["approved", "rejected"].includes(String(status))) {
@@ -765,6 +817,24 @@ router.put("/requests/:id", requireAuth, async (req: AuthRequest, res: Response)
     await db.update(paymentRequestsTable)
       .set({ status: String(status), notes: notes ? String(notes).slice(0, 200) : null, updatedAt: new Date() })
       .where(eq(paymentRequestsTable.id, id));
+    if (status === "approved") {
+      const [plan] = await db.select({
+        durationMonths: subscriptionPlansTable.durationMonths,
+      }).from(subscriptionPlansTable)
+        .where(and(eq(subscriptionPlansTable.key, existing.planKey), eq(subscriptionPlansTable.isActive, true)))
+        .limit(1);
+      const [user] = await db.select({ id: appUsersTable.id }).from(appUsersTable)
+        .where(eq(appUsersTable.phone, existing.phone)).limit(1);
+      if (plan && user) {
+        const expires = new Date();
+        expires.setMonth(expires.getMonth() + plan.durationMonths);
+        await db.update(appUsersTable).set({
+          plan: "vip",
+          vipExpiresAt: expires,
+          updatedAt: new Date(),
+        }).where(eq(appUsersTable.id, user.id));
+      }
+    }
     await auditLog(`request_${status}`, req.actor, existing.phone, { id, planKey: existing.planKey, tx: existing.tx }, req.ip);
     res.json({ status: "ok" });
   } catch (e) {

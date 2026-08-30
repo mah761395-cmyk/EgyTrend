@@ -1029,9 +1029,14 @@ async function callAI({system, messages, max_tokens=2000}){
   const ctrl = new AbortController();
   const tid = setTimeout(()=>ctrl.abort(), 85000);
   try{
+    const headers={"Content-Type":"application/json"};
+    const userTok=DB.g("userTok","");
+    const adminTok=DB.g("admTok","");
+    if(userTok)headers.Authorization="Bearer "+userTok;
+    if(adminTok)headers["x-admin-token"]=adminTok;
     const r = await fetch("/api/ai/chat",{
       method:"POST",
-      headers:{"Content-Type":"application/json"},
+      headers,
       body: JSON.stringify({system, messages, max_tokens}),
       signal: ctrl.signal
     });
@@ -1216,11 +1221,19 @@ const DB = {
 };
 
 /* ═══════════════════ INIT ═══════════════════ */
-document.addEventListener("DOMContentLoaded",()=>{
+document.addEventListener("DOMContentLoaded",async()=>{
   wl=DB.g("wl",[]);savedIds=DB.g("sv",[]);portfolio=DB.g("pt",[]);
+  const tok=DB.g("userTok","");
   const s=DB.g("s",null);
-  if(s){U=s;bootApp();}
-  else{document.getElementById("auth").classList.add("open");}
+  if(tok){
+    try{
+      const r=await fetch("/api/user/me",{headers:{Authorization:"Bearer "+tok}});
+      const d=await r.json();
+      if(!r.ok||d.status!=="ok")throw new Error("session");
+      U=d.user;DB.s("s",U);bootApp();
+    }catch{DB.d("userTok");DB.d("s");document.getElementById("auth").classList.add("open");}
+  }else if(s?.phone==="admin"&&DB.g("admTok","")){U=s;bootApp();}
+  else{DB.d("s");document.getElementById("auth").classList.add("open");}
   buildTicker();buildCalendar();buildFAQ();
   // Kick off live data immediately so even pre-login users see real numbers
   fetchMarketsData();fetchCalendarData();
@@ -1307,16 +1320,16 @@ function doAuth(){
   btn.innerHTML='<div class="sp sp-g sp-md"></div> جارٍ...';
   setTimeout(async ()=>{
     btn.disabled=false;btn.innerHTML=`<span id="a-btn-txt">${authMode==="login"?"دخول ←":"إنشاء الحساب ←"}</span>`;
-    const users=DB.g("u",{});
     function showE(m){errEl.textContent=m;errEl.style.display="block";}
     if(authMode==="register"){
       if(!name||!phone||!pass){showE("أكمل جميع الحقول");return;}
       if(phone.length<10){showE("رقم الهاتف غير صحيح");return;}
       if(!/^[0-9+\-\s]+$/.test(phone)){showE("رقم الهاتف غير صالح");return;}
-      if(users[phone]){showE("الرقم مسجّل مسبقاً");return;}
-      if(pass.length<6){showE("كلمة المرور يجب أن تكون 6 أحرف على الأقل");return;}
-      users[phone]={name:sanitize(name),phone,pass,plan:"free",at:Date.now()};
-      DB.s("u",users);U={name:sanitize(name),phone,plan:"free"};
+      if(pass.length<8){showE("كلمة المرور يجب أن تكون 8 أحرف على الأقل");return;}
+      const rr=await fetch("/api/user/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,phone,password:pass})});
+      const rd=await rr.json().catch(()=>({}));
+      if(!rr.ok||rd.status!=="ok"){showE(rd.message||"تعذر إنشاء الحساب");return;}
+      DB.s("userTok",rd.token);U=rd.user;
     } else {
       if(!phone||!pass){showE("أدخل الرقم وكلمة المرور");return;}
       /* Admin: internal check — not exposed in UI.
@@ -1336,24 +1349,21 @@ function doAuth(){
           }
         }catch{
           // Offline fallback: legacy local admin (no server CRUD privileges)
-          if(pass==="egytrend2026"){U={name:"المدير",phone:"admin",plan:"admin"};}
-          else{showE("تعذر الاتصال بالخادم");return;}
+           showE("تعذر الاتصال بالخادم");return;
         }
       }
       else{
-        const u=users[phone];
-        if(!u){showE("الرقم غير مسجّل");return;}
-        if(u.pass!==pass){showE("كلمة المرور غير صحيحة");return;}
-        let plan=u.plan;
-        if(plan==="vip"&&u.exp&&new Date(u.exp)<new Date())plan="free";
-        U={name:u.name,phone,plan,exp:u.exp};
+        const ur=await fetch("/api/user/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,password:pass})});
+        const ud=await ur.json().catch(()=>({}));
+        if(!ur.ok||ud.status!=="ok"){showE(ud.message==="invalid credentials"?"الرقم أو كلمة المرور غير صحيحة":ud.message||"تعذر تسجيل الدخول");return;}
+        DB.s("userTok",ud.token);U=ud.user;
       }
     }
     DB.s("s",U);bootApp();
   },550);
 }
 
-function logout(){DB.d("s");DB.d("admTok");U=null;goNav("home");document.getElementById("main").style.display="none";document.getElementById("auth").classList.add("open");}
+function logout(){DB.d("s");DB.d("userTok");DB.d("admTok");U=null;goNav("home");document.getElementById("main").style.display="none";document.getElementById("auth").classList.add("open");}
 
 /* ═══════════════════ ADMIN API HELPER ═══════════════════ */
 async function admFetch(url, opts={}){
@@ -2833,13 +2843,20 @@ function sPay(id){
 async function submitPay(){
   const tx=(document.getElementById("tx-in")?.value||"").trim().slice(0,50);if(!tx){showToast("⚠️ أدخل كود العملية");return;}
   const reqData={id:Date.now()+"",phone:U.phone,name:U.name,planKey:selPlan,payMethod:selPay,price:PLANS[selPlan].p,tx,status:"pending",at:new Date().toISOString()};
-  const reqs=DB.g("reqs",[]);
-  reqs.unshift(reqData);
-  DB.s("reqs",reqs);
   try{
-    await fetch("/api/admin/requests",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(reqData)});
-  }catch{}
-  subStep=3;renderSub();
+    const headers={"Content-Type":"application/json"};
+    const userTok=DB.g("userTok","");
+    if(userTok)headers.Authorization="Bearer "+userTok;
+    const response=await fetch("/api/admin/requests",{method:"POST",headers,body:JSON.stringify(reqData)});
+    const result=await response.json().catch(()=>null);
+    if(!response.ok||result?.status!=="ok") throw new Error(result?.message||"payment request failed");
+    const reqs=DB.g("reqs",[]);
+    reqs.unshift(reqData);
+    DB.s("reqs",reqs);
+    subStep=3;renderSub();
+  }catch(e){
+    showToast("⚠️ تعذر إرسال طلب الدفع، حاول مرة أخرى");
+  }
 }
 
 /* ═══════════════════ AI REWRITER ═══════════════════ */
@@ -2927,19 +2944,21 @@ function openChangePass(){
   } else {overlay.style.display="flex";}
 }
 
-function doChangePass(){
+async function doChangePass(){
   const cur=document.getElementById("cp-cur")?.value||"";
   const nw=document.getElementById("cp-new")?.value||"";
   const con=document.getElementById("cp-con")?.value||"";
   const err=document.getElementById("cp-err");
   function showErr(m){err.textContent=m;err.style.display="block";}
   err.style.display="none";
-  const users=DB.g("u",{});const u=users[U.phone];
-  if(!u){showErr("تعذر العثور على الحساب");return;}
-  if(u.pass!==cur){showErr("كلمة المرور الحالية غير صحيحة");return;}
-  if(nw.length<6){showErr("كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل");return;}
+   if(nw.length<8){showErr("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل");return;}
   if(nw!==con){showErr("كلمات المرور غير متطابقة");return;}
-  u.pass=nw;DB.s("u",users);
+   try{
+     const token=DB.g("userTok","");
+     const r=await fetch("/api/user/password",{method:"PUT",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({currentPassword:cur,newPassword:nw})});
+     const d=await r.json().catch(()=>({}));
+     if(!r.ok||d.status!=="ok"){showErr(d.message==="current password is incorrect"?"كلمة المرور الحالية غير صحيحة":d.message||"تعذر تغيير كلمة المرور");return;}
+   }catch{showErr("تعذر الاتصال بالخادم");return;}
   document.getElementById("chpass-ov")?.remove();
   showToast("✅ تم تغيير كلمة المرور بنجاح");
 }
@@ -2961,8 +2980,10 @@ function renderHdrVip(){
 function openAdm(){document.getElementById("adm").classList.add("open");renderAdmStats();admTab("dash");}
 function closeAdm(){document.getElementById("adm").classList.remove("open");}
 
-function renderAdmStats(){
-  const users=DB.g("u",{});const reqs=DB.g("reqs",[]);const allU=Object.values(users);const pending=reqs.filter(r=>r.status==="pending");
+async function renderAdmStats(){
+  let allU=[],reqs=[];
+  try{allU=await loadAdminUsers();const r=await admFetch("/api/admin/requests");const d=await r.json();reqs=d.requests||[];}catch{}
+  const pending=reqs.filter(r=>r.status==="pending");
   document.getElementById("adm-stats").innerHTML=[
     {l:"مستخدمون",v:allU.length,c:"#3b82f6"},{l:"VIP نشط",v:allU.filter(u=>u.plan==="vip").length,c:"#f59e0b"},
     {l:"معلّقة",v:pending.length,c:"#ef4444"},{l:"طلبات",v:reqs.length,c:"#10b981"},
@@ -2997,11 +3018,17 @@ function aSel(id,opts,extra=""){return `<select id="${id}" class="a-in" ${extra}
 function aBtn(label,onclick,color="var(--g)"){return `<button class="btn btn-sm" style="background:${color};color:#000;font-weight:700;border:none;padding:8px 14px;border-radius:9px;cursor:pointer;width:100%;margin-top:9px;font-family:var(--sans);" onclick="${onclick}">${label}</button>`;}
 function aBadge(label,bg,fg="#fff"){return `<span class="bdg" style="background:${bg};color:${fg};">${label}</span>`;}
 function vG(id){return (document.getElementById(id)||{}).value||"";}
+async function loadAdminUsers(){
+  const r=await admFetch("/api/admin/users");
+  const d=await r.json();
+  if(!r.ok||d.status!=="ok")throw new Error(d.message||"failed");
+  return d.users||[];
+}
 
 /* ─── Dashboard ─── */
 async function renderAdmDash(el){
-  const users=Object.values(DB.g("u",{}));
-  const reqs=DB.g("reqs",[]);
+  let users=[],reqs=[];
+  try{users=await loadAdminUsers();const r=await admFetch("/api/admin/requests");const d=await r.json();reqs=d.requests||[];}catch{}
   const vipCount=users.filter(u=>u.plan==="vip").length;
   const pendingCount=reqs.filter(r=>r.status==="pending").length;
   let serverStats={employees:0,plans:0,coupons:0,auditLogs:0,aiUsage30d:0};
@@ -3035,7 +3062,16 @@ async function renderAdmDash(el){
 
 /* ─── Users ─── */
 async function renderAdmUsers(el){
-  const users=Object.values(DB.g("u",{}));
+  let users=[];
+  try{
+    const r=await admFetch("/api/admin/users");
+    const d=await r.json();
+    if(!r.ok||d.status!=="ok")throw new Error(d.message||"failed");
+    users=d.users||[];
+  }catch(e){
+    el.innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ تعذر تحميل المستخدمين</div>`;
+    return;
+  }
   let userSearch="";
   const render=()=>{
     const filtered=userSearch?users.filter(u=>(u.name||"").includes(userSearch)||(u.phone||"").includes(userSearch)):users;
@@ -3047,13 +3083,13 @@ async function renderAdmUsers(el){
             <div style="color:var(--t4);font-size:10.5px;font-family:var(--mono);margin-top:2px;">${sanitize(u.phone||"")}</div>
             <div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap;">
               ${u.plan==="vip"?aBadge("⭐ VIP","var(--aud)","var(--au)"):aBadge("مجاني","var(--s2)","var(--t4)")}
-              ${u.banned?aBadge("🚫 محظور","var(--dnd)","var(--dn)"):""}
-              ${u.exp?aBadge("حتى "+new Date(u.exp).toLocaleDateString("ar-EG"),"var(--bld)","#93c5fd"):""}
+               ${u.status==="banned"?aBadge("🚫 محظور","var(--dnd)","var(--dn)"):""}
+               ${u.vipExpiresAt?aBadge("حتى "+new Date(u.vipExpiresAt).toLocaleDateString("ar-EG"),"var(--bld)","#93c5fd"):""}
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
             ${u.plan!=="vip"&&u.plan!=="admin"?`<button class="r-btn app" style="font-size:10px;" onclick="admUserAction('upgrade_vip','${sanitize(u.phone)}','${sanitize(u.name||"")}')">⭐ ترقية VIP</button>`:`<button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick="admUserAction('downgrade_vip','${sanitize(u.phone)}','${sanitize(u.name||"")}')">↓ إلغاء VIP</button>`}
-            ${u.banned?`<button class="r-btn app" style="font-size:10px;" onclick="admUserAction('unban_user','${sanitize(u.phone)}','${sanitize(u.name||"")}')">✓ فك الحظر</button>`:`<button class="r-btn rej" style="font-size:10px;" onclick="admUserAction('ban_user','${sanitize(u.phone)}','${sanitize(u.name||"")}')">🚫 حظر</button>`}
+             ${u.status==="banned"?`<button class="r-btn app" style="font-size:10px;" onclick="admUserAction('unban_user','${sanitize(u.phone)}','${sanitize(u.name||"")}')">✓ فك الحظر</button>`:`<button class="r-btn rej" style="font-size:10px;" onclick="admUserAction('ban_user','${sanitize(u.phone)}','${sanitize(u.name||"")}')">🚫 حظر</button>`}
           </div>
         </div>
       </div>`).join(""):
@@ -3070,26 +3106,11 @@ async function renderAdmUsers(el){
 async function admUserAction(action,phone,name){
   const labels={upgrade_vip:"ترقية VIP",downgrade_vip:"إلغاء VIP",ban_user:"حظر",unban_user:"فك الحظر"};
   if(!confirm(`${labels[action]} للمستخدم: ${name}؟`)) return;
-  // Apply locally
-  const users=DB.g("u",{});
-  const s=DB.g("s",null);
-  if(users[phone]){
-    if(action==="upgrade_vip"){
-      users[phone].plan="vip";
-      const exp=new Date();exp.setMonth(exp.getMonth()+1);
-      users[phone].exp=exp.toISOString();
-    } else if(action==="downgrade_vip"){
-      users[phone].plan="free";delete users[phone].exp;
-    } else if(action==="ban_user"){
-      users[phone].banned=true;
-    } else if(action==="unban_user"){
-      delete users[phone].banned;
-    }
-    DB.s("u",users);
-    if(s&&s.phone===phone){Object.assign(s,users[phone]);DB.s("s",s);}
-  }
-  // Log to server
-  try{await admFetch("/api/admin/users/action",{method:"POST",body:JSON.stringify({action,phone,name})});}catch{}
+  try{
+    const r=await admFetch("/api/admin/users/action",{method:"POST",body:JSON.stringify({action,phone,name})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||d.status!=="ok"){showToast("❌ "+(d.message||"تعذر تحديث المستخدم"));return;}
+  }catch(e){showToast("❌ "+String(e.message||e));return;}
   showToast("✅ تم: "+labels[action]);
   admTab("users");
 }
@@ -3693,20 +3714,7 @@ async function admApp(id){
     const j=await r.json();
     if(!r.ok){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
   }catch(e){showToast("❌ "+String(e.message||e));return;}
-  // Also update localStorage mirror
-  const reqs=DB.g("reqs",[]);const req=reqs.find(r=>r.id===id);
-  if(req){
-    req.status="approved";DB.s("reqs",reqs);
-    const users=DB.g("u",{});
-    if(users[req.phone]){
-      users[req.phone].plan="vip";
-      const exp=new Date();exp.setMonth(exp.getMonth()+(PLANS[req.planKey]?.m||1));
-      users[req.phone].exp=exp.toISOString();
-      DB.s("u",users);
-      const s=DB.g("s",null);if(s&&s.phone===req.phone){s.plan="vip";s.exp=users[req.phone].exp;DB.s("s",s);}
-    }
-    showToast(`✅ تم تفعيل اشتراك ${req.name}`);
-  } else {showToast("✅ تم القبول");}
+  showToast("✅ تم قبول الطلب وتفعيل VIP من الخادم");
   renderAdmStats();admTab("reqs");
 }
 async function admRej(id){
@@ -3954,7 +3962,10 @@ async function loadOpps(force=false){
   const el=document.getElementById("opps-list");if(!el)return;
   if(force||oppsData.length===0)el.innerHTML=`<div style="padding:20px;text-align:center;"><div class="sp sp-g"></div></div>`;
   try{
-    const r=await fetch("/api/opportunities");
+    const oppHeaders={};
+    const userTok=DB.g("userTok","");
+    if(userTok)oppHeaders.Authorization="Bearer "+userTok;
+    const r=await fetch("/api/opportunities",{headers:oppHeaders});
     if(!r.ok)throw new Error("server");
     const d=await r.json();
     oppsData=(d.opportunities||[]).filter(o=>o.status!=="deleted"&&o.status!=="closed");

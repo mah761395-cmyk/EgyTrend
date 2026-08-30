@@ -5,12 +5,12 @@ import { eq, desc } from "drizzle-orm";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { logger } from "../lib/logger";
+import { currentUser, isVipClaims } from "../lib/userAuth";
 
 const router = Router();
 
-const JWT_SECRET = process.env["SESSION_SECRET"] || "egytrend-secret-2026";
-const ADMIN_PASSWORD = process.env["ADMIN_PASSWORD"] || "egytrend2026";
-const LEGACY_TOKEN = process.env["ADMIN_TOKEN"] || process.env["SESSION_SECRET"] || "";
+const JWT_SECRET = process.env["SESSION_SECRET"];
+const LEGACY_TOKEN = process.env["ADMIN_TOKEN"] || "";
 
 const ANTHROPIC_BASE = process.env["AI_INTEGRATIONS_ANTHROPIC_BASE_URL"];
 const ANTHROPIC_KEY  = process.env["AI_INTEGRATIONS_ANTHROPIC_API_KEY"];
@@ -20,9 +20,10 @@ function isAdmin(req: { headers: Record<string, string | string[] | undefined> }
   const token = req.headers["x-admin-token"] as string | undefined;
   if (!token) return false;
   if (LEGACY_TOKEN && token === LEGACY_TOKEN) return true;
+  if (!JWT_SECRET) return false;
   try {
     const payload = jwt.verify(token, JWT_SECRET) as { role?: string };
-    return payload.role === "admin";
+    return payload.role === "admin" || payload.role === "super_admin";
   } catch {
     return false;
   }
@@ -38,7 +39,9 @@ router.get("/opportunities", async (req, res) => {
   try {
     const admin = isAdmin(req);
     const all = await db.select().from(opportunities).orderBy(desc(opportunities.createdAt));
-    const visible = admin ? all : all.filter(o => o.status !== "deleted" && o.status !== "closed");
+    const vip = isVipClaims(currentUser(req));
+    const visible = (admin ? all : all.filter(o => o.status !== "deleted" && o.status !== "closed"))
+      .map(o => admin || vip || !o.vipOnly ? o : { ...o, details: null });
     res.json({ status: "ok", opportunities: visible });
   } catch (e) {
     res.status(500).json({ status: "error", message: "Failed to fetch opportunities" });
@@ -69,9 +72,9 @@ router.post("/opportunities", requireAuth, async (req, res) => {
       featured: featured ?? false,
       vipOnly: vipOnly ?? false,
     });
-    res.json({ status: "ok", id });
+    return res.json({ status: "ok", id });
   } catch (e) {
-    res.status(500).json({ status: "error", message: "Failed to create opportunity" });
+    return res.status(500).json({ status: "error", message: "Failed to create opportunity" });
   }
 });
 
@@ -98,9 +101,9 @@ router.put("/opportunities/:id", requireAuth, async (req, res) => {
         updatedAt: new Date(),
       })
       .where(eq(opportunities.id, id));
-    res.json({ status: "ok" });
+    return res.json({ status: "ok" });
   } catch (e) {
-    res.status(500).json({ status: "error", message: "Failed to update opportunity" });
+    return res.status(500).json({ status: "error", message: "Failed to update opportunity" });
   }
 });
 
@@ -108,9 +111,9 @@ router.put("/opportunities/:id", requireAuth, async (req, res) => {
 router.delete("/opportunities/:id", requireAuth, async (req, res) => {
   try {
     await db.delete(opportunities).where(eq(opportunities.id, req.params.id));
-    res.json({ status: "ok" });
+    return res.json({ status: "ok" });
   } catch (e) {
-    res.status(500).json({ status: "error", message: "Failed to delete opportunity" });
+    return res.status(500).json({ status: "error", message: "Failed to delete opportunity" });
   }
 });
 
@@ -129,7 +132,10 @@ router.post("/opportunities/generate", requireAuth, async (req, res) => {
       fetch("http://localhost:8080/api/news?limit=20"),
     ]);
     const mkData  = mkRes.status  === "fulfilled" && mkRes.value.ok  ? await mkRes.value.json()  : {};
-    const newsData = newsRes.status === "fulfilled" && newsRes.value.ok ? await newsRes.value.json() : {};
+    const newsData: { articles?: unknown } =
+      newsRes.status === "fulfilled" && newsRes.value.ok
+        ? (await newsRes.value.json() as { articles?: unknown })
+        : {};
 
     const mkSummary = JSON.stringify(mkData).slice(0, 3000);
     const newsSummary = ((newsData.articles || []) as any[])
@@ -238,16 +244,16 @@ ${newsSummary || "لا توجد أخبار"}
         deadline: null,
         status: "active",
         featured: opp.featured ?? false,
-        vipOnly: true, // All opportunities are VIP-only
+         vipOnly: Boolean(opp.vipOnly),
       });
       inserted++;
     }
 
     logger.info({ inserted }, "AI opportunities generated");
-    res.json({ status: "ok", inserted, closedOld: aiGenIds.length });
+    return res.json({ status: "ok", inserted, closedOld: aiGenIds.length });
   } catch (e: any) {
     logger.error({ err: e?.message }, "generate opportunities error");
-    res.status(500).json({ status: "error", message: e?.message || "Failed" });
+    return res.status(500).json({ status: "error", message: e?.message || "Failed" });
   }
 });
 
@@ -482,15 +488,15 @@ router.post("/opportunities/seed", requireAuth, async (req, res) => {
         deadline: (s as any).deadline || null,
         status: "active",
         featured: s.featured,
-        vipOnly: true, // All opportunities are VIP-only
+         vipOnly: s.vipOnly,
       });
       inserted++;
     }
 
-    res.json({ status: "ok", inserted });
+    return res.json({ status: "ok", inserted });
   } catch (e: any) {
     logger.error({ err: e?.message }, "seed opportunities error");
-    res.status(500).json({ status: "error", message: e?.message || "Failed" });
+    return res.status(500).json({ status: "error", message: e?.message || "Failed" });
   }
 });
 
