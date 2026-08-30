@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { logger } from "../lib/logger";
+import { currentUser, isAdminToken, isVipClaims } from "../lib/userAuth";
 
 const router: IRouter = Router();
 
@@ -32,6 +33,10 @@ type ChatBody = {
 };
 
 router.post("/chat", async (req: Request, res: Response) => {
+  if (!isAdminToken(req) && !isVipClaims(currentUser(req))) {
+    res.status(req.header("authorization") ? 403 : 401).json({ status: "error", message: "VIP subscription required" });
+    return;
+  }
   if (!ANTHROPIC_BASE || !ANTHROPIC_KEY) {
     res.status(503).json({
       status: "error",
