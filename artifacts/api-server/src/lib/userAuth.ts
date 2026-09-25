@@ -82,34 +82,52 @@ export function isVipClaims(claims: UserClaims | null): boolean {
 
 /* DB-backed VIP check: the JWT embeds the plan for up to 7 days, so without
  * this a banned or downgraded user would keep VIP access until token expiry.
- * Falls back to claims when the DB is unreachable so AI features don't break
- * on a transient DB hiccup (fail-open matches the pre-existing behavior). */
+ * Also the reverse: a user upgraded AFTER login carries a stale non-VIP
+ * claim — the DB is the source of truth, so re-verify before rejecting.
+ * Fail-open only applies when the claims themselves said VIP (pre-existing
+ * behavior for transient DB hiccups); a non-VIP claim never fails open. */
+async function dbVipCheck(userId: number): Promise<boolean> {
+  const { db } = await import("@workspace/db");
+  const { appUsersTable } = await import("@workspace/db/schema");
+  const { and, eq } = await import("drizzle-orm");
+  const [row] = await db
+    .select({ plan: appUsersTable.plan, status: appUsersTable.status, vipExpiresAt: appUsersTable.vipExpiresAt })
+    .from(appUsersTable)
+    .where(and(eq(appUsersTable.id, userId), eq(appUsersTable.status, "active")))
+    .limit(1);
+  if (!row) return false; // user deleted or banned
+  if (row.plan !== "vip") return false; // downgraded or not yet VIP
+  return !row.vipExpiresAt || row.vipExpiresAt.getTime() > Date.now();
+}
+
 export async function isVipActive(claims: UserClaims | null): Promise<boolean> {
-  if (!isVipClaims(claims)) return false;
+  if (!claims) return false;
+  if (isVipClaims(claims)) {
+    try {
+      return await dbVipCheck(claims.sub);
+    } catch {
+      return true; // claims already validated; only a DB failure lands here
+    }
+  }
+  // Claims say non-VIP — could be a stale token (VIP granted after login).
+  // Verify against the DB, but fail CLOSED on DB errors (never grant VIP
+  // from a failed check).
   try {
-    const { db } = await import("@workspace/db");
-    const { appUsersTable } = await import("@workspace/db/schema");
-    const { and, eq } = await import("drizzle-orm");
-    const [row] = await db
-      .select({ plan: appUsersTable.plan, status: appUsersTable.status, vipExpiresAt: appUsersTable.vipExpiresAt })
-      .from(appUsersTable)
-      .where(and(eq(appUsersTable.id, claims!.sub), eq(appUsersTable.status, "active")))
-      .limit(1);
-    if (!row) return false; // user deleted or banned
-    if (row.plan !== "vip") return false; // downgraded
-    return !row.vipExpiresAt || row.vipExpiresAt.getTime() > Date.now();
+    return await dbVipCheck(claims.sub);
   } catch {
-    return true; // claims already validated; only a DB failure lands here
+    return false;
   }
 }
 
-export function requireVipUser(req: Request, res: Response, next: NextFunction): void {
+export async function requireVipUser(req: Request, res: Response, next: NextFunction): Promise<void> {
   const claims = currentUser(req);
   if (!claims) {
     res.status(401).json({ status: "error", message: "login required" });
     return;
   }
-  if (!isVipClaims(claims)) {
+  // DB-backed (handles stale claims both ways: revoked VIP → 403 even with
+  // an old vip token; freshly-granted VIP → allowed even with an old free token).
+  if (!(await isVipActive(claims))) {
     res.status(403).json({ status: "error", message: "VIP subscription required" });
     return;
   }

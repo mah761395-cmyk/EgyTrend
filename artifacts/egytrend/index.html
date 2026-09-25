@@ -4731,8 +4731,20 @@ const RISK_COLORS=["#22c55e","#84cc16","#f59e0b","#f97316","#ef4444"];
 async function loadOpps(force=false){
   const isVip=U?.plan==="vip"||U?.plan==="admin";
 
-  // Non-VIP → show upsell gate instead of list
+  // The local snapshot (U.plan) may be stale — e.g. VIP was activated
+  // after this login. Re-check with the server once before gating.
   if(!isVip){
+    const tok2=DB.g("userTok","");
+    if(tok2){
+      try{
+        const mr=await fetch("/api/user/me",{headers:{Authorization:"Bearer "+tok2}});
+        const md=await mr.json();
+        if(mr.ok&&md.status==="ok"&&md.user){
+          U=md.user;DB.s("s",U);
+          if(U.plan==="vip"||U.plan==="admin"){renderHdrVip();return loadOpps(force);}
+        }
+      }catch{}
+    }
     const wrapper=document.getElementById("page-opps");
     if(wrapper){
       wrapper.querySelector(".opps-page").innerHTML=`
