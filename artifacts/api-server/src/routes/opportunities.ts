@@ -6,6 +6,8 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { logger } from "../lib/logger";
 import { currentUser, isVipActive } from "../lib/userAuth";
+import { buildLocalOpportunities, type OppCandidate } from "../lib/opp-engine";
+type StockT = OppCandidate extends never ? never : Parameters<typeof buildLocalOpportunities>[1][number];
 
 const router = Router();
 
@@ -126,8 +128,59 @@ router.delete("/opportunities/:id", requireAuth, async (req, res) => {
    Admin-only. Replaces AI-generated ones so they stay current.
    ─────────────────────────────────────────────────────────── */
 router.post("/opportunities/generate", requireAuth, async (req, res) => {
+  /* No Anthropic key → local rule-based engine over REAL live data
+   * (markets + stocks + news). Same contract, zero fake data. */
   if (!ANTHROPIC_BASE || !ANTHROPIC_KEY) {
-    return res.status(503).json({ status: "error", message: "AI not provisioned" });
+    try {
+      const selfBase = `http://localhost:${process.env.PORT || "8080"}/api`;
+      const [mkRes, stRes, newsRes] = await Promise.allSettled([
+        fetch(`${selfBase}/markets`),
+        fetch(`${selfBase}/markets/stocks`),
+        fetch(`${selfBase}/news?limit=20`),
+      ]);
+      const mkData: any = mkRes.status === "fulfilled" && mkRes.value.ok ? await mkRes.value.json() : {};
+      const stData: any = stRes.status === "fulfilled" && stRes.value.ok
+        ? await stRes.value.json()
+        : { stocks: { eg: [], us: [] } };
+      const newsData: any =
+        newsRes.status === "fulfilled" && newsRes.value.ok ? await newsRes.value.json() : {};
+      const newsTitles = ((newsData.feeds || []) as Array<{ items?: Array<{ title?: string }> }>)
+        .flatMap(f => f.items || []).map(a => a.title || "").filter(Boolean);
+      // /api/markets/stocks returns a flat array of all stocks (EGX + US).
+      const rawStocks = stData?.stocks;
+      const allStocks: StockT[] = Array.isArray(rawStocks)
+        ? rawStocks
+        : [...(rawStocks?.eg || []), ...(rawStocks?.us || [])];
+      const list = buildLocalOpportunities(mkData, allStocks, newsTitles,
+        new Date().toLocaleDateString("ar-EG", { weekday: "long", year: "numeric", month: "long", day: "numeric" }));
+      if (!list.length) {
+        return res.status(502).json({ status: "error", message: "لا توجد بيانات سوق كافية حاليًا — أعد المحاولة بعد التحديث" });
+      }
+      const now = new Date();
+      const existingAll = await db.select().from(opportunities);
+      const aiGenIds = existingAll.filter(o => o.sector?.startsWith("[AI]")).map(o => o.id);
+      for (const id of aiGenIds) {
+        await db.update(opportunities).set({ status: "closed", updatedAt: now }).where(eq(opportunities.id, id));
+      }
+      let inserted = 0;
+      for (const opp of list) {
+        await db.insert(opportunities).values({
+          id: crypto.randomUUID().slice(0, 12),
+          title: opp.title, summary: opp.summary, details: opp.details,
+          type: opp.type, market: opp.market,
+          expectedReturn: opp.expectedReturn, riskLevel: opp.riskLevel,
+          sector: `[AI] ${opp.sector}`, duration: opp.duration,
+          deadline: null, status: "active",
+          featured: opp.featured, vipOnly: opp.vipOnly,
+        });
+        inserted++;
+      }
+      logger.info({ inserted, closedOld: aiGenIds.length, engine: "local" }, "opportunities generated");
+      return res.json({ status: "ok", inserted, closedOld: aiGenIds.length, engine: "local" });
+    } catch (e) {
+      logger.warn({ err: e }, "local opportunity generation failed");
+      return res.status(500).json({ status: "error", message: "تعذر التوليد — أعد المحاولة" });
+    }
   }
   try {
     // Fetch live market data to feed into AI
