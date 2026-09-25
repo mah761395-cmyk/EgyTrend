@@ -1,0 +1,7 @@
+{
+  "name": "@egytrend/mailer-deps",
+  "private": true,
+  "dependencies": {
+    "nodemailer": "^7.0.10"
+  }
+}
