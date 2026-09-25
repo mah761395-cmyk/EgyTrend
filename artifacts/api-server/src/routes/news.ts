@@ -125,6 +125,15 @@ function clean(input: string): string {
   return decodeEntities(stripHtml(decodeEntities(input))).trim();
 }
 
+/* URLs coming from external feeds are interpolated into HTML attributes
+ * client-side (img src, href, inline onclick with the guid) — restrict them
+ * to http(s) and strip characters that could break out of a quoted attribute. */
+function safeUrl(input: string): string {
+  const v = (input || "").trim();
+  if (!/^https?:\/\//i.test(v)) return "";
+  return v.replace(/["'<>\\)\\]/g, "");
+}
+
 function pickImage(it: Record<string, unknown>): string | undefined {
   const enclosure = it["enclosure"] as Record<string, unknown> | undefined;
   if (
@@ -203,7 +212,7 @@ function parseFeed(xml: string): FeedItem[] {
           pickText(it["summary"]) ||
           "",
       );
-      const link = pickLink(it["link"]) || pickText(it["guid"]);
+      const link = safeUrl(pickLink(it["link"]) || pickText(it["guid"]));
       const rawDate =
         pickText(it["pubDate"]) ||
         pickText(it["published"]) ||
@@ -215,7 +224,7 @@ function parseFeed(xml: string): FeedItem[] {
         parsed && !Number.isNaN(parsed.getTime())
           ? parsed.toISOString()
           : new Date().toISOString();
-      const guid = pickText(it["guid"]) || link || title;
+      const guid = clean(pickText(it["guid"]).replace(/["'<>\\)\\]/g, "")) || link || title;
       const img = pickImage(it);
       return {
         title,
@@ -223,7 +232,7 @@ function parseFeed(xml: string): FeedItem[] {
         description,
         pubDate,
         guid,
-        ...(img ? { thumbnail: img, enclosure: { url: img } } : {}),
+        ...(img ? { thumbnail: safeUrl(img), enclosure: { url: safeUrl(img) } } : {}),
       };
     })
     .filter((it) => it.title && it.link);
@@ -238,6 +247,11 @@ const TTL_MS = 5 * 60 * 1000;
 /* Stale entries are served for up to 2 hours when upstream is unavailable */
 const STALE_TTL_MS = 2 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 9000;
+/* Negative cache: a source that just timed-out/failed is not retried for
+ * FAIL_TTL_MS — otherwise one hung upstream forces EVERY aggregated request
+ * to pay the full FETCH_TIMEOUT_MS, since only successes are cached. */
+const FAIL_TTL_MS = 2 * 60 * 1000;
+const FAILS = new Map<string, number>();
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) EgyTrend/1.0";
@@ -249,6 +263,12 @@ async function fetchSource(src: SourceMeta): Promise<{
 }> {
   const cached = CACHE.get(src.id);
   if (cached && Date.now() - cached.ts < TTL_MS) return cached.data;
+
+  const failedAt = FAILS.get(src.id);
+  if (failedAt && Date.now() - failedAt < FAIL_TTL_MS) {
+    if (cached && Date.now() - cached.ts < STALE_TTL_MS) return cached.data;
+    throw new Error(`upstream recently failed for ${src.id}`);
+  }
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
@@ -269,10 +289,14 @@ async function fetchSource(src: SourceMeta): Promise<{
     const xml = await res.text();
     const items = parseFeed(xml).slice(0, 12);
     const data = { status: "ok" as const, items, meta: src };
-    if (items.length > 0) CACHE.set(src.id, { ts: Date.now(), data });
+    if (items.length > 0) {
+      CACHE.set(src.id, { ts: Date.now(), data });
+      FAILS.delete(src.id);
+    }
     return data;
   } catch (err) {
     clearTimeout(t);
+    FAILS.set(src.id, Date.now());
     /* Serve stale cache (up to 2 hr) rather than crashing when upstream fails */
     if (cached && Date.now() - cached.ts < STALE_TTL_MS) {
       logger.warn({ source: src.id }, "upstream failed — serving stale cache");

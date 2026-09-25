@@ -10,7 +10,14 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  /* Bounded pool: the pg default grows unbounded, which can exhaust the
+   * database's connection limit under bursty traffic. */
+  max: 10,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
+});
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";

@@ -47,3 +47,15 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Local Windows dev
+.local-logs/
+
+.env
+
+# Local agent/dev tooling (contains local-only secrets in launcher scripts)
+.freebuff/
+.agents/
+
+# Local DB backups (contain user data — never commit)
+backups/

@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Private app surfaces — no search indexing
+Disallow: /vip
+Disallow: /admin
+
+Sitemap: https://egytrend.com/sitemap.xml

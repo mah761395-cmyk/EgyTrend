@@ -4,7 +4,19 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="theme-color" content="#030712"/>
-<meta name="description" content="EgyTrend — منصة الأخبار الاقتصادية والأسواق المالية"/>
+<meta name="description" content="EgyTrend — نبض الأسواق المصرية: أخبار اقتصادية عاجلة، أسعار الأسهم المصرية والأمريكية لحظة بلحظة، فاحص أسهم ذكي، فرص استثمارية وتحليل بالذكاء الاصطناعي."/>
+<link rel="canonical" href="https://egytrend.com/"/>
+<meta property="og:type" content="website"/>
+<meta property="og:site_name" content="EgyTrend"/>
+<meta property="og:title" content="EgyTrend — نبض الأسواق المصرية"/>
+<meta property="og:description" content="أخبار اقتصادية عاجلة، أسعار الأسهم لحظة بلحظة، فاحص أسهم ذكي وفرص استثمارية مدروسة."/>
+<meta property="og:url" content="https://egytrend.com/"/>
+<meta property="og:image" content="https://egytrend.com/opengraph.jpg"/>
+<meta property="og:locale" content="ar_EG"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="EgyTrend — نبض الأسواق المصرية"/>
+<meta name="twitter:description" content="أخبار اقتصادية عاجلة وأسعار الأسهم لحظة بلحظة وفرص استثمارية مدروسة."/>
+<meta name="twitter:image" content="https://egytrend.com/opengraph.jpg"/>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23030712'/%3E%3Cpath d='M4 22 L10 15 L16 18 L22 9 L28 12' stroke='%2310b981' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='28' cy='12' r='2' fill='%2310b981'/%3E%3C/svg%3E"/>
 <title>EgyTrend — نبض الأسواق</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -390,6 +402,39 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .sp-au{border:2px solid rgba(245,158,11,.15);border-top-color:var(--au);}
 .sp-bl{border:2px solid rgba(59,130,246,.15);border-top-color:var(--bl);}
 .sp-pu{border:2px solid rgba(139,92,246,.15);border-top-color:var(--pu);}
+/* ═══════════════════ VIP TABS SYSTEM ═══════════════════ */
+.vtabs-wrap{position:relative;margin:0 0 13px;}
+.vtabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;padding:3px 2px 8px;}
+.vtabs::-webkit-scrollbar{display:none;}
+.vtab{display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;min-width:62px;padding:9px 8px 7px;border-radius:13px;background:var(--s1);border:1px solid var(--b1);cursor:pointer;transition:all .18s;font-family:var(--sans);}
+.vtab-ic{font-size:18px;line-height:1;}
+.vtab span:last-child{font-size:9.5px;font-weight:700;color:var(--t4);}
+.vtab:hover{border-color:rgba(245,158,11,.3);}
+.vtab.active{background:linear-gradient(160deg,rgba(245,158,11,.16),rgba(245,158,11,.05));border-color:rgba(245,158,11,.45);box-shadow:0 0 0 1px rgba(245,158,11,.18),0 4px 14px rgba(245,158,11,.1);}
+.vtab.active span:last-child{color:var(--au);}
+.vsect-h{display:flex;justify-content:space-between;align-items:center;margin:16px 2px 8px;}
+.vsect-h>div:first-child{display:flex;align-items:center;gap:7px;}
+.vsect-h span:first-child{font-size:15px;}
+.vsect-h span:nth-child(2){color:var(--t1);font-weight:800;font-size:13px;}
+.vsee{background:none;border:none;color:var(--au);font-size:10px;font-weight:700;cursor:pointer;font-family:var(--sans);padding:3px 6px;border-radius:7px;}
+.vsee:hover{background:rgba(245,158,11,.09);}
+.vbox-title{display:flex;justify-content:space-between;align-items:center;color:var(--t1);font-weight:800;font-size:13.5px;margin-bottom:10px;}
+.vchip{display:inline-flex;align-items:center;gap:3px;background:var(--s2);border:1px solid var(--b1);border-radius:7px;padding:2px 8px;font-size:9.5px;color:var(--t3);font-weight:600;}
+.vimp{display:inline-flex;align-items:center;gap:3px;border-radius:6px;padding:2px 7px;font-size:9px;font-weight:700;white-space:nowrap;}
+.vhome-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;}
+.vstat{background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:11px 10px;text-align:center;font-family:var(--sans);cursor:default;transition:border-color .18s;}
+.vstat:active{transform:scale(.98);}
+.vstat-ic{font-size:19px;margin-bottom:2px;}
+.vstat-n{color:var(--t1);font-weight:900;font-size:17px;font-family:var(--mono);line-height:1.25;}
+.vstat-l{color:var(--t5);font-size:9.5px;margin-top:1px;}
+.vstat-sub{color:var(--t5);font-size:9px;margin-top:2px;font-weight:700;font-family:var(--mono);}
+.vnews-row{display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--b1);cursor:pointer;}
+.vnews-row:hover{background:rgba(255,255,255,.02);}
+.vnews-t{color:var(--t1);font-weight:700;font-size:12px;line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.vempty{text-align:center;padding:26px 14px;background:var(--s1);border:1px dashed var(--b2);border-radius:14px;margin-bottom:8px;}
+.vloading{display:flex;flex-direction:column;align-items:center;gap:9px;padding:26px;background:var(--s1);border:1px solid var(--b1);border-radius:14px;margin-bottom:8px;}
+.vscore{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;border-radius:10px;background:linear-gradient(160deg,rgba(245,158,11,.2),rgba(245,158,11,.07));border:1px solid rgba(245,158,11,.3);color:var(--au);font-weight:900;font-size:13.5px;font-family:var(--mono);padding:0 6px;}
+.vopp-mini{padding:11px 13px;}
 .empty{text-align:center;padding:40px 0;color:var(--t5);}
 .row{display:flex;align-items:center;gap:7px;}
 .between{justify-content:space-between;}
@@ -752,12 +797,43 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
     </div>
     <form id="auth-form" onsubmit="doAuth();return false;" autocomplete="on">
     <div id="reg-wrap" style="display:none;"><input class="a-in" id="a-name" name="name" placeholder="الاسم الكامل" dir="rtl" autocomplete="name"/></div>
+    <div id="reg-email-wrap" style="display:none;"><input class="a-in" id="a-email" name="email" placeholder="البريد الإلكتروني (لاستعادة كلمة المرور)" dir="ltr" type="email" autocomplete="email"/></div>
     <input class="a-in" id="a-phone" name="username" placeholder="رقم الموبايل" style="font-family:var(--mono);direction:ltr;" autocomplete="username"/>
     <input class="a-in" id="a-pass" name="password" placeholder="كلمة المرور" type="password" dir="rtl" autocomplete="current-password"/>
     <div class="a-err" id="a-err"></div>
     <button type="submit" class="a-btn" id="a-btn"><span id="a-btn-txt">دخول ←</span></button>
     </form>
+    <div id="fp-link-wrap" style="margin-top:10px;text-align:center;"><a href="javascript:void(0)" onclick="swAuthView('forgot')" style="color:var(--t5);font-size:11.5px;text-decoration:none;">نسيت كلمة المرور؟</a></div>
+
+    <!-- نسيت كلمة المرور: إرسال رابط الاستعادة -->
+    <div id="fp-view" style="display:none;">
+      <div style="color:var(--t2);font-size:13px;font-weight:800;margin-bottom:4px;">استعادة كلمة المرور</div>
+      <div style="color:var(--t5);font-size:11px;line-height:1.8;margin-bottom:10px;">أدخل البريد الإلكتروني المسجّل في حسابك وسنرسل لك رابط إعادة التعيين (صالح 30 دقيقة).</div>
+      <form onsubmit="doForgot();return false;">
+        <input class="a-in" id="fp-email" placeholder="البريد الإلكتروني" dir="ltr" type="email" autocomplete="email"/>
+        <div class="a-err" id="fp-err"></div>
+        <div style="color:#34d399;font-size:11.5px;line-height:1.7;margin-bottom:8px;display:none;" id="fp-ok"></div>
+        <button type="submit" class="a-btn" id="fp-btn">إرسال رابط الاستعادة ←</button>
+      </form>
+    </div>
+
+    <!-- إعادة تعيين كلمة المرور (تُفتح برابط البريد ?reset=...) -->
+    <div id="rs-view" style="display:none;">
+      <div style="color:var(--t2);font-size:13px;font-weight:800;margin-bottom:4px;">كلمة مرور جديدة</div>
+      <div style="color:var(--t5);font-size:11px;margin-bottom:10px;">اختر كلمة مرور قوية (8 أحرف على الأقل).</div>
+      <form onsubmit="doReset();return false;">
+        <input class="a-in" id="rs-pass" type="password" placeholder="كلمة المرور الجديدة" dir="rtl" autocomplete="new-password"/>
+        <input class="a-in" id="rs-pass2" type="password" placeholder="تأكيد كلمة المرور الجديدة" dir="rtl" autocomplete="new-password"/>
+        <div class="a-err" id="rs-err"></div>
+        <div style="color:#34d399;font-size:11.5px;margin-bottom:8px;display:none;" id="rs-ok"></div>
+        <button type="submit" class="a-btn" id="rs-btn">حفظ كلمة المرور ←</button>
+      </form>
+    </div>
+
     <div style="margin-top:13px;text-align:center;color:var(--t5);font-size:11px;">دعم: <a href="https://wa.me/201008605139" target="_blank" style="color:var(--g);text-decoration:none;">واتساب 01008605139</a></div>
+    <div style="margin-top:6px;text-align:center;color:var(--t5);font-size:10px;">
+      <a href="/privacy.html" target="_blank" style="color:var(--t5);text-decoration:none;">سياسة الخصوصية</a> · <a href="/terms.html" target="_blank" style="color:var(--t5);text-decoration:none;">الشروط والأحكام</a>
+    </div>
   </div>
 </div>
 
@@ -887,7 +963,10 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
       <span style="font-size:22px;">💬</span>
       <div><div style="color:#25d366;font-weight:800;font-size:13px;">الدعم الفني</div><div style="color:var(--t4);font-size:11px;">واتساب · 01008605139 · ردّ خلال دقائق</div></div>
     </a>
-    <div style="margin-top:14px;text-align:center;color:var(--t5);font-size:10px;">EgyTrend v6.0 © 2026 · "الخلاصة التي تحرك السوق"</div>
+    <div style="margin-top:14px;text-align:center;color:var(--t5);font-size:10px;">
+      <a href="/privacy.html" target="_blank" style="color:var(--t5);text-decoration:none;">سياسة الخصوصية</a> · <a href="/terms.html" target="_blank" style="color:var(--t5);text-decoration:none;">الشروط والأحكام</a>
+    </div>
+    <div style="margin-top:4px;text-align:center;color:var(--t5);font-size:10px;">EgyTrend v6.0 © 2026 · "الخلاصة التي تحرك السوق"</div>
   </div>
 
   <!-- NOTIFICATION PANEL -->
@@ -1060,6 +1139,8 @@ async function callAI({system, messages, max_tokens=2000}){
 
 function aiErrMsg(e){
   const m = e?.message||"";
+  if(m==="ai_not_provisioned") return "🤖 خدمة الذكاء الاصطناعي غير مُفعّلة على الخادم حالياً — تحتاج مفتاح Anthropic (ANTHROPIC_API_KEY).";
+  if(m==="ai_disabled_by_admin") return "⚙️ المشرف أوقف خدمة الذكاء الاصطناعي مؤقتاً من لوحة التحكم.";
   if(m==="timeout"||m.includes("timeout")) return "⌛ انتهت مهلة الاتصال — حاول مرة أخرى.";
   if(m==="rate_limit") return "⚠️ وصلت للحد الأقصى من الطلبات — انتظر دقيقة ثم حاول.";
   if(m==="empty_response") return "⚠️ لم يُنتج AI رداً — حاول مجدداً.";
@@ -1212,6 +1293,8 @@ let usStocks   = []; // US stocks  — populated from /api/markets/us-stocks
 let scrMarket  = "egx"; // active screener market: "egx" | "us"
 let scrSearch  = "";
 let scrFilters = {sector:"all",perf:"all",priceMin:"",priceMax:"",volMin:"",peFilter:"all",divFilter:"all",epsFilter:"all",sortBy:"chgPct",sortDir:-1};
+let scrMktCap="all";
+let scrAdvOpen=false;
 
 /* ═══════════════════ DB (secure localStorage) ═══════════════════ */
 const DB = {
@@ -1304,11 +1387,73 @@ function fmtMktCap(m){
 let authMode="login";
 function swAuth(m){
   authMode=m;
+  swAuthView("form");
   document.querySelectorAll(".a-tab").forEach((t,i)=>t.classList.toggle("active",i===(m==="login"?0:1)));
   document.getElementById("reg-wrap").style.display=m==="register"?"block":"none";
+  document.getElementById("reg-email-wrap").style.display=m==="register"?"block":"none";
   document.getElementById("a-btn-txt").textContent=m==="login"?"دخول ←":"إنشاء الحساب ←";
   document.getElementById("a-err").style.display="none";
 }
+
+/* ═══ نسيت كلمة المرور / إعادة التعيين ═══ */
+let RS_TOKEN="";
+function swAuthView(v){ // "form" | "forgot" | "reset"
+  document.getElementById("auth-form").style.display=v==="form"?"block":"none";
+  document.getElementById("fp-link-wrap").style.display=v==="form"?"block":"none";
+  document.getElementById("fp-view").style.display=v==="forgot"?"block":"none";
+  document.getElementById("rs-view").style.display=v==="reset"?"block":"none";
+  document.getElementById("a-err").style.display="none";
+  document.getElementById("fp-err").style.display="none";
+  document.getElementById("rs-err").style.display="none";
+}
+async function doForgot(){
+  const em=document.getElementById("fp-email").value.trim();
+  const err=document.getElementById("fp-err"), ok=document.getElementById("fp-ok"), btn=document.getElementById("fp-btn");
+  err.style.display="none";ok.style.display="none";
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){err.textContent="أدخل بريدًا إلكترونيًا صحيحًا";err.style.display="block";return;}
+  btn.disabled=true;btn.innerHTML='<div class="sp sp-g sp-md"></div> جارٍ الإرسال...';
+  try{
+    const r=await fetch("/api/user/forgot-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:em})});
+    const d=await r.json().catch(()=>({}));
+    ok.textContent=d.message||"تم استلام طلبك";ok.style.display="block";
+  }catch{err.textContent="تعذر الاتصال بالخادم — حاول مرة أخرى";err.style.display="block";}
+  btn.disabled=false;btn.textContent="إرسال رابط الاستعادة ←";
+}
+async function doReset(){
+  const p1=document.getElementById("rs-pass").value,p2=document.getElementById("rs-pass2").value;
+  const err=document.getElementById("rs-err"), ok=document.getElementById("rs-ok"), btn=document.getElementById("rs-btn");
+  err.style.display="none";ok.style.display="none";
+  if(!RS_TOKEN){err.textContent="رابط غير صالح — اطلب رابطًا جديدًا";err.style.display="block";return;}
+  if(p1.length<8){err.textContent="كلمة المرور يجب أن تكون 8 أحرف على الأقل";err.style.display="block";return;}
+  if(p1!==p2){err.textContent="كلمتا المرور غير متطابقتين";err.style.display="block";return;}
+  btn.disabled=true;btn.innerHTML='<div class="sp sp-g sp-md"></div> جارٍ الحفظ...';
+  try{
+    const r=await fetch("/api/user/reset-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:RS_TOKEN,password:p1})});
+    const d=await r.json().catch(()=>({}));
+    if(d.status==="ok"){
+      ok.textContent="✔ "+(d.message||"تم التحديث");ok.style.display="block";
+      RS_TOKEN="";history.replaceState(null,"",location.pathname);
+      setTimeout(()=>{swAuthView("form");swAuth("login");},1800);
+    }else{err.textContent=d.message||"تعذر التحديث";err.style.display="block";}
+  }catch{err.textContent="تعذر الاتصال بالخادم";err.style.display="block";}
+  btn.disabled=false;btn.textContent="حفظ كلمة المرور ←";
+}
+/* Deep-link من رابط البريد: /?reset=<token> */
+(async function initResetLink(){
+  try{
+    const m=location.search.match(/[?&]reset=([0-9a-f]{16,})/i);
+    if(!m)return;
+    RS_TOKEN=m[1];
+    const r=await fetch("/api/user/reset-status?token="+encodeURIComponent(RS_TOKEN));
+    const d=await r.json().catch(()=>({}));
+    if(d.status==="ok"&&d.valid){swAuthView("reset");}
+    else{
+      history.replaceState(null,"",location.pathname);RS_TOKEN="";
+      const err=document.getElementById("rs-err");err.textContent="هذا الرابط منتهي أو مستخدم من قبل — اطلب رابطًا جديدًا";err.style.display="block";
+      swAuthView("forgot");
+    }
+  }catch{/* بدون اتصال: شاشة الدخول العادية */}
+})();
 
 function doAuth(){
   const phone=document.getElementById("a-phone").value.trim().slice(0,20);
@@ -1326,7 +1471,9 @@ function doAuth(){
       if(phone.length<10){showE("رقم الهاتف غير صحيح");return;}
       if(!/^[0-9+\-\s]+$/.test(phone)){showE("رقم الهاتف غير صالح");return;}
       if(pass.length<8){showE("كلمة المرور يجب أن تكون 8 أحرف على الأقل");return;}
-      const rr=await fetch("/api/user/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,phone,password:pass})});
+      const email=document.getElementById("a-email").value.trim();
+      if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){showE("البريد الإلكتروني غير صحيح");return;}
+      const rr=await fetch("/api/user/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,phone,password:pass,email:email||undefined})});
       const rd=await rr.json().catch(()=>({}));
       if(!rr.ok||rd.status!=="ok"){showE(rd.message||"تعذر إنشاء الحساب");return;}
       DB.s("userTok",rd.token);U=rd.user;
@@ -1336,9 +1483,13 @@ function doAuth(){
        * Exchanges the password for a server-issued bearer token used
        * by /api/admin/* endpoints. If the server is unreachable we
        * still allow local-only admin (read-only of CRUD UI). */
-      if(phone==="admin"){
+      if(phone==="admin"||/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(phone)){
         try{
-          const lr = await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pass})});
+          /* Email → employee JWT flow; "admin" → legacy ADMIN_PASSWORD flow. */
+          const adminBody = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(phone)
+            ? {email:phone.trim().toLowerCase(),password:pass}
+            : {password:pass};
+          const lr = await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(adminBody)});
           const lj = await lr.json();
           if(lr.ok && lj.status==="ok" && lj.token){
             U={name:"المدير",phone:"admin",plan:"admin"};
@@ -1479,6 +1630,7 @@ async function fetchMarketsData(force){
     }
 
     buildTicker();buildMarkets();buildMarketStrip();
+    vipDataPulse();
   }catch(e){
     // Keep last known data — partial UI better than empty
   }
@@ -1565,7 +1717,10 @@ async function fetchSource(src){
       const impact=posRx.test(full)?"up":negRx.test(full)?"dn":"nu";
       const impLabel=impact==="up"?"إيجابي":impact==="dn"?"سلبي":"محايد";
       const impColor=`var(--${impact})`;
-      const score=impact==="up"?60+Math.floor(Math.random()*35):impact==="dn"?55+Math.floor(Math.random()*35):40+Math.floor(Math.random()*30);
+      /* Deterministic pseudo-score from the content hash — stable across
+       * refreshes (was Math.random(): same article got a new score each load). */
+      let h=0;for(let ci=0;ci<full.length;ci++){h=(h*31+full.charCodeAt(ci))>>>0;}
+      const score=impact==="up"?60+(h%35):impact==="dn"?55+(h%35):40+(h%30);
 
       // Extract image safely
       let img=null;
@@ -1630,6 +1785,7 @@ async function fetchAllNews(force=false){
   setStatus("live",`${allArts.length} خبر · ${ok} مصدر${err?` · ${err} تعذّر`:""}`);
   if(allArts.length>0)showToast(`✅ ${allArts.length} خبر من ${ok} مصدر`);
   else showToast("⚠️ تعذّر تحميل الأخبار — تحقق من الاتصال");
+  vipDataPulse();
   buildMarketStrip();
   updateStats();
 }
@@ -2140,40 +2296,402 @@ function renderVIP(){
     return;
   }
 
+  /* ── Premium tabbed shell ── */
   el.innerHTML=`
-    <div class="row between" style="margin-bottom:14px;">
-      <div class="row"><span style="font-size:19px;">⭐</span><div style="color:var(--au);font-weight:900;font-size:16px;">مركز VIP</div></div>
+    <div class="row between" style="margin-bottom:12px;">
+      <div class="row"><span style="font-size:19px;">⭐</span><div><div style="color:var(--au);font-weight:900;font-size:16px;">مركز VIP</div><div style="color:var(--t4);font-size:9.5px;">${sanitize(U?.name||"عضو VIP")} · كل الأدوات مفتوحة</div></div></div>
       <span style="background:var(--gd);border:1px solid rgba(16,185,129,.22);border-radius:8px;padding:2px 9px;font-size:10px;color:var(--g);font-weight:700;">نشط</span>
     </div>
+    <div class="vtabs-wrap"><div class="vtabs" id="vtabs-bar"></div></div>
+    <div id="vip-body"></div>`;
 
-    <!-- AI ADVISOR -->
-    <div class="vbox pu">
-      <div class="vbox-title" style="color:#c084fc;">🤖 EgyTrend AI Advisor</div>
-      <div style="background:rgba(192,132,252,.06);border:1px solid rgba(192,132,252,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
-        💡 <strong style="color:#c084fc;">كيف تستخدمه؟</strong> — اسأله عن أي سهم: "ما رأيك في CIB؟" أو "هل الآن وقت شراء العقارات؟" أو "ما أقوى القطاعات هذا الأسبوع؟" — الإجابات مبنية على بيانات السوق الحقيقية وأخبار اليوم.
-      </div>
-      <div class="chat-area" id="chat-area"></div>
-      <div class="chat-row">
-        <input class="chat-in" id="chat-in" placeholder="اسألني عن أي سهم أو قرار استثماري..." onkeydown="if(event.key==='Enter')sendChat()"/>
-        <button class="chat-send" onclick="sendChat()">←</button>
-      </div>
+  buildVipTabsBar();
+  switchVipTab(DB.g("vip_tab","home"),true);
+}
+
+/* ══════════════ VIP TABS SYSTEM ══════════════ */
+const VIP_TABS=[
+  {id:"home",  ic:"⭐", lb:"الرئيسية"},
+  {id:"news",  ic:"🚨", lb:"العاجلة"},
+  {id:"opps",  ic:"💡", lb:"الفرص"},
+  {id:"mkt",   ic:"📊", lb:"الأسواق"},
+  {id:"scr",   ic:"🔎", lb:"Screener"},
+  {id:"ai",    ic:"🤖", lb:"المستشار"},
+  {id:"stk",   ic:"🎯", lb:"تحليل AI"},
+  {id:"port",  ic:"💼", lb:"المحفظة"},
+  {id:"rep",   ic:"📅", lb:"التقارير"},
+  {id:"alerts",ic:"🔔", lb:"التنبيهات"},
+  {id:"set",   ic:"⚙️", lb:"الإعدادات"},
+];
+let vipTab="home";
+let vNewsF={mkt:"all",imp:"all"};
+let vOppF={type:"all",mkt:"all"};
+let vHomeTries=0;
+
+function buildVipTabsBar(){
+  const bar=document.getElementById("vtabs-bar");if(!bar)return;
+  bar.innerHTML=VIP_TABS.map(t=>`<button class="vtab${t.id===vipTab?" active":""}" data-vt="${t.id}" onclick="switchVipTab('${t.id}')"><span class="vtab-ic">${t.ic}</span><span>${t.lb}</span></button>`).join("");
+  const act=bar.querySelector(".vtab.active");
+  if(act)act.scrollIntoView({inline:"center",block:"nearest",behavior:"smooth"});
+}
+function switchVipTab(id,silent){
+  vipTab=id;if(!silent)DB.s("vip_tab",id);
+  document.querySelectorAll("#vtabs-bar .vtab").forEach(b=>b.classList.toggle("active",b.dataset.vt===id));
+  const act=document.querySelector("#vtabs-bar .vtab.active");
+  if(act)act.scrollIntoView({inline:"center",block:"nearest",behavior:"smooth"});
+  renderVipTab();
+  const pg=document.getElementById("page-vip");if(pg&&!silent)pg.scrollTop=0;
+}
+function vGo(tab){switchVipTab(tab);}
+function vipDataPulse(){
+  if(!["home","news","opps","mkt","rep","alerts"].includes(vipTab))return;
+  const pg=document.getElementById("page-vip");
+  if(!pg||pg.classList.contains("hidden"))return;
+  if(vipTab==="rep"){const r=document.getElementById("rep-res");if(r&&r.style.display!=="none")return;}
+  renderVipTab();
+}
+function vSect(icon,title,tab,seeLabel){
+  return `<div class="vsect-h"><div style="display:flex;align-items:center;gap:7px;"><span style="font-size:15px;">${icon}</span><span style="color:var(--t1);font-weight:800;font-size:13px;">${title}</span></div>${tab?`<button class="vsee" onclick="vGo('${tab}')">${seeLabel||"عرض الكل ←"}</button>`:""}</div>`;
+}
+function vEmpty(icon,msg,sub){return `<div class="vempty"><div style="font-size:30px;margin-bottom:6px;">${icon}</div><div style="color:var(--t3);font-weight:700;font-size:12.5px;">${msg}</div>${sub?`<div style="color:var(--t5);font-size:10.5px;margin-top:4px;">${sub}</div>`:""}</div>`;}
+function vLoading(msg){return `<div class="vloading"><div class="sp sp-au"></div><div style="color:var(--t4);font-size:11px;">${msg||"جارٍ تحميل البيانات الحية..."}</div></div>`;}
+function vTime(ts){
+  const m=Math.floor((Date.now()-ts)/60000);
+  if(m<1)return"الآن";if(m<60)return`قبل ${m} د`;
+  const h=Math.floor(m/60);if(h<24)return`قبل ${h} س`;
+  return new Date(ts).toLocaleDateString("ar-EG",{day:"numeric",month:"short"});
+}
+function vImpChip(a){
+  const map={up:{c:"#10b981",b:"rgba(16,185,129,.12)",l:"▲ إيجابي"},dn:{c:"#ef4444",b:"rgba(239,68,68,.12)",l:"▼ سلبي"},nu:{c:"#64748b",b:"rgba(100,116,139,.12)",l:"● محايد"}};
+  const m=map[a.impact]||map.nu;
+  return `<span class="vimp" style="color:${m.c};background:${m.b};">${a.isBreaking?"🚨 ":""}${m.l}</span>`;
+}
+function oppScore(o){
+  let s=(6-(o.riskLevel||3))*11;
+  if(o.featured)s+=12;
+  const ageH=o.createdAt?Math.floor((Date.now()-new Date(o.createdAt))/36e5):999;
+  if(ageH<48)s+=10;else if(ageH<168)s+=5;
+  if(o.expectedReturn&&/[2-9][0-9]?\s*%/.test(o.expectedReturn))s+=8;
+  if(o.deadline)s+=5;
+  return Math.max(20,Math.min(98,Math.round(s)));
+}
+
+function renderVipTab(){
+  const b=document.getElementById("vip-body");if(!b)return;
+  if(vipTab==="home")return vBuildHome(b);
+  if(vipTab==="news")return vBuildNews(b);
+  if(vipTab==="opps"){vBuildOpps(b);if(!oppsData.length)loadOpps(true);}
+  if(vipTab==="mkt")return vBuildMkts(b);
+  if(vipTab==="scr")return vBuildScr(b);
+  if(vipTab==="ai")return vBuildChat(b);
+  if(vipTab==="stk")return vBuildStk(b);
+  if(vipTab==="port")return vBuildPort(b);
+  if(vipTab==="rep")return vBuildRep(b);
+  if(vipTab==="alerts")return vBuildAlerts(b);
+  if(vipTab==="set")return vBuildSet(b);
+}
+
+/* ══════════════ TAB 1 — الرئيسية ══════════════ */
+function vBuildHome(b){
+  const newsReady=allArts.length>0;
+  const breaking=allArts.filter(a=>a.isBreaking).slice(0,3);
+  const topNews=[...breaking,...allArts.filter(a=>!a.isBreaking).sort((x,y)=>y.score-x.score)].slice(0,5);
+  const evs=(liveCalendar||[]).slice(0,4);
+  const st=portStats();
+  const prefs=DB.g("vip_mkt_pref",["eg","gl","cm","cr"]);
+  const mktOrder=["eg","gl","cm","cr"].sort((a,x)=>(prefs.includes(a)?-1:1)-(prefs.includes(x)?-1:1));
+  const mktCards=mktOrder.flatMap(k=>liveMarkets[k].slice(0,k==="eg"?3:2).map(m=>({m,k}))).slice(0,7);
+  const newOpps=oppsData.slice(0,3);
+
+  b.innerHTML=`
+    ${vSect("🗓️","ملخص اليوم — "+new Date().toLocaleDateString("ar-EG",{weekday:"long",day:"numeric",month:"long"}))}
+    <div class="vhome-grid" style="margin-bottom:4px;">
+      <button class="vstat" onclick="vGo('news')"><div class="vstat-ic">🚨</div><div class="vstat-n">${allArts.length}</div><div class="vstat-l">خبر اليوم</div>${breaking.length?`<div class="vstat-sub" style="color:var(--dn);">${breaking.length} عاجل</div>`:""}</button>
+      <button class="vstat" onclick="vGo('opps')"><div class="vstat-ic">💡</div><div class="vstat-n">${oppsData.length||"…"}</div><div class="vstat-l">فرصة نشطة</div></button>
+      <button class="vstat" onclick="vGo('mkt')"><div class="vstat-ic">📈</div><div class="vstat-n">${liveMarkets.eg[0]?.v||"…"}</div><div class="vstat-l">EGX30 ${liveMarkets.eg[0]?.c||""}</div></button>
+      <button class="vstat" onclick="vGo('port')"><div class="vstat-ic">💼</div><div class="vstat-n">${portfolio.length}</div><div class="vstat-l">سهم في محفظتك</div>${portfolio.length&&st.plPct?`<div class="vstat-sub" style="color:${st.plPct>=0?"var(--g)":"var(--dn)"};">${st.plPct>=0?"+":""}${st.plPct.toFixed(1)}%</div>`:""}</button>
     </div>
 
-    <!-- TRADING SIGNALS -->
-    <div class="vbox g">
-      <div class="vbox-title" style="color:var(--g);">
-        <span>📡 إشارات التداول</span>
-        <button class="btn btn-g btn-sm" id="sig-btn" onclick="getSignals()">توليد ←</button>
-      </div>
-      <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
-        💡 <strong style="color:var(--g);">ماذا تعطيك؟</strong> — تحليل يومي لأبرز أسهم EGX: فرص الدخول والخروج بناءً على الزخم الفني وأخبار السوق الحالية. اضغط "توليد" بعد فتح البورصة للحصول على أدق النتائج.
-      </div>
-      <div id="sig-res" style="display:none;color:#a7f3d0;font-size:13px;line-height:1.85;direction:rtl;white-space:pre-line;margin-top:8px;"></div>
+    ${vSect("🚨","أهم الأخبار","news")}
+    <div class="vbox" style="padding:0;overflow:hidden;">${
+      !newsReady?vLoading("محرك الأخبار يجمع 23 مصدراً حياً..."):
+      !topNews.length?vEmpty("📭","لا توجد أخبار بعد","اضغط تحديث في تبويب الأخبار"):
+      topNews.map(a=>`
+        <div class="vnews-row" onclick="openArt('${a.id}')">
+          <div style="flex:1;min-width:0;">
+            <div class="vnews-t">${a.title}</div>
+            <div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap;">
+              ${vImpChip(a)}
+              <span style="color:var(--t5);font-size:9.5px;">${sanitize(a.srcName)} · ${vTime(a.ts)}</span>
+            </div>
+          </div>
+          <span style="color:var(--t4);font-size:13px;">←</span>
+        </div>`).join("")}
     </div>
 
-    <!-- PROFESSIONAL STOCK SCREENER -->
+    ${vSect("💡","آخر الفرص","opps")}
+    ${!oppsData.length?vLoading("جارٍ جلب الفرص..."):newOpps.map(o=>`
+      <div class="vbox vopp-mini" onclick="openOppDetail('${o.id}')" style="cursor:pointer;">
+        <div class="row between">
+          <div style="color:var(--t1);font-weight:800;font-size:12.5px;flex:1;min-width:0;">${sanitize(o.title)}</div>
+          <span class="vscore">${oppScore(o)}</span>
+        </div>
+        <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap;">
+          <span class="vchip">${(OPP_TYPES[o.type]||{}).l||o.type}</span>
+          ${o.expectedReturn?`<span class="vchip" style="color:var(--g);">${sanitize(o.expectedReturn)}</span>`:""}
+          <span class="vchip">${RISK_LABELS[o.riskLevel||3]}</span>
+        </div>
+      </div>`).join("")}
+
+    ${vSect("📊","حالة الأسواق","mkt")}
+    <div class="vhome-grid">
+      ${mktCards.map(({m})=>`
+        <div class="vstat" style="cursor:default;">
+          <div class="vstat-l" style="font-weight:800;color:var(--t2);">${sanitize(m.n)}</div>
+          <div class="vstat-n" style="font-size:14px;">${sanitize(m.v)}</div>
+          <div class="vstat-sub" style="color:${m.up?"var(--g)":"var(--dn)"};">${m.up?"▲":"▼"} ${sanitize(m.c)}</div>
+        </div>`).join("")}
+    </div>
+
+    ${vSect("🔔","أهم التنبيهات","alerts")}
+    ${(()=>{const s=getNotifsStore();const items=s.items.slice(0,3);return items.length?`<div class="vbox" style="padding:0;overflow:hidden;">${items.map(n=>`
+      <div class="vnews-row" onclick="openVipAlert('${sanitize(n.link||"")}')"><div style="flex:1;min-width:0;"><div class="vnews-t" style="font-size:11.5px;">${n.icon} ${sanitize(n.title)}</div><div style="color:var(--t5);font-size:9.5px;margin-top:2px;">${sanitize(n.body||"").slice(0,70)} · ${vTime(n.ts)}</div></div></div>`).join("")}</div>`:vEmpty("🔕","لا تنبيهات جديدة","التنبيهات تظهر هنا تلقائياً");})()}
+
+    ${vSect("📅","أحداث اقتصادية قادمة","mkt")}
+    ${evs.length?`<div class="vbox" style="padding:0;overflow:hidden;">${evs.map(ev=>`
+      <div class="vnews-row" style="cursor:default;">
+        <div style="font-size:16px;">${ev.flag||"🌐"}</div>
+        <div style="flex:1;min-width:0;"><div class="vnews-t" style="font-size:11.5px;">${sanitize(ev.ev||ev.evEn||"")}</div><div style="color:var(--t5);font-size:9.5px;">${sanitize(ev.t||"")}</div></div>
+        <span class="vimp" style="color:${ev.c||"#64748b"};background:${(ev.c||"#64748b")}18;">${sanitize(ev.imp||"")}</span>
+      </div>`).join("")}</div>`:vEmpty("📅","جارٍ تحميل التقويم الاقتصادي...")}
+
+    ${vSect("💼","محفظتك","port")}
+    ${!portfolio.length?vEmpty("💼","لم تضف أسهماً بعد","تابع أداء استثماراتك لحظة بلحظة — أضف سهمك الأول"):`
+      <div class="vbox">
+        <div class="row between" style="margin-bottom:9px;">
+          <div><div style="color:var(--t5);font-size:9.5px;">القيمة الحالية</div><div style="color:var(--t1);font-weight:900;font-size:17px;font-family:var(--mono);">${st.cur.toFixed(0)} ج</div></div>
+          <div style="text-align:left;"><div style="color:var(--t5);font-size:9.5px;">الربح/الخسارة</div><div style="color:${st.pl>=0?"var(--g)":"var(--dn)"};font-weight:900;font-size:15px;font-family:var(--mono);">${st.pl>=0?"+":""}${st.pl.toFixed(0)} ج (${st.plPct>=0?"+":""}${st.plPct.toFixed(2)}%)</div></div>
+        </div>
+        ${st.rows.slice(0,4).map(r=>`<div class="p-row"><div class="row" style="gap:7px;"><span style="background:var(--bld);border:1px solid rgba(59,130,246,.22);border-radius:7px;padding:2px 8px;color:#93c5fd;font-weight:700;font-size:11px;font-family:var(--mono);">${sanitize(r.p.sym)}</span><span style="color:var(--t4);font-size:10.5px;">${r.pr?r.pr.toFixed(2)+" ج":"بانتظار السعر"}</span></div><span style="color:${r.pnl==null?"var(--t5)":r.pnl>=0?"var(--g)":"var(--dn)"};font-weight:800;font-size:11.5px;font-family:var(--mono);">${r.pnl==null?"—":(r.pnl>=0?"+":"")+r.pnl.toFixed(2)+"%"}</span></div>`).join("")}
+        <button class="btn btn-bl btn-full" style="margin-top:9px;padding:8px;font-size:12px;" onclick="vGo('port')">إدارة المحفظة ←</button>
+      </div>`}
+    ${vHomeTries<6&&!newsReady?`<div id="vhome-retry"></div>`:""}`;
+
+  if(!newsReady&&vHomeTries<6){vHomeTries++;setTimeout(()=>{if(vipTab==="home")renderVipTab();},1600);}
+  else vHomeTries=0;
+}
+
+/* ══════════════ TAB 2 — الأخبار العاجلة ══════════════ */
+const V_ASSET_KEYS=[
+  {re:/ذهب|gold/i,l:"🥇 ذهب"},{re:/دولار|USD|دولاراً/i,l:"💵 الدولار"},{re:/برنت|نفط|oil|brent/i,l:"🛢️ نفط"},
+  {re:/EGX|البورصة|المؤشر المصري/i,l:"📈 EGX30"},{re:/بيتكوين|بتكوين|bitcoin|BTC/i,l:"₿ BTC"},
+  {re:/يورو|EUR/i,l:"€ اليورو"},{re:/فائدة|Fed|الاحتياطي الفيدرالي|الفيدرالي/i,l:"🏦 أسعار الفائدة"},
+  {re:/فضة|silver/i,l:"🥈 فضة"},{re:/نحاس|copper/i,l:"🟠 نحاس"},{re:/إسترليني|جنيه إسترليني|GBP/i,l:"💷 الإسترليني"},
+];
+function vAffectedAssets(a){
+  const full=a.title+" "+(a.summary||"");
+  const out=V_ASSET_KEYS.filter(k=>k.re.test(full)).map(k=>k.l);
+  liveStocks.forEach(s=>{if(s.name&&full.includes(s.name)||full.toUpperCase().includes(s.sym))out.push("📊 "+s.sym);});
+  return [...new Set(out)].slice(0,4);
+}
+function vBuildNews(b){
+  const srcs=[["all","الكل"],["egypt","🇪🇬 مصر"],["global","🌐 عالمي"],["stocks","📈 بورصة"],["crypto","₿ كريبتو"]];
+  let list=[...allArts];
+  if(vNewsF.mkt!=="all")list=list.filter(a=>a.cat===vNewsF.mkt);
+  if(vNewsF.imp==="brk")list=list.filter(a=>a.isBreaking);
+  else if(vNewsF.imp!=="all")list=list.filter(a=>a.impact===vNewsF.imp);
+  list.sort((x,y)=>(y.isBreaking-x.isBreaking)||(y.score-x.score)||(y.ts-x.ts));
+  const impCount={brk:allArts.filter(a=>a.isBreaking).length,up:allArts.filter(a=>a.impact==="up").length,dn:allArts.filter(a=>a.impact==="dn").length};
+
+  b.innerHTML=`
+    <div class="vbox" style="background:linear-gradient(135deg,rgba(239,68,68,.07),rgba(245,158,11,.04));border-color:rgba(239,68,68,.18);">
+      <div style="color:var(--dn);font-weight:800;font-size:13px;margin-bottom:4px;">🚨 مركز الأخبار المؤثرة</div>
+      <div style="color:var(--t4);font-size:10.5px;line-height:1.7;">الأخبار مرتبة بدرجة التأثير — اضغط أي خبر للتحليل الكامل مع TL;DR وتحليل AI</div>
+    </div>
+    <div style="margin-bottom:7px;"><div style="color:var(--t5);font-size:9px;font-weight:700;margin-bottom:4px;">السوق</div>
+      <div class="scr-filters">${srcs.map(([v,l])=>`<button class="scr-f${vNewsF.mkt===v?" active":""}" onclick="vSetNewsF('mkt','${v}',this)">${l}</button>`).join("")}</div></div>
+    <div style="margin-bottom:9px;"><div style="color:var(--t5);font-size:9px;font-weight:700;margin-bottom:4px;">التأثير</div>
+      <div class="scr-filters">${[["all",`الكل (${allArts.length})`],["brk",`🚨 عاجل (${impCount.brk})`],["up",`▲ إيجابي (${impCount.up})`],["dn",`▼ سلبي (${impCount.dn})`]].map(([v,l])=>`<button class="scr-f${vNewsF.imp===v?" active":""}" onclick="vSetNewsF('imp','${v}',this)">${l}</button>`).join("")}</div></div>
+    ${
+      !allArts.length?vLoading():
+      !list.length?vEmpty("🔍","لا نتائج مطابقة للفلتر","جرّب توسيع الفلاتر"):
+      `<div style="margin-bottom:6px;color:var(--t5);font-size:9.5px;">${list.length} خبر · مرتبة بالتأثير</div>`+
+      list.slice(0,40).map(a=>{
+        const assets=vAffectedAssets(a);
+        return `<div class="vbox ${a.isBreaking?"au":"g"}" style="cursor:pointer;" onclick="openArt('${a.id}')">
+          <div class="row between" style="margin-bottom:5px;align-items:flex-start;">
+            ${vImpChip(a)}
+            <span style="color:var(--t5);font-size:9px;font-family:var(--mono);">Impact ${a.score}</span>
+          </div>
+          <div style="color:var(--t1);font-weight:800;font-size:13px;line-height:1.65;margin-bottom:5px;">${a.title}</div>
+          ${a.summary?`<div style="color:var(--t3);font-size:11px;line-height:1.7;margin-bottom:7px;">${a.summary}</div>`:""}
+          ${assets.length?`<div class="row" style="gap:5px;flex-wrap:wrap;margin-bottom:7px;">${assets.map(x=>`<span class="vchip">${x}</span>`).join("")}</div>`:""}
+          <div class="row between">
+            <span style="color:var(--t5);font-size:9.5px;">${a.srcIcon||"📡"} ${sanitize(a.srcName)} · ${vTime(a.ts)}</span>
+            <span style="color:var(--au);font-size:10px;font-weight:700;">تحليل AI ←</span>
+          </div>
+        </div>`;}).join("")}`;
+}
+function vSetNewsF(dim,val,btn){
+  vNewsF[dim]=val;
+  btn.parentElement.querySelectorAll(".scr-f").forEach(x=>x.classList.remove("active"));
+  btn.classList.add("active");
+  renderVipTab();
+}
+
+/* ══════════════ TAB 3 — الفرص ══════════════ */
+function vBuildOpps(b){
+  let list=[...oppsData];
+  if(vOppF.type!=="all")list=list.filter(o=>o.type===vOppF.type);
+  if(vOppF.mkt!=="all")list=list.filter(o=>o.market===vOppF.mkt);
+  list.sort((x,y)=>oppScore(y)-oppScore(x));
+  const types=[...new Set(oppsData.map(o=>o.type))];
+  const mkts=[...new Set(oppsData.map(o=>o.market))];
+  const mName={egypt:"🇪🇬 مصر",us:"🇺🇸 أمريكا",gulf:"🌙 الخليج",crypto:"₿ كريبتو",global:"🌐 عالمي"};
+  const saved=DB.g("saved_opps",[]);
+
+  b.innerHTML=`
+    <div class="vbox" style="background:linear-gradient(135deg,rgba(245,158,11,.07),rgba(16,185,129,.04));border-color:rgba(245,158,11,.18);">
+      <div class="row between">
+        <div><div style="color:var(--au);font-weight:800;font-size:13px;">💡 الفرص الاستثمارية</div>
+        <div style="color:var(--t4);font-size:10.5px;margin-top:3px;">مرتبة بـ EgyTrend Opportunity Score — مبنية على المخاطرة والعائد والحداثة</div></div>
+        <span class="vscore" style="font-size:13px;padding:7px 10px;">${oppsData.length}</span>
+      </div>
+    </div>
+    ${oppsData.length?`
+    <div style="margin-bottom:7px;"><div style="color:var(--t5);font-size:9px;font-weight:700;margin-bottom:4px;">النوع</div>
+      <div class="scr-filters" id="vopp-type-row"><button class="scr-f${vOppF.type==="all"?" active":""}" onclick="vSetOppF('type','all',this)">الكل</button>${types.map(t=>`<button class="scr-f${vOppF.type===t?" active":""}" onclick="vSetOppF('type','${t}',this)">${(OPP_TYPES[t]||{}).l||t}</button>`).join("")}</div></div>
+    <div style="margin-bottom:9px;"><div style="color:var(--t5);font-size:9px;font-weight:700;margin-bottom:4px;">السوق</div>
+      <div class="scr-filters"><button class="scr-f${vOppF.mkt==="all"?" active":""}" onclick="vSetOppF('mkt','all',this)">الكل</button>${mkts.map(m=>`<button class="scr-f${vOppF.mkt===m?" active":""}" onclick="vSetOppF('mkt','${m}',this)">${mName[m]||m}</button>`).join("")}</div></div>`:""}
+    ${
+      !oppsData.length?vLoading("جارٍ جلب الفرص الاستثمارية..."):
+      !list.length?vEmpty("💡","لا توجد فرص في هذه الفئة","جرّب فلتراً آخر أو عد لاحقاً"):
+      list.map(o=>{
+        const t=OPP_TYPES[o.type]||{l:o.type,c:"#64748b",bg:"rgba(100,116,139,.12)"};
+        const rColor=RISK_COLORS[(o.riskLevel||3)-1];
+        const daysLeft=o.deadline?Math.ceil((new Date(o.deadline)-new Date())/(1e3*60*60*24)):null;
+        const ageHrs=o.createdAt?Math.floor((Date.now()-new Date(o.createdAt))/(1e3*3600)):999;
+        const sc=oppScore(o);
+        const isSaved=saved.includes(o.id);
+        return `<div class="vbox${o.featured?" au":""}" style="cursor:pointer;" onclick="openOppDetail('${o.id}')">
+          <div class="row between" style="align-items:flex-start;margin-bottom:6px;">
+            <div class="row" style="gap:5px;flex-wrap:wrap;">
+              <span class="opp-type-badge" style="color:${t.c};background:${t.bg};">${t.l}</span>
+              <span class="vchip">${mName[o.market]||o.market}</span>
+              ${ageHrs<48?`<span class="vchip" style="color:#22c55e;background:rgba(34,197,94,.12);">🟢 جديدة</span>`:""}
+              ${o.featured?`<span class="vchip" style="color:var(--au);background:var(--aud);">⭐ مميزة</span>`:""}
+            </div>
+            <div style="text-align:center;flex-shrink:0;"><div class="vscore">${sc}</div><div style="color:var(--t5);font-size:7.5px;">Score</div></div>
+          </div>
+          <div style="color:var(--t1);font-weight:800;font-size:13.5px;line-height:1.6;margin-bottom:7px;">${sanitize(o.title)}</div>
+          <div style="color:var(--t3);font-size:11px;line-height:1.75;margin-bottom:9px;">${sanitize((o.summary||"").slice(0,160))}${(o.summary||"").length>160?"…":""}</div>
+          <div class="opp-meta">
+            ${o.expectedReturn?`<div class="opp-meta-item"><div class="opp-meta-label">العائد المحتمل</div><div class="opp-meta-val" style="color:var(--g);">${sanitize(o.expectedReturn)}</div></div>`:""}
+            <div class="opp-meta-item"><div class="opp-meta-label">المخاطرة</div><div><div class="opp-risk">${[1,2,3,4,5].map(i=>`<div class="opp-risk-dot" style="background:${i<=(o.riskLevel||3)?rColor:"var(--b2)"};"></div>`).join("")}</div><div style="color:${rColor};font-size:9px;margin-top:2px;">${RISK_LABELS[o.riskLevel||3]}</div></div></div>
+            ${o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">مدة الاستثمار</div><div class="opp-meta-val">${sanitize(o.duration)}</div></div>`:""}
+            ${o.sector?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${sanitize(o.sector.replace(/^\[AI\]\s*/,""))}</div></div>`:""}
+          </div>
+          ${daysLeft!==null?`<div class="opp-deadline">⏰ ${daysLeft<=0?"آخر يوم":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>`:""}
+          <div class="row" style="gap:6px;margin-top:9px;">
+            <button class="btn btn-sm" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);" onclick="event.stopPropagation();vSaveOpp('${o.id}',this)">${isSaved?"🔖 محفوظة":"📌 حفظ"}</button>
+            ${o.deadline?`<button class="btn btn-sm" style="background:var(--aud);border:1px solid rgba(245,158,11,.2);color:var(--au);" onclick="event.stopPropagation();vAlertOpp('${o.id}')">🔔 تنبيه</button>`:""}
+            <button class="btn btn-g btn-sm" onclick="event.stopPropagation();openOppDetail('${o.id}')">التفاصيل ←</button>
+          </div>
+        </div>`;}).join("")}`;
+}
+function vSetOppF(dim,val,btn){
+  vOppF[dim]=val;
+  btn.parentElement.querySelectorAll(".scr-f").forEach(x=>x.classList.remove("active"));
+  btn.classList.add("active");
+  renderVipTab();
+}
+function vSaveOpp(id,btn){
+  const saved=DB.g("saved_opps",[]);
+  const idx=saved.indexOf(id);
+  if(idx>=0){saved.splice(idx,1);btn.textContent="📌 حفظ";showToast("تمت إزالة الفرصة");}
+  else{saved.push(id);btn.textContent="🔖 محفوظة";showToast("✅ تم حفظ الفرصة");}
+  DB.s("saved_opps",saved);
+}
+function vAlertOpp(id){
+  const o=oppsData.find(x=>x.id===id);if(!o)return;
+  addNotif("opps","⏰ تذكير بفرصة استثمارية",`${o.title}${o.deadline?` — آخر يوم: ${o.deadline}`:""}`,"nav:opps","💡");
+  showToast("🔔 سيظهر التنبيه في مركز التنبيهات");
+}
+
+/* ══════════════ TAB 4 — الأسواق ══════════════ */
+function vBuildMkts(b){
+  const secName={eg:"🇪🇬 السوق المصري",gl:"🇺🇸 السوق الأمريكي والعالمي",cm:"🥇 السلع والمعادن",cr:"₿ كريبتو"};
+  const up=[...liveStocks].sort((a,x)=>x.chgPct-a.chgPct).slice(0,5);
+  const dn=[...liveStocks].sort((a,x)=>a.chgPct-x.chgPct).slice(0,5);
+  const act=[...liveStocks].sort((a,x)=>(x.vol||0)-(a.vol||0)).slice(0,5);
+  const hasStk=liveStocks.length>0;
+
+  b.innerHTML=`
+    <div class="row between" style="margin-bottom:10px;">
+      <div style="color:var(--t4);font-size:10px;">📡 بيانات مباشرة من /api/markets</div>
+      <button onclick="refreshVipMkts()" style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);color:#93c5fd;font-size:10px;padding:4px 10px;border-radius:7px;cursor:pointer;font-family:var(--sans);">↻ تحديث</button>
+    </div>
+    ${["eg","gl","cm","cr"].map(k=>`
+      ${vSect(secName[k])}
+      <div class="vhome-grid" style="margin-bottom:4px;">
+        ${liveMarkets[k].map(m=>`
+          <div class="vstat"${m.clickable?` onclick="openEgx('${(m.n||"").replace(/'/g,"")}')"`:""} style="${m.clickable?"cursor:pointer;":""}">
+            <div class="vstat-l" style="font-weight:800;color:var(--t2);">${sanitize(m.n)}</div>
+            <div class="vstat-n" style="font-size:15px;">${sanitize(m.v)}</div>
+            <div class="vstat-sub" style="color:${m.up?"var(--g)":"var(--dn)"};">${m.up?"▲":"▼"} ${sanitize(m.c)}</div>
+          </div>`).join("")}
+      </div>`).join("")}
+
+    ${vSect("🏆","الرابحون اليوم")}
+    ${!hasStk?vEmpty("⏳","بانتظار بيانات البورصة..."):`
+      <div class="vbox" style="padding:0;overflow:hidden;">${up.map(s=>vMoverRow(s,"up")).join("")}</div>`}
+
+    ${vSect("📉","الخاسرون اليوم")}
+    ${!hasStk?vEmpty("⏳","بانتظار بيانات البورصة..."):`
+      <div class="vbox" style="padding:0;overflow:hidden;">${dn.map(s=>vMoverRow(s,"dn")).join("")}</div>`}
+
+    ${vSect("🔥","الأكثر تداولاً")}
+    ${!hasStk?vEmpty("⏳","بانتظار بيانات البورصة..."):`
+      <div class="vbox" style="padding:0;overflow:hidden;">${act.map(s=>`
+        <div class="vnews-row" style="cursor:default;">
+          <span style="background:var(--bld);border:1px solid rgba(59,130,246,.22);border-radius:7px;padding:2px 8px;color:#93c5fd;font-weight:700;font-size:11px;font-family:var(--mono);">${sanitize(s.sym)}</span>
+          <div style="flex:1;min-width:0;"><div style="color:var(--t3);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${sanitize(s.name||"")}</div></div>
+          <div style="text-align:left;"><div style="color:var(--t2);font-size:11px;font-family:var(--mono);">${fmtVol(s.vol)}</div><div style="color:var(--t5);font-size:8.5px;">حجم التداول</div></div>
+        </div>`).join("")}</div>`}
+
+    ${vSect("📅","التقويم الاقتصادي")}
+    <div class="vbox"><div id="vcal-wrap"></div></div>`;
+
+  vBuildCal();
+}
+function vMoverRow(s,dir){
+  return `<div class="vnews-row" style="cursor:default;">
+    <span style="background:var(--bld);border:1px solid rgba(59,130,246,.22);border-radius:7px;padding:2px 8px;color:#93c5fd;font-weight:700;font-size:11px;font-family:var(--mono);">${sanitize(s.sym)}</span>
+    <div style="flex:1;min-width:0;"><div style="color:var(--t3);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${sanitize(s.name||"")}</div></div>
+    <div style="text-align:left;"><div style="color:${dir==="up"?"var(--g)":"var(--dn)"};font-weight:800;font-size:11.5px;font-family:var(--mono);">${s.chgPct>=0?"+":""}${s.chgPct.toFixed(2)}%</div><div style="color:var(--t5);font-size:9px;font-family:var(--mono);">${s.price.toFixed(2)} ج</div></div>
+  </div>`;
+}
+function vBuildCal(){
+  const wrap=document.getElementById("vcal-wrap");if(!wrap)return;
+  if(!liveCalendar||!liveCalendar.length){wrap.innerHTML=`<div style="padding:14px;text-align:center;color:var(--t4);font-size:11px;">جارٍ تحميل التقويم الاقتصادي...</div>`;return;}
+  wrap.innerHTML=liveCalendar.slice(0,10).map((ev,i)=>{
+    const c=ev.c||"#64748b";
+    return `<div class="vnews-row" style="cursor:default;${i===9?"border:none":""}">
+      <div style="font-size:16px;">${ev.flag||"🌐"}</div>
+      <div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11.5px;font-weight:600;">${sanitize(ev.ev||ev.evEn||"")}</div><div style="color:var(--t5);font-size:9.5px;">${sanitize(ev.t||"")}${ev.countryAr?` · ${sanitize(ev.countryAr)}`:""}</div></div>
+      <span class="vimp" style="color:${c};background:${c}18;">${sanitize(ev.imp||"")}</span>
+    </div>`;}).join("");
+}
+async function refreshVipMkts(){
+  showToast("↻ جارٍ تحديث الأسواق...");
+  try{await fetchMarketsData(true);}catch(e){}
+  if(vipTab==="mkt")renderVipTab();else renderVipTab();
+}
+
+/* ══════════════ TAB 5 — Screener (منقول كما هو) ══════════════ */
+function vBuildScr(b){
+  b.innerHTML=`
     <div class="vbox bl" id="scr-box">
-      <!-- Header -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;">
         <div style="color:#93c5fd;font-weight:700;font-size:14px;">🔍 Stock Screener</div>
         <div style="display:flex;align-items:center;gap:6px;">
@@ -2182,92 +2700,48 @@ function renderVIP(){
           <span id="scr-count" style="color:var(--t5);font-size:10px;font-family:var(--mono);">...</span>
         </div>
       </div>
-
-      <!-- Market Tabs -->
       <div class="scr-mkt-tabs">
         <button class="scr-mkt-tab active" id="scr-tab-egx" onclick="setScrMarket('egx',this)">🇪🇬 EGX — البورصة المصرية</button>
         <button class="scr-mkt-tab" id="scr-tab-us" onclick="setScrMarket('us',this)">🇺🇸 US — بورصة نيويورك</button>
       </div>
-
-      <!-- Search -->
       <div class="scr-search-row">
         <input type="text" id="scr-search" placeholder="ابحث بالرمز أو الاسم…" oninput="scrSearch=this.value.trim();renderScrResults()"/>
         <span class="scr-search-icon">🔍</span>
       </div>
-
-      <!-- Sector Filter -->
       <div style="margin-bottom:8px;">
         <div style="color:var(--t5);font-size:9px;font-weight:700;margin-bottom:4px;font-family:var(--mono);">القطاع</div>
-        <div class="scr-filters" id="scr-sector-row">
-          <button class="scr-f active" onclick="setScrFilter('sector','all',this)">الكل</button>
-        </div>
+        <div class="scr-filters" id="scr-sector-row"><button class="scr-f active" onclick="setScrFilter('sector','all',this)">الكل</button></div>
       </div>
-
-      <!-- Performance Filter -->
       <div style="margin-bottom:8px;">
         <div style="color:var(--t5);font-size:9px;font-weight:700;margin-bottom:4px;font-family:var(--mono);">الأداء اليومي</div>
         <div class="scr-filters" id="scr-perf-row">
           ${[["all","الكل"],["up","صاعد ▲"],["dn","هابط ▼"],["up3","+3%+"],["dn3","-3%+"],["up5","+5%+"]].map((x,i)=>`<button class="scr-f${i===0?" active":""}" onclick="setScrFilter('perf','${x[0]}',this)">${x[1]}</button>`).join("")}
         </div>
       </div>
-
-      <!-- Advanced Filters -->
       <div id="scr-adv" style="display:none;border-top:1px solid var(--b1);padding-top:10px;margin-bottom:8px;">
         <div class="scr-adv-grid">
-          <div>
-            <div style="color:var(--t5);font-size:9px;margin-bottom:3px;" id="scr-pr-label">السعر من</div>
-            <input id="scr-pr-min" type="number" min="0" placeholder="0" class="mini-in" oninput="renderScrResults()" style="margin-bottom:0;"/>
-          </div>
-          <div>
-            <div style="color:var(--t5);font-size:9px;margin-bottom:3px;">السعر إلى</div>
-            <input id="scr-pr-max" type="number" min="0" placeholder="∞" class="mini-in" oninput="renderScrResults()" style="margin-bottom:0;"/>
-          </div>
+          <div><div style="color:var(--t5);font-size:9px;margin-bottom:3px;" id="scr-pr-label">السعر من</div><input id="scr-pr-min" type="number" min="0" placeholder="0" class="mini-in" oninput="renderScrResults()" style="margin-bottom:0;"/></div>
+          <div><div style="color:var(--t5);font-size:9px;margin-bottom:3px;">السعر إلى</div><input id="scr-pr-max" type="number" min="0" placeholder="∞" class="mini-in" oninput="renderScrResults()" style="margin-bottom:0;"/></div>
         </div>
         <div class="scr-adv-grid" style="margin-top:6px;">
-          <div>
-            <div style="color:var(--t5);font-size:9px;margin-bottom:3px;">حجم التداول الأدنى</div>
+          <div><div style="color:var(--t5);font-size:9px;margin-bottom:3px;">حجم التداول الأدنى</div>
             <select id="scr-vol-min" class="mini-in" onchange="renderScrResults()" style="margin-bottom:0;">
-              <option value="0">أي حجم</option>
-              <option value="100000">100K+</option>
-              <option value="500000">500K+</option>
-              <option value="1000000">1M+</option>
-              <option value="5000000">5M+</option>
-              <option value="10000000">10M+</option>
-              <option value="50000000">50M+</option>
-            </select>
-          </div>
-          <div>
-            <div style="color:var(--t5);font-size:9px;margin-bottom:3px;">P/E Ratio</div>
+              <option value="0">أي حجم</option><option value="100000">100K+</option><option value="500000">500K+</option><option value="1000000">1M+</option><option value="5000000">5M+</option><option value="10000000">10M+</option><option value="50000000">50M+</option>
+            </select></div>
+          <div><div style="color:var(--t5);font-size:9px;margin-bottom:3px;">P/E Ratio</div>
             <select id="scr-pe" class="mini-in" onchange="renderScrResults()" style="margin-bottom:0;">
-              <option value="all">الكل</option>
-              <option value="0-10">أقل من 10</option>
-              <option value="0-15">أقل من 15</option>
-              <option value="15-30">15 – 30</option>
-              <option value="30-50">30 – 50</option>
-              <option value="50+">أكثر من 50</option>
-              <option value="neg">سالب / غير متاح</option>
-            </select>
-          </div>
+              <option value="all">الكل</option><option value="0-10">أقل من 10</option><option value="0-15">أقل من 15</option><option value="15-30">15 – 30</option><option value="30-50">30 – 50</option><option value="50+">أكثر من 50</option><option value="neg">سالب / غير متاح</option>
+            </select></div>
         </div>
         <div class="scr-adv-grid" style="margin-top:6px;">
-          <div>
-            <div style="color:var(--t5);font-size:9px;margin-bottom:3px;">توزيعات أرباح</div>
+          <div><div style="color:var(--t5);font-size:9px;margin-bottom:3px;">توزيعات أرباح</div>
             <select id="scr-div" class="mini-in" onchange="renderScrResults()" style="margin-bottom:0;">
-              <option value="all">الكل</option>
-              <option value="any">يوزع أرباحاً</option>
-              <option value="2+">عائد 2%+</option>
-              <option value="4+">عائد 4%+</option>
-              <option value="6+">عائد 6%+</option>
-            </select>
-          </div>
-          <div>
-            <div style="color:var(--t5);font-size:9px;margin-bottom:3px;">ربحية السهم EPS</div>
+              <option value="all">الكل</option><option value="any">يوزع أرباحاً</option><option value="2+">عائد 2%+</option><option value="4+">عائد 4%+</option><option value="6+">عائد 6%+</option>
+            </select></div>
+          <div><div style="color:var(--t5);font-size:9px;margin-bottom:3px;">ربحية السهم EPS</div>
             <select id="scr-eps" class="mini-in" onchange="renderScrResults()" style="margin-bottom:0;">
-              <option value="all">الكل</option>
-              <option value="pos">موجب (رابح)</option>
-              <option value="neg">سالب (خاسر)</option>
-            </select>
-          </div>
+              <option value="all">الكل</option><option value="pos">موجب (رابح)</option><option value="neg">سالب (خاسر)</option>
+            </select></div>
         </div>
         <div style="margin-top:7px;">
           <div style="color:var(--t5);font-size:9px;margin-bottom:4px;">رأس المال السوقي</div>
@@ -2276,8 +2750,6 @@ function renderVIP(){
           </div>
         </div>
       </div>
-
-      <!-- Actions Bar -->
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:6px;">
         <div style="display:flex;gap:5px;">
           <button onclick="toggleScrAdv()" id="scr-adv-btn" style="background:none;border:1px solid var(--b1);border-radius:7px;padding:4px 9px;color:var(--t3);font-size:10px;cursor:pointer;font-family:var(--sans);">⚙️ فلاتر متقدمة</button>
@@ -2287,66 +2759,191 @@ function renderVIP(){
           <button onclick="saveScrFilter()" style="background:none;border:1px solid var(--b1);border-radius:7px;padding:4px 9px;color:var(--t3);font-size:10px;cursor:pointer;font-family:var(--sans);">💾 حفظ</button>
         </div>
       </div>
-
-      <!-- Saved Filters -->
       <div id="scr-saved-row" style="margin-bottom:7px;display:none;">
         <div style="color:var(--t5);font-size:9px;margin-bottom:3px;">فلاتر محفوظة:</div>
         <div id="scr-saved-pills" class="scr-filters"></div>
       </div>
-
-      <!-- Scrollable Table -->
       <div class="scr-tbl-wrap">
         <table class="scr-tbl">
-          <thead>
-            <tr id="scr-thead-row">
-              <th class="scr-th" onclick="scrSortBy('name')">السهم</th>
-              <th class="scr-th" style="text-align:left;" onclick="scrSortBy('price')">السعر</th>
-              <th class="scr-th" style="text-align:left;" onclick="scrSortBy('chgPct')">تغيير%</th>
-              <th class="scr-th" style="text-align:left;" onclick="scrSortBy('vol')">حجم</th>
-              <th class="scr-th" style="text-align:left;" onclick="scrSortBy('mktCapM')">رأس المال</th>
-              <th class="scr-th" style="text-align:left;" onclick="scrSortBy('pe')">P/E</th>
-              <th class="scr-th" style="text-align:left;" onclick="scrSortBy('divYield')">توزيعات%</th>
-              <th class="scr-th" style="text-align:left;" onclick="scrSortBy('high52w')">52أ↑</th>
-              <th class="scr-th" style="text-align:left;" onclick="scrSortBy('low52w')">52أ↓</th>
-              <th class="scr-th" style="text-align:center;">⭐</th>
-            </tr>
-          </thead>
+          <thead><tr id="scr-thead-row">
+            <th class="scr-th" onclick="scrSortBy('name')">السهم</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('price')">السعر</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('chgPct')">تغيير%</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('vol')">حجم</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('mktCapM')">رأس المال</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('pe')">P/E</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('divYield')">توزيعات%</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('high52w')">52أ↑</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('low52w')">52أ↓</th>
+            <th class="scr-th" style="text-align:center;">⭐</th>
+          </tr></thead>
           <tbody id="scr-results"></tbody>
         </table>
       </div>
-
       <div style="margin-top:8px;padding:6px;background:rgba(59,130,246,.05);border-radius:8px;border:1px solid rgba(59,130,246,.1);">
         <div style="color:var(--t5);font-size:9px;text-align:center;direction:rtl;" id="scr-footer">📡 بيانات حقيقية من Yahoo Finance · EGX كل 3 دقائق · US كل 5 دقائق</div>
       </div>
+    </div>`;
+  renderScrSectorPills();
+  renderScrResults();
+  renderSavedFilters();
+}
+
+/* ══════════════ TAB 6 — AI Advisor ══════════════ */
+function vBuildChat(b){
+  b.innerHTML=`
+    <div class="vbox pu">
+      <div class="vbox-title" style="color:#c084fc;">🤖 EgyTrend AI Advisor</div>
+      <div style="background:rgba(192,132,252,.06);border:1px solid rgba(192,132,252,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
+        💡 <strong style="color:#c084fc;">محادثة مستمرة</strong> — اسأل عن الأسهم والقطاعات والأسواق والأخبار. الإجابات مبنية على بيانات السوق الحقيقية وأخبار اليوم فقط — بلا اختراع بيانات. اكتب "مصادر" في أي وقت لعرض البيانات المستخدمة.
+      </div>
+      <div class="chat-area" id="chat-area"></div>
+      <div class="chat-row">
+        <input class="chat-in" id="chat-in" placeholder="اسألني عن أي سهم أو قرار استثماري..." onkeydown="if(event.key==='Enter')sendChat()"/>
+        <button class="chat-send" onclick="sendChat()">←</button>
+      </div>
+      <div class="scr-filters" style="margin-top:9px;">
+        ${["إيه حالة السوق النهاردة؟","حلّل سهم COMI","هل أشتري ذهب ولا دولار؟","أهم الأخبار اليوم"].map(q=>`<button class="scr-f" onclick="vQuickAsk(this)">${q}</button>`).join("")}
+      </div>
+    </div>`;
+  renderChatUI();
+}
+function vQuickAsk(btn){
+  const inp=document.getElementById("chat-in");if(!inp)return;
+  inp.value=btn.textContent.trim();sendChat();
+}
+
+/* ══════════════ TAB 7 — تحليل AI للسهم ══════════════ */
+let vStkSym="";
+function vBuildStk(b){
+  b.innerHTML=`
+    <div class="vbox au">
+      <div class="vbox-title" style="color:var(--au);">🎯 تحليل سهم محدد</div>
+      <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
+        💡 اختر سهم مصري أو أمريكي — يُحلّل أساسياً وفنياً ومع الأخبار المرتبطة به وسيولة ومخاطرة، مع EgyTrend Score شفاف معادلة حسابه معروضة.
+      </div>
+      <div class="p-inputs">
+        <input class="mini-in" id="vstk-in" placeholder="رمز السهم — مثال: COMI" style="flex:2;" oninput="this.value=this.value.toUpperCase().slice(0,10)" onkeydown="if(event.key==='Enter')analyzeSymbolAI()"/>
+        <button class="add-btn" onclick="analyzeSymbolAI()" id="vstk-btn">حلّل</button>
+      </div>
+      <div class="scr-filters" style="margin-top:8px;">
+        ${liveStocks.slice(0,8).map(s=>`<button class="scr-f" onclick="document.getElementById('vstk-in').value='${s.sym}';analyzeSymbolAI()">${s.sym}</button>`).join("")}
+      </div>
+      <div id="vstk-res" style="display:none;margin-top:12px;background:rgba(245,158,11,.05);border-radius:12px;padding:13px;border:1px solid rgba(245,158,11,.15);">
+        <div style="color:var(--au);font-size:10px;font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;">
+          <span>🤖 تحليل AI · بيانات حقيقية</span><span id="vstk-ts" style="color:var(--t5);font-family:var(--mono);font-size:9px;"></span>
+        </div>
+        <div id="vstk-score"></div>
+        <div id="vstk-txt" style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;"></div>
+        <div style="margin-top:10px;padding:7px;background:rgba(245,158,11,.08);border-radius:8px;">
+          <div style="color:var(--au);font-size:9.5px;text-align:center;">⚠️ تحليل تعليمي ومعلوماتي فقط — قرارات الاستثمار على مسؤوليتك الكاملة</div>
+        </div>
+      </div>
     </div>
 
-    <!-- AI STOCK ANALYSIS (replaces fake price targets) -->
-    <div class="vbox au">
-      <div class="vbox-title" style="color:var(--au);">🎯 تحليل AI للأسهم</div>
-      <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
-        💡 <strong style="color:var(--au);">ماذا يحلل؟</strong> — يأخذ أسعار أسهم EGX الحالية + أخبار اليوم من 29 مصدر ويعطيك رأياً شاملاً: القطاعات القوية، الأسهم الواعدة، والمخاطر الموجودة. للتثقيف الاستثماري فقط.
+    <div class="vbox g">
+      <div class="vbox-title" style="color:var(--g);">
+        <span>📡 إشارات التداول</span>
+        <button class="btn btn-g btn-sm" id="sig-btn" onclick="getSignals()">توليد ←</button>
       </div>
-      <button class="btn btn-au btn-full" style="padding:10px;font-size:12.5px;" id="ai-analysis-btn" onclick="getAIStockAnalysis()">
-        🤖 اطلب تحليل AI للأسهم الآن
-      </button>
-      <div id="ai-analysis-res" style="display:none;margin-top:12px;background:rgba(245,158,11,.05);border-radius:12px;padding:13px;border:1px solid rgba(245,158,11,.15);">
-        <div style="color:var(--au);font-size:10px;font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;">
-          <span>🤖 تحليل AI · بيانات حقيقية</span>
-          <span id="ai-analysis-ts" style="color:var(--t5);font-family:var(--mono);font-size:9px;"></span>
+      <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
+        💡 <strong style="color:var(--g);">ماذا تعطيك؟</strong> — تحليل يومي لأبرز أسهم EGX: فرص الدخول والخروج بناءً على الزخم الفني وأخبار السوق الحالية.
+      </div>
+      <div id="sig-res" style="display:none;color:#a7f3d0;font-size:13px;line-height:1.85;direction:rtl;white-space:pre-line;margin-top:8px;"></div>
+    </div>
+
+    <div class="vbox pu">
+      <div class="vbox-title" style="color:#c084fc;">🌐 تحليل شامل للسوق</div>
+      <div style="color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;margin-bottom:10px;">يحلل أسعار أسهم EGX الحالية + أخبار اليوم من كل المصادر: القطاعات القوية، الأسهم الواعدة، والمخاطر.</div>
+      <button class="btn btn-pu btn-full" style="padding:10px;font-size:12.5px;" id="ai-analysis-btn" onclick="getAIStockAnalysis()">🤖 اطلب تحليل AI للأسهم الآن</button>
+      <div id="ai-analysis-res" style="display:none;margin-top:12px;background:rgba(192,132,252,.05);border-radius:12px;padding:13px;border:1px solid rgba(192,132,252,.15);">
+        <div style="color:#c084fc;font-size:10px;font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;">
+          <span>🤖 تحليل AI · بيانات حقيقية</span><span id="ai-analysis-ts" style="color:var(--t5);font-family:var(--mono);font-size:9px;"></span>
         </div>
         <div id="ai-analysis-txt" style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;"></div>
-        <div style="margin-top:10px;padding:7px;background:rgba(245,158,11,.08);border-radius:8px;">
-          <div style="color:var(--au);font-size:9.5px;text-align:center;">⚠️ تنبيه: هذا تحليل تعليمي ومعلوماتي فقط. قرارات الاستثمار على مسؤوليتك الكاملة.</div>
-        </div>
       </div>
-    </div>
+    </div>`;
+  if(vStkSym){const i=document.getElementById("vstk-in");if(i)i.value=vStkSym;}
+}
+function vEgyScore(s){
+  /* Transparent score from real fields: valuation (PE) + momentum (chgPct) + dividends */
+  let pe=40,ch=25,dy=15;
+  if(s.pe&&s.pe>0)pe=s.pe<10?48:s.pe<15?42:s.pe<30?32:s.pe<50?20:10;else pe=18;
+  if(s.chgPct>3)ch=30;else if(s.chgPct>0)ch=24;else if(s.chgPct>-3)ch=14;else ch=6;
+  if(s.divYield)dy=s.divYield>=6?22:s.divYield>=4?18:s.divYield>=2?13:7;
+  const tot=Math.round(Math.min(98,pe+ch+dy));
+  return {tot,det:[["التقييم P/E",pe],["الزخم اليومي",ch],["التوزيعات",dy]]};
+}
+async function analyzeSymbolAI(){
+  const inp=document.getElementById("vstk-in");if(!inp)return;
+  const sym=inp.value.trim().toUpperCase().slice(0,10);if(!sym)return;
+  vStkSym=sym;
+  const btn=document.getElementById("vstk-btn");
+  btn.innerHTML='<div class="sp sp-au sp-sm"></div>';btn.disabled=true;
+  const resEl=document.getElementById("vstk-res");
+  if(resEl)resEl.style.display="none";
+  const s=liveStocks.find(x=>x.sym===sym||x.sym===sym+".CA");
+  const us=usStocks.find(x=>x.sym===sym);
+  const stock=s||us;
+  if(!stock){showToast("❌ السهم غير موجود في بيانات السوق الحية — جرّب رمزاً من الأزرار");btn.innerHTML="حلّل";btn.disabled=false;return;}
+  const relNews=allArts.filter(a=>(stock.name&&a.title.includes(stock.name))||a.title.toUpperCase().includes(sym)).slice(0,5);
+  const sc=vEgyScore(stock);
+  try{
+    const info=`${stock.sym} (${stock.name||"?"}): السعر ${stock.price.toFixed(2)} ${s?"ج":"$"} (${stock.chgPct>=0?"+":""}${stock.chgPct.toFixed(2)}%)${stock.pe?` | P/E: ${stock.pe.toFixed(1)}`:""}${stock.mktCapM?` | رأس المال: ${fmtMktCap(stock.mktCapM)}`:""}${stock.vol?` | حجم التداول: ${fmtVol(stock.vol)}`:""}${stock.divYield?` | عائد التوزيعات: ${stock.divYield.toFixed(2)}%`:""}${stock.high52w?` | 52أ أعلى: ${stock.high52w}`:""}${stock.low52w?` | 52أ أدنى: ${stock.low52w}`:""}`;
+    const newsTxt=relNews.length?relNews.map(a=>`- [${a.impact==="up"?"إيجابي":a.impact==="dn"?"سلبي":"محايد"}] ${a.title} (${a.srcName})`).join("\n"):"لا توجد أخبار مرتبطة بهذا السهم اليوم";
+    const txt=await callAI({
+      max_tokens:2200,
+      system:"أنت محلل مالي محترف. حلّل السهم المُعطى بناءً على البيانات المتاحة فقط — لا تخترع أرقاماً. إذا كانت بيانات ناقصة قل ذلك صراحة. بالعربية.",
+      messages:[{role:"user",content:`حلّل السهم التالي بعمق:\n${info}\n\nEgyTrend Score المحسوب: ${sc.tot}/100 (${sc.det.map(d=>d[0]+": "+d[1]).join("، ")})\n\nأخبار اليوم المرتبطة:\n${newsTxt}\n\nالمطلوب بالترتيب:\n1. Fundamental Analysis — التقييم والربحية\n2. Technical Analysis — السعر مقابل نطاق 52 أسبوع والزخم\n3. News & Sentiment — قراءة الأخبار المرتبطة\n4. Liquidity — تقييم السيولة من حجم التداول\n5. Risk — المخاطر المحددة لهذا السهم\n6. الخلاصة والتوصية التعليمية\n7. المصادر والبيانات المستخدمة (اذكرها صراحة)`}]
+    });
+    const txtEl=document.getElementById("vstk-txt");
+    const tsEl=document.getElementById("vstk-ts");
+    const scEl=document.getElementById("vstk-score");
+    if(scEl)scEl.innerHTML=`<div class="row between" style="background:rgba(245,158,11,.08);border-radius:10px;padding:9px 12px;margin-bottom:9px;">
+      <div><div style="color:var(--t5);font-size:9px;">EgyTrend Score (شفاف: تقييم + زخم + توزيعات)</div>
+      <div class="opp-risk" style="margin-top:4px;">${[1,2,3,4,5].map(i=>`<div class="opp-risk-dot" style="background:${i<=Math.round(sc.tot/20)?"var(--au)":"var(--b2)"};width:11px;height:11px;"></div>`).join("")}</div></div>
+      <div style="color:var(--au);font-weight:900;font-size:24px;font-family:var(--mono);">${sc.tot}</div></div>`;
+    if(txtEl)txtEl.textContent=txt;
+    if(tsEl)tsEl.textContent=new Date().toLocaleTimeString("ar-EG");
+    if(resEl)resEl.style.display="block";
+  }catch(e){
+    const txtEl=document.getElementById("vstk-txt");
+    if(txtEl)txtEl.textContent=aiErrMsg(e);
+    const scEl=document.getElementById("vstk-score");if(scEl)scEl.innerHTML="";
+    if(resEl)resEl.style.display="block";
+  }
+  btn.innerHTML="حلّل";btn.disabled=false;
+}
 
-    <!-- PORTFOLIO TRACKER -->
+/* ══════════════ TAB 8 — المحفظة ══════════════ */
+function portStats(){
+  let cost=0,cur=0;const rows=[];
+  portfolio.forEach(p=>{
+    const live=liveStocks.find(x=>x.sym===p.sym||x.sym===p.sym+".CA");
+    const pr=live?live.price:null;
+    cost+=p.price*p.qty;
+    const cv=pr!==null?pr*p.qty:p.price*p.qty;cur+=cv;
+    rows.push({p,pr,pnl:pr!==null?((pr-p.price)/p.price*100):null,pnlEgp:pr!==null?((pr-p.price)*p.qty):null});
+  });
+  return{cost,cur,pl:cur-cost,plPct:cost?((cur-cost)/cost*100):0,rows};
+}
+function portNews(sym){
+  const s=liveStocks.find(x=>x.sym===sym||x.sym===sym+".CA");
+  const nm=s?.name||"";
+  return allArts.filter(a=>(nm&&nm.length>2&&a.title.includes(nm))||a.title.toUpperCase().includes(sym)).slice(0,3);
+}
+function vBuildPort(b){
+  const st=portStats();
+  b.innerHTML=`
+    ${portfolio.length?`
+    <div class="vbox bl" style="background:linear-gradient(135deg,rgba(59,130,246,.07),rgba(16,185,129,.03));">
+      <div class="row between" style="margin-bottom:10px;">
+        <div><div style="color:var(--t5);font-size:9.5px;">قيمة المحفظة الحالية</div><div style="color:var(--t1);font-weight:900;font-size:20px;font-family:var(--mono);">${st.cur.toFixed(0)} ج</div><div style="color:var(--t4);font-size:9.5px;">التكلفة: ${st.cost.toFixed(0)} ج</div></div>
+        <div style="text-align:left;"><div style="color:var(--t5);font-size:9.5px;">الربح / الخسارة</div><div style="color:${st.pl>=0?"var(--g)":"var(--dn)"};font-weight:900;font-size:17px;font-family:var(--mono);">${st.pl>=0?"+":""}${st.pl.toFixed(0)} ج</div><div style="color:${st.pl>=0?"var(--g)":"var(--dn)"};font-size:11px;font-family:var(--mono);">${st.plPct>=0?"+":""}${st.plPct.toFixed(2)}%</div></div>
+      </div>
+    </div>`:""}
     <div class="vbox bl">
       <div class="vbox-title" style="color:#93c5fd;">💼 متابع المحفظة</div>
-      <div style="background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
-        💡 <strong style="color:#93c5fd;">كيف يعمل؟</strong> — أدخل رمز السهم وسعر شرائك والكمية، ثم اضغط "حلّل بـ AI" — يقارن محفظتك بأداء السوق ويعطيك توصيات مخصصة لوضعك الفعلي.
-      </div>
       <div class="p-inputs">
         <input class="mini-in" id="p-sym" placeholder="رمز السهم" oninput="this.value=this.value.toUpperCase().slice(0,10)"/>
         <input class="mini-in" id="p-pr" placeholder="سعر الشراء" type="number" min="0" step="0.01"/>
@@ -2354,37 +2951,235 @@ function renderVIP(){
         <button class="add-btn" onclick="addPort()">+</button>
       </div>
       <div id="port-list"></div>
+      ${portfolio.length?`
+      <div style="margin-top:11px;">
+        <div style="color:var(--t5);font-size:9px;font-weight:700;margin-bottom:6px;">الأسهم المضافة — القيمة والأداء اللحظي</div>
+        ${st.rows.map((r,i)=>`
+          <div class="p-row" style="${i===st.rows.length-1?"border:none":""}">
+            <div style="flex:1;min-width:0;">
+              <div class="row" style="gap:7px;">
+                <span style="background:var(--bld);border:1px solid rgba(59,130,246,.22);border-radius:7px;padding:2px 8px;color:#93c5fd;font-weight:700;font-size:11px;font-family:var(--mono);">${sanitize(r.p.sym)}</span>
+                <span style="color:var(--t4);font-size:10px;">${r.p.qty} × ${r.p.price.toFixed(2)} ج</span>
+              </div>
+              <div style="color:var(--t5);font-size:9px;margin-top:3px;">الآن: ${r.pr!==null?r.pr.toFixed(2)+" ج":"بانتظار سعر السوق"}${r.pnlEgp!=null?` · ${r.pnlEgp>=0?"+":""}${r.pnlEgp.toFixed(0)} ج`:""}${liveStocks.find(x=>x.sym===r.p.sym||x.sym===r.p.sym+".CA")?.divYield?` · توزيعات: ${liveStocks.find(x=>x.sym===r.p.sym||x.sym===r.p.sym+".CA").divYield.toFixed(1)}%`:""}</div>
+              ${(()=>{const nws=portNews(r.p.sym);return nws.length?`<div class="row" style="gap:4px;margin-top:4px;flex-wrap:wrap;">${nws.map(n=>`<span class="vchip" style="cursor:pointer;" onclick="openArt('${n.id}')">📰 ${sanitize(n.title).slice(0,38)}…</span>`).join("")}</div>`:"";})()}
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;">
+              <span style="color:${r.pnl==null?"var(--t5)":r.pnl>=0?"var(--g)":"var(--dn)"};font-weight:800;font-size:12px;font-family:var(--mono);">${r.pnl==null?"—":(r.pnl>=0?"+":"")+r.pnl.toFixed(2)+"%"}</span>
+              <button onclick="delPort(${portfolio.indexOf(r.p)})" style="background:var(--dnd);border:none;border-radius:7px;padding:3px 9px;color:var(--dn);font-size:11px;cursor:pointer;">حذف</button>
+            </div>
+          </div>`).join("")}
+      </div>`:""}
       <div id="port-ai-sec">
         <button class="btn btn-bl btn-full" style="margin-top:9px;padding:9px;font-size:12.5px;border-radius:9px;" id="port-ai-btn" onclick="analyzePort()">🤖 حلّل محفظتي بـ AI</button>
         <div id="port-ai-res" style="display:none;margin-top:10px;color:var(--t2);font-size:13px;line-height:1.85;direction:rtl;white-space:pre-line;"></div>
       </div>
     </div>
-
-    <!-- DAILY REPORTS -->
-    <div class="vbox pu">
-      <div class="vbox-title" style="color:#c084fc;">📊 التقارير اليومية</div>
-      <div style="background:rgba(192,132,252,.06);border:1px solid rgba(192,132,252,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
-        💡 <strong style="color:#c084fc;">متى تستخدمهم؟</strong> — <strong>تقرير الصباح</strong> قبل 10:00 صباحاً: ملخص ما ستشهده البورصة. <strong>تقرير الإغلاق</strong> بعد 3:00 عصراً: تحليل ما حدث والتوقعات للغد.
-      </div>
-      <div style="display:flex;gap:7px;">
-        <button class="btn btn-pu btn-full" style="padding:9px;font-size:12px;" id="morn-btn" onclick="getMorning()">🌅 تقرير الصباح</button>
-        <button class="btn btn-pu btn-full" style="padding:9px;font-size:12px;" id="clos-btn" onclick="getClosing()">🌙 تقرير الإغلاق</button>
-      </div>
-      <div id="rep-res" style="display:none;margin-top:11px;color:var(--t2);font-size:13px;line-height:1.88;direction:rtl;white-space:pre-line;"></div>
-    </div>`;
-
-  renderChatUI();renderPortList();
-  renderScrSectorPills();
-  renderScrResults();
-  renderSavedFilters();
+    ${vSect("📅","أحداث قادمة تؤثر على محفظتك","mkt")}
+    ${(liveCalendar||[]).length?`<div class="vbox" style="padding:0;overflow:hidden;">${liveCalendar.slice(0,3).map(ev=>`
+      <div class="vnews-row" style="cursor:default;"><div style="font-size:15px;">${ev.flag||"🌐"}</div>
+      <div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-weight:600;">${sanitize(ev.ev||ev.evEn||"")}</div><div style="color:var(--t5);font-size:9px;">${sanitize(ev.t||"")}</div></div>
+      <span class="vimp" style="color:${ev.c||"#64748b"};background:${(ev.c||"#64748b")}18;">${sanitize(ev.imp||"")}</span></div>`).join("")}</div>`:vEmpty("📅","التقويم قيد التحميل...")}
+    ${vSect("🔔","تنبيهات المحفظة","alerts")}
+    ${(()=>{const s=getNotifsStore();const rel=s.items.filter(n=>n.type==="opps"||portfolio.some(p=>(n.title+n.body).toUpperCase().includes(p.sym))).slice(0,3);return rel.length?`<div class="vbox" style="padding:0;overflow:hidden;">${rel.map(n=>`<div class="vnews-row" onclick="openVipAlert('${sanitize(n.link||"")}')"><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;">${n.icon} ${sanitize(n.title)}</div><div style="color:var(--t5);font-size:9px;">${vTime(n.ts)}</div></div></div>`).join("")}</div>`:vEmpty("🔕","لا تنبيهات متعلقة بمحفظتك");})()}`;
+  renderPortList();
 }
 
-/* ══════════════ PRO STOCK SCREENER LOGIC ══════════════ */
+/* ══════════════ TAB 9 — التقارير ══════════════ */
+async function getMidday(){
+  const btn=document.getElementById("mid-btn");
+  btn.innerHTML='<div class="sp sp-pu sp-sm"></div> جارٍ...';btn.disabled=true;
+  const res=document.getElementById("rep-res");res.style.display="none";
+  try{
+    const hl=allArts.slice(0,6).map(a=>`${a.srcName}: ${a.title}`).join("\n");
+    const movers=[...liveStocks].sort((a,x)=>x.chgPct-a.chgPct);
+    const mv=movers.slice(0,3).map(s=>`${s.sym} +${s.chgPct.toFixed(1)}%`).join("، ")+" ← صاعدون | "+movers.slice(-3).map(s=>`${s.sym} ${s.chgPct.toFixed(1)}%`).join("، ")+" ← هابطون";
+    const txt=await callAI({
+      max_tokens:2000,
+      system:"أنت محلل اقتصادي مصري. أنشئ تقرير منتصف اليوم المتريّس والمباشر — بيانات فقط بدون حشو.",
+      messages:[{role:"user",content:`تقرير منتصف يوم التداول ${new Date().toLocaleDateString("ar-EG")}:\n\nحالة السوق الآن:\n${liveMarkets.eg.map(m=>`${m.n}: ${m.v} (${m.c})`).join(" | ")}\n\nأبرز التحركات:\n${mv}\n\nأخبار حتى الآن:\n${hl}\n\nالمطلوب: 1. ما حدث منذ الافتتاح 2. الأسهم الأكثر نشاطاً ولماذا 3. ما يجب مراقبته حتى الإغلاق`}]
+    });
+    res.textContent=txt;res.style.display="block";
+  }catch(e){res.textContent=aiErrMsg(e);res.style.display="block";}
+  btn.innerHTML="☀️ منتصف اليوم";btn.disabled=false;
+}
+function vBuildRep(b){
+  const today=new Date().toDateString();
+  const evs=(liveCalendar||[]).slice(0,6);
+  const movers=[...liveStocks].sort((a,x)=>x.chgPct-a.chgPct);
+  b.innerHTML=`
+    <div class="vbox pu">
+      <div class="vbox-title" style="color:#c084fc;">📊 تقارير AI اليومية</div>
+      <div style="background:rgba(192,132,252,.06);border:1px solid rgba(192,132,252,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
+        💡 <strong>تقرير الصباح</strong> قبل 10:00 ص · <strong>منتصف اليوم</strong> وقت الذروة · <strong>الإغلاق</strong> بعد 3:00 م — كلها مبنية على بيانات لحظية وأخبار اليوم.
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:10px;">
+        <button class="btn btn-pu" style="padding:10px 4px;font-size:11.5px;" id="morn-btn" onclick="getMorning()">🌅 الصباح</button>
+        <button class="btn btn-pu" style="padding:10px 4px;font-size:11.5px;" id="mid-btn" onclick="getMidday()">☀️ منتصف اليوم</button>
+        <button class="btn btn-pu" style="padding:10px 4px;font-size:11.5px;" id="clos-btn" onclick="getClosing()">🌙 الإغلاق</button>
+      </div>
+      <div id="rep-res" style="display:none;color:var(--t2);font-size:13px;line-height:1.88;direction:rtl;white-space:pre-line;"></div>
+    </div>
 
-let scrMktCap="all";
-let scrAdvOpen=false;
+    ${vSect("📰","ملخص أهم الأخبار","news")}
+    ${!allArts.length?vLoading():`<div class="vbox" style="padding:0;overflow:hidden;">${allArts.slice(0,6).map(a=>`
+      <div class="vnews-row" onclick="openArt('${a.id}')"><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-weight:600;line-height:1.6;">${a.title}</div><div style="color:var(--t5);font-size:9px;margin-top:2px;">${sanitize(a.srcName)} · ${vTime(a.ts)}</div></div></div>`).join("")}</div>`}
 
-/* ─── Market Tab Switch ─── */
+    ${vSect("📈","أهم تحركات السوق","mkt")}
+    ${!liveStocks.length?vEmpty("⏳","بانتظار بيانات البورصة..."):`
+      <div class="vbox" style="padding:0;overflow:hidden;">${movers.slice(0,3).map(s=>vMoverRow(s,"up")).join("")}${movers.slice(-3).reverse().map(s=>vMoverRow(s,"dn")).join("")}</div>`}
+
+    ${vSect("💡","ملخص الفرص","opps")}
+    ${!oppsData.length?vEmpty("💡","جارٍ جلب الفرص..."):`<div class="vbox" style="padding:0;overflow:hidden;">${oppsData.slice(0,3).map(o=>`
+      <div class="vnews-row" onclick="openOppDetail('${o.id}')"><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-weight:600;">${sanitize(o.title)}</div><div style="color:var(--t5);font-size:9px;">${(OPP_TYPES[o.type]||{}).l||o.type}${o.expectedReturn?` · ${sanitize(o.expectedReturn)}`:""}</div></div><span class="vscore">${oppScore(o)}</span></div>`).join("")}</div>`}
+
+    ${vSect("🗓️","أهم الأحداث القادمة","mkt")}
+    ${evs.length?`<div class="vbox" style="padding:0;overflow:hidden;">${evs.map(ev=>`
+      <div class="vnews-row" style="cursor:default;"><div style="font-size:15px;">${ev.flag||"🌐"}</div>
+      <div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-weight:600;">${sanitize(ev.ev||ev.evEn||"")}</div><div style="color:var(--t5);font-size:9px;">${sanitize(ev.t||"")}</div></div>
+      <span class="vimp" style="color:${ev.c||"#64748b"};background:${(ev.c||"#64748b")}18;">${sanitize(ev.imp||"")}</span></div>`).join("")}</div>`:vEmpty("📅","التقويم قيد التحميل...")}`;
+}
+
+/* ══════════════ TAB 10 — التنبيهات ══════════════ */
+function openVipAlert(link){
+  if(link&&link.startsWith("nav:")){goNav(link.slice(4));return;}
+  if(link&&link.startsWith("art:")){openArt(link.slice(4));return;}
+}
+function vBuildAlerts(b){
+  const s=getNotifsStore();
+  const prefsDef=[["news","🚨 الأخبار العاجلة"],["opps","💡 الفرص الجديدة"],["calendar","📅 الأحداث الاقتصادية"],["sub","⭐ حالة الاشتراك"]];
+  const typeIcons={news:"🚨",opps:"💡",calendar:"📅",sub:"⭐"};
+  b.innerHTML=`
+    <div class="vbox" style="background:linear-gradient(135deg,rgba(139,92,246,.07),rgba(59,130,246,.04));border-color:rgba(139,92,246,.18);">
+      <div class="row between">
+        <div><div style="color:#c084fc;font-weight:800;font-size:13px;">🔔 مركز تنبيهات VIP</div>
+        <div style="color:var(--t4);font-size:10.5px;margin-top:3px;">${s.unread?`${s.unread} تنبيه غير مقروء من إجمالي ${s.items.length}`:`${s.items.length} تنبيه — كلها مقروءة`}</div></div>
+        ${s.unread?`<button class="btn btn-pu btn-sm" onclick="markAllVipAlertsRead()">✓ قراءة الكل</button>`:""}
+      </div>
+    </div>
+    ${vSect("⚙️","تخصيص التنبيهات")}
+    <div class="vbox">
+      ${prefsDef.map(([k,l])=>`
+        <div class="p-row">
+          <span style="color:var(--t2);font-size:12px;">${l}</span>
+          <label style="position:relative;display:inline-block;width:40px;height:22px;cursor:pointer;">
+            <input type="checkbox" ${s.prefs[k]?"checked":""} onchange="vTogglePref('${k}',this.checked)" style="opacity:0;width:0;height:0;"/>
+            <span style="position:absolute;inset:0;background:${s.prefs[k]?"var(--g)":"var(--s2)"};border-radius:11px;transition:background .2s;"></span>
+            <span style="position:absolute;top:2px;${s.prefs[k]?"left":"right"}:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:all .2s;"></span>
+          </label>
+        </div>`).join("")}
+      <div style="color:var(--t5);font-size:9px;margin-top:8px;">التنبيهات تُنشأ تلقائياً: أخبار عاجلة، فرص جديدة، أحداث اقتصادية — وتظهر أيضاً كإشعارات متصفح عند تفعيلها.</div>
+    </div>
+    ${vSect("📥","كل التنبيهات")}
+    ${!s.items.length?vEmpty("🔕","لا تنبيهات بعد","ستظهر هنا الأخبار العاجلة والفرص والأحداث تلقائياً"):
+      `<div class="vbox" style="padding:0;overflow:hidden;">${s.items.slice(0,50).map(n=>`
+        <div class="vnews-row" onclick="openVipAlert('${sanitize(n.link||"")}')">
+          <div style="font-size:16px;">${n.icon||"🔔"}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="color:${n.read?"var(--t3)":"var(--t1)"};font-size:11.5px;font-weight:${n.read?"500":"700"};">${sanitize(n.title)}</div>
+            ${n.body?`<div style="color:var(--t5);font-size:9.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${sanitize(n.body)}</div>`:""}
+            <div style="color:var(--t5);font-size:8.5px;margin-top:2px;">${vTime(n.ts)}</div>
+          </div>
+          ${!n.read?`<div style="width:8px;height:8px;background:var(--au);border-radius:50%;flex-shrink:0;"></div>`:""}
+        </div>`).join("")}</div>
+      <button class="btn btn-full" style="margin-top:9px;padding:9px;font-size:12px;background:var(--dnd);color:var(--dn);border:none;border-radius:10px;" onclick="clearVipAlerts()">🗑️ مسح كل التنبيهات</button>`}`;
+}
+function vTogglePref(key,val){const s=getNotifsStore();s.prefs[key]=val;saveNotifsStore(s);renderVipTab();}
+function markAllVipAlertsRead(){const s=getNotifsStore();s.items.forEach(n=>n.read=true);s.unread=0;saveNotifsStore(s);updateBellBadge();renderVipTab();}
+function clearVipAlerts(){if(!confirm("مسح كل التنبيهات؟"))return;const s=getNotifsStore();s.items=[];s.unread=0;saveNotifsStore(s);updateBellBadge();renderVipTab();showToast("تم مسح التنبيهات");}
+
+/* ══════════════ TAB 11 — الإعدادات ══════════════ */
+function vBuildSet(b){
+  const saved=DB.g("scr_saved",[]);
+  const savedOpps=DB.g("saved_opps",[]);
+  const mktPref=DB.g("vip_mkt_pref",["eg","gl","cm","cr"]);
+  const mktNames=[["eg","🇪🇬 السوق المصري"],["gl","🇺🇸 الأسواق العالمية"],["cm","🥇 السلع والمعادن"],["cr","₿ الكريبتو"]];
+  b.innerHTML=`
+    ${vSect("👤","حسابي")}
+    <div class="vbox">
+      <div class="p-row"><span style="color:var(--t5);font-size:10.5px;">الاسم</span><span style="color:var(--t1);font-size:12px;font-weight:700;">${sanitize(U?.name||"—")}</span></div>
+      <div class="p-row"><span style="color:var(--t5);font-size:10.5px;">الجوال</span><span style="color:var(--t2);font-size:12px;font-family:var(--mono);">${sanitize(U?.phone||"—")}</span></div>
+      <div class="p-row" style="border:none;"><span style="color:var(--t5);font-size:10.5px;">الخطة</span><span class="bdg bdg-vip">⭐ ${U?.plan==="admin"?"مدير (VIP)":U?.plan==="vip"?"VIP نشط":U?.plan||"—"}</span></div>
+    </div>
+
+    ${vSect("⭐","الأسهم التي أتابعها")}
+    <div class="vbox">
+      <div class="p-inputs">
+        <input class="mini-in" id="vwl-in" placeholder="أضف رمز سهم — مثال: COMI" style="flex:2;" oninput="this.value=this.value.toUpperCase().slice(0,10)" onkeydown="if(event.key==='Enter')vAddWl()"/>
+        <button class="add-btn" onclick="vAddWl()">+</button>
+      </div>
+      ${wl.length?`<div class="row" style="gap:6px;flex-wrap:wrap;">${wl.map(n=>`
+        <span class="vchip" style="padding:5px 9px;font-size:11px;">⭐ ${sanitize(n)} <span style="cursor:pointer;color:var(--dn);margin-right:3px;" onclick="vRmWl('${sanitize(n).replace(/'/g,"")}')">✕</span></span>`).join("")}</div>`
+      :`<div style="color:var(--t5);font-size:10.5px;text-align:center;padding:6px;">لا أسهم متابعة — أضف من هنا أو من ⭐ في الأسواق</div>`}
+      <div style="color:var(--t5);font-size:9px;margin-top:8px;">الأسهم المتابعة تظهر أولاً في صفحة البورصة وتؤثر على تنبيهاتك.</div>
+    </div>
+
+    ${vSect("📊","الأسواق المفضلة في الرئيسية")}
+    <div class="vbox">
+      <div class="row" style="gap:6px;flex-wrap:wrap;">
+        ${mktNames.map(([k,l])=>`<button class="scr-f${mktPref.includes(k)?" active":""}" onclick="vToggleMktPref('${k}',this)">${l}</button>`).join("")}
+      </div>
+      <div style="color:var(--t5);font-size:9px;margin-top:8px;">الأسواق المختارة تظهر أولاً في ملخص الرئيسية.</div>
+    </div>
+
+    ${vSect("🔔","تفضيلات التنبيهات","alerts")}
+    <div class="vbox">
+      <button class="btn btn-pu btn-full" style="padding:9px;font-size:12px;" onclick="vGo('alerts')">إدارة التنبيهات ←</button>
+    </div>
+
+    ${vSect("💾","فلاتر الـ Screener المحفوظة","scr")}
+    <div class="vbox">
+      ${saved.length?saved.map((f,i)=>`
+        <div class="p-row"><span style="color:var(--t2);font-size:11.5px;">🔎 ${sanitize(f.name)} <span style="color:var(--t5);font-size:9px;">(${f.market==="us"?"US":"EGX"})</span></span>
+        <span style="display:flex;gap:5px;"><button onclick="loadScrFilter(${i});showToast('✅ تم تحميل الفلتر')" style="background:var(--gd);border:none;border-radius:7px;padding:3px 9px;color:var(--g);font-size:10px;cursor:pointer;">تشغيل</button>
+        <button onclick="deleteScrFilter(${i});renderVipTab()" style="background:var(--dnd);border:none;border-radius:7px;padding:3px 9px;color:var(--dn);font-size:10px;cursor:pointer;">حذف</button></span></div>`).join("")
+      :`<div style="color:var(--t5);font-size:10.5px;text-align:center;padding:6px;">لا فلاتر محفوظة — احفظ فلتراً من الـ Screener بـ 💾</div>`}
+    </div>
+
+    ${vSect("🔖","الفرص المحفوظة","opps")}
+    <div class="vbox">
+      <div class="p-row" style="border:none;"><span style="color:var(--t2);font-size:12px;">${savedOpps.length} فرصة محفوظة</span>
+      ${savedOpps.length?`<button onclick="DB.s('saved_opps',[]);renderVipTab();showToast('تم مسح الفرص المحفوظة')" style="background:var(--dnd);border:none;border-radius:7px;padding:3px 9px;color:var(--dn);font-size:10px;cursor:pointer;">مسح الكل</button>`:""}</div>
+    </div>
+
+    ${vSect("🗑️","منطقة الخطر")}
+    <div class="vbox">
+      <button class="btn btn-full" style="padding:9px;font-size:11.5px;background:var(--dnd);color:var(--dn);border:none;border-radius:10px;margin-bottom:7px;" onclick="vClearChat()">مسح سجل محادثة AI</button>
+      <button class="btn btn-full" style="padding:9px;font-size:11.5px;background:var(--dnd);color:var(--dn);border:none;border-radius:10px;" onclick="vResetAll()">مسح كل بيانات المتابعة (متابعة + محفظة + حفظ)</button>
+    </div>`;
+}
+function vAddWl(){
+  const inp=document.getElementById("vwl-in");if(!inp)return;
+  const sym=inp.value.trim().toUpperCase().slice(0,10);
+  if(!sym)return;
+  if(!liveStocks.some(x=>x.sym===sym)&&!usStocks.some(x=>x.sym===sym)){showToast("❌ الرمز غير موجود في بيانات السوق الحية");return;}
+  if(!wl.includes(sym)){wl.push(sym);DB.s("wl",wl);updateStats();showToast("⭐ تمت متابعة "+sym);renderVipTab();}
+  else showToast("السهم متابع بالفعل");
+  inp.value="";
+}
+function vRmWl(n){wl=wl.filter(x=>x!==n);DB.s("wl",wl);updateStats();renderVipTab();showToast("تمت إزالة "+n);}
+function vToggleMktPref(k,btn){
+  let p=DB.g("vip_mkt_pref",["eg","gl","cm","cr"]);
+  p=p.includes(k)?p.filter(x=>x!==k):[...p,k];
+  if(!p.length){showToast("اختر سوقاً واحداً على الأقل");return;}
+  DB.s("vip_mkt_pref",p);btn.classList.toggle("active");
+}
+function vClearChat(){if(!confirm("مسح سجل المحادثة؟"))return;chatHist=[];if(vipTab==="ai")renderChatUI();showToast("تم مسح المحادثة");}
+function vResetAll(){
+  if(!confirm("سيتم مسح: المتابعة، المحفظة، الفرص المحفوظة، الفلاتر. متأكد؟"))return;
+  ["wl","pt","saved_opps","scr_saved"].forEach(k=>DB.d(k));
+  wl=[];portfolio=[];savedIds=[];updateStats();
+  renderVipTab();showToast("تم مسح بيانات المتابعة");
+}
+
+function toggleScrAdv(){
+  scrAdvOpen=!scrAdvOpen;
+  const el=document.getElementById("scr-adv");
+  const btn=document.getElementById("scr-adv-btn");
+  if(el) el.style.display=scrAdvOpen?"block":"none";
+  if(btn) btn.style.borderColor=scrAdvOpen?"rgba(59,130,246,.4)":"var(--b1)";
+}
+
 function setScrMarket(mkt,btn){
   scrMarket=mkt;
   document.querySelectorAll(".scr-mkt-tab").forEach(b=>b.classList.remove("active"));
@@ -2451,38 +3246,11 @@ function setScrMktCap(val,btn){
   renderScrResults();
 }
 
-/* ─── Advanced Panel Toggle ─── */
-function toggleScrAdv(){
-  scrAdvOpen=!scrAdvOpen;
-  const el=document.getElementById("scr-adv");
-  const btn=document.getElementById("scr-adv-btn");
-  if(el) el.style.display=scrAdvOpen?"block":"none";
-  if(btn) btn.style.borderColor=scrAdvOpen?"rgba(59,130,246,.4)":"var(--b1)";
-}
-
 /* ─── Render Results ─── */
-function renderScrResults(){
-  const tb=document.getElementById("scr-results");
-  if(!tb) return;
-  const countEl=document.getElementById("scr-count");
-
-  const stocks_src=scrMarket==="egx"?liveStocks:usStocks;
-  if(!stocks_src.length){
-    tb.innerHTML=`<tr><td colspan="10" class="scr-empty">⏳ جارٍ تحميل بيانات الأسهم...</td></tr>`;
-    if(countEl) countEl.textContent="جارٍ...";
-    return;
-  }
-
-  const isCurrency=scrMarket==="us";
-  const prMin=parseFloat(document.getElementById("scr-pr-min")?.value)||0;
-  const prMax=parseFloat(document.getElementById("scr-pr-max")?.value)||Infinity;
-  const volMin=parseInt(document.getElementById("scr-vol-min")?.value||"0")||0;
-  const peFilter=document.getElementById("scr-pe")?.value||"all";
-  const divFilter=document.getElementById("scr-div")?.value||"all";
-  const epsFilter=document.getElementById("scr-eps")?.value||"all";
-
+/* Shared filter+search+sort pipeline for the screener — used by both the
+ * results table and the CSV export so exported rows always match what's on screen. */
+function scrComputeFiltered(stocks_src){
   let stocks=[...stocks_src];
-
   // Search
   if(scrSearch){
     const q=scrSearch.toLowerCase();
@@ -2497,11 +3265,15 @@ function renderScrResults(){
   else if(scrFilters.perf==="dn3") stocks=stocks.filter(s=>s.chgPct<=-3);
   else if(scrFilters.perf==="up5") stocks=stocks.filter(s=>s.chgPct>=5);
   // Price
+  const prMin=parseFloat(document.getElementById("scr-pr-min")?.value)||0;
+  const prMax=parseFloat(document.getElementById("scr-pr-max")?.value)||Infinity;
+  const volMin=parseInt(document.getElementById("scr-vol-min")?.value||"0")||0;
   if(prMin>0) stocks=stocks.filter(s=>s.price>=prMin);
   if(prMax<Infinity) stocks=stocks.filter(s=>s.price<=prMax);
   // Volume
   if(volMin>0) stocks=stocks.filter(s=>(s.vol||0)>=volMin);
   // P/E
+  const peFilter=document.getElementById("scr-pe")?.value||"all";
   if(peFilter==="0-10")  stocks=stocks.filter(s=>s.pe&&s.pe>0&&s.pe<=10);
   else if(peFilter==="0-15")  stocks=stocks.filter(s=>s.pe&&s.pe>0&&s.pe<=15);
   else if(peFilter==="15-30") stocks=stocks.filter(s=>s.pe&&s.pe>15&&s.pe<=30);
@@ -2509,11 +3281,13 @@ function renderScrResults(){
   else if(peFilter==="50+")   stocks=stocks.filter(s=>s.pe&&s.pe>50);
   else if(peFilter==="neg")   stocks=stocks.filter(s=>!s.pe||s.pe<=0);
   // Dividend
+  const divFilter=document.getElementById("scr-div")?.value||"all";
   if(divFilter==="any")  stocks=stocks.filter(s=>s.divYield&&s.divYield>0);
   else if(divFilter==="2+") stocks=stocks.filter(s=>s.divYield&&s.divYield>=2);
   else if(divFilter==="4+") stocks=stocks.filter(s=>s.divYield&&s.divYield>=4);
   else if(divFilter==="6+") stocks=stocks.filter(s=>s.divYield&&s.divYield>=6);
   // EPS
+  const epsFilter=document.getElementById("scr-eps")?.value||"all";
   if(epsFilter==="pos") stocks=stocks.filter(s=>s.eps&&s.eps>0);
   else if(epsFilter==="neg") stocks=stocks.filter(s=>!s.eps||s.eps<=0);
   // Market Cap
@@ -2521,7 +3295,6 @@ function renderScrResults(){
   else if(scrMktCap==="large") stocks=stocks.filter(s=>s.mktCapM&&s.mktCapM>=10000&&s.mktCapM<100000);
   else if(scrMktCap==="mid")   stocks=stocks.filter(s=>s.mktCapM&&s.mktCapM>=1000&&s.mktCapM<10000);
   else if(scrMktCap==="small") stocks=stocks.filter(s=>!s.mktCapM||s.mktCapM<1000);
-
   // Sort
   stocks.sort((a,b)=>{
     let av=a[scrFilters.sortBy],bv=b[scrFilters.sortBy];
@@ -2531,6 +3304,24 @@ function renderScrResults(){
     av=av??-Infinity; bv=bv??-Infinity;
     return scrFilters.sortDir*(bv-av);
   });
+  return stocks;
+}
+
+function renderScrResults(){
+  const tb=document.getElementById("scr-results");
+  if(!tb) return;
+  const countEl=document.getElementById("scr-count");
+
+  const stocks_src=scrMarket==="egx"?liveStocks:usStocks;
+  if(!stocks_src.length){
+    tb.innerHTML=`<tr><td colspan="10" class="scr-empty">⏳ جارٍ تحميل بيانات الأسهم...</td></tr>`;
+    if(countEl) countEl.textContent="جارٍ...";
+    return;
+  }
+
+  const isCurrency=scrMarket==="us";
+
+  const stocks=scrComputeFiltered(stocks_src);
 
   if(countEl) countEl.textContent=`${stocks.length} سهم`;
   if(!stocks.length){
@@ -2589,15 +3380,17 @@ function resetScrFilters(){
 function exportScrCSV(){
   const stocks_src=scrMarket==="egx"?liveStocks:usStocks;
   if(!stocks_src.length){showToast("⚠️ لا توجد بيانات للتصدير");return;}
+  const rows=scrComputeFiltered(stocks_src);
+  if(!rows.length){showToast("⚠️ لا توجد نتائج مطابقة للفلاتر الحالية");return;}
   const cur=scrMarket==="us"?"USD":"EGP";
-  const rows=[["Symbol","Name","Price ("+cur+")","Change%","Volume","MktCap (M)","P/E","Div Yield%","52w High","52w Low","EPS","Sector"]];
-  stocks_src.forEach(s=>rows.push([s.sym,s.name,s.price.toFixed(2),(s.chgPct??0).toFixed(2),s.vol||0,(s.mktCapM||0).toFixed(0),(s.pe||"").toString(),(s.divYield||"").toString(),(s.high52w||"").toString(),(s.low52w||"").toString(),(s.eps||"").toString(),s.sector||""]));
-  const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
+  const header=[["Symbol","Name","Price ("+cur+")","Change%","Volume","MktCap (M)","P/E","Div Yield%","52w High","52w Low","EPS","Sector"]];
+  const csv=header.concat(rows.map(s=>[s.sym,s.name,s.price.toFixed(2),(s.chgPct??0).toFixed(2),s.vol||0,(s.mktCapM||0).toFixed(0),(s.pe||"").toString(),(s.divYield||"").toString(),(s.high52w||"").toString(),(s.low52w||"").toString(),(s.eps||"").toString(),s.sector||""]))
+    .map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}));
   a.download=`EgyTrend_${scrMarket.toUpperCase()}_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
-  showToast("✅ تم تصدير "+stocks_src.length+" سهم");
+  showToast("✅ تم تصدير "+rows.length+" سهم (حسب الفلاتر الحالية)");
 }
 
 /* ─── Saved Filters ─── */
@@ -2934,7 +3727,7 @@ function openChangePass(){
     ov.innerHTML=`<div style="width:100%;max-width:430px;margin:0 auto;background:var(--ink2);border-radius:22px 22px 0 0;padding:20px 18px 30px;">
       <div style="color:var(--t2);font-weight:800;font-size:15px;margin-bottom:14px;">🔒 تغيير كلمة المرور</div>
       <input class="a-in" id="cp-cur" type="password" placeholder="كلمة المرور الحالية" style="margin-bottom:9px;"/>
-      <input class="a-in" id="cp-new" type="password" placeholder="كلمة المرور الجديدة (6+ أحرف)" style="margin-bottom:9px;"/>
+      <input class="a-in" id="cp-new" type="password" placeholder="كلمة المرور الجديدة (8+ أحرف)" style="margin-bottom:9px;"/>
       <input class="a-in" id="cp-con" type="password" placeholder="تأكيد كلمة المرور الجديدة" style="margin-bottom:12px;"/>
       <div id="cp-err" style="display:none;color:var(--dn);font-size:12px;margin-bottom:9px;"></div>
       <button class="btn btn-g btn-full" onclick="doChangePass()" style="padding:12px;">تغيير كلمة المرور</button>
@@ -3993,6 +4786,7 @@ async function loadOpps(force=false){
     if(oppsData.length===0){el.innerHTML=`<div class="notif-empty">⚠️<br/>تعذر تحميل الفرص<br/><button class="btn btn-g btn-sm" style="margin-top:10px;" onclick="loadOpps(true)">إعادة المحاولة</button></div>`;return;}
   }
   renderOpps();
+  vipDataPulse();
   if(oppsRefreshTimer)clearTimeout(oppsRefreshTimer);
   oppsRefreshTimer=setTimeout(()=>loadOpps(false),15*60*1000);
 }

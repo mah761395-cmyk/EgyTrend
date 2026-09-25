@@ -1,11 +1,20 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { logger } from "../lib/logger";
-import { currentUser, isAdminToken, isVipClaims } from "../lib/userAuth";
+import { currentUser, isAdminToken, isVipActive } from "../lib/userAuth";
+import { db } from "@workspace/db";
+import { aiConfigTable, aiUsageTable } from "@workspace/db";
+import { localAiChat } from "../lib/local-ai";
 
 const router: IRouter = Router();
 
-const ANTHROPIC_BASE = process.env["AI_INTEGRATIONS_ANTHROPIC_BASE_URL"];
-const ANTHROPIC_KEY = process.env["AI_INTEGRATIONS_ANTHROPIC_API_KEY"];
+/* Replit AI Integrations env vars take precedence; standard Anthropic env vars
+ * work as a portable fallback (e.g. local Windows dev / any host). */
+const ANTHROPIC_BASE =
+  process.env["AI_INTEGRATIONS_ANTHROPIC_BASE_URL"] || "https://api.anthropic.com";
+const ANTHROPIC_KEY =
+  process.env["AI_INTEGRATIONS_ANTHROPIC_API_KEY"] ||
+  process.env["ANTHROPIC_API_KEY"] ||
+  "";
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 const REQUEST_TIMEOUT_MS = 90_000;
 
@@ -32,16 +41,32 @@ type ChatBody = {
   model?: string;
 };
 
+/* Admin AI toggle (ai_config.analyzer_enabled) — lets the admin panel actually
+ * turn the AI features off without a redeploy. Defaults to enabled. */
+async function isAiEnabled(): Promise<boolean> {
+  try {
+    const [cfg] = await db.select().from(aiConfigTable).limit(1);
+    return cfg?.analyzerEnabled ?? true;
+  } catch {
+    return true;
+  }
+}
+
+async function logAiUsage(userId: string, requestType: string, tokensEstimate: number): Promise<void> {
+  try {
+    await db.insert(aiUsageTable).values({ userId, requestType, tokensEstimate });
+  } catch (e) {
+    logger.warn({ err: e }, "ai usage log failed");
+  }
+}
+
 router.post("/chat", async (req: Request, res: Response) => {
-  if (!isAdminToken(req) && !isVipClaims(currentUser(req))) {
+  if (!isAdminToken(req) && !(await isVipActive(currentUser(req)))) {
     res.status(req.header("authorization") ? 403 : 401).json({ status: "error", message: "VIP subscription required" });
     return;
   }
-  if (!ANTHROPIC_BASE || !ANTHROPIC_KEY) {
-    res.status(503).json({
-      status: "error",
-      message: "AI integration not provisioned. Run setupReplitAIIntegrations for anthropic.",
-    });
+  if (!(await isAiEnabled())) {
+    res.status(503).json({ status: "error", message: "ai_disabled_by_admin" });
     return;
   }
 
@@ -68,6 +93,16 @@ router.post("/chat", async (req: Request, res: Response) => {
 
   if (!safeMessages.length) {
     res.status(400).json({ status: "error", message: "no valid messages" });
+    return;
+  }
+
+  /* ─── Local engine fallback: no Anthropic key → rule-based analyst ───
+   * Answers from real live market/news data in Arabic. Zero external calls. */
+  if (!ANTHROPIC_KEY) {
+    const localText = await localAiChat(safeMessages);
+    const claimsLocal = currentUser(req);
+    await logAiUsage(claimsLocal?.phone ?? "vip-anonymous", "chat-local", 0);
+    res.json({ status: "ok", text: localText, model: "egytrend-local", engine: "local" });
     return;
   }
 
@@ -137,6 +172,13 @@ router.post("/chat", async (req: Request, res: Response) => {
       return;
     }
 
+    // Persist usage so the admin AI dashboard reflects real traffic.
+    const claims = currentUser(req);
+    const approxTokens = Math.ceil(
+      (safeMessages.reduce((n, m) => n + m.content.length, 0) + text.length) / 4,
+    );
+    await logAiUsage(claims?.phone ?? "vip-anonymous", "chat", approxTokens);
+
     res.json({ status: "ok", text, model, stop_reason: data.stop_reason });
   } catch (err) {
     const aborted = (err as Error)?.name === "AbortError";
@@ -150,10 +192,11 @@ router.post("/chat", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/status", (_req: Request, res: Response) => {
+router.get("/status", async (_req: Request, res: Response) => {
   res.json({
     status: "ok",
-    provisioned: Boolean(ANTHROPIC_BASE && ANTHROPIC_KEY),
+    provisioned: Boolean(ANTHROPIC_KEY),
+    enabled: await isAiEnabled(),
     model: DEFAULT_MODEL,
   });
 });

@@ -1,12 +1,12 @@
 {
-  "youm7": {
-    "id": "youm7",
-    "name": "اليوم السابع",
+  "elaosboa": {
+    "id": "elaosboa",
+    "name": "أوليكس بوابة",
     "icon": "📰",
     "lang": "ar",
     "cat": "egypt",
     "color": "#0ea5e9",
-    "url": "https://www.youm7.com/rss/SectionRss?SectionID=297"
+    "url": "https://www.elaosboa.com/feed"
   },
   "masrawy": {
     "id": "masrawy",
@@ -15,7 +15,7 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#10b981",
-    "url": "https://news.google.com/rss/search?q=site:masrawy.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:masrawy.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar"
   },
   "amwal": {
     "id": "amwal",
@@ -33,7 +33,7 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#b45309",
-    "url": "https://news.google.com/rss/search?q=site:elwatannews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:elwatannews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar"
   },
   "shorouk": {
     "id": "shorouk",
@@ -42,7 +42,7 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#dc2626",
-    "url": "https://news.google.com/rss/search?q=site:shorouknews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:shorouknews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar"
   },
   "almasryalyoum": {
     "id": "almasryalyoum",
@@ -60,16 +60,16 @@
     "lang": "ar",
     "cat": "global",
     "color": "#c2410c",
-    "url": "https://news.google.com/rss/search?q=site:alarabiya.net+%D8%A3%D8%B3%D9%88%D8%A7%D9%82&hl=ar&gl=SA&ceid=SA:ar"
+    "url": "https://news.google.com/rss/search?q=site:alarabiya.net+%D8%A3%D8%B3%D9%88%D8%A7%D9%82+when:2d&hl=ar&gl=SA&ceid=SA:ar"
   },
-  "aljazeera": {
-    "id": "aljazeera",
-    "name": "الجزيرة",
+  "skynews": {
+    "id": "skynews",
+    "name": "سكاي نيوز عربية",
     "icon": "🌐",
     "lang": "ar",
     "cat": "global",
     "color": "#f59e0b",
-    "url": "https://www.aljazeera.net/aljazeerarss/2bb46c0f-92a5-44a2-8a78-d5d6814ff139/8c5dc74d-1e01-44c0-aac7-ff320be01f86"
+    "url": "https://www.skynewsarabia.com/rss"
   },
   "bbcar": {
     "id": "bbcar",
@@ -87,7 +87,7 @@
     "lang": "ar",
     "cat": "global",
     "color": "#6366f1",
-    "url": "https://news.google.com/rss/search?q=site:al-ain.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=AE&ceid=AE:ar"
+    "url": "https://news.google.com/rss/search?q=site:al-ain.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=AE&ceid=AE:ar"
   },
   "reuters": {
     "id": "reuters",
@@ -96,7 +96,7 @@
     "lang": "en",
     "cat": "global",
     "color": "#ff8c00",
-    "url": "https://news.google.com/rss/search?q=site:reuters.com/business&hl=en-US&gl=US&ceid=US:en"
+    "url": "https://news.google.com/rss/search?q=site:reuters.com/business+when:2d&hl=en-US&gl=US&ceid=US:en"
   },
   "cnbc": {
     "id": "cnbc",
@@ -168,7 +168,7 @@
     "lang": "ar",
     "cat": "stocks",
     "color": "#0ea5e9",
-    "url": "https://news.google.com/rss/search?q=site:mubasher.info+%D8%A3%D8%B3%D9%87%D9%85+%D8%A8%D9%88%D8%B1%D8%B5%D8%A9&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:mubasher.info+%D8%A3%D8%B3%D9%87%D9%85+%D8%A8%D9%88%D8%B1%D8%B5%D8%A9+when:2d&hl=ar&gl=EG&ceid=EG:ar"
   },
   "skynewsar": {
     "id": "skynewsar",
@@ -195,7 +195,7 @@
     "lang": "ar",
     "cat": "global",
     "color": "#7c3aed",
-    "url": "https://news.google.com/rss/search?q=site:aleqtisadiyah.com&hl=ar&gl=SA&ceid=SA:ar"
+    "url": "https://news.google.com/rss/search?q=site:aleqtisadiyah.com+when:2d&hl=ar&gl=SA&ceid=SA:ar"
   },
   "asharq": {
     "id": "asharq",
@@ -204,7 +204,7 @@
     "lang": "ar",
     "cat": "global",
     "color": "#f59e0b",
-    "url": "https://news.google.com/rss/search?q=site:asharq.com&hl=ar&gl=SA&ceid=SA:ar"
+    "url": "https://news.google.com/rss/search?q=site:asharq.com+when:2d&hl=ar&gl=SA&ceid=SA:ar"
   },
   "almal": {
     "id": "almal",
@@ -213,7 +213,7 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#059669",
-    "url": "https://news.google.com/rss/search?q=site:almalnews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:almalnews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar"
   },
   "dostor": {
     "id": "dostor",
@@ -222,7 +222,7 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#b91c1c",
-    "url": "https://news.google.com/rss/search?q=site:dostor.org+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:dostor.org+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar"
   },
   "cnnar": {
     "id": "cnnar",
@@ -231,7 +231,7 @@
     "lang": "ar",
     "cat": "global",
     "color": "#cc0000",
-    "url": "https://news.google.com/rss/search?q=site:arabic.cnn.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:arabic.cnn.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar"
   },
   "zawya": {
     "id": "zawya",
@@ -240,7 +240,7 @@
     "lang": "en",
     "cat": "global",
     "color": "#0369a1",
-    "url": "https://news.google.com/rss/search?q=site:zawya.com+egypt+finance&hl=en&gl=AE&ceid=AE:en"
+    "url": "https://news.google.com/rss/search?q=site:zawya.com+egypt+finance+when:2d&hl=en&gl=AE&ceid=AE:en"
   },
   "enterprise": {
     "id": "enterprise",
@@ -249,7 +249,7 @@
     "lang": "en",
     "cat": "egypt",
     "color": "#1d4ed8",
-    "url": "https://news.google.com/rss/search?q=site:enterprise.press+egypt+business&hl=en&gl=EG&ceid=EG:en"
+    "url": "https://news.google.com/rss/search?q=site:enterprise.press+egypt+business+when:2d&hl=en&gl=EG&ceid=EG:en"
   },
   "arabfinance": {
     "id": "arabfinance",
@@ -258,6 +258,6 @@
     "lang": "en",
     "cat": "egypt",
     "color": "#15803d",
-    "url": "https://news.google.com/rss/search?q=site:arabfinance.com+egypt&hl=en&gl=EG&ceid=EG:en"
+    "url": "https://news.google.com/rss/search?q=site:arabfinance.com+egypt+when:2d&hl=en&gl=EG&ceid=EG:en"
   }
 }

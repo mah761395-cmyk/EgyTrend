@@ -5,15 +5,19 @@ import { eq, desc } from "drizzle-orm";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { logger } from "../lib/logger";
-import { currentUser, isVipClaims } from "../lib/userAuth";
+import { currentUser, isVipActive } from "../lib/userAuth";
 
 const router = Router();
 
 const JWT_SECRET = process.env["SESSION_SECRET"];
 const LEGACY_TOKEN = process.env["ADMIN_TOKEN"] || "";
 
-const ANTHROPIC_BASE = process.env["AI_INTEGRATIONS_ANTHROPIC_BASE_URL"];
-const ANTHROPIC_KEY  = process.env["AI_INTEGRATIONS_ANTHROPIC_API_KEY"];
+const ANTHROPIC_BASE =
+  process.env["AI_INTEGRATIONS_ANTHROPIC_BASE_URL"] || "https://api.anthropic.com";
+const ANTHROPIC_KEY =
+  process.env["AI_INTEGRATIONS_ANTHROPIC_API_KEY"] ||
+  process.env["ANTHROPIC_API_KEY"] ||
+  "";
 const AI_MODEL       = "claude-sonnet-4-6";
 
 function isAdmin(req: { headers: Record<string, string | string[] | undefined> }): boolean {
@@ -39,7 +43,7 @@ router.get("/opportunities", async (req, res) => {
   try {
     const admin = isAdmin(req);
     const all = await db.select().from(opportunities).orderBy(desc(opportunities.createdAt));
-    const vip = isVipClaims(currentUser(req));
+    const vip = await isVipActive(currentUser(req));
     const visible = (admin ? all : all.filter(o => o.status !== "deleted" && o.status !== "closed"))
       .map(o => admin || vip || !o.vipOnly ? o : { ...o, details: null });
     res.json({ status: "ok", opportunities: visible });
@@ -127,20 +131,25 @@ router.post("/opportunities/generate", requireAuth, async (req, res) => {
   }
   try {
     // Fetch live market data to feed into AI
+    const selfBase = `http://localhost:${process.env.PORT || "8080"}/api`;
     const [mkRes, newsRes] = await Promise.allSettled([
-      fetch("http://localhost:8080/api/markets"),
-      fetch("http://localhost:8080/api/news?limit=20"),
+      fetch(`${selfBase}/markets`),
+      fetch(`${selfBase}/news?limit=20`),
     ]);
     const mkData  = mkRes.status  === "fulfilled" && mkRes.value.ok  ? await mkRes.value.json()  : {};
-    const newsData: { articles?: unknown } =
+    const newsData: { feeds?: Array<{ items?: Array<{ title?: string }> }> } =
       newsRes.status === "fulfilled" && newsRes.value.ok
-        ? (await newsRes.value.json() as { articles?: unknown })
+        ? (await newsRes.value.json() as { feeds?: Array<{ items?: Array<{ title?: string }> }> })
         : {};
 
     const mkSummary = JSON.stringify(mkData).slice(0, 3000);
-    const newsSummary = ((newsData.articles || []) as any[])
+    /* /api/news returns { feeds: [{ items: [...] }] } — flatten titles from
+     * every feed (previously read a non-existent "articles" key → empty list). */
+    const newsSummary = (newsData.feeds || [])
+      .flatMap(f => f.items || [])
       .slice(0, 15)
-      .map((a: any) => `• ${a.title}`)
+      .map(a => `• ${a.title || ""}`)
+      .filter(Boolean)
       .join("\n");
 
     const today = new Date().toLocaleDateString("ar-EG", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
@@ -178,7 +187,7 @@ ${newsSummary || "لا توجد أخبار"}
 - استند إلى الأرقام الحقيقية من بيانات السوق
 - أسهم EGX: اذكر رمز السهم في العنوان`;
 
-    const aiRes = await fetch(`${ANTHROPIC_BASE}/messages`, {
+    const aiRes = await fetch(`${ANTHROPIC_BASE}/v1/messages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

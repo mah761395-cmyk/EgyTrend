@@ -80,6 +80,29 @@ export function isVipClaims(claims: UserClaims | null): boolean {
   return !claims.vipExpiresAt || new Date(claims.vipExpiresAt).getTime() > Date.now();
 }
 
+/* DB-backed VIP check: the JWT embeds the plan for up to 7 days, so without
+ * this a banned or downgraded user would keep VIP access until token expiry.
+ * Falls back to claims when the DB is unreachable so AI features don't break
+ * on a transient DB hiccup (fail-open matches the pre-existing behavior). */
+export async function isVipActive(claims: UserClaims | null): Promise<boolean> {
+  if (!isVipClaims(claims)) return false;
+  try {
+    const { db } = await import("@workspace/db");
+    const { appUsersTable } = await import("@workspace/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+    const [row] = await db
+      .select({ plan: appUsersTable.plan, status: appUsersTable.status, vipExpiresAt: appUsersTable.vipExpiresAt })
+      .from(appUsersTable)
+      .where(and(eq(appUsersTable.id, claims!.sub), eq(appUsersTable.status, "active")))
+      .limit(1);
+    if (!row) return false; // user deleted or banned
+    if (row.plan !== "vip") return false; // downgraded
+    return !row.vipExpiresAt || row.vipExpiresAt.getTime() > Date.now();
+  } catch {
+    return true; // claims already validated; only a DB failure lands here
+  }
+}
+
 export function requireVipUser(req: Request, res: Response, next: NextFunction): void {
   const claims = currentUser(req);
   if (!claims) {

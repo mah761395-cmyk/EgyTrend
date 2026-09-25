@@ -177,7 +177,55 @@ async function fetchStooq(_symbol: string): Promise<{ price: number; open: numbe
   return null;
 }
 
+/* ─── Yahoo Finance (primary for indices / forex / commodities — no API key) ───
+ * `yf` is the shared yahoo-finance2 client declared in the stocks section below;
+ * it is initialized at module load, before any request handler runs. */
+
+async function fetchYahooIndexQuote(
+  symbol: string,
+): Promise<{ price: number; pct: number } | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const q = (await yf.quote(symbol, {}, { validateResult: false })) as any;
+    const price = Number(q?.regularMarketPrice);
+    if (!Number.isFinite(price) || price === 0) return null;
+    const pctDirect = Number(q?.regularMarketChangePercent);
+    const prev = Number(q?.regularMarketPreviousClose);
+    const pct = Number.isFinite(pctDirect)
+      ? pctDirect
+      : Number.isFinite(prev) && prev > 0
+        ? ((price - prev) / prev) * 100
+        : 0;
+    return { price, pct };
+  } catch (e) {
+    logger.warn({ symbol, err: (e as Error).message }, "yahoo quote failed");
+    return null;
+  }
+}
+
+/* Reuses the staggered mapper declared with the stocks section below
+ * (function declarations hoist, so this is safe at call time). */
+
+/* Reuses nothing — maps sequentially with a small delay between calls so the
+ * burst of Yahoo requests stays politely rate-limited. */
+async function mapStaggeredQuotes<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  delayMs = 150,
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i++) {
+    results.push(await fn(items[i]));
+    if (i + 1 < items.length) await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return results;
+}
+
 async function fetchEGX30(): Promise<{ price: number; pctChange: number } | null> {
+  // 1) Yahoo Finance (^CASE30 — real EGX 30 index, no scraping)
+  const y = await fetchYahooIndexQuote("^CASE30");
+  if (y) return { price: y.price, pctChange: y.pct };
+  // 2) TradingEconomics scraper (fallback)
   try {
     const html = await fetchText("https://tradingeconomics.com/egypt/stock-market", 10000);
     const priceMatch = html.match(/<td id="p">([0-9.,]+)/);
@@ -220,21 +268,29 @@ async function fetchEGX30(): Promise<{ price: number; pctChange: number } | null
 type IndexDef = {
   n: string;
   s: string;
+  yahoo?: string;         // Yahoo Finance spot index symbol — preferred
   finnhub: string;        // ETF on Finnhub — used for % change only
-  google?: string;        // Google Finance — preferred for real index price
+  google?: string;        // Google Finance — fallback for real index price
   stooq?: string;         // Stooq — fallback for real index price
   finnhubIsSpot?: boolean; // true when Finnhub symbol IS the spot index (not ETF)
 };
 
 const GLOBAL_INDICES: IndexDef[] = [
-  { n: "S&P 500",  s: "أمريكي",   finnhub: "SPY",  google: ".INX:INDEXSP",      stooq: "^spx" },
-  { n: "NASDAQ",   s: "تقني",     finnhub: "QQQ",  google: ".IXIC:INDEXNASDAQ", stooq: "^ndq" },
-  { n: "DAX",      s: "ألماني",   finnhub: "EWG",  google: "DAX:INDEXDB",       stooq: "^dax" },
-  { n: "FTSE 100", s: "بريطاني",  finnhub: "EWU",  google: "UKX:INDEXFTSE",     stooq: "^ftm" },
+  { n: "S&P 500",  s: "أمريكي",   yahoo: "^GSPC", finnhub: "SPY",  google: ".INX:INDEXSP",      stooq: "^spx" },
+  { n: "NASDAQ",   s: "تقني",     yahoo: "^IXIC", finnhub: "QQQ",  google: ".IXIC:INDEXNASDAQ", stooq: "^ndq" },
+  { n: "DAX",      s: "ألماني",   yahoo: "^GDAXI", finnhub: "EWG",  google: "DAX:INDEXDB",       stooq: "^dax" },
+  { n: "FTSE 100", s: "بريطاني",  yahoo: "^FTSE", finnhub: "EWU",  google: "UKX:INDEXFTSE",     stooq: "^ftm" },
 ];
 
 async function buildIndexQuote(def: IndexDef): Promise<Quote | null> {
-  // Fetch Finnhub ETF for % change AND scrapers for real price — in parallel
+  // 1) Yahoo Finance — real index points + real % change, no key needed
+  if (def.yahoo) {
+    const y = await fetchYahooIndexQuote(def.yahoo);
+    if (y) {
+      return { n: def.n, v: fmtNumber(y.price, { decimals: 2, commas: true }), c: fmtPct(y.pct), up: y.pct >= 0, s: def.s };
+    }
+  }
+  // 2) Fetch Finnhub ETF for % change AND scrapers for real price — in parallel
   const [fh, googleData, stooqData] = await Promise.all([
     fetchFinnhub(def.finnhub),
     def.google ? fetchGoogleFinance(def.google) : Promise.resolve(null),
@@ -261,17 +317,28 @@ async function buildIndexQuote(def: IndexDef): Promise<Quote | null> {
 
 /* ── Forex via Alpha Vantage (6hr cache) + Google/Stooq fallback ── */
 
-type FxDef = { n: string; s: string; from: string; to: string; google?: string; stooq?: string };
+type FxDef = { n: string; s: string; from: string; to: string; yahoo?: string; google?: string; stooq?: string; viaUsd?: boolean };
 
 const FX_PAIRS: FxDef[] = [
-  { n: "USD/EGP", s: "دولار/جنيه", from: "USD", to: "EGP", google: "USD-EGP", stooq: "usdegp" },
-  { n: "EUR/EGP", s: "يورو/جنيه",  from: "EUR", to: "EGP", google: "EUR-EGP", stooq: "euregp" },
-  { n: "GBP/EGP", s: "إسترليني/جنيه", from: "GBP", to: "EGP", google: "GBP-EGP", stooq: "gbpegp" },
-  { n: "SAR/EGP", s: "ريال/جنيه",  from: "SAR", to: "EGP", google: "SAR-EGP" },
+  { n: "USD/EGP", s: "دولار/جنيه",    from: "USD", to: "EGP", yahoo: "USDEGP=X", google: "USD-EGP", stooq: "usdegp" },
+  { n: "EUR/EGP", s: "يورو/جنيه",     from: "EUR", to: "EGP", yahoo: "EUREGP=X", google: "EUR-EGP", stooq: "euregp" },
+  { n: "GBP/EGP", s: "إسترليني/جنيه", from: "GBP", to: "EGP", yahoo: "GBPEGP=X", google: "GBP-EGP", stooq: "gbpegp" },
+  { n: "SAR/EGP", s: "ريال/جنيه",     from: "SAR", to: "EGP", yahoo: "USDEGP=X", viaUsd: true, google: "SAR-EGP" },
 ];
 
+const SAR_PER_USD = 3.75; // SAR is USD-pegged
+
 async function buildFxQuote(def: FxDef): Promise<Quote | null> {
-  // 1) Alpha Vantage (realtime, 6hr cached)
+  // 1) Yahoo Finance (realtime, no key; SAR/EGP derived from USD/EGP × peg)
+  if (def.yahoo) {
+    const y = await fetchYahooIndexQuote(def.yahoo);
+    if (y) {
+      const rate = def.viaUsd ? y.price / SAR_PER_USD : y.price;
+      const pct = def.viaUsd ? y.pct : y.pct; // peg keeps % identical to USD/EGP
+      return { n: def.n, v: fmtNumber(rate, { decimals: 2, commas: false }), c: fmtPct(pct), up: pct >= 0, s: def.s };
+    }
+  }
+  // 2) Alpha Vantage (realtime, 6hr cached)
   const av = await fetchAVForex(def.from, def.to);
   if (av) {
     // AV doesn't give previous close, compute implied % from bid/ask midpoint vs rate
@@ -310,6 +377,7 @@ async function buildFxQuote(def: FxDef): Promise<Quote | null> {
 type CommodityDef = {
   n: string;
   s: string;
+  yahoo?: string;         // Yahoo futures symbol — preferred (real spot/futures price)
   finnhub?: string;
   finnhubFactor?: number; // multiply ETF price by this to get spot
   stooq?: string | string[];
@@ -326,14 +394,22 @@ type CommodityDef = {
 //   SLV  ~$68  → silver spot ~$33   → factor ≈ 0.483
 // These are approximate and drift slowly; Google Finance is kept as price fallback.
 const COMMODITIES: CommodityDef[] = [
-  { n: "ذهب",      s: "أوقية",  finnhub: "GLD", finnhubFactor: 7.97,  google: "XAUUSD:CURRENCY", prefix: "$", decimals: 2, commas: true },
-  { n: "نفط برنت", s: "برميل",  finnhub: "BNO", finnhubFactor: 1.18,  google: "BZ00:NYMEX",      prefix: "$", decimals: 2, commas: false },
-  { n: "فضة",      s: "أوقية",  finnhub: "SLV", finnhubFactor: 0.483, google: "XAGUSD:CURRENCY", prefix: "$", decimals: 2, commas: false },
-  { n: "نحاس",     s: "رطل",                                           google: "HG00:COMEX",      prefix: "$", decimals: 2, commas: false },
+  { n: "ذهب",      s: "أوقية",  yahoo: "GC=F", finnhub: "GLD", finnhubFactor: 7.97,  google: "XAUUSD:CURRENCY", prefix: "$", decimals: 2, commas: true },
+  { n: "نفط برنت", s: "برميل",  yahoo: "BZ=F", finnhub: "BNO", finnhubFactor: 1.18,  google: "BZ00:NYMEX",      prefix: "$", decimals: 2, commas: false },
+  { n: "فضة",      s: "أوقية",  yahoo: "SI=F", finnhub: "SLV", finnhubFactor: 0.483, google: "XAGUSD:CURRENCY", prefix: "$", decimals: 2, commas: false },
+  { n: "نحاس",     s: "رطل",    yahoo: "HG=F",                       google: "HG00:COMEX",      prefix: "$", decimals: 2, commas: false },
 ];
 
 async function buildCommodityQuote(def: CommodityDef): Promise<Quote | null> {
-  // 1) Finnhub ETF (primary — realtime %, calibrated spot price)
+  // 1) Yahoo Finance futures (real price + %, no key, no conversion factors)
+  if (def.yahoo) {
+    const y = await fetchYahooIndexQuote(def.yahoo);
+    if (y) {
+      const v = `${def.prefix ?? ""}${fmtNumber(y.price, { decimals: def.decimals ?? 2, commas: def.commas ?? true })}${def.suffix ?? ""}`;
+      return { n: def.n, v, c: fmtPct(y.pct), up: y.pct >= 0, s: def.s };
+    }
+  }
+  // 2) Finnhub ETF (realtime %, calibrated spot price)
   if (def.finnhub) {
     const fh = await fetchFinnhub(def.finnhub);
     if (fh) {
@@ -343,7 +419,7 @@ async function buildCommodityQuote(def: CommodityDef): Promise<Quote | null> {
       return { n: def.n, v, c: fmtPct(fh.dp), up: fh.dp >= 0, s: def.s };
     }
   }
-  // 2) Google Finance (fallback — real spot price)
+  // 3) Google Finance (fallback — real spot price)
   if (def.google) {
     const g = await fetchGoogleFinance(def.google);
     if (g) {
@@ -417,12 +493,12 @@ let marketsCache: { ts: number; data: MarketsPayload } | null = null;
 const MARKETS_TTL_MS = 60 * 1000; // 1 minute
 
 async function buildMarketsPayload(): Promise<MarketsPayload> {
-  // Fetch all sections in parallel
-  const [egx30Raw, fxResults, glResults, cmResults, crResults] = await Promise.all([
-    fetchEGX30(),
-    Promise.all(FX_PAIRS.map(buildFxQuote)),
-    Promise.all(GLOBAL_INDICES.map(buildIndexQuote)),
-    Promise.all(COMMODITIES.map(buildCommodityQuote)),
+  // EGX30 first (one Yahoo call), then stagger the rest to stay under Yahoo burst limits
+  const egx30Raw = await fetchEGX30();
+  const [fxResults, glResults, cmResults, crResults] = await Promise.all([
+    mapStaggeredQuotes(FX_PAIRS, buildFxQuote, 120),
+    mapStaggeredQuotes(GLOBAL_INDICES, buildIndexQuote, 120),
+    mapStaggeredQuotes(COMMODITIES, buildCommodityQuote, 120),
     Promise.all(CRYPTO_LIST.map(buildCryptoQuote)),
   ]);
 
@@ -456,9 +532,9 @@ async function buildMarketsPayload(): Promise<MarketsPayload> {
     status: "ok",
     ts: Date.now(),
     sources: {
-      indices: hasFinnhub ? "Finnhub" : "Google Finance / Stooq",
-      forex: hasAV ? "Alpha Vantage" : "Google Finance / Stooq",
-      commodities: hasFinnhub ? "Finnhub ETFs" : "Stooq",
+      indices: "Yahoo Finance",
+      forex: hasAV ? "Yahoo Finance + Alpha Vantage" : "Yahoo Finance",
+      commodities: "Yahoo Finance",
       crypto: hasFinnhub ? "Finnhub/Binance" : "CoinGecko",
     },
     markets: { eg, gl, cm, cr },
@@ -788,8 +864,44 @@ export type StockQuote = {
 
 /* yahoo-finance2 v3 — default export is the YahooFinance class; must use `new`. */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const YFClass = require("yahoo-finance2").default as new(opts?: Record<string, unknown>) => { quote: (symbol: string, queryOptions?: Record<string, unknown>, moduleOptions?: Record<string, unknown>) => Promise<Record<string, unknown>> };
+const YFClass = require("yahoo-finance2").default as new(opts?: Record<string, unknown>) => {
+  quote: (symbol: string, queryOptions?: Record<string, unknown>, moduleOptions?: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  chart: (symbol: string, queryOptions?: Record<string, unknown>, moduleOptions?: Record<string, unknown>) => Promise<{ quotes?: Array<{ volume?: number | null; date?: unknown }>; meta?: Record<string, unknown> }>;
+};
 const yf = new YFClass({ suppressNotices: ["yahooSurvey"] });
+
+/* The Yahoo quote endpoint omits regularMarketVolume for EGX (Egyptian Exchange)
+ * tickers entirely. The chart endpoint DOES return real daily volume bars.
+ * Results are cached per symbol for 30 min — one lightweight 7-day chart call
+ * per stock per refresh cycle, bounded by the same allSettled + batch flow as
+ * quotes (v3 chart API uses epoch period1/period2, not range strings). */
+const volCache = new Map<string, { ts: number; vol: number | null }>();
+const VOL_TTL_MS = 30 * 60 * 1000;
+const VOL_TIMEOUT_MS = 7000;
+
+async function fetchYahooVolume(yahooSym: string): Promise<number | null> {
+  const cached = volCache.get(yahooSym);
+  if (cached && Date.now() - cached.ts < VOL_TTL_MS) return cached.vol;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), VOL_TIMEOUT_MS);
+  try {
+    const p2 = Math.floor(Date.now() / 1000);
+    const p1 = p2 - 7 * 86400;
+    const r = await yf.chart(yahooSym, { period1: p1, period2: p2, interval: "1d" }, { validateResult: false, signal: ctrl.signal });
+    const bars = (r?.quotes || []).filter((b) => b && b.volume != null);
+    const last = bars.length ? bars[bars.length - 1] : null;
+    const vol = last && typeof last.volume === "number" ? last.volume : null;
+    volCache.set(yahooSym, { ts: Date.now(), vol });
+    return vol;
+  } catch (e) {
+    /* network/abort/validation failure — cache the miss briefly to avoid hammering */
+    logger.warn({ sym: yahooSym, err: (e as Error).message }, "yf2 chart volume fetch failed");
+    volCache.set(yahooSym, { ts: Date.now() - VOL_TTL_MS + 60_000, vol: null });
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 async function fetchYahooQuote(def: StockDef): Promise<StockQuote | null> {
   try {
@@ -800,6 +912,13 @@ async function fetchYahooQuote(def: StockDef): Promise<StockQuote | null> {
     const prev   = q.regularMarketPreviousClose ?? price;
     const chg    = price - prev;
     const chgPct = prev > 0 ? (chg / prev) * 100 : 0;
+    let vol = q.regularMarketVolume ?? 0;
+    /* EGX tickers never carry volume on the quote endpoint — fill from the
+     * chart endpoint's real daily bars (cached). Never fabricate: if Yahoo
+     * has none there either, it stays 0 and the UI shows "—". */
+    if (!vol && def.yahoo.endsWith(".CA")) {
+      vol = (await fetchYahooVolume(def.yahoo)) ?? 0;
+    }
     return {
       sym:        def.sym,
       name:       def.name,
@@ -808,7 +927,7 @@ async function fetchYahooQuote(def: StockDef): Promise<StockQuote | null> {
       prevClose:  prev,
       chg,
       chgPct,
-      vol:        q.regularMarketVolume ?? 0,
+      vol:        vol,
       high:       q.regularMarketDayHigh ?? price,
       low:        q.regularMarketDayLow  ?? price,
       open:       q.regularMarketOpen    ?? price,
@@ -844,6 +963,87 @@ async function fetchStocksBatched(defs: StockDef[], batchSize = 25, delayMs = 40
 
 let stocksCache:   { ts: number; stocks: StockQuote[] } | null = null;
 let usStocksCache: { ts: number; stocks: StockQuote[] } | null = null;
+
+/* ─── TradingView Egypt scanner — real-time full EGX universe ────
+ * Yahoo's quote endpoint serves STALE prices for many EGX tickers
+ * (verified: EGAL quote 14.05 vs chart/TV ~357; COMI 81.2 vs 128)
+ * and caps coverage at ~32 names. The TV scanner returns ~296 live
+ * equities with price/volume/cap/PE/div/52w — values cross-checked
+ * against Yahoo chart closes. Falls back to the Yahoo flow below on
+ * any failure (cached 3 min, single gentle call per refresh). */
+const TV_COLS = ["name","description","close","change","change_abs","open","high","low","volume","market_cap_basic","sector","price_earnings_ttm","earnings_per_share_basic_ttm","dividends_yield","price_book_ratio","price_52_week_high","price_52_week_low"];
+
+async function fetchTVStocks(): Promise<StockQuote[] | null> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const body = {
+      filter: [{ left: "type", operation: "equal", right: "stock" }],
+      markets: ["egypt"],
+      symbols: { query: { types: [] }, tickers: [] },
+      columns: TV_COLS,
+      sort: { sortBy: "market_cap_basic", sortOrder: "desc" },
+      range: [0, 500],
+    };
+    const r = await fetch("https://scanner.tradingview.com/egypt/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0" },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (!r.ok) { logger.warn({ status: r.status }, "TV EGX scan non-ok"); return null; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const j = await r.json() as any;
+    const rows: Array<{ s: string; d: unknown[] }> = j?.data || [];
+    if (!rows.length) return null;
+    const meta = new Map(EGX_DEFS.map(d => [d.sym, d]));
+    const seen = new Set<string>();
+    const out: StockQuote[] = [];
+    for (const row of rows) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const o: Record<string, any> = {};
+      TV_COLS.forEach((c, i) => { o[c] = row.d[i]; });
+      const sym = String(o.name || "").replace(/^EGX:/, "").trim();
+      const price = Number(o.close);
+      if (!sym || !price || price <= 0 || seen.has(sym)) continue;
+      seen.add(sym);
+      const def = meta.get(sym);
+      const chgAbs = Number(o.change_abs) || 0;
+      const chgPct = Number(o.change) || 0;
+      const cap = Number(o.market_cap_basic) || 0;
+      out.push({
+        sym,
+        name:        def?.name || String(o.description || sym),
+        sector:      def?.sector || (o.sector ? String(o.sector) : "أخرى"),
+        price,
+        prevClose:   price - chgAbs,
+        chg:         chgAbs,
+        chgPct,
+        vol:         Number(o.volume) || 0,
+        high:        Number(o.high) || price,
+        low:         Number(o.low) || price,
+        open:        Number(o.open) || price,
+        mktCapM:     cap ? Math.round(cap / 1_000_000) : undefined,
+        pe:          Number(o.price_earnings_ttm) || undefined,
+        forwardPE:   undefined,
+        divYield:    Number(o.dividends_yield) || undefined,
+        eps:         Number(o.earnings_per_share_basic_ttm) || undefined,
+        bookValue:   undefined,
+        priceToBook: Number(o.price_book_ratio) || undefined,
+        sharesM:     cap && price ? Math.round(cap / price / 1_000_000) : undefined,
+        high52w:     Number(o.price_52_week_high) || undefined,
+        low52w:      Number(o.price_52_week_low) || undefined,
+        ts:          Date.now(),
+      });
+    }
+    return out.length ? out : null;
+  } catch (e) {
+    logger.warn({ err: (e as Error).message }, "TV EGX scan failed — using Yahoo fallback");
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
 const STOCKS_TTL_MS    = 3 * 60 * 1000; // 3 minutes
 const US_STOCKS_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -854,9 +1054,10 @@ router.get("/stocks", async (_req: Request, res: Response) => {
     return;
   }
   try {
-    const stocks = await fetchStocksBatched(EGX_DEFS);
+    const tvStocks = await fetchTVStocks();
+    const stocks = tvStocks ?? await fetchStocksBatched(EGX_DEFS);
     stocksCache = { ts: now, stocks };
-    res.json({ status: "ok", ts: now, stocks });
+    res.json({ status: "ok", ts: now, stocks, source: tvStocks ? "tradingview" : "yahoo" });
   } catch (e) {
     logger.error({ err: (e as Error).message }, "egx-stocks build failed");
     if (stocksCache) {

@@ -26,8 +26,10 @@ app.use(
   }),
 );
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+/* Bounded bodies: JSON payloads above this size can only be abuse, and the
+ * default (100 MB per request) is a cheap memory-exhaustion vector. */
+app.use(express.json({ limit: "300kb" }));
+app.use(express.urlencoded({ extended: true, limit: "300kb" }));
 
 app.use("/api", router);
 

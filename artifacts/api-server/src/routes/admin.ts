@@ -52,6 +52,30 @@ function clearLoginFailures(ip: string): void {
 }
 
 /* ─── Rate limiting on payment requests (per phone, 3 per 10 min) ─── */
+/* ─── Generic sliding-window rate limiter (per key: IP + optional identity) ─── */
+const rlBuckets = new Map<string, number[]>();
+
+function rateLimitHit(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  const arr = (rlBuckets.get(key) || []).filter((t) => now - t < windowMs);
+  if (arr.length >= max) { rlBuckets.set(key, arr); return false; }
+  arr.push(now);
+  rlBuckets.set(key, arr);
+  return true;
+}
+
+/* Periodic GC so long-lived processes don't accumulate stale buckets. */
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, arr] of rlBuckets) {
+    const alive = arr.filter((t) => now - t < 30 * 60 * 1000);
+    if (alive.length === 0) rlBuckets.delete(k); else rlBuckets.set(k, alive);
+  }
+  for (const [k, v] of loginAttempts) {
+    if (now >= v.until) loginAttempts.delete(k);
+  }
+}, 10 * 60 * 1000).unref();
+
 const payReqMap = new Map<string, number[]>();
 const PAY_REQ_MAX    = 3;
 const PAY_REQ_WINDOW = 10 * 60 * 1000; // 10 min
@@ -78,22 +102,63 @@ function signToken(payload: JWTPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "24h" });
 }
 
+const STAFF_ROLES = new Set(["super_admin", "admin", "editor", "analyst", "support", "marketing"]);
+
+/* Rate limit for authenticated admin WRITE endpoints: 30 mutations / 5 min per IP+identity. */
+const WRITE_RL_MAX = 30;
+const WRITE_RL_WINDOW = 5 * 60 * 1000;
+function requireWriteRate(req: AuthRequest, res: Response, next: NextFunction) {
+  const who = req.actor?.sub ?? req.actor?.email ?? "anon";
+  const key = `wr:${req.ip || "unknown"}:${who}`;
+  if (!rateLimitHit(key, WRITE_RL_MAX, WRITE_RL_WINDOW)) {
+    res.setHeader("Retry-After", "60");
+    res.status(429).json({ status: "error", message: "too many admin actions — slow down" });
+    return;
+  }
+  next();
+}
+
 function verifyToken(token: string): JWTPayload | null {
   if (!JWT_SECRET) return null;
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     if (typeof decoded === "string") return null;
+    // Reject non-staff tokens (e.g. app-user JWTs with role "user") so a
+    // regular user token can never pass requireAuth on admin endpoints.
+    const role = (decoded as { role?: unknown }).role;
+    if (typeof role !== "string" || !STAFF_ROLES.has(role)) return null;
     return decoded as unknown as JWTPayload;
   }
   catch { return null; }
 }
 
-/* ─── Password helpers ─── */
+/* ─── Password helpers ───
+ * New hashes: scrypt with per-password salt ("scrypt$<salthex>$<hashhex>").
+ * Legacy hashes (sha256(pw+secret)) are still verified for accounts created
+ * before this change; they are re-hashed to scrypt on next successful login. */
+const SCRYPT_KEYLEN = 64;
+
 function hashPassword(pw: string): string {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(pw, salt, SCRYPT_KEYLEN).toString("hex");
+  return `scrypt$${salt}$${hash}`;
+}
+function legacyHash(pw: string): string {
   return crypto.createHash("sha256").update(pw + JWT_SECRET).digest("hex");
 }
-function checkPassword(pw: string, hash: string): boolean {
-  return hashPassword(pw) === hash;
+function checkPassword(pw: string, encoded: string): boolean {
+  if (encoded.startsWith("scrypt$")) {
+    const [, salt, expected] = encoded.split("$");
+    if (!salt || !expected) return false;
+    try {
+      const actual = crypto.scryptSync(pw, salt, SCRYPT_KEYLEN);
+      const expectedBuf = Buffer.from(expected, "hex");
+      return expectedBuf.length === actual.length && crypto.timingSafeEqual(actual, expectedBuf);
+    } catch { return false; }
+  }
+  const candidate = legacyHash(pw);
+  if (candidate.length !== encoded.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(candidate), Buffer.from(encoded));
 }
 
 /* ─── Auth middleware ─── */
@@ -233,12 +298,24 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
 
   const password = String((req.body || {}).password || "");
 
+  // Hard throttle on top of brute-force lockout: max 20 login attempts / 5 min per IP.
+  if (!rateLimitHit(`login:${ip}`, 20, 5 * 60 * 1000)) {
+    res.status(429).json({ status: "error", message: "عدد محاولات دخول كبير — حاول بعد 5 دقائق" });
+    return;
+  }
+
   // Check if this matches an employee email/password (new JWT flow)
   const email = String((req.body || {}).email || "");
   if (email) {
     const employees = await db.select().from(employeesTable).where(eq(employeesTable.email, email)).limit(1);
     if (employees.length && checkPassword(password, employees[0].passwordHash)) {
       const emp = employees[0];
+      // Transparent upgrade: re-hash legacy sha256 passwords to scrypt.
+      if (!emp.passwordHash.startsWith("scrypt$")) {
+        await db.update(employeesTable)
+          .set({ passwordHash: hashPassword(password), updatedAt: new Date() })
+          .where(eq(employeesTable.id, emp.id));
+      }
       if (emp.status !== "active") {
         res.status(403).json({ status: "error", message: "account disabled" });
         return;
@@ -260,7 +337,9 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
     res.status(503).json({ status: "error", message: "admin password is not configured" });
     return;
   }
-  if (password !== ADMIN_PASSWORD) {
+  const expected = Buffer.from(ADMIN_PASSWORD);
+  const given = Buffer.from(password);
+  if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) {
     recordLoginFailure(ip);
     res.status(401).json({ status: "error", message: "invalid password" });
     return;
@@ -286,14 +365,14 @@ router.get("/ai-status", async (_req, res: Response) => {
   }
 });
 
-/* Log AI usage (called by AI routes) */
-router.post("/ai-usage/log", async (req: Request, res: Response) => {
+/* Log AI usage — auth required (was open to anyone; this feeds admin stats) */
+router.post("/ai-usage/log", requireAuth, requireWriteRate, async (req: AuthRequest, res: Response) => {
   try {
-    const { userId, requestType, tokensEstimate } = req.body || {};
+    const { requestType, tokensEstimate } = req.body || {};
     await db.insert(aiUsageTable).values({
-      userId: String(userId || "anonymous"),
-      requestType: String(requestType || "unknown"),
-      tokensEstimate: Number(tokensEstimate || 0),
+      userId: String(req.actor?.email || req.actor?.name || "staff"),
+      requestType: String(requestType || "unknown").slice(0, 40),
+      tokensEstimate: Math.max(0, Math.min(1_000_000, Number(tokensEstimate) || 0)),
     });
     res.json({ status: "ok" });
   } catch (e) {
@@ -354,7 +433,7 @@ router.get("/sources", requireAuth, (_req, res: Response) => {
   res.json({ status: "ok", sources: listSources() });
 });
 
-router.post("/sources", requireAuth, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {
+router.post("/sources", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {
   const v = validateSource(req.body);
   if ("error" in v) { res.status(400).json({ status: "error", message: v.error }); return; }
   await upsertSource(v);
@@ -363,7 +442,7 @@ router.post("/sources", requireAuth, requireRole("super_admin", "admin", "editor
   res.json({ status: "ok", source: v });
 });
 
-router.delete("/sources/:id", requireAuth, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.delete("/sources/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = String(req.params["id"] || "");
   const ok = await deleteSource(id);
   if (!ok) { res.status(404).json({ status: "error", message: "not found" }); return; }
@@ -377,7 +456,7 @@ router.get("/articles", requireAuth, (_req, res: Response) => {
   res.json({ status: "ok", articles: listCustomArticles() });
 });
 
-router.post("/articles", requireAuth, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {
+router.post("/articles", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {
   const v = validateArticle(req.body);
   if ("error" in v) { res.status(400).json({ status: "error", message: v.error }); return; }
   await upsertCustomArticle(v);
@@ -386,7 +465,7 @@ router.post("/articles", requireAuth, requireRole("super_admin", "admin", "edito
   res.json({ status: "ok", article: v });
 });
 
-router.delete("/articles/:id", requireAuth, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {
+router.delete("/articles/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {
   const id = String(req.params["id"] || "");
   const ok = await deleteCustomArticle(id);
   if (!ok) { res.status(404).json({ status: "error", message: "not found" }); return; }
@@ -406,7 +485,7 @@ router.get("/employees", requireAuth, requireRole("super_admin", "admin"), async
   res.json({ status: "ok", employees });
 });
 
-router.post("/employees", requireAuth, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.post("/employees", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const { name, email, role, password, permissions } = req.body || {};
   if (!name || !email || !role || !password) {
     res.status(400).json({ status: "error", message: "name, email, role, password required" });
@@ -443,7 +522,7 @@ router.post("/employees", requireAuth, requireRole("super_admin", "admin"), asyn
   }
 });
 
-router.put("/employees/:id", requireAuth, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.put("/employees/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
   const { name, role, status, permissions, password } = req.body || {};
   if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
@@ -469,7 +548,7 @@ router.put("/employees/:id", requireAuth, requireRole("super_admin", "admin"), a
   res.json({ status: "ok" });
 });
 
-router.delete("/employees/:id", requireAuth, requireRole("super_admin"), async (req: AuthRequest, res: Response) => {
+router.delete("/employees/:id", requireAuth, requireWriteRate, requireRole("super_admin"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
   if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
   if (id === req.actor?.sub) { res.status(400).json({ status: "error", message: "cannot delete yourself" }); return; }
@@ -484,7 +563,7 @@ router.get("/plans", requireAuth, async (_req, res: Response) => {
   res.json({ status: "ok", plans });
 });
 
-router.post("/plans", requireAuth, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.post("/plans", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const { key, nameAr, price, durationMonths, features, badge } = req.body || {};
   if (!key || !nameAr || price === undefined || !durationMonths) {
     res.status(400).json({ status: "error", message: "key, nameAr, price, durationMonths required" });
@@ -510,7 +589,7 @@ router.post("/plans", requireAuth, requireRole("super_admin", "admin"), async (r
   }
 });
 
-router.put("/plans/:id", requireAuth, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.put("/plans/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
   if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
   const { nameAr, price, durationMonths, features, isActive, badge } = req.body || {};
@@ -526,7 +605,7 @@ router.put("/plans/:id", requireAuth, requireRole("super_admin", "admin"), async
   res.json({ status: "ok" });
 });
 
-router.delete("/plans/:id", requireAuth, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.delete("/plans/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
   if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
   await db.delete(subscriptionPlansTable).where(eq(subscriptionPlansTable.id, id));
@@ -540,7 +619,7 @@ router.get("/coupons", requireAuth, requireRole("super_admin", "admin", "marketi
   res.json({ status: "ok", coupons });
 });
 
-router.post("/coupons", requireAuth, requireRole("super_admin", "admin", "marketing"), async (req: AuthRequest, res: Response) => {
+router.post("/coupons", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "marketing"), async (req: AuthRequest, res: Response) => {
   const { code, discountType, discountValue, maxUses, startsAt, expiresAt } = req.body || {};
   if (!code || discountValue === undefined) {
     res.status(400).json({ status: "error", message: "code and discountValue required" });
@@ -574,7 +653,7 @@ router.post("/coupons", requireAuth, requireRole("super_admin", "admin", "market
   }
 });
 
-router.put("/coupons/:id", requireAuth, requireRole("super_admin", "admin", "marketing"), async (req: AuthRequest, res: Response) => {
+router.put("/coupons/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "marketing"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
   if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
   const { isActive, maxUses, expiresAt } = req.body || {};
@@ -588,7 +667,7 @@ router.put("/coupons/:id", requireAuth, requireRole("super_admin", "admin", "mar
   res.json({ status: "ok" });
 });
 
-router.delete("/coupons/:id", requireAuth, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.delete("/coupons/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
   if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
   await db.delete(couponsTable).where(eq(couponsTable.id, id));
@@ -617,7 +696,7 @@ router.get("/ai-config", requireAuth, async (_req, res: Response) => {
   res.json({ status: "ok", config: cfg });
 });
 
-router.put("/ai-config", requireAuth, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.put("/ai-config", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   await ensureAiConfig();
   const { analyzerEnabled, summaryEnabled, rewriterEnabled, dailyRequestLimit } = req.body || {};
   const updates: Record<string, unknown> = { updatedAt: new Date(), updatedBy: req.actor?.name ?? "admin" };
@@ -693,7 +772,7 @@ router.get("/users", requireAuth, requireRole("super_admin", "admin", "support")
   res.json({ status: "ok", users });
 });
 
-router.post("/users/action", requireAuth, requireRole("super_admin", "admin", "support"), async (req: AuthRequest, res: Response) => {
+router.post("/users/action", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "support"), async (req: AuthRequest, res: Response) => {
   const { action, phone, name, reason } = req.body || {};
   const validActions = ["ban_user", "unban_user", "upgrade_vip", "downgrade_vip"];
   if (!validActions.includes(String(action))) {
@@ -804,7 +883,7 @@ router.get("/requests", requireAuth, requireRole("super_admin", "admin", "suppor
 });
 
 /* Protected: approve or reject a request */
-router.put("/requests/:id", requireAuth, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = String(req.params["id"] || "").trim();
   const { status, notes } = req.body || {};
   if (!["approved", "rejected"].includes(String(status))) {
