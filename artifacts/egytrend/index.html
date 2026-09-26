@@ -2265,6 +2265,19 @@ function renderVIP(){
         <div style="color:var(--t3);font-size:12px;line-height:1.9;max-width:280px;margin:0 auto;">كل الأدوات التي يحتاجها المستثمر المصري في مكان واحد — مدعومة ببيانات حقيقية وذكاء اصطناعي</div>
       </div>
 
+      <div id="pay-status-card" style="margin-bottom:12px;"></div>
+
+      <div style="background:var(--s1);border:1px solid var(--b1);border-radius:16px;padding:15px 13px;margin-bottom:14px;">
+        <div style="color:var(--au);font-weight:900;font-size:14px;margin-bottom:11px;text-align:center;">📱 طريقة الاشتراك في VIP</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${[["1️⃣","اختر اشتراك VIP"],["2️⃣","حوّل قيمة الاشتراك إلى رقم Vodafone Cash الظاهر أمامك"],["3️⃣","اضغط «نسخ الرقم» لنسخ رقم المحفظة"],["4️⃣","بعد التحويل، ارفع Screenshot لإثبات الدفع وأدخل بيانات العملية"],["5️⃣","اضغط «تأكيد الاشتراك»"],["6️⃣","سيتم مراجعة التحويل وتفعيل VIP بعد تأكيد الدفع"]].map(s=>`
+          <div style="display:flex;align-items:flex-start;gap:9px;background:var(--aud);border-radius:10px;padding:8px 10px;">
+            <span style="font-size:15px;flex-shrink:0;">${s[0]}</span>
+            <span style="color:var(--t2);font-size:11.5px;line-height:1.6;">${s[1]}</span>
+          </div>`).join("")}
+        </div>
+      </div>
+
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px;">
         ${[
           ["🤖","AI Advisor","اسأل عن أي سهم أو قطاع — يجيب بناءً على بيانات السوق وأخبار اليوم الفعلية"],
@@ -2290,9 +2303,10 @@ function renderVIP(){
       </div>
 
       <button class="btn btn-au btn-full" style="padding:15px;font-size:15px;font-weight:900;" onclick="openSub()">
-        ⭐ اشترك الآن — من 99 جنيه / شهر
+        ⭐ اشترك الآن
       </button>
-      <div style="text-align:center;color:var(--t5);font-size:10px;margin-top:8px;">يُفعَّل خلال دقائق بعد تأكيد الدفع · دعم واتساب 01008605139</div>`;
+      <div style="text-align:center;color:var(--t5);font-size:10px;margin-top:8px;">يُفعّل بعد مراجعة إثبات الدفع · دعم واتساب 01008605139</div>`;
+    loadPayStatus();
     return;
   }
 
@@ -3600,56 +3614,151 @@ async function analyzePort(){
   btn.innerHTML="🤖 إعادة التحليل";btn.disabled=false;
 }
 
-/* ═══════════════════ SUB MODAL ═══════════════════ */
-function openSub(){subStep=1;selPlan="monthly";selPay="vodafone";renderSub();document.getElementById("sub-ov").classList.add("open");}
+/* ═══════════════════ SUB MODAL (Vodafone Cash) ═══════════════════ */
+let SUB_PLANS=null;       /* live plans from /api/payments/config (admin-editable prices) */
+let SUB_WALLET="01008605139";
+let payProofData=null, payProofName="";
+function openSub(){subStep=1;selPlan="monthly";payProofData=null;payProofName="";renderSub();document.getElementById("sub-ov").classList.add("open");loadSubConfig();}
 function closeSub(){document.getElementById("sub-ov").classList.remove("open");}
+function subPlans(){return SUB_PLANS||PLANS;}
+async function loadSubConfig(){
+  try{
+    const r=await fetch("/api/payments/config");
+    const j=await r.json().catch(()=>null);
+    if(j&&j.status==="ok"){
+      const map={};
+      (j.plans||[]).forEach(p=>{map[p.key]={l:p.nameAr||p.key,p:p.price,per:p.durationMonths===1?"شهر":(p.durationMonths===3?"٣ شهور":(p.durationMonths===12?"سنة":(p.durationMonths+" شهر"))),m:p.durationMonths,badge:p.badge||""};});
+      if(Object.keys(map).length){SUB_PLANS=map;if(!map[selPlan])selPlan=Object.keys(map)[0];}
+      if(j.walletNumber)SUB_WALLET=j.walletNumber;
+      if((subStep===1||subStep===2)&&document.getElementById("sub-ov").classList.contains("open"))renderSub();
+    }
+  }catch(e){/* keep static fallback */}
+}
 function renderSub(){
   const el=document.getElementById("sub-el");
+  const P=subPlans();
   if(subStep===1){
     el.innerHTML=`
       <div style="text-align:center;margin-bottom:18px;"><div style="font-size:32px;margin-bottom:4px;">⭐</div><div style="color:var(--au);font-weight:900;font-size:18px;">اشتراك VIP</div><div style="color:var(--t4);font-size:11.5px;margin-top:2px;">AI Advisor + إشارات + Screener + 16+ مصدر</div></div>
-      <div class="plan-grid">${Object.entries(PLANS).map(([k,p])=>`<div class="plan-c${selPlan===k?" active":""}" onclick="sPlan('${k}')">${p.badge?`<span class="plan-badge">${p.badge}</span>`:""}<div class="plan-label">${p.l}</div><div class="plan-price">${p.p}</div><div class="plan-period">ج / ${p.per}</div></div>`).join("")}</div>
+      <div class="plan-grid">${Object.entries(P).map(([k,p])=>`<div class="plan-c${selPlan===k?" active":""}" onclick="sPlan('${k}')">${p.badge?`<span class="plan-badge">${p.badge}</span>`:""}<div class="plan-label">${p.l}</div><div class="plan-price">${p.p}</div><div class="plan-period">ج / ${p.per}</div></div>`).join("")}</div>
       <div class="feat-list">${["AI Advisor مستشار مالي ذكي","16+ مصدر أخبار موثوق","إشارات تداول يومية","Stock Screener (Investing-style)","مستهدفات الأسعار","Morning & Closing Reports","تنبيهات مبكرة","دعم واتساب مباشر"].map(f=>`<div class="feat-it"><span style="color:var(--g);font-size:11px;">✓</span>${f}</div>`).join("")}</div>
-      <button class="btn btn-au btn-full" style="padding:13px;font-size:14px;" onclick="subStep=2;renderSub()">اشترك — ${PLANS[selPlan].p} جنيه</button>`;
+      <button class="btn btn-au btn-full" style="padding:13px;font-size:14px;" onclick="subStep=2;renderSub()">اشترك — ${P[selPlan]?P[selPlan].p:""} جنيه</button>`;
   } else if(subStep===2){
-    const pm=PAYS.find(p=>p.id===selPay);
+    const price=P[selPlan]?P[selPlan].p:"";
     el.innerHTML=`
-      <div style="color:var(--t2);font-weight:700;font-size:13.5px;margin-bottom:11px;">اختر وسيلة الدفع</div>
-      <div class="pay-grid">${PAYS.map(p=>`<div class="pay-c${selPay===p.id?" active":""}" onclick="sPay('${p.id}')"><div class="pay-icon">${p.i}</div><div class="pay-name">${p.n}</div></div>`).join("")}</div>
-      <div style="background:var(--aud);border:1px solid rgba(245,158,11,.2);border-radius:13px;padding:13px;margin-bottom:12px;text-align:center;">
-        <div style="color:var(--au);font-weight:700;font-size:13px;margin-bottom:5px;">حوّل ${PLANS[selPlan].p} جنيه إلى:</div>
-        <div id="pay-num" style="color:var(--t1);font-size:21px;font-weight:900;font-family:var(--mono);letter-spacing:1px;">${pm.num}</div>
-        <div style="color:var(--t4);font-size:10.5px;margin-top:2px;">عبر ${pm.n}</div>
+      <div style="color:var(--t2);font-weight:800;font-size:13.5px;margin-bottom:10px;text-align:center;">🔴 الدفع عبر Vodafone Cash</div>
+      <div style="background:var(--aud);border:1px solid rgba(245,158,11,.25);border-radius:13px;padding:13px;margin-bottom:10px;text-align:center;">
+        <div style="color:var(--au);font-weight:700;font-size:12.5px;margin-bottom:5px;">حوّل ${price} جنيه إلى رقم المحفظة:</div>
+        <div id="pay-num" style="color:var(--t1);font-size:22px;font-weight:900;font-family:var(--mono);letter-spacing:1.5px;direction:ltr;">${SUB_WALLET}</div>
+        <button class="btn btn-g" style="padding:8px 24px;font-size:12px;margin-top:9px;" onclick="copyWallet()">📋 نسخ الرقم</button>
       </div>
-      <input class="tx-in" id="tx-in" placeholder="أدخل كود العملية (Transaction ID)" maxlength="50"/>
-      <button class="btn btn-g btn-full" style="padding:12px;font-size:14px;" onclick="submitPay()">تأكيد الإرسال</button>
+      <div style="color:var(--t4);font-size:10.5px;line-height:1.8;margin-bottom:11px;background:var(--s1);border-radius:9px;padding:8px 10px;">
+        1. افتح تطبيق Vodafone Cash وحوّل ${price} جنيه للرقم أعلاه<br/>
+        2. خذ Screenshot لرسالة تأكيد التحويل<br/>
+        3. أدخل رقم العملية وارفع الصورة هنا
+      </div>
+      <input class="tx-in" id="tx-in" placeholder="رقم عملية التحويل (من رسالة فودافون)" maxlength="100"/>
+      <label id="proof-lbl" for="proof-in" style="display:flex;align-items:center;justify-content:center;gap:6px;background:var(--s1);border:1px dashed var(--b1);border-radius:11px;padding:11px;margin-top:8px;color:var(--t3);font-size:12px;cursor:pointer;font-family:var(--sans);">📎 ارفع Screenshot إثبات الدفع</label>
+      <input type="file" id="proof-in" accept="image/*" style="display:none" onchange="onProofPick(this)"/>
+      <img id="proof-prev" alt="" style="display:none;width:100%;max-height:170px;object-fit:contain;border-radius:10px;margin-top:8px;background:rgba(0,0,0,.25);"/>
+      <button class="btn btn-g btn-full" id="pay-submit" style="padding:12px;font-size:14px;margin-top:10px;" onclick="submitPay()">✅ تأكيد الاشتراك</button>
       <button onclick="subStep=1;renderSub();" style="width:100%;margin-top:7px;background:none;border:none;color:var(--t4);font-size:12px;cursor:pointer;font-family:var(--sans);">← رجوع</button>`;
   } else {
-    el.innerHTML=`<div style="text-align:center;padding:14px 0;"><div style="font-size:50px;margin-bottom:9px;">🎉</div><div style="color:var(--g);font-weight:900;font-size:18px;margin-bottom:7px;">تم إرسال طلبك!</div><div style="color:var(--t3);font-size:13px;line-height:1.88;">سيتم تفعيل VIP خلال 30 دقيقة.<br/>للاستفسار: <a href="https://wa.me/${WA}" target="_blank" rel="noopener" style="color:var(--g);text-decoration:none;">واتساب 01008605139</a></div><button class="btn btn-ghost" style="margin:15px auto 0;padding:10px 24px;" onclick="closeSub()">إغلاق</button></div>`;
+    el.innerHTML=`<div style="text-align:center;padding:14px 0;"><div style="font-size:50px;margin-bottom:9px;">⏳</div><div style="color:var(--au);font-weight:900;font-size:18px;margin-bottom:7px;">جاري مراجعة الدفع</div><div style="color:var(--t3);font-size:13px;line-height:1.88;">وصلنا طلبك وسيتم تفعيل VIP فور تأكيد التحويل.<br/>تقدر تتابع حالة طلبك من صفحة VIP في أي وقت.<br/>للاستفسار: <a href="https://wa.me/${WA}" target="_blank" rel="noopener" style="color:var(--g);text-decoration:none;">واتساب 01008605139</a></div><button class="btn btn-ghost" style="margin:15px auto 0;padding:10px 24px;" onclick="closeSub();loadPayStatus();">متابعة حالة الطلب</button></div>`;
   }
 }
 function sPlan(k){selPlan=k;renderSub();}
-function sPay(id){
-  selPay=id;document.querySelectorAll(".pay-c").forEach((c,i)=>c.classList.toggle("active",PAYS[i].id===id));
-  const pm=PAYS.find(p=>p.id===id);const el=document.getElementById("pay-num");if(el&&pm)el.textContent=pm.num;
+function copyWallet(){
+  const done=()=>showToast("✅ تم نسخ رقم المحفظة: "+SUB_WALLET);
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(SUB_WALLET).then(done).catch(()=>copyWalletFallback(done));}
+  else copyWalletFallback(done);
+}
+function copyWalletFallback(done){
+  try{const t=document.createElement("textarea");t.value=SUB_WALLET;t.style.position="fixed";t.style.opacity="0";document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);done();}catch(e){showToast("رقم المحفظة: "+SUB_WALLET);}
+}
+function compressImage(file,maxDim,q){
+  return new Promise((res,rej)=>{
+    const img=new Image();const url=URL.createObjectURL(file);
+    img.onload=()=>{
+      try{
+        const sc=Math.min(1,maxDim/Math.max(img.width,img.height));
+        const c=document.createElement("canvas");
+        c.width=Math.max(1,Math.round(img.width*sc));c.height=Math.max(1,Math.round(img.height*sc));
+        c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+        URL.revokeObjectURL(url);
+        res(c.toDataURL("image/jpeg",q));
+      }catch(e){URL.revokeObjectURL(url);rej(e);}
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error("image decode failed"));};
+    img.src=url;
+  });
+}
+async function onProofPick(inp){
+  const f=inp.files&&inp.files[0];if(!f)return;
+  if(!/^image\//.test(f.type)){showToast("⚠️ اختر صورة (PNG أو JPG)");inp.value="";return;}
+  try{
+    payProofData=await compressImage(f,1280,0.72);
+    payProofName=f.name||"screenshot";
+    const pv=document.getElementById("proof-prev");
+    if(pv){pv.src=payProofData;pv.style.display="block";}
+    const lb=document.getElementById("proof-lbl");
+    if(lb)lb.innerHTML="✅ تم إرفاق الصورة — اضغط للتغيير";
+  }catch(e){showToast("⚠️ تعذر قراءة الصورة، جرّب صورة أخرى");inp.value="";}
 }
 async function submitPay(){
-  const tx=(document.getElementById("tx-in")?.value||"").trim().slice(0,50);if(!tx){showToast("⚠️ أدخل كود العملية");return;}
-  const reqData={id:Date.now()+"",phone:U.phone,name:U.name,planKey:selPlan,payMethod:selPay,price:PLANS[selPlan].p,tx,status:"pending",at:new Date().toISOString()};
+  if(!U){showToast("⚠️ سجّل الدخول أولًا");return;}
+  const tx=(document.getElementById("tx-in")&&document.getElementById("tx-in").value||"").trim().slice(0,100);
+  if(!tx){showToast("⚠️ أدخل رقم عملية التحويل");return;}
+  if(!payProofData){showToast("⚠️ ارفع صورة إثبات الدفع");return;}
+  const btn=document.getElementById("pay-submit");
+  if(btn){btn.disabled=true;btn.textContent="⏳ جارٍ الإرسال...";}
   try{
     const headers={"Content-Type":"application/json"};
     const userTok=DB.g("userTok","");
     if(userTok)headers.Authorization="Bearer "+userTok;
-    const response=await fetch("/api/admin/requests",{method:"POST",headers,body:JSON.stringify(reqData)});
+    const response=await fetch("/api/payments",{method:"POST",headers,body:JSON.stringify({planKey:selPlan,tx,proofImage:payProofData,proofName:payProofName})});
     const result=await response.json().catch(()=>null);
-    if(!response.ok||result?.status!=="ok") throw new Error(result?.message||"payment request failed");
-    const reqs=DB.g("reqs",[]);
-    reqs.unshift(reqData);
-    DB.s("reqs",reqs);
+    if(!response.ok||!result||result.status!=="ok") throw new Error((result&&result.message)||"تعذر إرسال الطلب");
+    payProofData=null;payProofName="";
     subStep=3;renderSub();
   }catch(e){
-    showToast("⚠️ تعذر إرسال طلب الدفع، حاول مرة أخرى");
+    showToast("⚠️ "+String(e.message||e));
+    const b=document.getElementById("pay-submit");
+    if(b){b.disabled=false;b.textContent="✅ تأكيد الاشتراك";}
   }
+}
+/* ─── حالة طلب الدفع (تظهر في صفحة VIP) ─── */
+async function loadPayStatus(){
+  const el=document.getElementById("pay-status-card");if(!el)return;
+  const userTok=DB.g("userTok","");
+  if(!userTok){el.innerHTML="";return;}
+  el.innerHTML=`<div class="empty" style="padding:13px;"><div style="font-size:18px;">⏳</div><div style="font-size:11px;">جارٍ تحميل حالة الطلب...</div></div>`;
+  try{
+    const r=await fetch("/api/payments/my",{headers:{Authorization:"Bearer "+userTok}});
+    const j=await r.json().catch(()=>null);
+    if(!j||j.status!=="ok"){el.innerHTML="";return;}
+    const reqs=j.requests||[];
+    const pen=reqs.find(q=>q.status==="pending");
+    const last=reqs[0];
+    if(pen){
+      el.innerHTML=`<div style="background:var(--aud);border:1px solid rgba(245,158,11,.3);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div><div style="color:var(--au);font-weight:800;font-size:12.5px;">⏳ جاري مراجعة الدفع</div>
+        <div style="color:var(--t4);font-size:10.5px;margin-top:3px;font-family:var(--mono);">عملية ${sanitize(String(pen.tx))} · ${pen.price} ج</div></div>
+        <span class="bdg" style="background:rgba(245,158,11,.12);color:var(--au);">قيد المراجعة</span></div>`;
+    }else if(last&&last.status==="rejected"){
+      el.innerHTML=`<div style="background:var(--dnd);border:1px solid rgba(239,68,68,.3);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div><div style="color:var(--dn);font-weight:800;font-size:12.5px;">✕ تم رفض طلب الدفع</div>
+        ${last.notes?`<div style="color:var(--t4);font-size:10.5px;margin-top:3px;">السبب: ${sanitize(String(last.notes))}</div>`:""}</div>
+        <button class="btn btn-au" style="padding:7px 14px;font-size:11px;" onclick="openSub()">إعادة الطلب</button></div>`;
+    }else el.innerHTML="";
+  }catch(e){el.innerHTML="";}
+}
+function viewProof(src){
+  const ov=document.createElement("div");
+  ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:2000;display:flex;align-items:center;justify-content:center;padding:18px;cursor:zoom-out;";
+  ov.onclick=()=>ov.remove();
+  ov.innerHTML=`<img src="${src}" alt="إثبات الدفع" style="max-width:100%;max-height:100%;border-radius:12px;"/>`;
+  document.body.appendChild(ov);
 }
 
 /* ═══════════════════ AI REWRITER ═══════════════════ */
@@ -3933,10 +4042,13 @@ async function renderAdmReqs(el){
           <div style="color:var(--t4);font-size:10.5px;font-family:var(--mono);">${sanitize(req.phone)}</div>
           <div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;">
             <span class="bdg" style="background:var(--aud);color:var(--au);">${PLANS[req.planKey]?.l||sanitize(req.planKey)} — ${req.price||""} ج</span>
-            <span class="bdg" style="background:var(--bld);color:#93c5fd;">${sanitize(req.payMethod||"")}</span>
+            <span class="bdg" style="background:var(--bld);color:#93c5fd;">${req.payMethod==="vodafone"?"🔴 فودافون كاش":sanitize(req.payMethod||"")}</span>
             <span class="bdg" style="background:var(--s1);color:var(--t4);font-family:var(--mono);font-size:9px;">TX:${sanitize(req.tx)}</span>
           </div>
           <div style="color:var(--t5);font-size:9.5px;margin-top:3px;">${new Date(req.createdAt||req.at).toLocaleString("ar-EG")}</div>
+          ${req.proofImage
+            ?`<div style="margin-top:7px;"><img src="${req.proofImage}" alt="إثبات الدفع" style="max-height:130px;max-width:100%;border-radius:9px;cursor:zoom-in;border:1px solid var(--b1);" onclick="viewProof(this.src)"/>${req.proofName?`<div style="color:var(--t5);font-size:9.5px;margin-top:3px;">📎 ${sanitize(req.proofName)}</div>`:""}</div>`
+            :`<div style="margin-top:7px;color:var(--dn);font-size:10px;">⚠️ لا يوجد إثبات مرفق بهذا الطلب</div>`}
         </div>
         <div style="display:flex;gap:4px;">
           ${req.status==="pending"
@@ -4097,6 +4209,12 @@ async function delAdmSource(id){
 async function renderAdmPlans(el){
   el.innerHTML=`
     <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:13px;margin-bottom:14px;">
+      <div style="color:var(--au);font-weight:800;font-size:12.5px;margin-bottom:10px;">📱 إعدادات الدفع — Vodafone Cash</div>
+      ${aFormRow(aIn("aps-num","رقم محفظة Vodafone Cash","maxlength='11' style='direction:ltr'"),aIn("aps-price","عرض السعر الشهري (اختياري)","type='number' min='0'"))}
+      ${aBtn("حفظ رقم المحفظة ✓","savePaySettings()")}
+      <div id="aps-msg" style="color:var(--t5);font-size:10px;margin-top:6px;"></div>
+    </div>
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:13px;margin-bottom:14px;">
       <div style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:10px;">💎 إضافة خطة اشتراك</div>
       ${aFormRow(aIn("apl-key","مفتاح (monthly, yearly...)","maxlength='40'"),aIn("apl-name","الاسم بالعربية","maxlength='100'"))}
       ${aFormRow(aIn("apl-price","السعر (جنيه)","type='number' min='0'"),aIn("apl-dur","المدة (شهور)","type='number' min='1'"))}
@@ -4105,7 +4223,35 @@ async function renderAdmPlans(el){
       ${aBtn("حفظ الخطة ✓","saveAdmPlan()")}
     </div>
     <div id="apl-list"><div class="empty"><div style="font-size:24px;">⏳</div></div></div>`;
+  await loadPaySettings();
   await loadAdmPlans();
+}
+async function loadPaySettings(){
+  try{
+    const r=await admFetch("/api/admin/settings/payment");
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok") return;
+    const num=document.getElementById("aps-num"),pr=document.getElementById("aps-price");
+    if(num)num.value=j.settings.payment_vodafone_number||"";
+    if(pr)pr.value=j.settings.payment_vodafone_price||"";
+  }catch(e){}
+}
+async function savePaySettings(){
+  const num=(document.getElementById("aps-num")&&document.getElementById("aps-num").value||"").trim();
+  const priceRaw=document.getElementById("aps-price")&&document.getElementById("aps-price").value;
+  const price=Number(priceRaw);
+  if(!/^01[0-9]{9}$/.test(num)){showToast("⚠️ رقم المحفظة يجب أن يكون 11 رقمًا يبدأ بـ 01");return;}
+  const body={payment_vodafone_number:num};
+  if(priceRaw!==""&&priceRaw!==undefined){
+    if(!Number.isFinite(price)||price<0){showToast("⚠️ سعر غير صحيح");return;}
+    body.payment_vodafone_price=price;
+  }
+  try{
+    const r=await admFetch("/api/admin/settings/payment",{method:"PUT",body:JSON.stringify(body)});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحفظ"));return;}
+    showToast("✅ تم الحفظ — الرقم الجديد يظهر للمستخدمين فورًا");
+  }catch(e){showToast("❌ "+String(e.message||e));}
 }
 
 async function loadAdmPlans(){
@@ -4128,12 +4274,27 @@ async function loadAdmPlans(){
             ${p.features&&p.features.length?`<div style="color:var(--t4);font-size:10px;margin-top:4px;">${p.features.map(f=>`✓ ${sanitize(f)}`).join(" · ")}</div>`:""}
           </div>
           <div style="display:flex;flex-direction:column;gap:5px;">
+            <button class="r-btn" style="font-size:10px;background:var(--s1);color:var(--t2);" onclick="editAdmPlanPrice(${p.id},${p.price},'${sanitize(p.key)}')">✏️ السعر</button>
             <button class="r-btn" style="font-size:10px;background:${p.isActive?"var(--dnd)":"var(--gd)"};color:${p.isActive?"var(--dn)":"var(--g)"};" onclick="toggleAdmPlan(${p.id},${!p.isActive})">${p.isActive?"تعطيل":"تفعيل"}</button>
             <button class="r-btn rej" style="font-size:10px;" onclick="delAdmPlan(${p.id},'${sanitize(p.nameAr)}')">حذف</button>
           </div>
         </div>
       </div>`).join(""):`<div class="empty" style="padding:20px;"><div style="font-size:26px;">💎</div><div>لا توجد خطط بعد</div></div>`;
   }catch(e){const el=document.getElementById("apl-list");if(el)el.innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;}
+}
+
+async function editAdmPlanPrice(id,cur,key){
+  const v=prompt(`سعر الخطة «${key}» (جنيه):`,cur);
+  if(v===null)return;
+  const price=Number(v);
+  if(!Number.isFinite(price)||price<0){showToast("⚠️ سعر غير صحيح");return;}
+  try{
+    const r=await admFetch(`/api/admin/plans/${id}`,{method:"PUT",body:JSON.stringify({price})});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
+    showToast("✅ تم تحديث السعر — ظهر للمستخدمين فورًا");
+    await loadAdmPlans();
+  }catch(e){showToast("❌ "+String(e.message||e));}
 }
 
 async function saveAdmPlan(){
@@ -4511,8 +4672,9 @@ async function admApp(id){
   renderAdmStats();admTab("reqs");
 }
 async function admRej(id){
+  const reason=prompt("سبب الرفض (يظهر للمستخدم مع حالته):")||"";
   try{
-    const r=await admFetch(`/api/admin/requests/${encodeURIComponent(id)}`,{method:"PUT",body:JSON.stringify({status:"rejected"})});
+    const r=await admFetch(`/api/admin/requests/${encodeURIComponent(id)}`,{method:"PUT",body:JSON.stringify({status:"rejected",notes:reason})});
     const j=await r.json();
     if(!r.ok){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
   }catch(e){showToast("❌ "+String(e.message||e));return;}

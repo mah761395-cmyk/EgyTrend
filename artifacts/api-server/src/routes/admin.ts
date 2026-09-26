@@ -12,6 +12,7 @@ import { db } from "@workspace/db";
 import {
   employeesTable, subscriptionPlansTable, couponsTable,
   auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable, appUsersTable,
+  appSettingsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, like, or, sql } from "drizzle-orm";
 
@@ -80,7 +81,7 @@ const payReqMap = new Map<string, number[]>();
 const PAY_REQ_MAX    = 3;
 const PAY_REQ_WINDOW = 10 * 60 * 1000; // 10 min
 
-function checkPayRateLimit(phone: string): "ok" | "limited" {
+export function checkPayRateLimit(phone: string): "ok" | "limited" {
   const now  = Date.now();
   const hits = (payReqMap.get(phone) || []).filter(t => now - t < PAY_REQ_WINDOW);
   if (hits.length >= PAY_REQ_MAX) return "limited";
@@ -872,9 +873,21 @@ router.get("/requests", requireAuth, requireRole("super_admin", "admin", "suppor
     const statusFilter = String(req.query["status"] || "").trim();
     let rows;
     if (statusFilter && ["pending", "approved", "rejected"].includes(statusFilter)) {
-      rows = await db.select().from(paymentRequestsTable).where(eq(paymentRequestsTable.status, statusFilter)).orderBy(desc(paymentRequestsTable.createdAt)).limit(300);
+      rows = await db.select({
+        id: paymentRequestsTable.id, phone: paymentRequestsTable.phone, name: paymentRequestsTable.name,
+        planKey: paymentRequestsTable.planKey, payMethod: paymentRequestsTable.payMethod,
+        price: paymentRequestsTable.price, tx: paymentRequestsTable.tx, status: paymentRequestsTable.status,
+        notes: paymentRequestsTable.notes, proofImage: paymentRequestsTable.proofImage,
+        proofName: paymentRequestsTable.proofName, createdAt: paymentRequestsTable.createdAt,
+      }).from(paymentRequestsTable).where(eq(paymentRequestsTable.status, statusFilter)).orderBy(desc(paymentRequestsTable.createdAt)).limit(300);
     } else {
-      rows = await db.select().from(paymentRequestsTable).orderBy(desc(paymentRequestsTable.createdAt)).limit(300);
+      rows = await db.select({
+        id: paymentRequestsTable.id, phone: paymentRequestsTable.phone, name: paymentRequestsTable.name,
+        planKey: paymentRequestsTable.planKey, payMethod: paymentRequestsTable.payMethod,
+        price: paymentRequestsTable.price, tx: paymentRequestsTable.tx, status: paymentRequestsTable.status,
+        notes: paymentRequestsTable.notes, proofImage: paymentRequestsTable.proofImage,
+        proofName: paymentRequestsTable.proofName, createdAt: paymentRequestsTable.createdAt,
+      }).from(paymentRequestsTable).orderBy(desc(paymentRequestsTable.createdAt)).limit(300);
     }
     res.json({ status: "ok", requests: rows });
   } catch (e) {
@@ -893,6 +906,19 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
   try {
     const [existing] = await db.select().from(paymentRequestsTable).where(eq(paymentRequestsTable.id, id));
     if (!existing) { res.status(404).json({ status: "error", message: "request not found" }); return; }
+    if (existing.status !== "pending") {
+      /* Already decided — keep the endpoint idempotent-safe and re-armable:
+       * a rejected request CAN be approved later (user fixed the proof),
+       * an approved one cannot be un-approved through this path. */
+      if (status === "rejected" && existing.status === "approved") {
+        res.status(409).json({ status: "error", message: "الطلب مقبول بالفعل ولا يمكن رفضه" });
+        return;
+      }
+      if (status === existing.status) {
+        res.json({ status: "ok", already: true });
+        return;
+      }
+    }
     await db.update(paymentRequestsTable)
       .set({ status: String(status), notes: notes ? String(notes).slice(0, 200) : null, updatedAt: new Date() })
       .where(eq(paymentRequestsTable.id, id));
@@ -902,10 +928,14 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
       }).from(subscriptionPlansTable)
         .where(and(eq(subscriptionPlansTable.key, existing.planKey), eq(subscriptionPlansTable.isActive, true)))
         .limit(1);
-      const [user] = await db.select({ id: appUsersTable.id }).from(appUsersTable)
+      const [user] = await db.select({ id: appUsersTable.id, plan: appUsersTable.plan, vipExpiresAt: appUsersTable.vipExpiresAt }).from(appUsersTable)
         .where(eq(appUsersTable.phone, existing.phone)).limit(1);
       if (plan && user) {
-        const expires = new Date();
+        /* Stack on an existing active VIP instead of restarting it. */
+        const base = user.plan === "vip" && user.vipExpiresAt && new Date(user.vipExpiresAt) > new Date()
+          ? new Date(user.vipExpiresAt)
+          : new Date();
+        const expires = new Date(base);
         expires.setMonth(expires.getMonth() + plan.durationMonths);
         await db.update(appUsersTable).set({
           plan: "vip",
@@ -918,6 +948,68 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
     res.json({ status: "ok" });
   } catch (e) {
     logger.error({ err: e }, "payment request update error");
+    res.status(500).json({ status: "error", message: String(e) });
+  }
+});
+
+/* ════════════════════════════════════════════
+   PAYMENT SETTINGS (Vodafone Cash wallet + price)
+════════════════════════════════════════════ */
+const PAYMENT_SETTING_KEYS = ["payment_vodafone_number", "payment_vodafone_price", "payment_instructions"];
+
+/* Read current payment settings (super_admin/admin/support). */
+router.get("/settings/payment", requireAuth, requireRole("super_admin", "admin", "support"), async (_req, res: Response) => {
+  try {
+    const rows = await db.select().from(appSettingsTable);
+    const out: Record<string, string> = {};
+    for (const k of PAYMENT_SETTING_KEYS) {
+      const r = rows.find((x) => x.key === k);
+      out[k] = r?.value ?? (k === "payment_vodafone_number" ? "01008605139" : k === "payment_vodafone_price" ? "99" : "");
+    }
+    res.json({ status: "ok", settings: out });
+  } catch (e) {
+    res.status(500).json({ status: "error", message: String(e) });
+  }
+});
+
+/* Update payment settings (super_admin/admin). */
+router.put("/settings/payment", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const b = (req.body || {}) as Record<string, unknown>;
+  const updates: Array<[string, string]> = [];
+  if (b.payment_vodafone_number !== undefined) {
+    const num = String(b.payment_vodafone_number).replace(/\s/g, "");
+    if (!/^01[0-9]{9}$/.test(num)) {
+      res.status(400).json({ status: "error", message: "رقم المحفظة يجب أن يكون رقم موبايل مصري (11 رقمًا يبدأ بـ 01)" });
+      return;
+    }
+    updates.push(["payment_vodafone_number", num]);
+  }
+  if (b.payment_vodafone_price !== undefined) {
+    const p = Number(b.payment_vodafone_price);
+    if (!Number.isFinite(p) || p < 0 || p > 100000) {
+      res.status(400).json({ status: "error", message: "سعر غير صحيح" });
+      return;
+    }
+    updates.push(["payment_vodafone_price", String(Math.round(p))]);
+  }
+  if (b.payment_instructions !== undefined) {
+    updates.push(["payment_instructions", String(b.payment_instructions).slice(0, 300)]);
+  }
+  if (!updates.length) {
+    res.status(400).json({ status: "error", message: "لا توجد تعديلات" });
+    return;
+  }
+  try {
+    for (const [key, value] of updates) {
+      await db
+        .insert(appSettingsTable)
+        .values({ key, value, updatedAt: new Date() })
+        .onConflictDoUpdate({ target: appSettingsTable.key, set: { value, updatedAt: new Date() } });
+    }
+    await auditLog("update_payment_settings", req.actor, "payment", Object.fromEntries(updates), req.ip);
+    res.json({ status: "ok" });
+  } catch (e) {
+    logger.error({ err: e }, "payment settings update error");
     res.status(500).json({ status: "error", message: String(e) });
   }
 });

@@ -12,6 +12,9 @@ export const paymentRequestsTable = pgTable("payment_requests", {
   tx: text("tx").notNull(),
   status: text("status").notNull().default("pending"),
   notes: text("notes"),
+  /* Payment proof uploaded by the user: data URL (≤ ~290KB) + original file name. */
+  proofImage: text("proof_image"),
+  proofName: text("proof_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
