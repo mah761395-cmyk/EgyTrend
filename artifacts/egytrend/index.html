@@ -1188,7 +1188,6 @@ const SOURCES = [
   {id:"aljazeera",    name:"الجزيرة",        icon:"🌐",lang:"ar",cat:"global", color:"#f59e0b"},
   {id:"bbcar",        name:"BBC عربي",       icon:"🔵",lang:"ar",cat:"global", color:"#e2001a"},
   {id:"alain",        name:"العين",          icon:"👁️",lang:"ar",cat:"global", color:"#6366f1"},
-  {id:"skynewsar",    name:"سكاي نيوز عربية",icon:"🛰️",lang:"ar",cat:"global", color:"#38bdf8"},
   {id:"aleqtisadiyah",name:"الاقتصادية",     icon:"📰", lang:"ar",cat:"global", color:"#7c3aed"},
   {id:"asharq",       name:"بلومبرج الشرق",  icon:"💼", lang:"ar",cat:"global", color:"#f59e0b"},
   {id:"cnnar",        name:"CNN عربي",        icon:"📺", lang:"ar",cat:"global", color:"#cc0000"},
@@ -2662,7 +2661,7 @@ function vBuildMkts(b){
       <button onclick="refreshVipMkts()" style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);color:#93c5fd;font-size:10px;padding:4px 10px;border-radius:7px;cursor:pointer;font-family:var(--sans);">↻ تحديث</button>
     </div>
     ${["eg","gl","cm","cr"].map(k=>`
-      ${vSect(secName[k])}
+      ${vSect("📊",secName[k])}
       <div class="vhome-grid" style="margin-bottom:4px;">
         ${liveMarkets[k].map(m=>`
           <div class="vstat"${m.clickable?` onclick="openEgx('${(m.n||"").replace(/'/g,"")}')"`:""} style="${m.clickable?"cursor:pointer;":""}">

@@ -170,15 +170,6 @@
     "color": "#0ea5e9",
     "url": "https://news.google.com/rss/search?q=site:mubasher.info+%D8%A3%D8%B3%D9%87%D9%85+%D8%A8%D9%88%D8%B1%D8%B5%D8%A9+when:2d&hl=ar&gl=EG&ceid=EG:ar"
   },
-  "skynewsar": {
-    "id": "skynewsar",
-    "name": "سكاي نيوز عربية",
-    "icon": "🛰️",
-    "lang": "ar",
-    "cat": "global",
-    "color": "#38bdf8",
-    "url": "https://www.skynewsarabia.com/rss.xml"
-  },
   "argaam": {
     "id": "argaam",
     "name": "أرقام",
