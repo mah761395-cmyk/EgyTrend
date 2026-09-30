@@ -442,7 +442,22 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 #toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%) translateY(14px);background:#061410;border:1px solid rgba(16,185,129,.28);border-radius:12px;padding:9px 18px;color:var(--g);font-size:12.5px;font-weight:600;z-index:9999;opacity:0;transition:all .28s;pointer-events:none;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.4);}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
-/* ═══════════════════ DESKTOP / LAPTOP RESPONSIVE ═══════════════════ */
+/* ═══════════════════ PAY METHODS / NOTIFS ═══════════════════ */
+.pay-methods{display:flex;gap:6px;flex-wrap:wrap;}
+.pay-methods .cp{padding:7px 12px;}
+.pay-methods .cp.active{background:var(--au);color:#111;border-color:var(--au);}
+@keyframes payPulse{0%,100%{opacity:1}50%{opacity:.55}}
+.pay-pulse{animation:payPulse 1.8s ease-in-out infinite;}
+.adm-old{border-right:3px solid var(--red)!important;padding-right:8px;}
+.plat-notif{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10001;
+  background:var(--aud);border:1px solid var(--au);border-radius:14px;padding:12px 18px;
+  box-shadow:0 12px 40px rgba(0,0,0,.55);display:flex;align-items:center;gap:10px;max-width:92vw;
+  animation:notifIn .35s cubic-bezier(.2,.9,.3,1.2);}
+@keyframes notifIn{from{opacity:0;transform:translate(-50%,-24px)}to{opacity:1;transform:translate(-50%,0)}}
+.plat-notif .pn-emoji{font-size:24px;}
+.plat-notif .pn-title{color:var(--t1);font-weight:800;font-size:13.5px;}
+.plat-notif .pn-body{color:var(--t2);font-size:12.5px;margin-top:2px;}
+.plat-notif .pn-x{margin-right:6px;color:var(--t3);cursor:pointer;font-size:16px;background:none;border:0;}
 @media (min-width: 1024px){
   body{background:radial-gradient(ellipse at 80% -10%,#051a0e 0%,var(--ink) 50%);}
   #app{max-width:1400px;margin:0 auto;padding-right:240px;position:relative;min-height:100vh;border-left:1px solid var(--b1);border-right:1px solid var(--b1);}
@@ -1334,6 +1349,7 @@ function bootApp(){
   maybeRequestNotifPerm();
   updateBellBadge();
   checkAutoNotifs();
+  startPayNotifPolling();
   setInterval(fetchMarketsData,60000);
   setInterval(fetchCalendarData,30*60*1000);
   setInterval(()=>fetchAllNews(true), 5*60*1000);
@@ -2270,7 +2286,7 @@ function renderVIP(){
       <div style="background:var(--s1);border:1px solid var(--b1);border-radius:16px;padding:15px 13px;margin-bottom:14px;">
         <div style="color:var(--au);font-weight:900;font-size:14px;margin-bottom:11px;text-align:center;">📱 طريقة الاشتراك في VIP</div>
         <div style="display:flex;flex-direction:column;gap:8px;">
-          ${[["1️⃣","اختر اشتراك VIP"],["2️⃣","حوّل قيمة الاشتراك إلى رقم Vodafone Cash الظاهر أمامك"],["3️⃣","اضغط «نسخ الرقم» لنسخ رقم المحفظة"],["4️⃣","بعد التحويل، ارفع Screenshot لإثبات الدفع وأدخل بيانات العملية"],["5️⃣","اضغط «تأكيد الاشتراك»"],["6️⃣","سيتم مراجعة التحويل وتفعيل VIP بعد تأكيد الدفع"]].map(s=>`
+          ${[["1️⃣","اختر اشتراك VIP"],["2️⃣","حوّل قيمة الاشتراك إلى رقم وسيلة الدفع التي تختارها (فودافون كاش · أورنج كاش · اتصالات كاش · إنستاباي)"],["3️⃣","اضغط «نسخ الرقم» لنسخ رقم المحفظة"],["4️⃣","بعد التحويل، ارفع Screenshot لإثبات الدفع وأدخل بيانات العملية"],["5️⃣","اضغط «تأكيد الاشتراك»"],["6️⃣","سيتم مراجعة التحويل وتفعيل VIP بعد تأكيد الدفع"]].map(s=>`
           <div style="display:flex;align-items:flex-start;gap:9px;background:var(--aud);border-radius:10px;padding:8px 10px;">
             <span style="font-size:15px;flex-shrink:0;">${s[0]}</span>
             <span style="color:var(--t2);font-size:11.5px;line-height:1.6;">${s[1]}</span>
@@ -3616,10 +3632,14 @@ async function analyzePort(){
 
 /* ═══════════════════ SUB MODAL (Vodafone Cash) ═══════════════════ */
 let SUB_PLANS=null;       /* live plans from /api/payments/config (admin-editable prices) */
-let SUB_WALLET="01008605139";
+let SUB_METHODS=null;     /* enabled payment methods from /api/payments/config */
+let SUB_METHOD="vodafone";
+const SUB_METHOD_META={vodafone:{emoji:"🔴",label:"فودافون كاش"},orange:{emoji:"🟠",label:"أورنج كاش"},etisalat:{emoji:"🟢",label:"اتصالات كاش"},instapay:{emoji:"💳",label:"إنستاباي"}};
+function SUB_M(){const arr=SUB_METHODS||[];return arr.find(m=>m.id===SUB_METHOD)||{id:"vodafone",label:"فودافون كاش",number:"01008605139",instructions:""};}
+function payMethodLabel(id){const m=SUB_METHOD_META[id];return m?m.emoji+" "+m.label:(id||"");}
 let payProofData=null, payProofName="";
 function openSub(){subStep=1;selPlan="monthly";payProofData=null;payProofName="";renderSub();document.getElementById("sub-ov").classList.add("open");loadSubConfig();}
-function closeSub(){document.getElementById("sub-ov").classList.remove("open");}
+function closeSub(){document.getElementById("sub-ov").classList.remove("open");clearPayStatus();}
 function subPlans(){return SUB_PLANS||PLANS;}
 async function loadSubConfig(){
   try{
@@ -3629,7 +3649,10 @@ async function loadSubConfig(){
       const map={};
       (j.plans||[]).forEach(p=>{map[p.key]={l:p.nameAr||p.key,p:p.price,per:p.durationMonths===1?"شهر":(p.durationMonths===3?"٣ شهور":(p.durationMonths===12?"سنة":(p.durationMonths+" شهر"))),m:p.durationMonths,badge:p.badge||""};});
       if(Object.keys(map).length){SUB_PLANS=map;if(!map[selPlan])selPlan=Object.keys(map)[0];}
-      if(j.walletNumber)SUB_WALLET=j.walletNumber;
+      if(Array.isArray(j.methods)&&j.methods.length){
+        SUB_METHODS=j.methods;
+        if(!j.methods.some(m=>m.id===SUB_METHOD))SUB_METHOD=j.methods[0].id;
+      }
       if((subStep===1||subStep===2)&&document.getElementById("sub-ov").classList.contains("open"))renderSub();
     }
   }catch(e){/* keep static fallback */}
@@ -3646,14 +3669,17 @@ function renderSub(){
   } else if(subStep===2){
     const price=P[selPlan]?P[selPlan].p:"";
     el.innerHTML=`
-      <div style="color:var(--t2);font-weight:800;font-size:13.5px;margin-bottom:10px;text-align:center;">🔴 الدفع عبر Vodafone Cash</div>
+      <div style="color:var(--t2);font-weight:800;font-size:13.5px;margin-bottom:10px;text-align:center;">💳 اختر وسيلة الدفع</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+        ${(SUB_METHODS&&SUB_METHODS.length?SUB_METHODS:[SUB_M()]).map(m=>{const meta=SUB_METHOD_META[m.id]||{emoji:"💳"};return `<button class="cp${SUB_METHOD===m.id?" active":""}" onclick="sPayMethod('${m.id}')" style="padding:7px 12px;">${meta.emoji} ${m.label}</button>`;}).join("")}
+      </div>
       <div style="background:var(--aud);border:1px solid rgba(245,158,11,.25);border-radius:13px;padding:13px;margin-bottom:10px;text-align:center;">
         <div style="color:var(--au);font-weight:700;font-size:12.5px;margin-bottom:5px;">حوّل ${price} جنيه إلى رقم المحفظة:</div>
-        <div id="pay-num" style="color:var(--t1);font-size:22px;font-weight:900;font-family:var(--mono);letter-spacing:1.5px;direction:ltr;">${SUB_WALLET}</div>
+        <div id="pay-num" style="color:var(--t1);font-size:22px;font-weight:900;font-family:var(--mono);letter-spacing:1.5px;direction:ltr;">${SUB_M().number}</div>
         <button class="btn btn-g" style="padding:8px 24px;font-size:12px;margin-top:9px;" onclick="copyWallet()">📋 نسخ الرقم</button>
       </div>
       <div style="color:var(--t4);font-size:10.5px;line-height:1.8;margin-bottom:11px;background:var(--s1);border-radius:9px;padding:8px 10px;">
-        1. افتح تطبيق Vodafone Cash وحوّل ${price} جنيه للرقم أعلاه<br/>
+        1. افتح تطبيق ${SUB_M().label} وحوّل ${price} جنيه للرقم أعلاه<br/>
         2. خذ Screenshot لرسالة تأكيد التحويل<br/>
         3. أدخل رقم العملية وارفع الصورة هنا
       </div>
@@ -3668,13 +3694,16 @@ function renderSub(){
   }
 }
 function sPlan(k){selPlan=k;renderSub();}
+function sPayMethod(m){SUB_METHOD=m;renderSub();}
 function copyWallet(){
-  const done=()=>showToast("✅ تم نسخ رقم المحفظة: "+SUB_WALLET);
-  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(SUB_WALLET).then(done).catch(()=>copyWalletFallback(done));}
+  const num=SUB_M().number;
+  const done=()=>showToast("✅ تم نسخ رقم المحفظة: "+num);
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(num).then(done).catch(()=>copyWalletFallback(done));}
   else copyWalletFallback(done);
 }
 function copyWalletFallback(done){
-  try{const t=document.createElement("textarea");t.value=SUB_WALLET;t.style.position="fixed";t.style.opacity="0";document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);done();}catch(e){showToast("رقم المحفظة: "+SUB_WALLET);}
+  const num=SUB_M().number;
+  try{const t=document.createElement("textarea");t.value=num;t.style.position="fixed";t.style.opacity="0";document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);done();}catch(e){showToast("رقم المحفظة: "+num);}
 }
 function compressImage(file,maxDim,q){
   return new Promise((res,rej)=>{
@@ -3716,7 +3745,7 @@ async function submitPay(){
     const headers={"Content-Type":"application/json"};
     const userTok=DB.g("userTok","");
     if(userTok)headers.Authorization="Bearer "+userTok;
-    const response=await fetch("/api/payments",{method:"POST",headers,body:JSON.stringify({planKey:selPlan,tx,proofImage:payProofData,proofName:payProofName})});
+    const response=await fetch("/api/payments",{method:"POST",headers,body:JSON.stringify({planKey:selPlan,method:SUB_METHOD,tx,proofImage:payProofData,proofName:payProofName})});
     const result=await response.json().catch(()=>null);
     if(!response.ok||!result||result.status!=="ok") throw new Error((result&&result.message)||"تعذر إرسال الطلب");
     payProofData=null;payProofName="";
@@ -3741,8 +3770,9 @@ async function loadPayStatus(){
     const pen=reqs.find(q=>q.status==="pending");
     const last=reqs[0];
     if(pen){
+      const meta=SUB_METHOD_META[pen.method]||{emoji:"💳",label:pen.method||""};
       el.innerHTML=`<div style="background:var(--aud);border:1px solid rgba(245,158,11,.3);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-        <div><div style="color:var(--au);font-weight:800;font-size:12.5px;">⏳ جاري مراجعة الدفع</div>
+        <div><div class="pay-pulse" style="color:var(--au);font-weight:800;font-size:12.5px;">⏳ جاري مراجعة الدفع</div>
         <div style="color:var(--t4);font-size:10.5px;margin-top:3px;font-family:var(--mono);">عملية ${sanitize(String(pen.tx))} · ${pen.price} ج</div></div>
         <span class="bdg" style="background:rgba(245,158,11,.12);color:var(--au);">قيد المراجعة</span></div>`;
     }else if(last&&last.status==="rejected"){
@@ -4034,16 +4064,29 @@ async function renderAdmReqs(el){
     reqs=DB.g("reqs",[]).map(r=>({...r,createdAt:r.at}));
   }
   if(!reqs.length){el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">📋</div><div>لا توجد طلبات</div></div>`;return;}
-  el.innerHTML=reqs.map(req=>`
-    <div class="req-c ${req.status}">
+  const pend=reqs.filter(r=>r.status==="pending");
+  const oldPend=pend.filter(r=>(Date.now()-new Date(r.createdAt||r.at).getTime())>3600000);
+  let banner="";
+  if(oldPend.length){
+    banner=`<div class="pay-pulse" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:12px;padding:10px 14px;margin-bottom:12px;color:var(--dn);font-weight:800;font-size:12px;">🚨 ${oldPend.length} طلب بانتظار المراجعة لأكثر من ساعة — راجعها الآن</div>`;
+  }
+  el.innerHTML=banner+reqs.map(req=>{
+    const pendMs=req.status==="pending"?Date.now()-new Date(req.createdAt||req.at).getTime():0;
+    const isOld=pendMs>3600000;
+    const mm=Math.floor(pendMs/60000);
+    const waitTxt=req.status==="pending"?(mm<1?"أقل من دقيقة":mm<60?`منذ ${mm} دقيقة`:`منذ ${Math.floor(mm/60)} س${mm%60?` و${mm%60} د`:""}`):"";
+    const methodBadges={vodafone:"🔴 فودافون كاش",orange:"🟠 أورنج كاش",etisalat:"🟢 اتصالات كاش",instapay:"💳 إنستاباي"};
+    return `
+    <div class="req-c ${req.status}${isOld?" adm-old":""}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
         <div>
           <div style="color:var(--t2);font-weight:700;font-size:13px;">${sanitize(req.name)}</div>
           <div style="color:var(--t4);font-size:10.5px;font-family:var(--mono);">${sanitize(req.phone)}</div>
           <div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;">
             <span class="bdg" style="background:var(--aud);color:var(--au);">${PLANS[req.planKey]?.l||sanitize(req.planKey)} — ${req.price||""} ج</span>
-            <span class="bdg" style="background:var(--bld);color:#93c5fd;">${req.payMethod==="vodafone"?"🔴 فودافون كاش":sanitize(req.payMethod||"")}</span>
+            <span class="bdg" style="background:var(--bld);color:#93c5fd;">${methodBadges[req.payMethod]||sanitize(req.payMethod||"")}</span>
             <span class="bdg" style="background:var(--s1);color:var(--t4);font-family:var(--mono);font-size:9px;">TX:${sanitize(req.tx)}</span>
+            ${req.status==="pending"?`<span class="bdg ${isOld?"pay-pulse":""}" style="background:${isOld?"rgba(239,68,68,.12)":"rgba(245,158,11,.1)"};color:${isOld?"var(--dn)":"var(--au)"};">⏱ ${waitTxt}</span>`:""}
           </div>
           <div style="color:var(--t5);font-size:9.5px;margin-top:3px;">${new Date(req.createdAt||req.at).toLocaleString("ar-EG")}</div>
           ${req.proofImage
@@ -4056,7 +4099,7 @@ async function renderAdmReqs(el){
             :`<span class="bdg" style="background:${req.status==="approved"?"var(--gd)":"var(--dnd)"};color:${req.status==="approved"?"var(--g)":"var(--dn)"};">${req.status==="approved"?"✓ مقبول":"✕ مرفوض"}</span>`}
         </div>
       </div>
-    </div>`).join("");
+    </div>`;}).join("");
 }
 
 /* ─── Articles ─── */
@@ -4209,9 +4252,10 @@ async function delAdmSource(id){
 async function renderAdmPlans(el){
   el.innerHTML=`
     <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:13px;margin-bottom:14px;">
-      <div style="color:var(--au);font-weight:800;font-size:12.5px;margin-bottom:10px;">📱 إعدادات الدفع — Vodafone Cash</div>
-      ${aFormRow(aIn("aps-num","رقم محفظة Vodafone Cash","maxlength='11' style='direction:ltr'"),aIn("aps-price","عرض السعر الشهري (اختياري)","type='number' min='0'"))}
-      ${aBtn("حفظ رقم المحفظة ✓","savePaySettings()")}
+      <div style="color:var(--au);font-weight:800;font-size:12.5px;margin-bottom:10px;">💳 إعدادات وسائل الدفع</div>
+      <div style="color:var(--t4);font-size:10.5px;margin-bottom:10px;">فعّل كل وسيلة واضبط رقمها — تظهر فورًا للمستخدمين في صفحة الاشتراك. للإنستاباي يمكن كتابة IBAN أو عنوان محفظة.</div>
+      <div id="aps-methods"></div>
+      ${aBtn("حفظ إعدادات الوسائل ✓","savePaySettings()")}
       <div id="aps-msg" style="color:var(--t5);font-size:10px;margin-top:6px;"></div>
     </div>
     <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:13px;margin-bottom:14px;">
@@ -4226,31 +4270,44 @@ async function renderAdmPlans(el){
   await loadPaySettings();
   await loadAdmPlans();
 }
+const APS_METHODS=[
+  {id:"vodafone",label:"🔴 فودافون كاش",key:"payment_vodafone_number",wallet:true},
+  {id:"orange",label:"🟠 أورنج كاش",key:"payment_orange_number",wallet:true},
+  {id:"etisalat",label:"🟢 اتصالات كاش",key:"payment_etisalat_number",wallet:true},
+  {id:"instapay",label:"💳 إنستاباي",key:"payment_instapay_number",wallet:false},
+];
 async function loadPaySettings(){
   try{
     const r=await admFetch("/api/admin/settings/payment");
     const j=await r.json();
     if(!r.ok||j.status!=="ok") return;
-    const num=document.getElementById("aps-num"),pr=document.getElementById("aps-price");
-    if(num)num.value=j.settings.payment_vodafone_number||"";
-    if(pr)pr.value=j.settings.payment_vodafone_price||"";
+    const box=document.getElementById("aps-methods");if(!box)return;
+    const st=j.settings||{};
+    box.innerHTML=APS_METHODS.map(m=>`
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;min-width:150px;color:var(--t2);font-size:12px;font-weight:700;cursor:pointer;">
+          <input type="checkbox" id="aps-en-${m.id}" ${st[m.key.replace("_number","_enabled")]!=="0"?"checked":""} style="width:16px;height:16px;accent-color:var(--au);"/> ${m.label}
+        </label>
+        <input id="aps-${m.id}" class="a-in" style="flex:1;min-width:170px;direction:ltr;text-align:left;" placeholder="رقم ${m.label}" value="${sanitize(String(st[m.key]||""))}"/>
+      </div>`).join("");
   }catch(e){}
 }
 async function savePaySettings(){
-  const num=(document.getElementById("aps-num")&&document.getElementById("aps-num").value||"").trim();
-  const priceRaw=document.getElementById("aps-price")&&document.getElementById("aps-price").value;
-  const price=Number(priceRaw);
-  if(!/^01[0-9]{9}$/.test(num)){showToast("⚠️ رقم المحفظة يجب أن يكون 11 رقمًا يبدأ بـ 01");return;}
-  const body={payment_vodafone_number:num};
-  if(priceRaw!==""&&priceRaw!==undefined){
-    if(!Number.isFinite(price)||price<0){showToast("⚠️ سعر غير صحيح");return;}
-    body.payment_vodafone_price=price;
+  const body={};
+  for(const m of APS_METHODS){
+    const en=document.getElementById(`aps-en-${m.id}`);
+    const num=(document.getElementById(`aps-${m.id}`)?.value||"").trim();
+    body[m.key.replace("_number","_enabled")]=en&&en.checked?"1":"0";
+    body[m.key]=num;
+    if(en&&en.checked&&m.wallet&&!/^01[0-9]{9}$/.test(num)){showToast(`⚠️ رقم ${m.label} يجب أن يكون 11 رقمًا يبدأ بـ 01`);return;}
+    if(en&&en.checked&&!m.wallet&&(num.length<5||num.length>60)){showToast("⚠️ أدخل عنوان إنستاباي صحيح");return;}
   }
+  if(!APS_METHODS.some(m=>{const en=body[m.key.replace("_number","_enabled")];return en==="1"&&body[m.key];})){showToast("⚠️ فعّل وسيلة دفع واحدة على الأقل");return;}
   try{
     const r=await admFetch("/api/admin/settings/payment",{method:"PUT",body:JSON.stringify(body)});
     const j=await r.json();
     if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحفظ"));return;}
-    showToast("✅ تم الحفظ — الرقم الجديد يظهر للمستخدمين فورًا");
+    showToast("✅ تم الحفظ — الوسائل تظهر للمستخدمين فورًا");
   }catch(e){showToast("❌ "+String(e.message||e));}
 }
 
@@ -4781,6 +4838,47 @@ function timeAgoNotif(ts){
 function tryBrowserNotif(title,body){
   if(!("Notification"in window)||Notification.permission!=="granted")return;
   try{new Notification("EgyTrend — "+title,{body,icon:"/favicon.ico"});}catch(e){}
+}
+
+/* ═══════════════════ IN-PLATFORM PAYMENT NOTIFICATIONS ═══════════════════
+   Server-pushed (poll /api/payments/notifications): the moment an admin
+   approves or rejects a payment, the user sees a prominent toast + bell. */
+const PAY_NOTIF_SEEN_KEY="pay_notifs_seen_v1";
+let payNotifTimer=null;
+function payNotifsSeen(){return DB.g(PAY_NOTIF_SEEN_KEY,[]);}
+function markPayNotifsSeen(ids){DB.s(PAY_NOTIF_SEEN_KEY,ids);}
+async function pollPayNotifs(){
+  try{
+    const tok=DB.g("userTok","");if(!tok)return;
+    const r=await fetch("/api/payments/notifications",{headers:{Authorization:"Bearer "+tok}});
+    const j=await r.json().catch(()=>null);
+    if(!j||j.status!=="ok"||!Array.isArray(j.notifications))return;
+    if(j.notifications.length){
+      const seen=new Set(payNotifsSeen());
+      const fresh=j.notifications.filter(n=>!seen.has(n.id));
+      if(fresh.length){
+        for(const n of fresh){
+          addNotif("sub",n.title,n.body,"nav:vip",n.icon||"💰");
+          showPlatNotif(n.icon||"💰",n.title,n.body);
+        }
+        markPayNotifsSeen(j.notifications.map(n=>n.id));
+        loadPayStatus();
+      }
+    }
+  }catch(e){}
+}
+function startPayNotifPolling(){
+  if(payNotifTimer)return;
+  pollPayNotifs().finally(()=>{payNotifTimer=setInterval(pollPayNotifs,15000);});
+}
+function showPlatNotif(icon,title,body){
+  try{
+    const old=document.querySelector(".plat-notif");if(old)old.remove();
+    const el=document.createElement("div");el.className="plat-notif";
+    el.innerHTML=`<span class="pn-emoji">${icon}</span><span><div class="pn-title">${sanitize(String(title))}</div><div class="pn-body">${sanitize(String(body))}</div></span><button class="pn-x" onclick="this.parentElement.remove()">✕</button>`;
+    document.body.appendChild(el);
+    setTimeout(()=>{el.style.transition="opacity .4s";el.style.opacity="0";setTimeout(()=>el.remove(),420);},8000);
+  }catch(e){}
 }
 
 function requestNotifPermission(){

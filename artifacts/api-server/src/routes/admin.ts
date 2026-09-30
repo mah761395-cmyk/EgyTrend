@@ -10,8 +10,7 @@ import {
 } from "../lib/dataStore";
 import { db } from "@workspace/db";
 import {
-  employeesTable, subscriptionPlansTable, couponsTable,
-  auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable, appUsersTable,
+  employeesTable, subscriptionPlansTable, couponsTable,   auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable, appUsersTable, userNotificationsTable,
   appSettingsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, like, or, sql } from "drizzle-orm";
@@ -889,7 +888,14 @@ router.get("/requests", requireAuth, requireRole("super_admin", "admin", "suppor
         proofName: paymentRequestsTable.proofName, createdAt: paymentRequestsTable.createdAt,
       }).from(paymentRequestsTable).orderBy(desc(paymentRequestsTable.createdAt)).limit(300);
     }
-    res.json({ status: "ok", requests: rows });
+    /* Pending-age tracking so the UI can flag requests waiting > 1h. */
+    const nowMs = Date.now();
+    const outRows = rows.map((r) =>
+      r.status === "pending"
+        ? { ...r, waitSeconds: Math.max(0, Math.floor((nowMs - new Date(r.createdAt).getTime()) / 1000)) }
+        : r,
+    );
+    res.json({ status: "ok", requests: outRows });
   } catch (e) {
     res.status(500).json({ status: "error", message: String(e) });
   }
@@ -920,7 +926,7 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
       }
     }
     await db.update(paymentRequestsTable)
-      .set({ status: String(status), notes: notes ? String(notes).slice(0, 200) : null, updatedAt: new Date() })
+      .set({ status: String(status), notes: notes ? String(notes).slice(0, 200) : null, updatedAt: new Date(), decidedAt: new Date() })
       .where(eq(paymentRequestsTable.id, id));
     if (status === "approved") {
       const [plan] = await db.select({
@@ -944,6 +950,30 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
         }).where(eq(appUsersTable.id, user.id));
       }
     }
+    /* In-platform notification so the user learns the decision without asking support. */
+    try {
+      let planNameAr = existing.planKey;
+      try {
+        const [p] = await db.select({ nameAr: subscriptionPlansTable.nameAr }).from(subscriptionPlansTable)
+          .where(eq(subscriptionPlansTable.key, existing.planKey)).limit(1);
+        if (p?.nameAr) planNameAr = p.nameAr;
+      } catch { /* keep key */ }
+      const notifId = `un-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      await db.insert(userNotificationsTable).values({
+        id: notifId,
+        phone: existing.phone,
+        kind: status === "approved" ? "payment_approved" : "payment_rejected",
+        title: status === "approved" ? "🎉 تم تفعيل اشتراك VIP" : "تحديث بخصوص طلب الدفع",
+        body:
+          status === "approved"
+            ? `تم تأكيد دفعتك (${planNameAr}) وتفعيل اشتراك VIP بنجاح. مبروك!`
+            : notes
+              ? `تم رفض طلب الدفع. السبب: ${String(notes).slice(0, 150)}`
+              : "تم رفض طلب الدفع. يمكنك إعادة الطلب بعد تصحيح بيانات التحويل.",
+      });
+    } catch (ne) {
+      logger.error({ err: ne }, "user notification insert failed (non-fatal)");
+    }
     await auditLog(`request_${status}`, req.actor, existing.phone, { id, planKey: existing.planKey, tx: existing.tx }, req.ip);
     res.json({ status: "ok" });
   } catch (e) {
@@ -955,7 +985,17 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
 /* ════════════════════════════════════════════
    PAYMENT SETTINGS (Vodafone Cash wallet + price)
 ════════════════════════════════════════════ */
-const PAYMENT_SETTING_KEYS = ["payment_vodafone_number", "payment_vodafone_price", "payment_instructions"];
+/* Per-method wallet settings — a method is "enabled" (shown to users) iff its
+ * number is set. InstaPay uses the same number field (wallet/UPN). */
+const PAY_METHODS = [
+  { id: "vodafone", label: "فودافون كاش" },
+  { id: "orange", label: "أورنج كاش" },
+  { id: "etisalat", label: "اتصالات كاش" },
+  { id: "instapay", label: "إنستاباي" },
+] as const;
+const PAYMENT_SETTING_KEYS = [
+  ...PAY_METHODS.flatMap((m) => [`payment_${m.id}_number`, `payment_${m.id}_instructions`, `payment_${m.id}_enabled`]),
+];
 
 /* Read current payment settings (super_admin/admin/support). */
 router.get("/settings/payment", requireAuth, requireRole("super_admin", "admin", "support"), async (_req, res: Response) => {
@@ -964,9 +1004,9 @@ router.get("/settings/payment", requireAuth, requireRole("super_admin", "admin",
     const out: Record<string, string> = {};
     for (const k of PAYMENT_SETTING_KEYS) {
       const r = rows.find((x) => x.key === k);
-      out[k] = r?.value ?? (k === "payment_vodafone_number" ? "01008605139" : k === "payment_vodafone_price" ? "99" : "");
+      out[k] = r?.value ?? (k === "payment_vodafone_number" ? "01008605139" : "");
     }
-    res.json({ status: "ok", settings: out });
+    res.json({ status: "ok", settings: out, methods: PAY_METHODS });
   } catch (e) {
     res.status(500).json({ status: "error", message: String(e) });
   }
@@ -976,24 +1016,39 @@ router.get("/settings/payment", requireAuth, requireRole("super_admin", "admin",
 router.put("/settings/payment", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const b = (req.body || {}) as Record<string, unknown>;
   const updates: Array<[string, string]> = [];
-  if (b.payment_vodafone_number !== undefined) {
-    const num = String(b.payment_vodafone_number).replace(/\s/g, "");
-    if (!/^01[0-9]{9}$/.test(num)) {
-      res.status(400).json({ status: "error", message: "رقم المحفظة يجب أن يكون رقم موبايل مصري (11 رقمًا يبدأ بـ 01)" });
-      return;
+  for (const m of PAY_METHODS) {
+    const ek = `payment_${m.id}_enabled`;
+    const enVal = b[ek] !== undefined ? (String(b[ek]) === "1" ? "1" : "0") : undefined;
+    if (enVal !== undefined) updates.push([ek, enVal]);
+    const k = `payment_${m.id}_number`;
+    if (b[k] !== undefined) {
+      const num = String(b[k]).replace(/\s/g, "");
+      if (num === "") {
+        /* Clearing the number hides the method — but not while enabling it in the same request. */
+        if (enVal === "1") {
+          res.status(400).json({ status: "error", message: `أدخل رقم ${m.label} أو عطّل الوسيلة` });
+          return;
+        }
+      } else {
+        /* InstaPay addresses may be alphanumeric; wallets must be Egyptian mobile numbers. */
+        const okNum = m.id === "instapay" ? /^[A-Za-z0-9@.\-]{6,40}$/.test(num) : /^01[0-9]{9}$/.test(num);
+        if (!okNum) {
+          res.status(400).json({
+            status: "error",
+            message:
+              m.id === "instapay"
+                ? "عنوان إنستاباي غير صحيح (حروف/أرقام 6-40)"
+                : `رقم ${m.label} يجب أن يكون رقم موبايل مصري (11 رقمًا يبدأ بـ 01)`,
+          });
+          return;
+        }
+      }
+      updates.push([k, num]);
     }
-    updates.push(["payment_vodafone_number", num]);
-  }
-  if (b.payment_vodafone_price !== undefined) {
-    const p = Number(b.payment_vodafone_price);
-    if (!Number.isFinite(p) || p < 0 || p > 100000) {
-      res.status(400).json({ status: "error", message: "سعر غير صحيح" });
-      return;
+    const ik = `payment_${m.id}_instructions`;
+    if (b[ik] !== undefined) {
+      updates.push([ik, String(b[ik]).slice(0, 300)]);
     }
-    updates.push(["payment_vodafone_price", String(Math.round(p))]);
-  }
-  if (b.payment_instructions !== undefined) {
-    updates.push(["payment_instructions", String(b.payment_instructions).slice(0, 300)]);
   }
   if (!updates.length) {
     res.status(400).json({ status: "error", message: "لا توجد تعديلات" });
@@ -1010,6 +1065,27 @@ router.put("/settings/payment", requireAuth, requireWriteRate, requireRole("supe
     res.json({ status: "ok" });
   } catch (e) {
     logger.error({ err: e }, "payment settings update error");
+    res.status(500).json({ status: "error", message: String(e) });
+  }
+});
+
+/* ════════════════════════════════════════════
+   USER NOTIFICATIONS (in-platform)
+   Users poll /api/user/notifications (payments.ts). Decisions made here
+   (approve/reject) insert a row; polling surfaces it with the bell badge.
+════════════════════════════════════════════ */
+router.get("/user-notifications", requireAuth, requireRole("super_admin", "admin", "support"), async (req: AuthRequest, res: Response) => {
+  try {
+    const phone = String(req.query["phone"] || "").trim();
+    if (!phone) {
+      res.status(400).json({ status: "error", message: "phone required" });
+      return;
+    }
+    const rows = await db.select().from(userNotificationsTable)
+      .where(eq(userNotificationsTable.phone, phone))
+      .orderBy(desc(userNotificationsTable.createdAt)).limit(50);
+    res.json({ status: "ok", notifications: rows });
+  } catch (e) {
     res.status(500).json({ status: "error", message: String(e) });
   }
 });

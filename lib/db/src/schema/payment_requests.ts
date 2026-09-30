@@ -17,6 +17,8 @@ export const paymentRequestsTable = pgTable("payment_requests", {
   proofName: text("proof_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  /* When an admin approved/rejected the request (pending-age + notifications). */
+  decidedAt: timestamp("decided_at"),
 });
 
 export const insertPaymentRequestSchema = createInsertSchema(paymentRequestsTable).omit({ createdAt: true, updatedAt: true });
