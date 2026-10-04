@@ -15,7 +15,13 @@ async function buildAll() {
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    // index-bridge.ts = serverless bootstrap (Vercel): same bundle without
+    // app.listen()/backup watchdog. Kept in ONE bundle so data files and
+    // node_modules resolve identically for both entries.
+    entryPoints: [
+      path.resolve(artifactDir, "src/index.ts"),
+      path.resolve(artifactDir, "src/index-bridge.ts"),
+    ],
     platform: "node",
     bundle: true,
     format: "esm",

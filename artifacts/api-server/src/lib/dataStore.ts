@@ -6,8 +6,17 @@ import { logger } from "./logger";
 /* The data directory lives next to the build output (dist/) at
  * `<api-server>/data/`. From the bundled entry at `dist/index.mjs`,
  * `../data` resolves correctly. From source-mode tooling it works
- * the same way because we always run via the built bundle. */
+ * the same way because we always run via the built bundle.
+ *
+ * Serverless note (Vercel): the filesystem can be read-only/ephemeral, so
+ * the JSON is ALSO embedded into the bundle via `with { type: "json" }`
+ * import attributes — when the on-disk file can't be read we fall back to
+ * the embedded copy (read-only; admin edits then only live in memory for
+ * the life of the function instance). Writes still work normally when a
+ * writable disk exists (local / VPS). */
 const DATA_DIR = path.resolve(__dirname, "..", "data");
+import embeddedSources from "../../data/sources.json" with { type: "json" };
+import embeddedArticles from "../../data/articles.json" with { type: "json" };
 
 export type SourceMeta = {
   id: string;
@@ -39,39 +48,49 @@ const SOURCES_FILE = path.join(DATA_DIR, "sources.json");
 const ARTICLES_FILE = path.join(DATA_DIR, "articles.json");
 
 /* Synchronous initial load — called once at boot so the rest of the app
- * has data without awaiting. Subsequent reloads use async readJSON. */
-function readJSONSync<T>(file: string, fallback: T): T {
+ * has data without awaiting. Subsequent reloads use async readJSON.
+ * Falls back to the bundle-embedded copy when the disk copy is unreadable
+ * (e.g. read-only serverless filesystem). */
+function readJSONSync<T>(file: string, embedded: T): T {
   try {
     const txt = fsSync.readFileSync(file, "utf8");
     return JSON.parse(txt) as T;
-  } catch (err) {
-    logger.warn({ err, file }, "dataStore: sync read failed, using fallback");
-    return fallback;
+  } catch {
+    return embedded;
   }
 }
 
-async function readJSON<T>(file: string, fallback: T): Promise<T> {
+async function readJSON<T>(file: string, fallback: T, embedded?: T): Promise<T> {
   try {
     const txt = await fs.readFile(file, "utf8");
     return JSON.parse(txt) as T;
-  } catch (err) {
-    logger.warn({ err, file }, "dataStore: read failed, using fallback");
-    return fallback;
+  } catch {
+    /* read-only serverless FS: fall back to the last cache or the embedded copy */
+    return embedded ?? fallback;
   }
 }
 
 async function writeJSONAtomic(file: string, data: unknown): Promise<void> {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
-  await fs.writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
-  await fs.rename(tmp, file);
+  try {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+    await fs.writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
+    await fs.rename(tmp, file);
+  } catch (err) {
+    /* Read-only/ephemeral filesystem (serverless): keep the change in memory
+     * only — the admin action still succeeds for the life of the instance. */
+    logger.warn({ err, file }, "dataStore: disk write unavailable, kept in memory");
+  }
 }
 
 let sourcesCache: Record<string, SourceMeta> = readJSONSync(
   SOURCES_FILE,
-  {} as Record<string, SourceMeta>,
+  embeddedSources as Record<string, SourceMeta>,
 );
-let articlesCache: CustomArticle[] = readJSONSync(ARTICLES_FILE, []);
+let articlesCache: CustomArticle[] = readJSONSync(
+  ARTICLES_FILE,
+  embeddedArticles as CustomArticle[],
+);
 
 /* Watch for external edits to the JSON files (e.g. you edit sources.json
  * by hand) so the cache stays fresh without restart. */

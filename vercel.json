@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "$comment": "EgyTrend على Vercel: واجهة ثابتة + خادم Express كدالة serverless واحدة. المهم في لوحة Vercel: Root Directory = جذر المستودع (بدون تغيير)، Build Command يأتي من هذا الملف تلقائيًا، ومتغير البيئة DATABASE_URL يُضاف من Neon",
+  "buildCommand": "node vercel-build.mjs",
+  "outputDirectory": "artifacts/egytrend/dist/public",
+  "functions": {
+    "api/egytrend.mjs": {
+      "memory": 1024,
+      "maxDuration": 60,
+      "includeFiles": "artifacts/api-server/dist/**,artifacts/api-server/node_modules/**,node_modules/.pnpm/**,lib/db/dist/**,lib/db/node_modules/**,lib/api-zod/dist/**"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/egytrend"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

@@ -171,5 +171,10 @@ overrides:
   "qs": "^6.15.2"
   "brace-expansion": "^2.1.4"
 
-allowBuilds:
-  esbuild: set this to true or false
+# esbuild's postinstall only downloads/validates the platform binary, which
+# already ships as an optional dependency (@esbuild/win32-x64 etc.). Skipping
+# it is safe on any OS — and required where no Node shim exists (this machine
+# runs pnpm through Freebuff's bundled bun). Vercel's Linux build uses
+# @esbuild/linux-x64 the same way.
+ignoredBuiltDependencies:
+  - esbuild
