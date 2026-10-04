@@ -128,6 +128,29 @@ const COPY_TABLES = [
   ["app_settings", "key"],
 ];
 
+/* Serial PK sequences stay at 1 after an explicit-id copy — without this,
+ * the next INSERT (e.g. a new user registering on the live site) collides
+ * with the first migrated row (duplicate key on app_users_pkey). */
+async function fixSequences() {
+  const tables = [
+    "app_users",
+    "employees",
+    "subscription_plans",
+    "coupons",
+    "audit_logs",
+    "ai_config",
+    "ai_usage",
+    "password_resets",
+  ];
+  for (const t of tables) {
+    await target.query(
+      `SELECT setval(pg_get_serial_sequence('${t}', 'id'),
+         GREATEST(COALESCE((SELECT MAX(id) FROM ${t}), 0), 1))`,
+    );
+  }
+  console.log("✔ العدّادات (sequences) مضبوطة على آخر id — الإدراج الجديد آمن");
+}
+
 async function main() {
   console.log("◆ الاتصال بالقاعدة السحابية…");
   await target.connect();
@@ -140,6 +163,7 @@ async function main() {
   console.log("✔ السكيمة كاملة + إعدادات الدفع جاهزة");
 
   if (!copyData) {
+    await fixSequences();
     console.log("ℹ لم تُنسخ البيانات. لنقل مستخدميك وخططك: أضف --copy-data (يتطلب PostgreSQL المحلي شغّالًا)");
     return;
   }
@@ -171,6 +195,7 @@ async function main() {
     }
     console.log(`  • ${table}: ${rows.length} صف محليًا، ${inserted} جديد أُدرج`);
   }
+  await fixSequences();
   console.log("✔ نسخ البيانات اكتمل");
 }
 
