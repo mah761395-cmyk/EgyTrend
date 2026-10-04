@@ -155,7 +155,12 @@ async function main() {
     const cols = Object.keys(rows[0]);
     let inserted = 0;
     for (const row of rows) {
-      const vals = cols.map((c) => row[c]);
+      /* json/jsonb columns arrive as JS objects/arrays — stringify them or
+       * pg would coerce arrays to Postgres array literals (invalid json). */
+      const vals = cols.map((c) => {
+        const v = row[c];
+        return v !== null && typeof v === "object" ? JSON.stringify(v) : v;
+      });
       const placeholders = cols.map((_, i) => `$${i + 1}`).join(",");
       const r = await target.query(
         `INSERT INTO ${table} (${cols.join(",")}) VALUES (${placeholders})
