@@ -136,15 +136,15 @@ function cheapestByPE(stocks: NonNullable<StocksPayload["stocks"]>, n = 3) {
 type Intent = "greeting" | "article" | "market" | "stock" | "advice" | "news" | "portfolio" | "general";
 
 function detectIntent(text: string, stocks?: NonNullable<StocksPayload["stocks"]>): Intent {
-  const t = text.toLowerCase();
-  if (/^(مرحبا|السلام|اهلا|أهلا|هاي|hello|hi|ازيك|إزيك)/.test(t.trim())) return "greeting";
+  // greetings (works on both Arabic and English without normalization)
+  if (/^(مرحبا|السلام|اهلا|أهلا|هاي|hello|hi|ازيك|إزيك)/.test(text.trim())) return "greeting";
   /* Article analysis from the news reader («حلّل هذا الخبر» + المصدر/العنوان/
    * الخلاصة). It must win over every keyword rule below — otherwise the
    * article's own words («الأسهم»، «توصية») route it to the stock-movers list
    * or the generic menu and the user sees a reply that ignores the article. */
   if (/حلّ?ل هذا الخبر/.test(text) || (/العنوان:/.test(text) && /الخلاصة:/.test(text))) return "article";
-  if (/(محفظتي|محفظت|portfolio)/.test(t)) return "portfolio";
-  const wantsAdvice = /(اشتري|أشتري|ابيع|أبيع|هل اشتري|نصيحة|تنصحني|توصية|ادخال|دخول)/.test(t);
+  if (/محفظتي|محفظت|portfolio/i.test(text)) return "portfolio";
+  const wantsAdvice = /(اشتري|أشتري|ابيع|أبيع|هل اشتري|نصيحة|تنصحني|توصية|ادخال|دخول)/i.test(text);
   /* An explicit ticker mention (e.g. "COMI") means the user wants that
    * stock analyzed — this beats generic market keywords that can appear
    * inside a long analysis prompt's embedded context. */
@@ -152,11 +152,10 @@ function detectIntent(text: string, stocks?: NonNullable<StocksPayload["stocks"]
   const symMentioned = !!stocks?.some((s) => s.sym && tu.includes(s.sym));
   if (wantsAdvice) return "advice";
   if (symMentioned) return "stock";
-  /* أخبار / news → news (normalize عشان التعامل مع Unicode لليوميات العربية) */
-  const tn = text.normalize && text.normalize('NFKC') || text;
-  if (tn.includes('أخبار') || tn.includes('اخبار') || tn.includes('خبر') || tn.includes('news') || tn.includes('شريد') || tn.includes('جرجت')) return "news";
-  if (/(السوق|المؤشر|دولار|ذهب|بيتكوين|btc|egx|اسواق|أسواق|عملة|فائدة|حالة السوق)/.test(t)) return "market";
-  if (/(سهم|اسهم|أسهم|بورصة|شركة|comi|abuk|tmgh|hrni|adib|orwe)/.test(t)) return "stock";
+  /* الأخبار / news → news (اختبار مباشر على النص الأصلي عشان ما يُعتمد normalize) */
+  if (/أخبار|اخبار|خبر|news|شريد|جرجت/i.test(text)) return "news";
+  if (/(السوق|المؤشر|دولار|ذهب|بيتكوين|btc|egx|اسواق|أسواق|عملة|فائدة|حالة السوق)/i.test(text)) return "market";
+  if (/(سهم|اسهم|أسهم|بورصة|شركة|comi|abuk|tmgh|hrni|adib|orwe)/i.test(text)) return "stock";
   return "general";
 }
 
