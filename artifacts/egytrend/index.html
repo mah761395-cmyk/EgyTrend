@@ -1138,14 +1138,20 @@ async function callAI({system, messages, max_tokens=2000}){
       const d = await r.json().catch(()=>({}));
       if(r.status===429) throw new Error("rate_limit");
       if(r.status===504) throw new Error("timeout");
-      throw new Error(d.message||"HTTP "+r.status);
+      const err=new Error(d.message||"HTTP "+r.status);
+      err.status=r.status;
+      throw err;
     }
     const d = await r.json();
-    if(d.status!=="ok") throw new Error(d.message||"AI error");
+    if(d.status!=="ok"){
+      const err=new Error(d.message||"AI error");
+      err.status=r.status;
+      throw err;
+    }
     if(!d.text) throw new Error("empty_response");
     return d.text;
   } catch(e){
-    if(e.name==="AbortError") throw new Error("timeout");
+    if(e&&e.name==="AbortError") throw new Error("timeout");
     throw e;
   } finally {
     clearTimeout(tid);
@@ -1154,12 +1160,19 @@ async function callAI({system, messages, max_tokens=2000}){
 
 function aiErrMsg(e){
   const m = e?.message||"";
+  const s = e?.status||0;
   if(m==="ai_not_provisioned") return "🤖 خدمة الذكاء الاصطناعي غير مُفعّلة على الخادم حالياً — تحتاج مفتاح Anthropic (ANTHROPIC_API_KEY).";
   if(m==="ai_disabled_by_admin") return "⚙️ المشرف أوقف خدمة الذكاء الاصطناعي مؤقتاً من لوحة التحكم.";
   if(m==="timeout"||m.includes("timeout")) return "⌛ انتهت مهلة الاتصال — حاول مرة أخرى.";
-  if(m==="rate_limit") return "⚠️ وصلت للحد الأقصى من الطلبات — انتظر دقيقة ثم حاول.";
+  if(m==="rate_limit"||s===429) return "⚠️ وصلت للحد الأقصى من الطلبات — انتظر دقيقة ثم حاول.";
   if(m==="empty_response") return "⚠️ لم يُنتج AI رداً — حاول مجدداً.";
-  return "❌ تعذر الاتصال بالخادم — تحقق من اتصالك بالإنترنت.";
+  /* جلسة منتهية أو غير VIP لا علاقة لها بالإنترنت — قلها بصراحة بدل إلقاء
+   * اللوم على الشبكة (كان يظهر «تحقق من اتصالك بالإنترنت» في كلتا الحالتين). */
+  if(s===401) return "🔐 لم تسجّل الدخول — سجّل الدخول مرة أخرى ثم أعد المحاولة.";
+  if(s===403) return "⭐ هذه الميزة لمشتركي VIP — إن كان اشتراكك فعّالاً أعد تسجيل الدخول، وإن انتهت مدّته جدّد الاشتراك للمتابعة.";
+  if(s===502||s===503) return "🤖 الخدمة لا تستجيب مؤقتاً — حاول بعد لحظات.";
+  if(s===504) return "⌛ استغرق الطلب وقتاً أطول من المعتاد — حاول مرة أخرى.";
+  return "❌ تعذر الاتصال بالخادم — تحقق من اتصالك بالإنترنت ثم أعد المحاولة.";
 }
 
 /* ─── Security: Input sanitization ─── */

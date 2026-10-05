@@ -542,24 +542,52 @@ async function buildMarketsPayload(): Promise<MarketsPayload> {
   };
 }
 
+/* Result carries `stale` so the route keeps its original contract:
+ * fresh build → plain payload, failed build + old cache → payload + stale. */
+type SnapshotResult = { data: MarketsPayload; stale?: boolean } | null;
+
+async function loadMarketsPayload(): Promise<SnapshotResult> {
+  try {
+    const data = await buildMarketsPayload();
+    marketsCache = { ts: Date.now(), data };
+    return { data };
+  } catch (e) {
+    logger.error({ err: (e as Error).message }, "markets build failed");
+    return marketsCache ? { data: marketsCache.data, stale: true } : null;
+  }
+}
+
+let marketsBuildInFlight: Promise<SnapshotResult> | null = null;
+
+/* In-process snapshot for the local AI engine (and any other caller inside
+ * this process). On serverless there is NO localhost HTTP listener to call,
+ * so the AI engine must read the same cache the routes use instead of
+ * fetching /api/markets over the network. Concurrent callers share one
+ * in-flight build; stale data beats no data. */
+export function getMarketsSnapshot(): Promise<SnapshotResult> {
+  if (marketsCache && Date.now() - marketsCache.ts < MARKETS_TTL_MS) {
+    return Promise.resolve({ data: marketsCache.data });
+  }
+  if (!marketsBuildInFlight) {
+    marketsBuildInFlight = loadMarketsPayload().finally(() => {
+      marketsBuildInFlight = null;
+    });
+  }
+  return marketsBuildInFlight;
+}
+
 router.get("/", async (_req: Request, res: Response) => {
   const now = Date.now();
   if (marketsCache && now - marketsCache.ts < MARKETS_TTL_MS) {
     res.json(marketsCache.data);
     return;
   }
-  try {
-    const data = await buildMarketsPayload();
-    marketsCache = { ts: now, data };
-    res.json(data);
-  } catch (e) {
-    logger.error({ err: (e as Error).message }, "markets build failed");
-    if (marketsCache) {
-      res.json({ ...marketsCache.data, stale: true });
-    } else {
-      res.status(503).json({ status: "error", message: "markets unavailable" });
-    }
+  const snap = await getMarketsSnapshot();
+  if (snap) {
+    res.json(snap.stale ? { ...snap.data, stale: true } : snap.data);
+    return;
   }
+  res.status(503).json({ status: "error", message: "markets unavailable" });
 });
 
 /* ═══════════════════════════════════════════════════
@@ -1047,25 +1075,45 @@ async function fetchTVStocks(): Promise<StockQuote[] | null> {
 const STOCKS_TTL_MS    = 3 * 60 * 1000; // 3 minutes
 const US_STOCKS_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+let stocksBuildInFlight: Promise<StockQuote[] | null> | null = null;
+
+/* In-process EGX stocks snapshot — same cache/route the AI engine reads
+ * directly (no HTTP round-trip, works on serverless where nothing listens). */
+export function getStocksSnapshot(): Promise<StockQuote[] | null> {
+  if (stocksCache && Date.now() - stocksCache.ts < STOCKS_TTL_MS) {
+    return Promise.resolve(stocksCache.stocks);
+  }
+  if (!stocksBuildInFlight) {
+    stocksBuildInFlight = (async () => {
+      try {
+        const tvStocks = await fetchTVStocks();
+        const stocks = tvStocks ?? await fetchStocksBatched(EGX_DEFS);
+        stocksCache = { ts: Date.now(), stocks };
+        return stocks;
+      } catch (e) {
+        logger.error({ err: (e as Error).message }, "egx-stocks build failed");
+        return stocksCache ? stocksCache.stocks : null;
+      }
+    })().finally(() => {
+      stocksBuildInFlight = null;
+    });
+  }
+  return stocksBuildInFlight;
+}
+
 router.get("/stocks", async (_req: Request, res: Response) => {
   const now = Date.now();
   if (stocksCache && now - stocksCache.ts < STOCKS_TTL_MS) {
     res.json({ status: "ok", ts: stocksCache.ts, stocks: stocksCache.stocks });
     return;
   }
-  try {
-    const tvStocks = await fetchTVStocks();
-    const stocks = tvStocks ?? await fetchStocksBatched(EGX_DEFS);
-    stocksCache = { ts: now, stocks };
-    res.json({ status: "ok", ts: now, stocks, source: tvStocks ? "tradingview" : "yahoo" });
-  } catch (e) {
-    logger.error({ err: (e as Error).message }, "egx-stocks build failed");
-    if (stocksCache) {
-      res.json({ status: "ok", ts: stocksCache.ts, stocks: stocksCache.stocks, stale: true });
-    } else {
-      res.status(503).json({ status: "error", message: "EGX stocks data unavailable" });
-    }
+  const stocks = await getStocksSnapshot();
+  if (stocks) {
+    const fresh = stocksCache && Date.now() - stocksCache.ts < STOCKS_TTL_MS;
+    res.json({ status: "ok", ts: stocksCache?.ts ?? now, stocks, ...(fresh ? {} : { stale: true }) });
+    return;
   }
+  res.status(503).json({ status: "error", message: "EGX stocks data unavailable" });
 });
 
 router.get("/us-stocks", async (_req: Request, res: Response) => {

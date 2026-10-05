@@ -8,11 +8,11 @@ const rawPort = process.env.PORT;
 
 // PORT/BASE_PATH are required on Replit; fall back to sane local defaults for
 // development on non-Replit machines (e.g. Windows local dev).
-const port = rawPort ? Number(rawPort) : 3000;
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
+// A non-numeric or non-positive PORT ("0" is a common "pick any port"
+// sentinel that some shells/CI inject) must never abort the build — it just
+// falls back to the default port.
+const parsedPort = Number(rawPort);
+const port = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 3000;
 
 const basePath = process.env.BASE_PATH ?? "/";
 

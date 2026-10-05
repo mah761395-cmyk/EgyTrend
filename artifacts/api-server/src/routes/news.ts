@@ -362,38 +362,70 @@ router.get("/news/sources", (_req, res) => {
   res.json({ status: "ok", sources });
 });
 
-router.get("/news", async (req, res) => {
-  const sourceId = String(req.query["source"] || "").trim();
-  const sources = listSources();
+type NewsFeed = { status: "ok"; items: FeedItem[]; meta: SourceMeta };
+type NewsSnapshot = {
+  status: "ok";
+  feeds: NewsFeed[];
+  errors: Array<{ source: string; message: string }>;
+};
 
-  if (!sourceId || sourceId === "all") {
+/* Aggregated all-sources snapshot. The route and the local AI engine share
+ * it — the AI engine reads it IN-PROCESS because a serverless instance has
+ * no localhost HTTP listener to fetch /api/news from. The 60s TTL sits on top
+ * of fetchSource's own 5-minute per-source cache, so a rebuild is cheap. */
+const AGG_TTL_MS = 60 * 1000;
+let newsAggCache: { ts: number; data: NewsSnapshot } | null = null;
+let newsAggInFlight: Promise<NewsSnapshot | null> | null = null;
+
+async function buildNewsAgg(): Promise<NewsSnapshot | null> {
+  try {
+    const sources = listSources();
     const settled = await Promise.allSettled(sources.map((s) => fetchSource(s)));
-    const feeds = settled
-      .filter(
-        (
-          r,
-        ): r is PromiseFulfilledResult<{
-          status: "ok";
-          items: FeedItem[];
-          meta: SourceMeta;
-        }> => r.status === "fulfilled",
-      )
-      .map((r) => r.value);
+    const feeds: NewsFeed[] = [];
+    const errors: Array<{ source: string; message: string }> = [];
+    settled.forEach((r, i) => {
+      if (r.status === "fulfilled") feeds.push(r.value);
+      else
+        errors.push({
+          source: sources[i]?.id || "?",
+          message: (r as PromiseRejectedResult).reason?.message || "error",
+        });
+    });
     // Merge admin-authored content as a first-class feed.
     const custom = customArticlesFeed();
     if (custom.items.length > 0) feeds.unshift(custom);
+    if (errors.length > 0) logger.warn({ errors }, "some news sources failed");
+    const data: NewsSnapshot = { status: "ok", feeds, errors };
+    newsAggCache = { ts: Date.now(), data };
+    return data;
+  } catch (e) {
+    logger.warn({ err: (e as Error).message }, "news snapshot build failed");
+    return newsAggCache ? newsAggCache.data : null;
+  }
+}
 
-    const errors = settled
-      .map((r, i) => ({ r, id: sources[i]?.id || "?" }))
-      .filter((x) => x.r.status === "rejected")
-      .map((x) => ({
-        source: x.id,
-        message: (x.r as PromiseRejectedResult).reason?.message || "error",
-      }));
-    if (errors.length > 0) {
-      logger.warn({ errors }, "some news sources failed");
+export function getNewsSnapshot(): Promise<NewsSnapshot | null> {
+  if (newsAggCache && Date.now() - newsAggCache.ts < AGG_TTL_MS) {
+    return Promise.resolve(newsAggCache.data);
+  }
+  if (!newsAggInFlight) {
+    newsAggInFlight = buildNewsAgg().finally(() => {
+      newsAggInFlight = null;
+    });
+  }
+  return newsAggInFlight;
+}
+
+router.get("/news", async (req, res) => {
+  const sourceId = String(req.query["source"] || "").trim();
+
+  if (!sourceId || sourceId === "all") {
+    const snap = await getNewsSnapshot();
+    if (!snap) {
+      res.status(503).json({ status: "error", message: "news unavailable" });
+      return;
     }
-    res.json({ status: "ok", feeds, errors });
+    res.json(snap);
     return;
   }
 
