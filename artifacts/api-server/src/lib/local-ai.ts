@@ -136,26 +136,55 @@ function cheapestByPE(stocks: NonNullable<StocksPayload["stocks"]>, n = 3) {
 type Intent = "greeting" | "article" | "market" | "stock" | "advice" | "news" | "portfolio" | "general";
 
 function detectIntent(text: string, stocks?: NonNullable<StocksPayload["stocks"]>): Intent {
-  // greetings (works on both Arabic and English without normalization)
-  if (/^(مرحبا|السلام|اهلا|أهلا|هاي|hello|hi|ازيك|إزيك)/.test(text.trim())) return "greeting";
+  // greetings (check directly on the raw text, no normalization, so Arabic
+  // hamza / alef variants behave the same in every Node.js environment)
+  if (text.trim().indexOf("مرحبا") !== -1
+      || text.trim().indexOf("السلام") !== -1
+      || text.trim().indexOf("اهلا") !== -1
+      || text.trim().indexOf("أهلا") !== -1
+      || text.trim().indexOf("هاي") !== -1
+      || text.trim().indexOf("hello") !== -1
+      || text.trim().indexOf("hi") !== -1
+      || text.trim().indexOf("ازيك") !== -1
+      || text.trim().indexOf("إزيك") !== -1
+  ) return "greeting";
   /* Article analysis from the news reader («حلّل هذا الخبر» + المصدر/العنوان/
    * الخلاصة). It must win over every keyword rule below — otherwise the
    * article's own words («الأسهم»، «توصية») route it to the stock-movers list
    * or the generic menu and the user sees a reply that ignores the article. */
-  if (/حلّ?ل هذا الخبر/.test(text) || (/العنوان:/.test(text) && /الخلاصة:/.test(text))) return "article";
-  if (/محفظتي|محفظت|portfolio/i.test(text)) return "portfolio";
-  const wantsAdvice = /(اشتري|أشتري|ابيع|أبيع|هل اشتري|نصيحة|تنصحني|توصية|ادخال|دخول)/i.test(text);
+  if (text.indexOf("حلل هذا الخبر") !== -1 || text.indexOf("حلّل هذا الخبر") !== -1
+      || (text.indexOf("العنوان:") !== -1 && text.indexOf("الخلاصة:") !== -1)) return "article";
+  if (text.indexOf("محفظتي") !== -1 || text.indexOf("محفظت") !== -1 || text.indexOf("portfolio") !== -1) return "portfolio";
+  const wantsAdvice = text.indexOf("اشتري") !== -1 || text.indexOf("أشتري") !== -1
+    || text.indexOf("ابيع") !== -1 || text.indexOf("أبيع") !== -1
+    || text.indexOf("هل اشتري") !== -1 || text.indexOf("نصيحة") !== -1
+    || text.indexOf("تنصحني") !== -1 || text.indexOf("توصية") !== -1
+    || text.indexOf("ادخال") !== -1 || text.indexOf("دخول") !== -1;
+  if (wantsAdvice) return "advice";
   /* An explicit ticker mention (e.g. "COMI") means the user wants that
    * stock analyzed — this beats generic market keywords that can appear
    * inside a long analysis prompt's embedded context. */
   const tu = text.toUpperCase();
-  const symMentioned = !!stocks?.some((s) => s.sym && tu.includes(s.sym));
-  if (wantsAdvice) return "advice";
+  const symMentioned = !!stocks?.some((s) => s.sym && tu.indexOf(s.sym) !== -1);
   if (symMentioned) return "stock";
-  /* الأخبار / news → news (اختبار مباشر على النص الأصلي عشان ما يُعتمد normalize) */
-  if (/أخبار|اخبار|خبر|news|شريد|جرجت/i.test(text)) return "news";
-  if (/(السوق|المؤشر|دولار|ذهب|بيتكوين|btc|egx|اسواق|أسواق|عملة|فائدة|حالة السوق)/i.test(text)) return "market";
-  if (/(سهم|اسهم|أسهم|بورصة|شركة|comi|abuk|tmgh|hrni|adib|orwe)/i.test(text)) return "stock";
+  /* الأخبار / news → news (تحقق مباشر على النص الأصلي عشان ما يُعتمد toLowerCase/normalize) */
+  if (text.indexOf("أخبار") !== -1 || text.indexOf("اخبار") !== -1
+      || text.indexOf("خبر") !== -1 || text.indexOf("news") !== -1
+      || text.indexOf("شريد") !== -1 || text.indexOf("جرجت") !== -1
+  ) return "news";
+  if (text.indexOf("السوق") !== -1 || text.indexOf("المؤشر") !== -1
+      || text.indexOf("دولار") !== -1 || text.indexOf("ذهب") !== -1
+      || text.indexOf("بيتكوين") !== -1 || text.indexOf("btc") !== -1
+      || text.indexOf("egx") !== -1 || text.indexOf("اسواق") !== -1
+      || text.indexOf("أسواق") !== -1 || text.indexOf("عملة") !== -1
+      || text.indexOf("فائدة") !== -1 || text.indexOf("حالة السوق") !== -1
+  ) return "market";
+  if (text.indexOf("سهم") !== -1 || text.indexOf("اسهم") !== -1 || text.indexOf("أسهم") !== -1
+      || text.indexOf("بورصة") !== -1 || text.indexOf("شركة") !== -1
+      || text.indexOf("comi") !== -1 || text.indexOf("abuk") !== -1
+      || text.indexOf("tmgh") !== -1 || text.indexOf("hrni") !== -1
+      || text.indexOf("adib") !== -1 || text.indexOf("orwe") !== -1
+  ) return "stock";
   return "general";
 }
 
