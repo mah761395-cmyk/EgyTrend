@@ -70,16 +70,39 @@ async function getLive(question: string): Promise<{ live: Live; intent: Intent }
     getStocksSnapshot().then((s) => (s ? ({ stocks: s } as StocksPayload) : null)),
     STOCKS_WAIT_MS,
   );
+  /* News is fetched in the background unconditionally — if the answer needs it,
+   * we await it; otherwise it keeps loading and warms the shared cache for the
+   * next VIP message, without blocking the first reply. */
   const newsP = withTimeout(
     getNewsSnapshot().then((s) => (s ? ({ feeds: s.feeds } as NewsPayload) : null)),
     NEWS_WAIT_MS,
   );
 
-  const [mk, st] = await Promise.all([marketsP, stocksP]);
-  const live: Live = { markets: mk ?? undefined, stocks: st ?? undefined };
+  const [mk, st, news] = await Promise.all([marketsP, stocksP, newsP]);
+  const live: Live = { markets: mk ?? undefined, stocks: st ?? undefined, news: news ?? undefined };
   const intent = detectIntent(question, live.stocks?.stocks);
-  if (intent === "news") live.news = (await newsP) ?? undefined;
   return { live, intent };
+}
+
+/* ─── News text search (over the live feeds we already hold) ───
+ * Lets the assistant answer queries like «ما أخبار مدينة نصر؟» by running
+ * a lightweight keyword search over the titles we fetched from the live
+ * RSS/API sources — no external service, no mock data. */
+
+function searchNews(feeds: NonNullable<NewsPayload["feeds"]>, terms: string, n = 6): Array<{ title: string; src: string }> {
+  const t = terms.toLowerCase();
+  if (!t) return [];
+  const out: Array<{ title: string; src: string }> = [];
+  for (const f of feeds) {
+    const src = f.meta?.name || "";
+    for (const it of f.items || []) {
+      if (it.title.toLowerCase().includes(t)) {
+        out.push({ title: it.title, src });
+        if (out.length >= n) return out;
+      }
+    }
+  }
+  return out;
 }
 
 /* ─── Arabic formatting helpers ─── */
@@ -129,7 +152,8 @@ function detectIntent(text: string, stocks?: NonNullable<StocksPayload["stocks"]
   const symMentioned = !!stocks?.some((s) => s.sym && tu.includes(s.sym));
   if (wantsAdvice) return "advice";
   if (symMentioned) return "stock";
-  if (/(اخبار|أخبار|news|شريد|جرجت)/.test(t)) return "news";
+  /* 뉴스 질문 (أخبار / news / شريد / جرجت / خبر ...) → news */
+  if (/(اخبار|أخبار|news|شريد|جرجت|خبر|أخبار عن)/.test(t)) return "news";
   if (/(السوق|المؤشر|دولار|ذهب|بيتكوين|btc|egx|اسواق|أسواق|عملة|فائدة|حالة السوق)/.test(t)) return "market";
   if (/(سهم|اسهم|أسهم|بورصة|شركة|comi|abuk|tmgh|hrni|adib|orwe)/.test(t)) return "stock";
   return "general";
@@ -285,9 +309,33 @@ function adviceReply(live: { markets?: MarketsPayload; stocks?: StocksPayload })
   return lines.join("\n");
 }
 
-function newsReply(live: { news?: NewsPayload; markets?: MarketsPayload }): string {
+function newsReply(live: { news?: NewsPayload; markets?: MarketsPayload }, question?: string): string {
   const feeds = live.news?.feeds;
   if (!feeds || !feeds.length) return fallbackReply(live, "الأخبار");
+
+  // Try to answer a specific news query by searching the live headlines.
+  const terms = question && /[أ-يa-zA-Z0-9]/.test(question) ? question : null;
+  if (terms) {
+    const hits = searchNews(feeds, terms, 6);
+    if (hits.length) {
+      const lines = [`📰 **أخبار عن \`${terms}\`:**`, ""];
+      for (const h of hits) lines.push(`• ${h.title} — ${h.src}`);
+      if (hits.length < feeds.some((f) => f.items?.length)) {
+        lines.push("", "لا توجد أخبار مطابقة دقيقة — إليك آخر العناوين لقائمة كاملة:");
+        let count = 0;
+        for (const f of feeds) {
+          for (const it of f.items || []) {
+            if (count >= 4) break;
+            lines.push(`• ${it.title.slice(0, 100)} — ${f.meta?.name || ""}`);
+            count++;
+          }
+          if (count >= 4) break;
+        }
+      }
+      return lines.join("\n");
+    }
+  }
+
   const lines: string[] = ["📰 **أهم الأخبار الآن:**", ""];
   let count = 0;
   for (const f of feeds) {
@@ -485,7 +533,7 @@ export async function localAiChat(messages: ChatMsg[]): Promise<string> {
       case "market": return marketReply(live);
       case "stock": return stockReply(question, live);
       case "advice": return adviceReply(live);
-      case "news": return newsReply(live);
+      case "news": return newsReply(live, question);
       case "portfolio": return portfolioReply(question, live);
       default: return generalReply(live);
     }
