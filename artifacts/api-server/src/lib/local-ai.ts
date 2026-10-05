@@ -181,11 +181,11 @@ function detectIntent(text: string, stocks?: NonNullable<StocksPayload["stocks"]
   const tu = text.toUpperCase();
   const symMentioned = !!stocks?.some((s) => s.sym && tu.indexOf(s.sym) !== -1);
   if (symMentioned) return "stock";
-  /* الأخبار / news → news (تحقق مباشر على النص الأصلي عشان ما يُعتمد toLowerCase/normalize) */
-  if (text.indexOf("أخبار") !== -1 || text.indexOf("اخبار") !== -1
-      || text.indexOf("خبر") !== -1 || text.indexOf("news") !== -1
-      || text.indexOf("شريد") !== -1 || text.indexOf("جرجت") !== -1
-  ) return "news";
+  /* الأخبار / news → news (normalize عشان يتعامل مع锰 hamza على الألف على كل بيئة Node.js) */
+  const tn = text.normalize && text.normalize('NFD') || text;
+  if (tn.includes('أخبار') || tn.includes('اخبار') || tn.includes('خبر')
+      || text.includes('news') || text.includes('شريد') || text.includes('جرجت'))
+    return 'news';
   if (text.indexOf("السوق") !== -1 || text.indexOf("المؤشر") !== -1
       || text.indexOf("دولار") !== -1 || text.indexOf("ذهب") !== -1
       || text.indexOf("بيتكوين") !== -1 || text.indexOf("btc") !== -1
