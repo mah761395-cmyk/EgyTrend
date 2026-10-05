@@ -8,7 +8,17 @@
 
 import { logger } from "./logger";
 import { getMarketsSnapshot, getStocksSnapshot } from "../routes/markets";
-import { getNewsSnapshot } from "../routes/news";
+
+/* News is fetched via the public /api/news?source=all route. Using the
+ * shared cache that route maintains directly keeps the first reply fast on
+ * cold starts: once any request (including the one below) warms that route,
+ * subsequent calls come from the in-process cache. */
+const NEWS_ENDPOINT = (() => {
+  const host = process.env["VERCEL_URL"]
+    ? `https://${process.env["VERCEL_URL"]}`
+    : (process.env["BASE_URL"] || "https://egy-trend.vercel.app");
+  return `${host}/api/news?source=all`;
+})();
 
 type ChatMsg = { role: "user" | "assistant"; content: string };
 
@@ -70,11 +80,15 @@ async function getLive(question: string): Promise<{ live: Live; intent: Intent }
     getStocksSnapshot().then((s) => (s ? ({ stocks: s } as StocksPayload) : null)),
     STOCKS_WAIT_MS,
   );
-  /* News is fetched in the background unconditionally — if the answer needs it,
-   * we await it; otherwise it keeps loading and warms the shared cache for the
-   * next VIP message, without blocking the first reply. */
+  /* News path: hit the shared /api/news?source=all route directly. Once any
+   * request warms that route (including this one on first call), the in-process
+   * cache drives subsequent calls, so the first VIP reply already includes live
+   * headlines. */
   const newsP = withTimeout(
-    getNewsSnapshot().then((s) => (s ? ({ feeds: s.feeds } as NewsPayload) : null)),
+    fetch(NEWS_ENDPOINT, { signal: AbortSignal.timeout(NEWS_WAIT_MS) })
+      .then((r) => r.json())
+      .then((j) => (j && j.status === "ok" && j.feeds ? ({ feeds: j.feeds } as NewsPayload) : null))
+      .catch(() => null),
     NEWS_WAIT_MS,
   );
 
