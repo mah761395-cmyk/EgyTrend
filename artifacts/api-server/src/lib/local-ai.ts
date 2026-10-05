@@ -152,8 +152,8 @@ function detectIntent(text: string, stocks?: NonNullable<StocksPayload["stocks"]
   const symMentioned = !!stocks?.some((s) => s.sym && tu.includes(s.sym));
   if (wantsAdvice) return "advice";
   if (symMentioned) return "stock";
-  /* 뉴스 질문 (أخبار / news / شريد / جرجت / خبر ...) → news */
-  if (/(اخبار|أخبار|news|شريد|جرجت|خبر|أخبار عن)/.test(t)) return "news";
+  /* أخبار / news → news */
+  if (t.includes("أخبار") || t.includes("اخبار") || t.includes("خبر") || t.includes("news") || t.includes("شريد") || t.includes("جرجت")) return "news";
   if (/(السوق|المؤشر|دولار|ذهب|بيتكوين|btc|egx|اسواق|أسواق|عملة|فائدة|حالة السوق)/.test(t)) return "market";
   if (/(سهم|اسهم|أسهم|بورصة|شركة|comi|abuk|tmgh|hrni|adib|orwe)/.test(t)) return "stock";
   return "general";
