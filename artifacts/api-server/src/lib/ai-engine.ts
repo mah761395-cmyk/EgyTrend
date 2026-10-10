@@ -214,11 +214,14 @@ async function geminiRequest(
     });
     const txt = await r.text();
     if (!r.ok) {
-      let msg = txt.slice(0, 400);
-      try {
-        const j = JSON.parse(txt) as { error?: { message?: string } };
-        if (j.error?.message) msg = j.error.message.slice(0, 400);
-      } catch { /* keep raw */ }
+    let msg = txt.slice(0, 400);
+    try {
+      const j = JSON.parse(txt) as { error?: { message?: string } };
+      if (j.error?.message) msg = j.error.message.slice(0, 400);
+    } catch { /* keep raw */ }
+    /* Google echoes the sent key back inside some 401 body shapes —
+     * NEVER forward that to a client. Strip anything key-like first. */
+    msg = msg.replace(/(?:(?:x-goog-api-key|key|api[-_]?)\s*[:=]\s*["']?)?\b([A-Za-z0-9_\-\.]{25,})\b/g, "[redacted]");
       logger.warn({ status: r.status, msg }, "gemini upstream error");
       if (r.status === 429) throw new UpstreamError("gemini rate limited", "rate_limit", 429);
       if (r.status === 503 || r.status === 502) throw new UpstreamError(msg, "upstream", r.status);
