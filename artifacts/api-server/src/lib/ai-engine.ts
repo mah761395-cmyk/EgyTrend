@@ -392,6 +392,12 @@ export type GeminiVerify = {
   error?: string;
 };
 
+/* Never forward anything key-like (the AQ. OAuth sample, AIza…, whatever
+ * the owner pasted) in an error message shown to clients. */
+function redactKeys(s: string): string {
+  return s.replace(/[A-Za-z0-9_\-\.]{25,}/g, "[redacted]");
+}
+
 export async function geminiVerify(): Promise<GeminiVerify> {
   const model = geminiModel();
   const t0 = Date.now();
@@ -417,7 +423,7 @@ export async function geminiVerify(): Promise<GeminiVerify> {
       model,
       latencyMs: Date.now() - t0,
       status: err?.upstreamStatus,
-      error: (err?.message || "gemini unreachable").slice(0, 300),
+      error: redactKeys(err?.message || "gemini unreachable").slice(0, 300),
     };
   }
 }
