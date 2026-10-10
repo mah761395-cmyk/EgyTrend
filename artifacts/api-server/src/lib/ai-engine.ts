@@ -47,10 +47,14 @@ export type EngineError = {
 
 /* ─── env ──────────────────────────────────────────────────────────── */
 export function geminiKey(): string {
+  /* Canonical name first, then common alternates — including the name the
+   * owner created in the Vercel dashboard ("Gemini1A") so a mis-named env
+   * var still works without renaming it in the dashboard. */
   return (
     process.env["GEMINI_API_KEY"] ||
     process.env["GOOGLE_API_KEY"] ||
     process.env["AI_INTEGRATIONS_GOOGLE_API_KEY"] ||
+    process.env["Gemini1A"] ||
     ""
   );
 }
