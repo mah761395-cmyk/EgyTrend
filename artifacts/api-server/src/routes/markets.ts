@@ -713,6 +713,31 @@ async function buildCalendarPayload(): Promise<{ status: "ok"; events: CalEvent[
   return { status: "ok", events };
 }
 
+/* In-process calendar snapshot for the AI tool layer (same cache the route
+ * serves). On serverless there is NO localhost listener, and a self-HTTPS
+ * fetch can time out on cold starts — read the cache directly instead. */
+let calBuildInFlight: Promise<{ status: "ok"; events: CalEvent[] } | null> | null = null;
+export function getCalendarSnapshot(): Promise<{ status: "ok"; events: CalEvent[] } | null> {
+  if (calCache && Date.now() - calCache.ts < CAL_TTL_MS) {
+    return Promise.resolve(calCache.data);
+  }
+  if (!calBuildInFlight) {
+    calBuildInFlight = (async () => {
+      try {
+        const data = await buildCalendarPayload();
+        calCache = { ts: Date.now(), data };
+        return data;
+      } catch (e) {
+        logger.error({ err: (e as Error).message }, "calendar snapshot build failed");
+        return calCache ? calCache.data : null;
+      }
+    })().finally(() => {
+      calBuildInFlight = null;
+    });
+  }
+  return calBuildInFlight;
+}
+
 router.get("/calendar", async (_req: Request, res: Response) => {
   const now = Date.now();
   if (calCache && now - calCache.ts < CAL_TTL_MS) {

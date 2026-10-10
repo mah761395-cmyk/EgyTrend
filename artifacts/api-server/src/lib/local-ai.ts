@@ -8,17 +8,9 @@
 
 import { logger } from "./logger";
 import { getMarketsSnapshot, getStocksSnapshot } from "../routes/markets";
-
-/* News is fetched via the public /api/news?source=all route. Using the
- * shared cache that route maintains directly keeps the first reply fast on
- * cold starts: once any request (including the one below) warms that route,
- * subsequent calls come from the in-process cache. */
-const NEWS_ENDPOINT = (() => {
-  const host = process.env["VERCEL_URL"]
-    ? `https://${process.env["VERCEL_URL"]}`
-    : (process.env["BASE_URL"] || "https://egy-trend.vercel.app");
-  return `${host}/api/news?source=all`;
-})();
+import { getNewsSnapshot } from "../routes/news";
+import { normAr } from "./ai-tools";
+import { buildLocalOpportunities } from "./opp-engine";
 
 type ChatMsg = { role: "user" | "assistant"; content: string };
 
@@ -80,15 +72,11 @@ async function getLive(question: string): Promise<{ live: Live; intent: Intent }
     getStocksSnapshot().then((s) => (s ? ({ stocks: s } as StocksPayload) : null)),
     STOCKS_WAIT_MS,
   );
-  /* News path: hit the shared /api/news?source=all route directly. Once any
-   * request warms that route (including this one on first call), the in-process
-   * cache drives subsequent calls, so the first VIP reply already includes live
-   * headlines. */
+  /* News path: read the shared in-process snapshot the /api/news route
+   * serves (same cache, zero HTTP round-trip — works on serverless where
+   * no localhost listener exists and no external self-fetch can time out). */
   const newsP = withTimeout(
-    fetch(NEWS_ENDPOINT, { signal: AbortSignal.timeout(NEWS_WAIT_MS) })
-      .then((r) => r.json())
-      .then((j) => (j && j.status === "ok" && j.feeds ? ({ feeds: j.feeds } as NewsPayload) : null))
-      .catch(() => null),
+    getNewsSnapshot().then((snap) => (snap ? ({ feeds: snap.feeds } as NewsPayload) : null)),
     NEWS_WAIT_MS,
   );
 
@@ -103,20 +91,121 @@ async function getLive(question: string): Promise<{ live: Live; intent: Intent }
  * a lightweight keyword search over the titles we fetched from the live
  * RSS/API sources — no external service, no mock data. */
 
-function searchNews(feeds: NonNullable<NewsPayload["feeds"]>, terms: string, n = 6): Array<{ title: string; src: string }> {
-  const t = terms.toLowerCase();
-  if (!t) return [];
+/* Tokenized + Arabic-normalized search: «إيه أخبار مدينة نصر؟» matches a
+ * «مدينة نصر» headline regardless of hamza/alef variants, question words,
+ * or word order. Matches on ANY meaningful token (≥3 chars after norm). */
+const STOPWORDS = new Set([
+  "ايه", "اخبار", "خبر", "اخبار", "الاخبار", "عن", "الي", "في", "من", "ما", "هل", "اللي",
+  "حول", "بخصوص", "عايز", "ابغى", "ابي", "ايهما", "لي", "لدي", "اليوم", "النهارده", "النهرده",
+  "السوق", "المصرية", "مصر", "-news", "news", "what", "the", "and", "for",
+]);
+
+/* Tokenize normalized Arabic text (drop stopwords + ≤2-char tokens). */
+function tokenize(terms: string): string[] {
+  return normAr(terms)
+    .split(" ")
+    .filter((t) => t.length >= 3 && !STOPWORDS.has(t));
+}
+
+/* Generic words that appear in many company names — they must NOT be used to
+ * identify a company (otherwise «نصر» would match anything). */
+const NAME_GENERIC = new Set([
+  "للاسكان", "والتعمير", "الاسكان", "التعمير", "ش", "م", "مم", "مصر", "المصريه", "المصرية",
+  "القابضه", "القابضة", "بنك", "البنك", "الشركه", "الشركة", "للاغذيه", "الاغذيه", "الاغذية",
+  "للصناعه", "الصناعه", "الصناعة", "العالميه", "العالمية", "والاستثمار", "الاستثمار",
+  "المجموعه", "المجموعة", "هولدنج", "جروب", "group", "holding", "bank", "company", "co",
+  "foods", "industries", "for", "and", "the",
+]);
+
+function coreTokens(name: string): string[] {
+  return normAr(name).split(" ").filter((t) => t.length >= 3 && !NAME_GENERIC.has(t));
+}
+
+/* Arabic/English aliases → ticker. The live EGX feed returns MIXED names
+ * (some English, some Arabic), so «فوري» must resolve to FWRY even when the
+ * quoted name is English. A missing ticker is simply skipped. */
+const AR_ALIAS: Array<[RegExp, string]> = [
+  [/مدينه نصر|مدينة نصر|madinet nasr/i, "MNHD"],
+  [/جهينه|جهينة|juhayna/i, "JUFO"],
+  [/التجارى الدولى|التجاري الدولي|cib/i, "COMI"],
+  [/هيرمس|هيرميس|efg hermes/i, "HRHO"],
+  [/فورى|فوري|fawry/i, "FWRY"],
+  [/السويدى|السويدي|elsewedy/i, "SWDY"],
+  [/طلعت مصطفى|talaat moustafa/i, "TMGH"],
+  [/ابو قير|أبو قير|abou kir|abuk/i, "ABUK"],
+  [/المصرى الدولى|المصري الدولي|orascom/i, "ORWE"],
+  [/عبور|obour/i, "OBRI"],
+];
+
+/* Resolve the company/stocks a question is really about. Ticker match wins;
+ * otherwise ALL significant name tokens (or ≥2 when the name has several)
+ * must be present — so «مدينة نصر» → MNHD while a stray «نصر» never matches
+ * an unrelated company (the old single-token match caused false hits). */
+function resolveStockMentions(
+  text: string,
+  stocks: NonNullable<StocksPayload["stocks"]>,
+): Array<NonNullable<StocksPayload["stocks"]>[number]> {
+  const tu = text.toUpperCase();
+  const tn = normAr(text);
+  const seen = new Set<string>();
+  const hits: Array<NonNullable<StocksPayload["stocks"]>[number]> = [];
+  const add = (s: NonNullable<StocksPayload["stocks"]>[number]) => {
+    if (!seen.has(s.sym)) { seen.add(s.sym); hits.push(s); }
+  };
+  for (const s of stocks) if (s.sym && tu.includes(s.sym.toUpperCase())) add(s);
+  if (hits.length) return hits.slice(0, 4);
+  const rawLower = text.toLowerCase();
+  for (const [re, sym] of AR_ALIAS) {
+    if (re.test(text) || re.test(rawLower) || re.test(tn)) {
+      const s = stocks.find((st) => st.sym.toUpperCase() === sym);
+      if (s) add(s);
+    }
+  }
+  if (hits.length) return hits.slice(0, 4);
+  for (const s of stocks) {
+    const core = coreTokens(s.name);
+    if (!core.length) continue;
+    const score = core.filter((t) => tn.includes(t)).length;
+    if (score >= Math.min(2, core.length)) add(s);
+  }
+  return hits.slice(0, 4);
+}
+
+/* Headline search over normalized tokens. mode="all" requires every token
+ * (used for company names — «مدينة نصر» must NOT be satisfied by a headline
+ * that only says «المدينة»); mode="any" is a relaxed recall pass. */
+function searchNews(
+  feeds: NonNullable<NewsPayload["feeds"]>,
+  tokens: string[],
+  n = 6,
+  mode: "all" | "any" = "all",
+): Array<{ title: string; src: string }> {
+  if (!tokens.length) return [];
   const out: Array<{ title: string; src: string }> = [];
   for (const f of feeds) {
     const src = f.meta?.name || "";
     for (const it of f.items || []) {
-      if (it.title.toLowerCase().includes(t)) {
+      const hay = normAr(it.title);
+      const ok = mode === "all" ? tokens.every((t) => hay.includes(t)) : tokens.some((t) => hay.includes(t));
+      if (ok) {
         out.push({ title: it.title, src });
         if (out.length >= n) return out;
       }
     }
   }
   return out;
+}
+
+/* Latest headlines across all feeds (used for market-wide news questions). */
+function latestNews(feeds: NonNullable<NewsPayload["feeds"]>, n = 8): string[] {
+  const lines: string[] = [];
+  for (const f of feeds) {
+    for (const it of f.items || []) {
+      lines.push(`• ${it.title.slice(0, 100)} — ${f.meta?.name || ""}`);
+      if (lines.length >= n) return lines;
+    }
+  }
+  return lines;
 }
 
 /* ─── Arabic formatting helpers ─── */
@@ -147,7 +236,7 @@ function cheapestByPE(stocks: NonNullable<StocksPayload["stocks"]>, n = 3) {
 
 /* ─── Intent detection ─── */
 
-type Intent = "greeting" | "article" | "market" | "stock" | "advice" | "news" | "portfolio" | "general";
+type Intent = "greeting" | "article" | "market" | "stock" | "advice" | "news" | "portfolio" | "opportunities" | "impact" | "general";
 
 function detectIntent(text: string, stocks?: NonNullable<StocksPayload["stocks"]>): Intent {
   // greetings (check directly on the raw text, no normalization, so Arabic
@@ -169,11 +258,19 @@ function detectIntent(text: string, stocks?: NonNullable<StocksPayload["stocks"]
   if (text.indexOf("حلل هذا الخبر") !== -1 || text.indexOf("حلّل هذا الخبر") !== -1
       || (text.indexOf("العنوان:") !== -1 && text.indexOf("الخلاصة:") !== -1)) return "article";
   if (text.indexOf("محفظتي") !== -1 || text.indexOf("محفظت") !== -1 || text.indexOf("portfolio") !== -1) return "portfolio";
+  const tn = normAr(text);
+  /* فرص تداول — تُبنى من البيانات الحية بدل قائمة منيو ثابتة. */
+  if (tn.includes("فرص") || tn.includes("opportunit")) return "opportunities";
+  /* سؤال «تأثير X على Y» — يحتاج تحليلًا سببيًا لا لقطة أسعار فقط.
+   * (لا نستخدم «اذا» المجردة لأنها تطابق «لماذا».) */
+  if (tn.includes("تاثير") || tn.includes("impact")
+      || /اذا (ارتفع|انخفض|رفع|خفض|زاد|قل|هبط|صعد)/.test(tn)) return "impact";
   const wantsAdvice = text.indexOf("اشتري") !== -1 || text.indexOf("أشتري") !== -1
     || text.indexOf("ابيع") !== -1 || text.indexOf("أبيع") !== -1
     || text.indexOf("هل اشتري") !== -1 || text.indexOf("نصيحة") !== -1
     || text.indexOf("تنصحني") !== -1 || text.indexOf("توصية") !== -1
-    || text.indexOf("ادخال") !== -1 || text.indexOf("دخول") !== -1;
+    || text.indexOf("ادخال") !== -1 || text.indexOf("دخول") !== -1
+    || tn.includes("استثمار") || tn.includes("استثمر") || tn.includes("افضل استثمار");
   if (wantsAdvice) return "advice";
   /* An explicit ticker mention (e.g. "COMI") means the user wants that
    * stock analyzed — this beats generic market keywords that can appear
@@ -181,10 +278,10 @@ function detectIntent(text: string, stocks?: NonNullable<StocksPayload["stocks"]
   const tu = text.toUpperCase();
   const symMentioned = !!stocks?.some((s) => s.sym && tu.indexOf(s.sym) !== -1);
   if (symMentioned) return "stock";
-  /* الأخبار / news → news (normalize عشان يتعامل مع锰 hamza على الألف على كل بيئة Node.js) */
-  const tn = text.normalize && text.normalize('NFD') || text;
-  if (tn.includes('أخبار') || tn.includes('اخبار') || tn.includes('خبر')
-      || text.includes('news') || text.includes('شريد') || text.includes('جرجت'))
+  /* الأخبار / news — normalized (NFKC + hamza/alef unify) so «أخبار»
+   * matches on every Node.js build and every input spelling (اخبار/إخبار). */
+  if (tn.includes('اخبار') || tn.includes('خبر') || tn.includes('news')
+      || tn.includes('شريد') || tn.includes('جرجت'))
     return 'news';
   if (text.indexOf("السوق") !== -1 || text.indexOf("المؤشر") !== -1
       || text.indexOf("دولار") !== -1 || text.indexOf("ذهب") !== -1
@@ -202,18 +299,6 @@ function detectIntent(text: string, stocks?: NonNullable<StocksPayload["stocks"]
   return "general";
 }
 
-/* Any string that contains a ticker mention anywhere (used for both intent
- * detection and symbol extraction — scans the WHOLE prompt including any
- * embedded market context, so an analysis request naming "COMI" resolves
- * to COMI even if market news appear in the same text). */
-function extractSymbols(text: string, stocks: NonNullable<StocksPayload["stocks"]>): Array<NonNullable<StocksPayload["stocks"]>[number]> {
-  const tu = text.toUpperCase();
-  const hits = stocks.filter(
-    (s) => s.sym && tu.includes(s.sym) || (s.name && text.includes(s.name.split(" ")[0])),
-  );
-  return hits.slice(0, 4);
-}
-
 /* ─── Response builders (all grounded in live data) ─── */
 
 function greetingReply(): string {
@@ -223,7 +308,7 @@ function greetingReply(): string {
     "أعمل الآن بالوضع المحلي وأحلل بيانات السوق الحقيقية المحدّثة:",
     "• مؤشر EGX30 وأسهم البورصة المصرية",
     "• الدولار والعملات والذهب والنفط",
-    "• الكريبتو وأهم 178 خبراً يومياً",
+    "• الكريبتو وأهم الأخبار اليومية",
     "",
     "اسألني مثلاً:",
     "«إيه حالة السوق النهاردة؟»",
@@ -295,8 +380,18 @@ function stockReply(
 ): string {
   const stocks = live.stocks?.stocks;
   if (!stocks || !stocks.length) return fallbackReply(live, "بيانات الأسهم");
-  const hits = extractSymbols(question, stocks);
+  const hits = resolveStockMentions(question, stocks);
   if (!hits.length) {
+    /* An explicit ticker-like token that matches nothing must be reported
+     * honestly — never silently answered with an unrelated movers list. */
+    const tickerLike = (question.match(/\b[A-Za-z]{3,12}\b/g) || [])
+      .filter((t) => /^[A-Z]+$/.test(t) && !/^(USD|EGP|EGX|AI|ETF|IPO|PE|NEWS|OK|VIP)$/.test(t));
+    if (tickerLike.length) {
+      return [
+        `📊 لم أجد سهمًا بالرمز «${tickerLike[0]}» في بيانات البورصة المصرية المتاحة حالياً.`,
+        "تحقّق من الرمز (مثال: COMI · JUFO · HRHO) أو اكتب اسم الشركة بالعربي.",
+      ].join("\n");
+    }
     const { up, dn } = topMovers(stocks);
     const lines = ["📈 **أبرز تحركات الأسهم الآن:**", ""];
     if (up.length) lines.push("🟢 **الأكثر صعوداً:**");
@@ -352,50 +447,57 @@ function adviceReply(live: { markets?: MarketsPayload; stocks?: StocksPayload })
   return lines.join("\n");
 }
 
-function newsReply(live: { news?: NewsPayload; markets?: MarketsPayload }, question?: string): string {
+function newsReply(live: { news?: NewsPayload; markets?: MarketsPayload; stocks?: StocksPayload }, question?: string): string {
   const feeds = live.news?.feeds;
   if (!feeds || !feeds.length) return fallbackReply(live, "الأخبار");
 
-  // Try to answer a specific news query by searching the live headlines.
-  const terms = question && /[أ-يa-zA-Z0-9]/.test(question) ? question : null;
-  if (terms) {
-    const hits = searchNews(feeds, terms, 6);
-    if (hits.length) {
-      const lines = [`📰 **أخبار عن \`${terms}\`:**`, ""];
-      for (const h of hits) lines.push(`• ${h.title} — ${h.src}`);
-      if (hits.length < feeds.some((f) => f.items?.length)) {
-        lines.push("", "لا توجد أخبار مطابقة دقيقة — إليك آخر العناوين لقائمة كاملة:");
-        let count = 0;
-        for (const f of feeds) {
-          for (const it of f.items || []) {
-            if (count >= 4) break;
-            lines.push(`• ${it.title.slice(0, 100)} — ${f.meta?.name || ""}`);
-            count++;
-          }
-          if (count >= 4) break;
-        }
-      }
-      return lines.join("\n");
-    }
+  /* Resolve a company first so «أخبار مدينة نصر» searches by the company's
+   * real name tokens (AND) instead of loose single-word matches. */
+  const resolved = question ? resolveStockMentions(question, live.stocks?.stocks || [])[0] : null;
+  const qn = normAr(question || "");
+
+  /* Market-wide news questions («أهم أخبار EGX/السوق») → latest headlines. */
+  if (!resolved && question && /egx|السوق|البورصه|الاسهم|مصر|اقتصاد/.test(qn)) {
+    return ["📰 **أهم الأخبار الآن:**", "", ...latestNews(feeds, 8)].join("\n");
   }
 
-  const lines: string[] = ["📰 **أهم الأخبار الآن:**", ""];
-  let count = 0;
-  for (const f of feeds) {
-    for (const it of f.items || []) {
-      if (count >= 8) break;
-      lines.push(`• ${it.title.slice(0, 100)} — ${f.meta?.name || ""}`);
-      count++;
+  const terms = resolved ? coreTokens(resolved.name).join(" ")
+    : (question && /[أ-يa-zA-Z0-9]/.test(question) ? question : null);
+  if (terms) {
+    const tokens = tokenize(terms);
+    /* STRICT AND matching only: a loose single-token pass is exactly what
+     * returned unrelated headlines before («مدينة نصر» → «الجهات المدينة»).
+     * When nothing matches we say so honestly instead of guessing. */
+    const hits = searchNews(feeds, tokens, 6, "all");
+    const dispTerms = terms.replace(/[؟?]/g, "")
+      .replace(/^(إيه|ايه|ما|ماذا|هاتلي|هات|عايز|قل لي)\s+/, "")
+      .replace(/^(أخبار|اخبار)\s+/, "")
+      .trim() || terms;
+    const label = resolved ? `${resolved.name} (${resolved.sym})` : `«${dispTerms}»`;
+    if (hits.length) {
+      const lines = [`📰 **أخبار ${label}:**`, ""];
+      for (const h of hits) lines.push(`• ${h.title} — ${h.src}`);
+      lines.push("", `🔎 بحث في عناوين ${feeds.length} مصدرًا حيًّا.`);
+      return lines.join("\n");
     }
-    if (count >= 8) break;
+    /* No match → say it honestly instead of dumping unrelated headlines. */
+    const lines = [
+      `⚠️ **لا توجد أخبار منشورة حاليًا عن ${label}** في آخر العناوين من ${feeds.length} مصدرًا.`,
+      "قد يكون الخبر غير منشور بعد — أو جرّب كلمات بحث مختلفة.",
+      "",
+      "📰 آخر العناوين للمتابعة:",
+      ...latestNews(feeds, 6),
+    ];
+    return lines.join("\n");
   }
-  return lines.join("\n");
+
+  return ["📰 **أهم الأخبار الآن:**", "", ...latestNews(feeds, 8)].join("\n");
 }
 
 function portfolioReply(question: string, live: { stocks?: StocksPayload }): string {
   const stocks = live.stocks?.stocks;
   // Try to parse lines like "COMI 100 55.5" or symbols mentioned
-  const mentioned = stocks ? extractSymbols(question, stocks) : [];
+  const mentioned = stocks ? resolveStockMentions(question, stocks) : [];
   const lines: string[] = ["💼 **متابعة المحفظة:**", ""];
   if (mentioned.length) {
     for (const s of mentioned) {
@@ -563,21 +665,129 @@ function articleAnalysisReply(question: string, live: Live): string {
   return lines.join("\n");
 }
 
+/* ─── فرص تداول — مبنية على البيانات الحية بدل قائمة ثابتة ─── */
+
+function opportunitiesReply(live: Live): string {
+  const stocks = live.stocks?.stocks || [];
+  if (!stocks.length) return fallbackReply(live, "بيانات الفرص");
+  const newsTitles: string[] = [];
+  for (const f of live.news?.feeds || []) {
+    for (const it of f.items || []) { newsTitles.push(it.title); if (newsTitles.length >= 10) break; }
+    if (newsTitles.length >= 10) break;
+  }
+  let cands: ReturnType<typeof buildLocalOpportunities> = [];
+  try {
+    cands = buildLocalOpportunities(
+      live.markets as any, stocks as any, newsTitles,
+      new Date().toLocaleDateString("ar-EG"),
+    );
+  } catch (e) { logger.warn({ err: e }, "opportunitiesReply build failed"); }
+  if (!cands.length) {
+    return [
+      "💡 لم أجد فرصة واضحة وفق البيانات الحالية.",
+      "هذا يعني أن الظروف الحالية لا تُظهر إعدادًا قويًا (تقييم/زخم/توزيعات) — ولن أخترع فرصًا غير موجودة.",
+      "",
+      "جرّب: «إيه أرخص الأسهم؟» أو «إيه حالة السوق؟»",
+    ].join("\n");
+  }
+  const lines = ["💡 **فرص مبنية على بيانات السوق الحية**", ""];
+  for (const c of cands.slice(0, 5)) {
+    const rl = Math.max(1, Math.min(5, c.riskLevel));
+    const risk = "★".repeat(rl) + "☆".repeat(5 - rl);
+    lines.push(`• **${c.title}**`);
+    lines.push(`  ${c.summary}`);
+    lines.push(`  العائد المتوقع: ${c.expectedReturn} · المخاطرة: ${risk} · المدة: ${c.duration}`);
+    lines.push("");
+  }
+  lines.push("⚠️ محسوبة من محرك EgyTrend على بيانات حية (تقييم/زخم/توزيعات/سلع/كريبتو) — وليست توصية استثمارية.");
+  return lines.join("\n");
+}
+
+/* ─── تحليل تأثير عامل على السوق — قراءة سببية بأرقام حية ─── */
+
+function impactReply(question: string, live: Live): string {
+  const m = live.markets?.markets;
+  if (!m) return fallbackReply(live, "بيانات الأسواق");
+  const q = normAr(question);
+  const eg = m.eg || [];
+  const egx = eg.find((x) => /EGX30/.test(x.n));
+  const usd = eg.find((x) => /USD/.test(x.n));
+  const cm = m.cm || [];
+  const gold = cm.find((x) => /ذهب/.test(x.n));
+  const brent = cm.find((x) => /برنت|نفط|خام/.test(x.n));
+
+  const lines: string[] = ["🧠 **تحليل التأثير**", ""];
+  const snap: string[] = [];
+  if (egx) snap.push(`EGX30 ${egx.v} (${fmtPct(egx.c)})`);
+  if (usd) snap.push(`دولار ${usd.v} (${fmtPct(usd.c)})`);
+  if (gold) snap.push(`${gold.n} ${gold.v} (${fmtPct(gold.c)})`);
+  if (brent) snap.push(`${brent.n} ${brent.v} (${fmtPct(brent.c)})`);
+  if (snap.length) { lines.push("**الأرقام الآن:** " + snap.join(" · "), ""); }
+
+  const aboutGold = /ذهب|gold/.test(q);
+  const aboutRate = /فايده|interest|فيدرال|fed/.test(q);
+  const aboutOil = /نفط|بترول|oil|برنت/.test(q);
+  const aboutUsd = /دولار|dollar|usd/.test(q);
+
+  if (aboutGold) {
+    lines.push("**لماذا يهم الذهب السوق المصري؟**");
+    lines.push("• الذهب يُسعَّر بالأوقية بالدولار، وسعره بالجنيه = سعر الأوقية × سعر الصرف — فيتحرك مع الدولار لا مع EGX.");
+    lines.push("• ارتفاع الذهب عادةً يعني طلبًا على الملاذ الآمن أو توقعات تضخم/ضعف عملة، فيُحوّل المستثمر المحلي جزءًا من السيولة إلى الذهب بدل الأسهم.");
+    lines.push("• التأثير على EGX غير مباشر: ضعف الجنيه يرفع تكلفة الاستيراد على الشركات المستوردة، بينما شركات مرتبطة بالذهب/التعدين قد تستفيد.");
+    lines.push("");
+    lines.push("**القراءة الحالية:** " + (gold ? `الذهب عند ${gold.v} (${fmtPct(gold.c)})${usd ? ` والدولار ${usd.v}` : ""}.` : "بيانات الذهب غير متاحة لحظيًا."));
+  } else if (aboutRate) {
+    lines.push("**لماذا تهم الفائدة الأمريكية؟**");
+    lines.push("• رفع الفائدة يقوّي الدولار عالميًا، ما يضغط عادةً على الذهب والأصول عالية المخاطر.");
+    lines.push("• في مصر، الفائدة المرتفعة محليًا تجعل أدوات الدين منافسًا قويًا للأسهم (خروج سيولة من EGX)، وترفع تكلفة الاقتراض على الشركات.");
+    lines.push("• صعود الدولار يرفع تكلفة الاستيراد ويضغط على الشركات المستوردة، ويدعم المصدّرين.");
+    lines.push("");
+    lines.push("**القراءة الحالية:** " + (usd ? `الدولار عند ${usd.v} (${fmtPct(usd.c)})` : "الدولار غير متاح لحظيًا") + (egx ? ` وEGX30 عند ${egx.v} (${fmtPct(egx.c)}).` : "."));
+  } else if (aboutOil) {
+    lines.push("**لماذا يهم النفط؟**");
+    lines.push("• مصر مستورد صافٍ للطاقة؛ ارتفاع النفط يرفع تكاليف النقل والصناعة ويضغط على هوامش الشركات الصناعية.");
+    lines.push("• في المقابل يدعم اقتصادات الخليج وأسهم الطاقة عالميًا.");
+    lines.push("");
+    lines.push("**القراءة الحالية:** " + (brent ? `${brent.n} عند ${brent.v} (${fmtPct(brent.c)}).` : "بيانات النفط غير متاحة لحظيًا."));
+  } else if (aboutUsd) {
+    lines.push("**لماذا يهم الدولار؟**");
+    lines.push("• ارتفاع الدولار يرفع تكلفة الاستيراد، يضغط على الشركات المستوردة، ويدعم المصدّرين والسياحة.");
+    lines.push("• يؤثر على تقييم الأصول الدولارية (الذهب، ETFs العالمية) بالجنيه.");
+    lines.push("");
+    lines.push("**القراءة الحالية:** " + (usd ? `الدولار ${usd.v} (${fmtPct(usd.c)}).` : "الدولار غير متاح لحظيًا."));
+  } else {
+    lines.push("حدّد العامل الذي تريد تحليل تأثيره (الذهب، الفائدة، الدولار، النفط) لأعطيك قراءة سببية مبنية على الأرقام الحية.");
+  }
+
+  lines.push("", "⚠️ تحليل تعليمي مبني على بيانات حية — وليس توصية استثمارية.");
+  return lines.join("\n");
+}
+
 /* ─── Public entry point ─── */
 
 export async function localAiChat(messages: ChatMsg[]): Promise<string> {
-  const last = [...messages].reverse().find((m) => m.role === "user");
-  const question = last?.content || "";
+  const userMsgs = messages.filter((m) => m.role === "user");
+  const last = userMsgs[userMsgs.length - 1]?.content || "";
+  /* Follow-up continuity: the local engine used to read ONLY the last user
+   * message, so «طيب وإيه وضعها؟» lost its subject. When the last message
+   * looks like a follow-up, merge the previous question so intent + entity
+   * resolution still find the topic (JUFO، الذهب …). */
+  const prev = userMsgs.length >= 2 ? userMsgs[userMsgs.length - 2].content : "";
+  const isFollowUp = !!prev && (last.trim().length <= 18
+    || /وضعها|وضعه|ده |دا |نفسه|نفسها|طيب|طب |كمان|عنها|عنه/.test(last));
+  const subject = isFollowUp ? `${prev} ${last}`.trim() : last;
   try {
-    const { live, intent } = await getLive(question);
+    const { live, intent } = await getLive(subject);
     switch (intent) {
       case "greeting": return greetingReply();
-      case "article": return articleAnalysisReply(question, live);
+      case "article": return articleAnalysisReply(subject, live);
       case "market": return marketReply(live);
-      case "stock": return stockReply(question, live);
+      case "stock": return stockReply(subject, live);
       case "advice": return adviceReply(live);
-      case "news": return newsReply(live, question);
-      case "portfolio": return portfolioReply(question, live);
+      case "news": return newsReply(live, subject);
+      case "portfolio": return portfolioReply(subject, live);
+      case "opportunities": return opportunitiesReply(live);
+      case "impact": return impactReply(subject, live);
       default: return generalReply(live);
     }
   } catch (e) {

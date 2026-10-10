@@ -1119,7 +1119,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
  * picks the canonical model. Frontend just sends system + messages. */
 const WA = "201008605139";
 
-async function callAI({system, messages, max_tokens=2000}){
+async function callAI({system, messages, max_tokens=2000, context=null, memory=false}){
   const ctrl = new AbortController();
   const tid = setTimeout(()=>ctrl.abort(), 85000);
   try{
@@ -1128,10 +1128,15 @@ async function callAI({system, messages, max_tokens=2000}){
     const adminTok=DB.g("admTok","");
     if(userTok)headers.Authorization="Bearer "+userTok;
     if(adminTok)headers["x-admin-token"]=adminTok;
+    const body={system, messages, max_tokens};
+    /* Own-context for AI tools (portfolio/alerts) — sent only when the
+     * caller opts in; the backend reads nothing else from the body. */
+    if(context)Object.assign(body, context);
+    if(memory)body.memory=true;
     const r = await fetch("/api/ai/chat",{
       method:"POST",
       headers,
-      body: JSON.stringify({system, messages, max_tokens}),
+      body: JSON.stringify(body),
       signal: ctrl.signal
     });
     if(!r.ok){
@@ -1140,12 +1145,14 @@ async function callAI({system, messages, max_tokens=2000}){
       if(r.status===504) throw new Error("timeout");
       const err=new Error(d.message||"HTTP "+r.status);
       err.status=r.status;
+      err.detail=d.detail||"";
       throw err;
     }
     const d = await r.json();
     if(d.status!=="ok"){
       const err=new Error(d.message||"AI error");
       err.status=r.status;
+      err.detail=d.detail||"";
       throw err;
     }
     if(!d.text) throw new Error("empty_response");
@@ -1161,7 +1168,10 @@ async function callAI({system, messages, max_tokens=2000}){
 function aiErrMsg(e){
   const m = e?.message||"";
   const s = e?.status||0;
-  if(m==="ai_not_provisioned") return "🤖 خدمة الذكاء الاصطناعي غير مُفعّلة على الخادم حالياً — تحتاج مفتاح Anthropic (ANTHROPIC_API_KEY).";
+  const detail = e?.detail||"";
+  if(m==="ai_not_provisioned") return "🤖 خدمة الذكاء الاصطناعي غير مُفعّلة على الخادم حالياً — يحتاج مفتاح Gemini أو Anthropic على الخادم.";
+  if(m==="ai_daily_limit") return "⏳ وصلت للحد اليومي من طلبات الذكاء الاصطناعي — جدّد الاشتراك أو حاول غدًا. (الحد يُدار من لوحة التحكم)";
+  if(m==="ai_upstream_failed") return detail ? "⚠️ "+detail : "⚠️ لم أتمكن من الوصول إلى بيانات حديثة لهذا الطلب حاليًا — حاول بعد لحظات.";
   if(m==="ai_disabled_by_admin") return "⚙️ المشرف أوقف خدمة الذكاء الاصطناعي مؤقتاً من لوحة التحكم.";
   if(m==="timeout"||m.includes("timeout")) return "⌛ انتهت مهلة الاتصال — حاول مرة أخرى.";
   if(m==="rate_limit"||s===429) return "⚠️ وصلت للحد الأقصى من الطلبات — انتظر دقيقة ثم حاول.";
@@ -1330,6 +1340,22 @@ const DB = {
   d:(k)=>{try{localStorage.removeItem("et_"+k);}catch{}},
 };
 
+/* ─── Per-user local data isolation ─────────────────────────────────────
+ * Portfolio/watchlist/notifications live in localStorage. On a shared
+ * browser the NEXT user must not inherit the previous user's private data,
+ * so we tag the store with its owner and wipe user-scoped keys whenever a
+ * DIFFERENT account signs in (the same user keeps their data after logout).
+ * NOTE: cross-device sync needs a server table — not present yet. */
+const USER_SCOPED_KEYS = ["pt","wl","sv","saved_opps","notifs_v1","notifSeen","scr_saved","vip_mkt_pref","vip_tab","opps_seen_count","pay_notifs_seen_v1","price_alerts"];
+function clearUserScopedData(){ for(const k of USER_SCOPED_KEYS){ try{DB.d(k);}catch(e){} } }
+function ensureUserScope(phone){
+  if(!phone) return;
+  const owner=DB.g("user_owner","");
+  if(owner && owner!==phone) clearUserScopedData();
+  if(owner!==phone) DB.s("user_owner",phone);
+}
+function loadUserScopedData(){ wl=DB.g("wl",[]); savedIds=DB.g("sv",[]); portfolio=DB.g("pt",[]); }
+
 /* ═══════════════════ INIT ═══════════════════ */
 document.addEventListener("DOMContentLoaded",async()=>{
   wl=DB.g("wl",[]);savedIds=DB.g("sv",[]);portfolio=DB.g("pt",[]);
@@ -1350,6 +1376,8 @@ document.addEventListener("DOMContentLoaded",async()=>{
 });
 
 function bootApp(){
+  ensureUserScope(U?.phone);
+  loadUserScopedData();
   document.getElementById("auth").classList.remove("open");
   document.getElementById("main").style.display="block";
   renderHdrVip();buildCatPills();buildSrcPills();
@@ -1377,6 +1405,7 @@ async function fetchStocksData(){
     const j=await r.json();
     if(j.status==="ok" && Array.isArray(j.stocks) && j.stocks.length){
       liveStocks=j.stocks;
+      checkPriceAlerts();
       const ep=document.getElementById("egx-page");
       if(ep&&ep.classList.contains("open")) renderStocks();
       if(scrMarket==="egx") renderScrResults();
@@ -1542,7 +1571,7 @@ function doAuth(){
   },550);
 }
 
-function logout(){DB.d("s");DB.d("userTok");DB.d("admTok");U=null;goNav("home");document.getElementById("main").style.display="none";document.getElementById("auth").classList.add("open");}
+function logout(){DB.d("s");DB.d("userTok");DB.d("admTok");U=null;portfolio=[];wl=[];savedIds=[];goNav("home");document.getElementById("main").style.display="none";document.getElementById("auth").classList.add("open");}
 
 /* ═══════════════════ ADMIN API HELPER ═══════════════════ */
 async function admFetch(url, opts={}){
@@ -1969,9 +1998,9 @@ async function aiAnalyze(){
   res.style.display="none";
   try{
     const txt = await callAI({
-      max_tokens:2000,
-      system:"أنت محلل استثماري متخصص في البورصة المصرية والأسواق العربية. تُقدّم تحليلاً شاملاً ومفصّلاً بالعربية. اذكر الأسهم والقطاعات المتأثرة، التوصيات العملية، والمخاطر والفرص.",
-      messages:[{role:"user",content:`حلّل هذا الخبر بعمق:\nالمصدر: ${artSnap.srcName}\nالعنوان: ${artSnap.title}\nالخلاصة: ${artSnap.summary}\n\nالمطلوب:\n1. ما الأسهم والقطاعات المصرية المتأثرة مباشرةً؟\n2. هل التأثير إيجابي أم سلبي؟ ولماذا؟\n3. توصيتك للمستثمر المصري في الأجل القريب\n4. المخاطر التي يجب مراعاتها\n5. خلاصة القرار`}]
+      max_tokens:2200,
+      system:"أنت محلل استثماري متخصص في البورصة المصرية والأسواق العربية. تحلل الخبر الحقيقي المُرسل إليك فقط — لا تخترع معلومة غير واردة في الخبر أو في بيانات المنصة المتاحة. إذا نقصت بيانات قل ذلك صراحة.",
+      messages:[{role:"user",content:`حلّل هذا الخبر بدقة (هذا هو نص الخبر الحقيقي — بنِيه وحده):\nالمصدر: ${artSnap.srcName}\nالعنوان: ${artSnap.title}\nالخلاصة: ${artSnap.summary}\n\nالمطلوب بالترتيب بعناوين واضحة:\n1. **ملخص الخبر** — سطران كحد أقصى.\n2. **لماذا الخبر مهم؟** — الأثر الاقتصادي/القطاعي.\n3. **الشركات/الأصول المتأثرة** — فقط ما ورد في الخبر أو معروف في السوق المصري، وبيّن سبب كل تأثير.\n4. **التأثير المحتمل** — كيف ينعكس على القطاعات/الأسعار.\n5. **الاتجاه المحتمل**: إيجابي / سلبي / محايد — مع التبرير.\n6. **درجة التأثير**: من 1 إلى 5 (1 = طفيف، 5 = قوي جدًا) — مع التبرير.\n7. **الأفق الزمني**: قصير المدى (أيام–أسابيع) / متوسط (أشهر) / طويل (أكثر من سنة).\n8. **حدود التحليل** — ما الذي لا تتوفر بيانات كافية عنه.\n\nإن كان العنوان/الخلاصة مبهمين (مثال: اسم يحتمل شركة ومكانًا) فوضّح الاحتمالات واسأل للتوضيح. ذكر مصادر البيانات عند توفرها.`}]
     });
     res.textContent=txt;
     res.style.display="block";
@@ -2325,7 +2354,7 @@ function renderVIP(){
       <div style="background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(16,185,129,.05));border:1px solid rgba(245,158,11,.2);border-radius:16px;padding:16px;margin-bottom:14px;">
         <div style="color:var(--au);font-weight:800;font-size:13px;margin-bottom:10px;text-align:center;">✨ ما الذي ستحصل عليه؟</div>
         <div style="display:flex;flex-direction:column;gap:6px;">
-          ${["🤖 محادثة مع AI مستشار مالي — 24/7 بدون قيود","📡 إشارات تداول يومية على أسهم EGX","🔍 Stock Screener احترافي بفلاتر متقدمة","💼 تحليل AI لمحفظتك الشخصية","🌅 تقارير صباح وإغلاق يومية","🔔 تنبيهات أسبقية لأهم الأحداث الاقتصادية","💡 فرص استثمارية منتقاة يدوياً","💬 دعم واتساب مباشر"].map(f=>`
+          ${["🤖 محادثة مع AI مستشار مالي على بيانات المنصة الحية","📡 إشارات تداول يومية على أسهم EGX","🔍 Stock Screener احترافي بفلاتر متقدمة","💼 تحليل AI لمحفظتك الشخصية","🌅 تقارير صباح وإغلاق يومية","🔔 تنبيهات أسبقية لأهم الأحداث الاقتصادية","💡 فرص استثمارية مبنية على بيانات السوق الحية","💬 دعم واتساب مباشر"].map(f=>`
           <div style="display:flex;align-items:flex-start;gap:8px;"><span style="flex-shrink:0;">${f.slice(0,2)}</span><span style="color:var(--t2);font-size:11.5px;">${f.slice(3)}</span></div>`).join("")}
         </div>
       </div>
@@ -3089,8 +3118,8 @@ function openVipAlert(link){
 }
 function vBuildAlerts(b){
   const s=getNotifsStore();
-  const prefsDef=[["news","🚨 الأخبار العاجلة"],["opps","💡 الفرص الجديدة"],["calendar","📅 الأحداث الاقتصادية"],["sub","⭐ حالة الاشتراك"]];
-  const typeIcons={news:"🚨",opps:"💡",calendar:"📅",sub:"⭐"};
+  const prefsDef=[["news","🚨 الأخبار العاجلة"],["opps","💡 الفرص الجديدة"],["calendar","📅 الأحداث الاقتصادية"],["sub","⭐ حالة الاشتراك"],["price","🔔 تنبيهات الأسعار"]];
+  const typeIcons={news:"🚨",opps:"💡",calendar:"📅",sub:"⭐",price:"🔔"};
   b.innerHTML=`
     <div class="vbox" style="background:linear-gradient(135deg,rgba(139,92,246,.07),rgba(59,130,246,.04));border-color:rgba(139,92,246,.18);">
       <div class="row between">
@@ -3112,6 +3141,18 @@ function vBuildAlerts(b){
         </div>`).join("")}
       <div style="color:var(--t5);font-size:9px;margin-top:8px;">التنبيهات تُنشأ تلقائياً: أخبار عاجلة، فرص جديدة، أحداث اقتصادية — وتظهر أيضاً كإشعارات متصفح عند تفعيلها.</div>
     </div>
+    ${vSect("🔔","تنبيهات الأسعار")}
+    <div class="vbox">
+      <div class="p-inputs">
+        <input class="mini-in" id="pa-sym" placeholder="الرمز — مثال: COMI" style="flex:1.3;" oninput="this.value=this.value.toUpperCase().slice(0,10)"/>
+        <button class="cp" id="pa-dir" data-dir="above" onclick="paToggleDir(this)" style="padding:7px 10px;">أعلى من ▲</button>
+      </div>
+      <div class="p-inputs" style="margin-top:6px;">
+        <input class="mini-in" id="pa-price" type="number" placeholder="السعر (جنيه)" style="flex:2;"/>
+        <button class="add-btn" onclick="paAdd()">+</button>
+      </div>
+      ${(()=>{const pa=getPriceAlerts();return pa.length?`<div style="margin-top:8px;">${pa.map(a=>`<div class="p-row"><span style="color:var(--t2);font-size:11.5px;font-family:var(--mono);">${sanitize(a.sym)} ${a.dir==="above"?"≥":"≤"} ${a.price} ج ${a.done?"✅":""}</span><span style="cursor:pointer;color:var(--dn);margin-right:4px;" onclick="paDel('${a.id}')">✕</span></div>`).join("")}</div>`:`<div style="color:var(--t5);font-size:10.5px;text-align:center;padding:5px;">لا تنبيهات أسعار — أضف رمزًا وحدد السعر</div>`;})()}
+    </div>
     ${vSect("📥","كل التنبيهات")}
     ${!s.items.length?vEmpty("🔕","لا تنبيهات بعد","ستظهر هنا الأخبار العاجلة والفرص والأحداث تلقائياً"):
       `<div class="vbox" style="padding:0;overflow:hidden;">${s.items.slice(0,50).map(n=>`
@@ -3129,6 +3170,48 @@ function vBuildAlerts(b){
 function vTogglePref(key,val){const s=getNotifsStore();s.prefs[key]=val;saveNotifsStore(s);renderVipTab();}
 function markAllVipAlertsRead(){const s=getNotifsStore();s.items.forEach(n=>n.read=true);s.unread=0;saveNotifsStore(s);updateBellBadge();renderVipTab();}
 function clearVipAlerts(){if(!confirm("مسح كل التنبيهات؟"))return;const s=getNotifsStore();s.items=[];s.unread=0;saveNotifsStore(s);updateBellBadge();renderVipTab();showToast("تم مسح التنبيهات");}
+
+/* ─── تنبيهات الأسعار (حقيقية) ──────────────────────────────────────
+ * The user sets a symbol + threshold; we re-check on every LIVE stocks
+ * refresh and fire a notification the moment the price crosses it. */
+function getPriceAlerts(){return DB.g("price_alerts",[]);}
+function savePriceAlerts(a){DB.s("price_alerts",a);}
+function addPriceAlert(sym,dir,price){
+  const pa=getPriceAlerts();
+  pa.push({id:Date.now()+"_"+Math.random().toString(36).slice(2,6),sym:String(sym).toUpperCase(),dir,price:Number(price),done:false});
+  savePriceAlerts(pa.slice(0,50));
+}
+function delPriceAlert(id){savePriceAlerts(getPriceAlerts().filter(a=>a.id!==id));}
+function paToggleDir(btn){const d=btn.dataset.dir==="above"?"below":"above";btn.dataset.dir=d;btn.textContent=d==="above"?"أعلى من ▲":"أقل من ▼";}
+function paAdd(){
+  const sym=(document.getElementById("pa-sym")?.value||"").trim().toUpperCase();
+  const price=Number(document.getElementById("pa-price")?.value);
+  const dir=document.getElementById("pa-dir")?.dataset.dir||"above";
+  if(!sym){showToast("⚠️ أدخل رمز السهم");return;}
+  if(!price||price<=0){showToast("⚠️ أدخل سعرًا صحيحًا");return;}
+  addPriceAlert(sym,dir,price);
+  showToast("✅ تم حفظ تنبيه السعر");
+  checkPriceAlerts();
+  renderVipTab();
+}
+function paDel(id){delPriceAlert(id);renderVipTab();showToast("تم حذف التنبيه");}
+function checkPriceAlerts(){
+  const pa=getPriceAlerts();
+  if(!pa.length||!liveStocks.length)return;
+  let changed=false;
+  for(const a of pa){
+    if(a.done)continue;
+    const s=liveStocks.find(x=>x.sym===a.sym);
+    if(!s)continue;
+    const hit=a.dir==="above"?s.price>=a.price:s.price<=a.price;
+    if(hit){
+      a.done=true;changed=true;
+      addNotif("price",`🔔 ${a.sym}: ${a.dir==="above"?"بلغ":"هبط إلى"} ${a.price} ج`,`السعر الحالي ${s.price.toFixed(2)} ج — راجع تبويب الأسواق`,"nav:markets","🔔");
+      showToast(`🔔 تنبيه سعر: ${a.sym} عند ${s.price.toFixed(2)} ج`);
+    }
+  }
+  if(changed)savePriceAlerts(pa);
+}
 
 /* ══════════════ TAB 11 — الإعدادات ══════════════ */
 function vBuildSet(b){
@@ -3529,9 +3612,16 @@ async function sendChat(){
   cw.appendChild(typingEl);cw.scrollTop=cw.scrollHeight;
   try{
     const hl=allArts.slice(0,5).map(a=>`${a.srcName}: ${a.title}`).join("\n");
+    /* Own context for the AI's read-only tools: the user's portfolio (with
+     * real buy prices/qty from localStorage) + their own alert list. The
+     * backend uses these ONLY for get_portfolio / get_alerts. */
+    const alerts=(getNotifsStore().items||[]).slice(0,15).map(n=>({title:n.title,body:n.body,ts:n.ts,icon:n.icon}));
+    const ctx={portfolio:portfolio.map(p=>({sym:p.sym,price:p.price,qty:p.qty})), alerts};
     const reply = await callAI({
       max_tokens:2000,
-      system:`أنت EgyTrend AI Advisor — مستشار مالي متخصص في السوق المصري والبورصة المصرية. تُجيب بالعربية بشكل شامل ومفيد. إذا سُئلت عن سهم أو قطاع أو قرار استثماري، أجب بعمق وتفصيل مع ذكر المخاطر.\nأبرز أخبار اليوم:\n${hl}\nتذكر: قرارات الاستثمار على مسؤولية المستخدم وهذا تحليل تعليمي.`,
+      context:ctx,
+      memory:true,
+      system:`أنت EgyTrend AI Advisor — مستشار مالي متخصص في السوق المصري والبورصة المصرية. تُجيب بالعربية بشكل شامل ومفيد. إذا سُئلت عن سهم أو قطاع أو قرار استثماري، استخدم الأدوات المتاحة لجلب البيانات الحقيقية ثم أجب بعمق مع ذكر المخاطر.\nأبرز أخبار اليوم:\n${hl}\nتذكر: قرارات الاستثمار على مسؤولية المستخدم وهذا تحليل تعليمي.`,
       messages:chatHist.slice(-14).map(m=>({role:m.r==="user"?"user":"assistant",content:m.c}))
     });
     chatHist.push({r:"bot",c:reply});
@@ -3651,7 +3741,11 @@ function SUB_M(){const arr=SUB_METHODS||[];return arr.find(m=>m.id===SUB_METHOD)
 function payMethodLabel(id){const m=SUB_METHOD_META[id];return m?m.emoji+" "+m.label:(id||"");}
 let payProofData=null, payProofName="";
 function openSub(){subStep=1;selPlan="monthly";payProofData=null;payProofName="";renderSub();document.getElementById("sub-ov").classList.add("open");loadSubConfig();}
-function closeSub(){document.getElementById("sub-ov").classList.remove("open");clearPayStatus();}
+function closeSub(){document.getElementById("sub-ov").classList.remove("open");if(typeof clearPayStatus==="function")clearPayStatus();}
+/* clearPayStatus previously did not exist → closeSub() threw a ReferenceError
+ * every time the payment modal closed. It simply empties the status card so
+ * the next open re-fetches fresh state via loadPayStatus(). */
+function clearPayStatus(){const el=document.getElementById("pay-status-card");if(el)el.innerHTML="";}
 function subPlans(){return SUB_PLANS||PLANS;}
 async function loadSubConfig(){
   try{
@@ -4770,7 +4864,7 @@ function goNav(id){
 const NOTIF_KEY="notifs_v1";
 let notifOpen=false;
 
-function getNotifsStore(){return DB.g(NOTIF_KEY,{items:[],unread:0,prefs:{news:true,opps:true,calendar:true,sub:true}});}
+function getNotifsStore(){return DB.g(NOTIF_KEY,{items:[],unread:0,prefs:{news:true,opps:true,calendar:true,sub:true,price:true}});}
 function saveNotifsStore(s){DB.s(NOTIF_KEY,s);}
 
 function addNotif(type,title,body,link="",icon="🔔"){
@@ -4920,7 +5014,7 @@ function openNotifSettings(){
     </div>`).join("")}
     <div style="margin-top:14px;padding:10px;background:var(--bld);border-radius:10px;cursor:pointer;" onclick="requestNotifPermission()">
       <div style="color:#93c5fd;font-size:12px;font-weight:700;">🔔 تفعيل إشعارات المتصفح</div>
-      <div style="color:var(--t4);font-size:10.5px;margin-top:2px;">تلقّ إشعارات حتى عند إغلاق التطبيق</div>
+      <div style="color:var(--t4);font-size:10.5px;margin-top:2px;">تلقّ إشعارات داخل المنصة أثناء استخدامك</div>
     </div>
     <button onclick="document.getElementById('notif-set-ov').remove()" style="width:100%;margin-top:14px;background:none;border:none;color:var(--t4);font-size:12px;cursor:pointer;font-family:var(--sans);">إغلاق</button>
   </div>`;
@@ -5026,7 +5120,7 @@ async function loadOpps(force=false){
           <div style="color:var(--t3);font-size:13px;margin-bottom:18px;">ميزة حصرية لأعضاء VIP</div>
           <div style="background:var(--s1);border:1px solid var(--b1);border-radius:18px;padding:18px;width:100%;max-width:360px;margin-bottom:20px;text-align:right;">
             <div style="color:var(--au);font-weight:800;font-size:13px;margin-bottom:14px;text-align:center;">ما الذي ستحصل عليه ⭐</div>
-            ${["📈 أسهم مصرية مختارة بعناية — أفضل فرص الدخول","🏛️ أذون خزانة وسندات — عائد 27-28% بدون مخاطر","₿ فرص كريبتو في التوقيت الصحيح","🥇 ذهب وسلع قيّمة — تحوط ضد التضخم","🏢 عقارات وصناديق REIT","📊 ETFs عالمية — تنويع دولاري","🤖 كل فرصة مدعومة بتحليل AI حقيقي","🔔 تُحدَّث تلقائياً بناءً على السوق"].map(f=>`
+            ${["📈 أسهم مصرية مختارة بعناية — أفضل فرص الدخول","🏛️ أذون خزانة وسندات — أدوات دين بعائد مرتفع ومخاطرة منخفضة نسبياً","₿ فرص كريبتو في التوقيت الصحيح","🥇 ذهب وسلع قيّمة — تحوط ضد التضخم","🏢 عقارات وصناديق REIT","📊 ETFs عالمية — تنويع دولاري","🤖 كل فرصة مبنية على بيانات السوق الحية","🔔 تُحدَّث تلقائياً بناءً على السوق"].map(f=>`
               <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:9px;font-size:12px;color:var(--t2);">${f}</div>`).join("")}
           </div>
           <button class="btn btn-au btn-full" style="max-width:360px;padding:14px;font-size:14px;font-weight:800;" onclick="goNav('vip')">⭐ اشترك في VIP واحصل على كل الفرص</button>

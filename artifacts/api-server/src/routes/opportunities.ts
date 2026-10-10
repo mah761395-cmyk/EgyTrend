@@ -7,6 +7,8 @@ import jwt from "jsonwebtoken";
 import { logger } from "../lib/logger";
 import { currentUser, isVipActive } from "../lib/userAuth";
 import { buildLocalOpportunities, type OppCandidate } from "../lib/opp-engine";
+import { getMarketsSnapshot, getStocksSnapshot, type StockQuote } from "./markets";
+import { getNewsSnapshot } from "./news";
 type StockT = OppCandidate extends never ? never : Parameters<typeof buildLocalOpportunities>[1][number];
 
 const router = Router();
@@ -40,17 +42,86 @@ function requireAuth(req: any, res: any, next: any) {
   next();
 }
 
+/* ─── Live in-process inputs (serverless-safe) ─────────────────────────
+ * Reads the SAME in-process caches the /api/markets, /api/markets/stocks
+ * and /api/news routes serve. A localhost self-fetch is impossible on
+ * Vercel (nothing binds a port inside a serverless function) — that is
+ * exactly why generation used to fail there with a misleading 502. */
+async function collectLiveInputs(): Promise<{
+  markets: Record<string, unknown> | null;
+  stocks: StockQuote[];
+  newsTitles: string[];
+}> {
+  const [mk, st, news] = await Promise.allSettled([
+    getMarketsSnapshot(),
+    getStocksSnapshot(),
+    getNewsSnapshot(),
+  ]);
+  const markets =
+    mk.status === "fulfilled" && mk.value ? (mk.value.data as unknown as Record<string, unknown>) : null;
+  const stocks = st.status === "fulfilled" && st.value ? st.value : [];
+  const newsTitles: string[] = [];
+  if (news.status === "fulfilled" && news.value) {
+    for (const f of news.value.feeds.slice(0, 6)) {
+      for (const it of (f.items || []).slice(0, 3)) newsTitles.push(it.title);
+      if (newsTitles.length >= 10) break;
+    }
+  }
+  return { markets, stocks, newsTitles };
+}
+
+/* Stable id from a title so a saved/opened opportunity keeps working across
+ * reloads even when it is served live (not persisted). */
+function stableOppId(title: string): string {
+  return "loc-" + crypto.createHash("md5").update(title).digest("hex").slice(0, 10);
+}
+
+/* Data-backed opportunity rows (never fake). Shared by the GET fallback,
+ * /generate and /seed so every path shows the SAME real picks. */
+async function buildLiveOpportunityRows(): Promise<Array<Record<string, unknown>>> {
+  const { markets, stocks, newsTitles } = await collectLiveInputs();
+  if (!stocks.length) return [];
+  const today = new Date().toLocaleDateString("ar-EG", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+  });
+  const candidates = buildLocalOpportunities(markets, stocks as any, newsTitles, today);
+  const now = new Date().toISOString();
+  return candidates.map((c) => ({
+    id: stableOppId(c.title),
+    title: c.title, summary: c.summary, details: c.details,
+    type: c.type, market: c.market, expectedReturn: c.expectedReturn,
+    riskLevel: c.riskLevel, sector: c.sector, duration: c.duration,
+    deadline: null, status: "active", featured: c.featured, vipOnly: c.vipOnly,
+    createdAt: now, updatedAt: now, source: "live",
+  }));
+}
+
 /* ─── GET /api/opportunities ─────────────────────────────────── */
 router.get("/opportunities", async (req, res) => {
+  const admin = isAdmin(req);
+  let vip = false;
+  try { vip = await isVipActive(currentUser(req)); } catch { /* treat as non-vip */ }
+  const mask = (o: any) => (admin || vip || !o.vipOnly ? o : { ...o, details: null });
+
   try {
-    const admin = isAdmin(req);
     const all = await db.select().from(opportunities).orderBy(desc(opportunities.createdAt));
-    const vip = await isVipActive(currentUser(req));
-    const visible = (admin ? all : all.filter(o => o.status !== "deleted" && o.status !== "closed"))
-      .map(o => admin || vip || !o.vipOnly ? o : { ...o, details: null });
-    res.json({ status: "ok", opportunities: visible });
+    const visible = admin ? all : all.filter(o => o.status !== "deleted" && o.status !== "closed");
+    if (visible.length) {
+      return res.json({ status: "ok", opportunities: visible.map(mask), source: "db" });
+    }
   } catch (e) {
-    res.status(500).json({ status: "error", message: "Failed to fetch opportunities" });
+    logger.warn({ err: (e as Error)?.message }, "opportunities DB read failed — using live fallback");
+  }
+
+  /* DB empty or unavailable → serve live data-backed opportunities so the
+   * VIP tab is never dead (read-only, not persisted). */
+  try {
+    const live = await buildLiveOpportunityRows();
+    return res.json({ status: "ok", opportunities: live.map(mask), source: "live" });
+  } catch (e) {
+    logger.warn({ err: (e as Error)?.message }, "live opportunities fallback failed");
+    return res.json({ status: "ok", opportunities: [], source: "none",
+      note: "تعذر تحميل الفرص حاليًا — أعد المحاولة بعد لحظات." });
   }
 });
 
@@ -132,68 +203,51 @@ router.post("/opportunities/generate", requireAuth, async (req, res) => {
    * (markets + stocks + news). Same contract, zero fake data. */
   if (!ANTHROPIC_BASE || !ANTHROPIC_KEY) {
     try {
-      const selfBase = `http://localhost:${process.env.PORT || "8080"}/api`;
-      const [mkRes, stRes, newsRes] = await Promise.allSettled([
-        fetch(`${selfBase}/markets`),
-        fetch(`${selfBase}/markets/stocks`),
-        fetch(`${selfBase}/news?limit=20`),
-      ]);
-      const mkData: any = mkRes.status === "fulfilled" && mkRes.value.ok ? await mkRes.value.json() : {};
-      const stData: any = stRes.status === "fulfilled" && stRes.value.ok
-        ? await stRes.value.json()
-        : { stocks: { eg: [], us: [] } };
-      const newsData: any =
-        newsRes.status === "fulfilled" && newsRes.value.ok ? await newsRes.value.json() : {};
-      const newsTitles = ((newsData.feeds || []) as Array<{ items?: Array<{ title?: string }> }>)
-        .flatMap(f => f.items || []).map(a => a.title || "").filter(Boolean);
-      // /api/markets/stocks returns a flat array of all stocks (EGX + US).
-      const rawStocks = stData?.stocks;
-      const allStocks: StockT[] = Array.isArray(rawStocks)
-        ? rawStocks
-        : [...(rawStocks?.eg || []), ...(rawStocks?.us || [])];
-      const list = buildLocalOpportunities(mkData, allStocks, newsTitles,
+      /* In-process snapshots — serverless-safe (no localhost self-fetch). */
+      const { markets: mkData, stocks: allStocks, newsTitles } = await collectLiveInputs();
+      const list = buildLocalOpportunities(mkData, allStocks as StockT[], newsTitles,
         new Date().toLocaleDateString("ar-EG", { weekday: "long", year: "numeric", month: "long", day: "numeric" }));
       if (!list.length) {
         return res.status(502).json({ status: "error", message: "لا توجد بيانات سوق كافية حاليًا — أعد المحاولة بعد التحديث" });
       }
-      const now = new Date();
-      const existingAll = await db.select().from(opportunities);
-      const aiGenIds = existingAll.filter(o => o.sector?.startsWith("[AI]")).map(o => o.id);
-      for (const id of aiGenIds) {
-        await db.update(opportunities).set({ status: "closed", updatedAt: now }).where(eq(opportunities.id, id));
+      /* Persist best-effort: if the DB is unavailable we STILL return the
+       * freshly-built rows so the admin gets a result instead of a 500. */
+      const rows = list.map((opp) => ({ id: crypto.randomUUID().slice(0, 12), ...opp }));
+      try {
+        const now = new Date();
+        const existingAll = await db.select().from(opportunities);
+        const aiGenIds = existingAll.filter(o => o.sector?.startsWith("[AI]")).map(o => o.id);
+        for (const id of aiGenIds) {
+          await db.update(opportunities).set({ status: "closed", updatedAt: now }).where(eq(opportunities.id, id));
+        }
+        for (const opp of list) {
+          await db.insert(opportunities).values({
+            id: crypto.randomUUID().slice(0, 12),
+            title: opp.title, summary: opp.summary, details: opp.details,
+            type: opp.type, market: opp.market,
+            expectedReturn: opp.expectedReturn, riskLevel: opp.riskLevel,
+            sector: `[AI] ${opp.sector}`, duration: opp.duration,
+            deadline: null, status: "active",
+            featured: opp.featured, vipOnly: opp.vipOnly,
+          });
+        }
+        logger.info({ inserted: list.length, closedOld: aiGenIds.length, engine: "local" }, "opportunities generated");
+        return res.json({ status: "ok", inserted: list.length, closedOld: aiGenIds.length, engine: "local" });
+      } catch (e) {
+        logger.warn({ err: (e as Error)?.message }, "opportunities persist failed — returning live rows");
+        return res.json({ status: "ok", inserted: 0, persisted: false, engine: "local", opportunities: rows });
       }
-      let inserted = 0;
-      for (const opp of list) {
-        await db.insert(opportunities).values({
-          id: crypto.randomUUID().slice(0, 12),
-          title: opp.title, summary: opp.summary, details: opp.details,
-          type: opp.type, market: opp.market,
-          expectedReturn: opp.expectedReturn, riskLevel: opp.riskLevel,
-          sector: `[AI] ${opp.sector}`, duration: opp.duration,
-          deadline: null, status: "active",
-          featured: opp.featured, vipOnly: opp.vipOnly,
-        });
-        inserted++;
-      }
-      logger.info({ inserted, closedOld: aiGenIds.length, engine: "local" }, "opportunities generated");
-      return res.json({ status: "ok", inserted, closedOld: aiGenIds.length, engine: "local" });
     } catch (e) {
       logger.warn({ err: e }, "local opportunity generation failed");
       return res.status(500).json({ status: "error", message: "تعذر التوليد — أعد المحاولة" });
     }
   }
   try {
-    // Fetch live market data to feed into AI
-    const selfBase = `http://localhost:${process.env.PORT || "8080"}/api`;
-    const [mkRes, newsRes] = await Promise.allSettled([
-      fetch(`${selfBase}/markets`),
-      fetch(`${selfBase}/news?limit=20`),
-    ]);
-    const mkData  = mkRes.status  === "fulfilled" && mkRes.value.ok  ? await mkRes.value.json()  : {};
+    // Live data read IN-PROCESS (serverless-safe — no localhost self-fetch).
+    const liveInput = await collectLiveInputs();
+    const mkData = liveInput.markets || {};
     const newsData: { feeds?: Array<{ items?: Array<{ title?: string }> }> } =
-      newsRes.status === "fulfilled" && newsRes.value.ok
-        ? (await newsRes.value.json() as { feeds?: Array<{ items?: Array<{ title?: string }> }> })
-        : {};
+      { feeds: [{ items: liveInput.newsTitles.map((t) => ({ title: t })) }] };
 
     const mkSummary = JSON.stringify(mkData).slice(0, 3000);
     /* /api/news returns { feeds: [{ items: [...] }] } — flatten titles from
@@ -320,9 +374,9 @@ ${newsSummary || "لا توجد أخبار"}
 });
 
 /* ─── POST /api/opportunities/seed ───────────────────────────
-   One-time seed with 15 curated real opportunities.
-   Won't duplicate if already seeded (checks count > 0).
-   ─────────────────────────────────────────────────────────── */
+   Seeds opportunities from the LIVE data engine (real market data).
+   No hardcoded numbers — fields the upstream data does not provide are
+   omitted rather than invented. Admin-only. */
 router.post("/opportunities/seed", requireAuth, async (req, res) => {
   const { force } = req.body || {};
   try {
@@ -330,232 +384,31 @@ router.post("/opportunities/seed", requireAuth, async (req, res) => {
     if (existing.length > 0 && !force) {
       return res.json({ status: "skipped", reason: "already seeded", count: existing.length });
     }
-
-    const SEED: Array<{
-      title: string; summary: string; details: string; type: string; market: string;
-      expectedReturn: string; riskLevel: number; sector: string; duration: string;
-      featured: boolean; vipOnly: boolean; deadline?: string;
-    }> = [
-      {
-        title: "أذون الخزانة المصرية 91 يوم — عائد 27.5% سنوياً",
-        summary: "تتيح وزارة المالية أذون خزانة بعائد 27-28% سنوياً، الأعلى في تاريخ مصر. استثمار خالٍ من المخاطر بضمان الحكومة المصرية.",
-        details: "أذون الخزانة من أأمن أدوات الاستثمار في مصر — مضمونة 100% من الحكومة. العائد الحالي 27.5% على 91 يوماً (يُطرح بأسعار خصم). تُباع بمزادات البنك المركزي كل أسبوع. يمكن الاشتراك عبر أي بنك مصري أو تطبيق الخدمات المالية. مثالية لمن يريد عائداً محفوظاً يتفوق على التضخم.",
-        type: "bond",
-        market: "egypt",
-        expectedReturn: "27-28% سنوياً",
-        riskLevel: 1,
-        sector: "أدوات دين حكومية",
-        duration: "91 يوم (متجددة)",
-        featured: true,
-        vipOnly: false,
-      },
-      {
-        title: "CIB — بنك التجاري الدولي (COMI.CA)",
-        summary: "أكبر بنك خاص في مصر يحقق أرباحاً قياسية مع ارتفاع أسعار الفائدة. القطاع البنكي هو الأقوى أداءً في EGX هذا العام.",
-        details: "CIB يتمتع بميزانية قوية وعائد توزيعات نقدية ثابت. مع استمرار البيئة المرتفعة للفائدة، صافي هامش الفائدة في ارتفاع. السهم يداوم على النمو فوق المؤشر العام. نقطة دخول جيدة عند أي تراجع نحو 85-90 جنيه. استراتيجية احتجاز طويل المدى مناسبة للمستثمر المحافظ.",
-        type: "stock",
-        market: "egypt",
-        expectedReturn: "20-30% سنوياً",
-        riskLevel: 2,
-        sector: "بنوك",
-        duration: "6-12 شهر",
-        featured: true,
-        vipOnly: false,
-      },
-      {
-        title: "البيتكوين عند مناطق دعم قوية — $57K-$60K",
-        summary: "BTC تراجع من قمة $70K ويتداول الآن عند مناطق دعم تاريخية. المحللون يرون تراجعاً صحياً قبل الموجة التالية.",
-        details: "بيتكوين يتداول عند $59K — قريب من نطاق الدعم $57K-$60K الذي صمد في التراجعات السابقة. ETFs البيتكوين تسجل تدفقات شرائية متزايدة. قرار الفيدرالي الأمريكي بتثبيت الفائدة يدعم الأصول المخاطرة. المدخل الموصى به: جزء صغير من المحفظة (5-10%) مع stop-loss تحت $55K.",
-        type: "crypto",
-        market: "crypto",
-        expectedReturn: "30-50% (6 أشهر)",
-        riskLevel: 4,
-        sector: "كريبتو",
-        duration: "3-6 أشهر",
-        featured: false,
-        vipOnly: false,
-      },
-      {
-        title: "الذهب — ملاذ آمن عند مستويات قياسية",
-        summary: "أونصة الذهب تتجاوز $3,300 للأونصة مع استمرار التوترات الجيوسياسية وضعف الدولار. التوجه العالمي نحو تنويع الاحتياطيات يدعم الأسعار.",
-        details: "الذهب في اتجاه صعودي قوي منذ 2024 — وصل $3,400 ثم تراجع قليلاً. المصريون يستفيدون أيضاً من فرق سعر الدولار. يمكن الاستثمار عبر: شراء سبائك محلياً، أو صندوق فيصل الإسلامي للذهب، أو ETF على ذهب GDGD. الذهب يُعتبر تحوطاً ضد التضخم ومخاطر العملة.",
-        type: "commodity",
-        market: "global",
-        expectedReturn: "15-20% سنوياً",
-        riskLevel: 2,
-        sector: "سلع قيّمة",
-        duration: "12+ شهر",
-        featured: false,
-        vipOnly: false,
-      },
-      {
-        title: "أبوقير للأسمدة (ABUK) — قطاع صناعي متين",
-        summary: "أحد أكبر منتجي الأسمدة في مصر والمنطقة. الطلب العالمي على الأسمدة في ارتفاع مع مشكلات سلاسل التوريد العالمية.",
-        details: "ABUK يمتلك ميزة تنافسية بالغاز الطبيعي المحلي الرخيص. صافي الأرباح يرتفع مع ارتفاع أسعار اليوريا عالمياً. الشركة توزع أرباحاً نقدية سخية. السهم أقل ارتباطاً بالتقلبات السياسية المحلية. مناسب للمستثمر الباحث عن ثبات مع نمو معقول.",
-        type: "stock",
-        market: "egypt",
-        expectedReturn: "15-25% سنوياً",
-        riskLevel: 2,
-        sector: "صناعات كيماوية",
-        duration: "6-12 شهر",
-        featured: false,
-        vipOnly: false,
-      },
-      {
-        title: "ETF iShares MSCI Emerging Markets — تنويع ناشئة",
-        summary: "صندوق متداول يعطيك تعرضاً لأسواق الدول الناشئة (الهند، البرازيل، كوريا، مصر) بتكلفة منخفضة جداً.",
-        details: "EEM من أشهر ETFs في العالم بأصول تتجاوز $20B. مؤشر الأسواق الناشئة تحسّن مع انتهاء دورة رفع الفائدة الأمريكية. التنويع الجغرافي يقلل مخاطر الارتباط بسوق واحدة. يُتداول عبر منصات دولية مثل Saxo أو Interactive Brokers. مناسب للمستثمر الذي يريد ادخار دولاري منتظم.",
-        type: "etf",
-        market: "us",
-        expectedReturn: "12-18% سنوياً",
-        riskLevel: 3,
-        sector: "أسواق ناشئة متنوعة",
-        duration: "12-36 شهر",
-        featured: false,
-        vipOnly: false,
-      },
-      {
-        title: "سولانا (SOL) — بلوكتشين الجيل القادم",
-        summary: "SOL ارتفع +2.2% اليوم وسط ضعف في BTC. نشاط DeFi و NFT على شبكة سولانا في تصاعد ملحوظ مع قدوم موسم الأول.",
-        details: "سولانا من أسرع شبكات البلوكتشين — 65,000 معاملة/ثانية بتكلفة شبه صفرية. Memecoin season على سولانا يجذب سيولة ضخمة. SOL الآن عند $73 بعد مقاومة $80 — أي كسر فوق $80 قد يفتح $100. المخاطرة عالية: لا تضع أكثر من 5% من محفظتك. stop-loss عند $60.",
-        type: "crypto",
-        market: "crypto",
-        expectedReturn: "40-80% (محتمل)",
-        riskLevel: 5,
-        sector: "كريبتو - بلوكتشين",
-        duration: "1-3 أشهر",
-        featured: false,
-        vipOnly: true,
-      },
-      {
-        title: "العاصمة الإدارية — شقق تجارية مشارك",
-        summary: "الطلب على الوحدات التجارية والإدارية في العاصمة الجديدة في ارتفاع مستمر مع اكتمال البنية التحتية وتزايد السكان.",
-        details: "العاصمة الإدارية الجديدة تشهد إقبالاً غير مسبوق من الشركات والحكومة. وحدات المكاتب في المناطق التجارية (CBD) حققت عوائد إيجارية 8-12% سنوياً. الأسعار ارتفعت 40-60% خلال 3 سنوات. الدخول عبر: التعاقد المباشر مع المطورين أو صناديق الاستثمار العقاري (REITs). مناسب للاستثمار متوسط المدى.",
-        type: "realestate",
-        market: "egypt",
-        expectedReturn: "30-50% (3 سنوات)",
-        riskLevel: 3,
-        sector: "عقارات تجارية",
-        duration: "24-36 شهر",
-        featured: false,
-        vipOnly: true,
-      },
-      {
-        title: "صندوق بنك مصر للأسهم — إدارة محترفة",
-        summary: "من أقوى الصناديق الاستثمارية في مصر بعائد تاريخي يتفوق على EGX30. مناسب للمستثمر الذي يريد المشاركة في السوق بدون إدارة يومية.",
-        details: "بنك مصر للأسهم يستثمر في حزمة متنوعة من أفضل أسهم EGX بإدارة محترفة. العائد التاريخي 5 سنوات تجاوز 18% سنوياً. رسوم إدارية منخفضة مقارنة بالمنافسين. الحد الأدنى للاستثمار 1000 جنيه فقط. يمكن الاشتراك من أي فرع بنك مصر أو عبر التطبيق.",
-        type: "fund",
-        market: "egypt",
-        expectedReturn: "18-22% سنوياً",
-        riskLevel: 3,
-        sector: "صناديق استثمار",
-        duration: "12+ شهر",
-        featured: false,
-        vipOnly: false,
-      },
-      {
-        title: "شركة المصريين للاتصالات (ETEL) — حصة 45% من أسهم اتصالات مصر",
-        summary: "ETEL تمتلك حصة استراتيجية في اتصالات مصر. القطاع الدفاعي يؤدي جيداً في فترات التقلب الاقتصادي.",
-        details: "ETEL من الأسهم الدفاعية النادرة في EGX — إيراداتها ثابتة من خدمات الاتصالات. الحكومة تدعم التحول الرقمي مما يعزز الطلب. السهم يوزع أرباحاً سنوية منتظمة. مناسب للمستثمر المحافظ الذي يريد عائداً دفاعياً في بيئة غير مستقرة.",
-        type: "stock",
-        market: "egypt",
-        expectedReturn: "12-18% سنوياً",
-        riskLevel: 2,
-        sector: "اتصالات",
-        duration: "6-12 شهر",
-        featured: false,
-        vipOnly: false,
-      },
-      {
-        title: "S&P 500 عبر VOO ETF — الاقتصاد الأمريكي",
-        summary: "VOO يتتبع أكبر 500 شركة أمريكية بتكلفة 0.03% فقط. متوسط العائد التاريخي 10-12% سنوياً بالدولار.",
-        details: "Vanguard S&P 500 ETF من أفضل أدوات الادخار الدولاري طويل المدى. استراتيجية DCA (الشراء الدوري الثابت) تعطي أفضل نتائج على 5+ سنوات. الاقتصاد الأمريكي يُظهر صموداً رغم الفائدة المرتفعة. تداول عبر منصات دولية مرخصة. مناسب كجزء من محفظة متنوعة للادخار الدولاري.",
-        type: "etf",
-        market: "us",
-        expectedReturn: "10-14% سنوياً بالدولار",
-        riskLevel: 2,
-        sector: "مؤشرات أمريكية",
-        duration: "36+ شهر",
-        featured: false,
-        vipOnly: false,
-      },
-      {
-        title: "سوق الأسهم السعودي (TADAWL) — فرصة خليجية",
-        summary: "تداول يُعتبر من أكثر الأسواق الخليجية نضجاً وسيولة. رؤية 2030 تدفع نمو قطاعات الترفيه والبنية التحتية والتقنية.",
-        details: "سوق تداول السعودي يوفر تعرضاً لاقتصاد متنوع خارج النفط. شركات مثل أرامكو، الراجحي، وstc تقدم مزيجاً من الاستقرار والنمو. أسعار النفط المستقرة تدعم ميزانية المملكة والإنفاق الحكومي. التداول عبر صناديق مرخصة أو منصات تداول دولية.",
-        type: "etf",
-        market: "gulf",
-        expectedReturn: "14-20% سنوياً",
-        riskLevel: 3,
-        sector: "أسواق خليجية",
-        duration: "12-24 شهر",
-        featured: false,
-        vipOnly: true,
-      },
-      {
-        title: "إيثريوم (ETH) — بعد الدمج: حصة بـ Staking",
-        summary: "ETH يدفع 4-5% عائد سنوي من Staking فوق أي ارتفاع في السعر. شبكة DeFi الأكبر عالمياً بحجم استخدام متنامٍ.",
-        details: "Ethereum Staking يمنحك عائداً بالدولار بدون بيع ETH. ETH ETF الأمريكية بدأت تستقطب مليارات. الإيثريوم يرتبط بنمو Web3 والتطبيقات اللامركزية على المدى الطويل. ETH الآن $1,600 — أقل من ذروة $4,900. مناسب للمستثمر الذي يفهم الكريبتو ويريد عائداً مستمراً.",
-        type: "crypto",
-        market: "crypto",
-        expectedReturn: "4-5% Staking + نمو",
-        riskLevel: 4,
-        sector: "كريبتو - DeFi",
-        duration: "6-18 شهر",
-        featured: false,
-        vipOnly: true,
-      },
-      {
-        title: "سندات الحكومة المصرية بالدولار — عائد 8%",
-        summary: "مصر تُصدر سندات دولارية (Eurobonds) بعائد 7.5-8.5% — من أعلى العوائد الدولارية في المنطقة مع انتعاش الاقتصاد المصري.",
-        details: "Eurobonds المصرية تداولت بخصم كبير وعادت للمستويات الطبيعية مع تحسن تصنيف مصر الائتماني. العائد الحالي 8% بالدولار يفوق معظم السندات الناشئة. المخاطرة: ارتباط بالتصنيف السيادي المصري. يُتداول عبر بنوك استثمارية دولية. للمستثمر الذي يريد دخلاً ثابتاً بالدولار.",
-        type: "bond",
-        market: "global",
-        expectedReturn: "7.5-8.5% بالدولار",
-        riskLevel: 3,
-        sector: "سندات سيادية",
-        duration: "12-60 شهر",
-        featured: true,
-        vipOnly: true,
-      },
-      {
-        title: "صناديق ريت العقارية المصرية (REITs)",
-        summary: "صناديق الريت المصرية تتيح الاستثمار في العقار بداية من 1000 جنيه مع توزيعات ربحية دورية دون عناء إدارة العقار.",
-        details: "سوق الريت المصري في بدايته — فرصة الدخول المبكر قبل النضج. توزيعات ربحية إلزامية لا تقل عن 90% من صافي الدخل. الأصول موزعة على مراكز تجارية وأبراج سكنية ومستشفيات. مناسب للمستثمر الذي يريد تعرضاً عقارياً بسيولة عالية مقارنة بالعقار المباشر.",
-        type: "fund",
-        market: "egypt",
-        expectedReturn: "10-15% (توزيعات + نمو)",
-        riskLevel: 2,
-        sector: "صناديق عقارية",
-        duration: "12+ شهر",
-        featured: false,
-        vipOnly: false,
-      },
-    ];
-
+    const rows = await buildLiveOpportunityRows();
+    if (!rows.length) {
+      return res.status(502).json({ status: "error", message: "لا توجد بيانات سوق كافية حاليًا" });
+    }
     let inserted = 0;
-    for (const s of SEED) {
-      const id = crypto.randomUUID().slice(0, 12);
+    for (const r of rows) {
       await db.insert(opportunities).values({
-        id,
-        title: s.title,
-        summary: s.summary,
-        details: s.details,
-        type: s.type,
-        market: s.market,
-        expectedReturn: s.expectedReturn,
-        riskLevel: s.riskLevel,
-        sector: s.sector,
-        duration: s.duration,
-        deadline: (s as any).deadline || null,
+        id: String(r.id),
+        title: String(r.title),
+        summary: String(r.summary),
+        details: (r.details as string) || null,
+        type: String(r.type),
+        market: String(r.market),
+        expectedReturn: (r.expectedReturn as string) || null,
+        riskLevel: Number(r.riskLevel) || 3,
+        sector: String(r.sector || ""),
+        duration: (r.duration as string) || null,
+        deadline: null,
         status: "active",
-        featured: s.featured,
-         vipOnly: s.vipOnly,
+        featured: Boolean(r.featured),
+        vipOnly: Boolean(r.vipOnly),
       });
       inserted++;
     }
-
-    return res.json({ status: "ok", inserted });
+    return res.json({ status: "ok", inserted, source: "live" });
   } catch (e: any) {
     logger.error({ err: e?.message }, "seed opportunities error");
     return res.status(500).json({ status: "error", message: e?.message || "Failed" });

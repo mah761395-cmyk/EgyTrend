@@ -3,20 +3,24 @@ import { logger } from "../lib/logger";
 import { currentUser, isAdminToken, isVipActive } from "../lib/userAuth";
 import { db } from "@workspace/db";
 import { aiConfigTable, aiUsageTable } from "@workspace/db";
+import { and, eq, gte, sql } from "drizzle-orm";
+import {
+  runEngine,
+  prepareMessages,
+  remember,
+  engineName,
+  activeModel,
+  geminiKey,
+  anthropicKey,
+  geminiVerify,
+  UpstreamError,
+  type ChatMsg,
+  type GeminiVerify,
+} from "../lib/ai-engine";
 import { localAiChat } from "../lib/local-ai";
+import type { PortItem, AlertItem } from "../lib/ai-tools";
 
 const router: IRouter = Router();
-
-/* Replit AI Integrations env vars take precedence; standard Anthropic env vars
- * work as a portable fallback (e.g. local Windows dev / any host). */
-const ANTHROPIC_BASE =
-  process.env["AI_INTEGRATIONS_ANTHROPIC_BASE_URL"] || "https://api.anthropic.com";
-const ANTHROPIC_KEY =
-  process.env["AI_INTEGRATIONS_ANTHROPIC_API_KEY"] ||
-  process.env["ANTHROPIC_API_KEY"] ||
-  "";
-const DEFAULT_MODEL = "claude-sonnet-4-6";
-const REQUEST_TIMEOUT_MS = 90_000;
 
 /* Per-IP rate limit: 60 calls/min is generous for real usage */
 const RATE: Map<string, { ts: number; count: number }> = new Map();
@@ -34,11 +38,39 @@ function rateLimited(ip: string): boolean {
   return cur.count > RATE_MAX;
 }
 
+/* Per-user AI budget (cost control on the Free Tier): a rolling 24h
+ * window over ai_usage rows, capped by ai_config.daily_request_limit.
+ * Admin tokens bypass the budget (they run the dashboards). */
+const AI_BUDGET_WINDOW_MS = 24 * 60 * 60 * 1000;
+async function aiBudgetExceeded(userId: string): Promise<boolean> {
+  try {
+    const [cfg] = await db.select().from(aiConfigTable).limit(1);
+    const limit = cfg?.dailyRequestLimit ?? 1000;
+    if (limit <= 0) return false;
+    const since = new Date(Date.now() - AI_BUDGET_WINDOW_MS);
+    const [row] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(aiUsageTable)
+      .where(and(eq(aiUsageTable.userId, userId), gte(aiUsageTable.createdAt, since)));
+    return Number(row?.n || 0) >= limit;
+  } catch {
+    return false; // budget check must never block a paying user
+  }
+}
+
 type ChatBody = {
   system?: string;
   messages?: Array<{ role: "user" | "assistant"; content: string }>;
   max_tokens?: number;
   model?: string;
+  /* Client-supplied OWN context — used by get_portfolio / get_alerts tools.
+   * Never trusted for anything else and never used to look up other users. */
+  portfolio?: Array<{ sym: string; price: number; qty: number }>;
+  alerts?: Array<{ title?: string; body?: string; ts?: number; icon?: string }>;
+  /* Only the free-form chat opts into server-side conversation memory;
+   * one-shot flows (signals, morning report, article analysis) must NOT
+   * get previous chat turns prepended — they carry their own data. */
+  memory?: boolean;
 };
 
 /* Admin AI toggle (ai_config.analyzer_enabled) — lets the admin panel actually
@@ -60,8 +92,12 @@ async function logAiUsage(userId: string, requestType: string, tokensEstimate: n
   }
 }
 
+/* ─── explicit "no data" line the frontend maps to a friendly message ── */
+const NO_DATA_MSG = "لم أتمكن من الوصول إلى بيانات حديثة لهذا الطلب حاليًا. حاول بعد لحظات أو اسأل سؤالًا آخر.";
+
 router.post("/chat", async (req: Request, res: Response) => {
-  if (!isAdminToken(req) && !(await isVipActive(currentUser(req)))) {
+  const isAdmin = isAdminToken(req);
+  if (!isAdmin && !(await isVipActive(currentUser(req)))) {
     res.status(req.header("authorization") ? 403 : 401).json({ status: "error", message: "VIP subscription required" });
     return;
   }
@@ -77,13 +113,13 @@ router.post("/chat", async (req: Request, res: Response) => {
   }
 
   const body = (req.body || {}) as ChatBody;
-  const messages = Array.isArray(body.messages) ? body.messages : [];
-  if (!messages.length) {
+  const rawMessages = Array.isArray(body.messages) ? body.messages : [];
+  if (!rawMessages.length) {
     res.status(400).json({ status: "error", message: "messages array required" });
     return;
   }
 
-  const safeMessages = messages
+  const safeMessages: ChatMsg[] = rawMessages
     .filter(
       (m): m is { role: "user" | "assistant"; content: string } =>
         m && typeof m.content === "string" && (m.role === "user" || m.role === "assistant"),
@@ -96,109 +132,155 @@ router.post("/chat", async (req: Request, res: Response) => {
     return;
   }
 
-  /* ─── Local engine fallback: no Anthropic key → rule-based analyst ───
-   * Answers from real live market/news data in Arabic. Zero external calls. */
-  if (!ANTHROPIC_KEY) {
-    const localText = await localAiChat(safeMessages);
-    const claimsLocal = currentUser(req);
-    await logAiUsage(claimsLocal?.phone ?? "vip-anonymous", "chat-local", 0);
-    res.json({ status: "ok", text: localText, model: "egytrend-local", engine: "local" });
-    return;
+  const claims = currentUser(req);
+  const userKey = claims?.phone ?? (isAdmin ? "admin" : `ip:${ip}`);
+
+  /* Cost control: per-user 24h budget (admin exempt) */
+  if (!isAdmin) {
+    if (await aiBudgetExceeded(userKey)) {
+      res.status(429).json({ status: "error", message: "ai_daily_limit" });
+      return;
+    }
   }
 
   const systemPrompt =
-    typeof body.system === "string" ? body.system.slice(0, 6000) : undefined;
+    typeof body.system === "string" ? body.system.slice(0, 6000) : "";
 
-  /* Allow up to 8192 tokens — Claude Sonnet supports it and long Arabic responses need it */
   const maxTokens =
     typeof body.max_tokens === "number" && body.max_tokens > 0
-      ? Math.min(Math.floor(body.max_tokens), 8192)
+      ? Math.min(Math.floor(body.max_tokens), 4096)
       : 2000;
 
-  const model = DEFAULT_MODEL;
+  /* Memory: single-turn follow-ups get the stored context merged in;
+   * multi-turn clients (chat UI) already send their own history.
+   * Opt-in via body.memory so one-shot analysis flows stay lean. */
+  const memKey = userKey;
+  const messages = body.memory ? prepareMessages(safeMessages, memKey) : safeMessages;
 
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  /* Sanitize client-supplied own-context (portfolio/alerts) — sizes capped,
+   * numbers coerced. Nothing else is read from the body. */
+  const ctx = {
+    portfolio: (Array.isArray(body.portfolio) ? body.portfolio : [])
+      .slice(0, 50)
+      .map((p) => ({
+        sym: String(p?.sym || "").toUpperCase().slice(0, 12),
+        price: Number(p?.price) || 0,
+        qty: Number(p?.qty) || 0,
+      }))
+      .filter((p) => p.sym && p.qty > 0),
+    alerts: (Array.isArray(body.alerts) ? body.alerts : [])
+      .slice(0, 25)
+      .map((a) => ({
+        title: String(a?.title || "").slice(0, 200),
+        body: String(a?.body || "").slice(0, 300),
+        ts: Number(a?.ts) || undefined,
+        icon: String(a?.icon || "🔔").slice(0, 6),
+      })),
+  };
+
+  const engine = engineName();
+
   try {
-    const upstream = await fetch(`${ANTHROPIC_BASE}/v1/messages`, {
-      method: "POST",
-      signal: ctrl.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        ...(systemPrompt ? { system: systemPrompt } : {}),
-        messages: safeMessages,
-      }),
-    });
+    const result = await runEngine(messages, systemPrompt, maxTokens, ctx);
 
-    const txt = await upstream.text();
-    if (!upstream.ok) {
-      logger.warn({ status: upstream.status, body: txt.slice(0, 400) }, "ai upstream error");
-      const isRateLimit = upstream.status === 429;
-      res.status(isRateLimit ? 429 : 502).json({
-        status: "error",
-        message: isRateLimit ? "rate_limit" : "AI upstream error",
-        upstreamStatus: upstream.status,
-      });
-      return;
-    }
+    /* Persist the exchange for follow-up context. */
+    remember(memKey, [
+      ...messages.slice(-8),
+      { role: "assistant" as const, content: result.text.slice(0, 2000) },
+    ]);
 
-    let data: {
-      content?: Array<{ type: string; text?: string }>;
-      stop_reason?: string;
-    };
-    try {
-      data = JSON.parse(txt);
-    } catch {
-      res.status(502).json({ status: "error", message: "AI returned invalid JSON" });
-      return;
-    }
-
-    const text =
-      (data.content || [])
-        .filter((c) => c.type === "text" && typeof c.text === "string")
-        .map((c) => c.text as string)
-        .join("\n")
-        .trim() || "";
-
-    if (!text) {
-      logger.warn({ stop_reason: data.stop_reason }, "ai returned empty text");
-      res.status(502).json({ status: "error", message: "AI returned empty response" });
-      return;
-    }
-
-    // Persist usage so the admin AI dashboard reflects real traffic.
-    const claims = currentUser(req);
     const approxTokens = Math.ceil(
-      (safeMessages.reduce((n, m) => n + m.content.length, 0) + text.length) / 4,
+      (messages.reduce((n, m) => n + m.content.length, 0) + result.text.length) / 4,
     );
-    await logAiUsage(claims?.phone ?? "vip-anonymous", "chat", approxTokens);
+    await logAiUsage(userKey, `chat-${result.engine}`, approxTokens);
 
-    res.json({ status: "ok", text, model, stop_reason: data.stop_reason });
-  } catch (err) {
-    const aborted = (err as Error)?.name === "AbortError";
-    logger.warn({ err }, aborted ? "ai request timed out" : "ai request failed");
-    res.status(aborted ? 504 : 502).json({
-      status: "error",
-      message: aborted ? "timeout" : "AI request failed",
+    res.json({
+      status: "ok",
+      text: result.text,
+      model: result.model,
+      engine: result.engine,
+      toolCalls: result.toolCalls,
     });
-  } finally {
-    clearTimeout(t);
+  } catch (e) {
+    const err = e instanceof UpstreamError ? e : null;
+    const kind = err?.kind;
+
+    logger.warn({ err: (e as Error)?.message, kind, engine }, "ai chat engine failed");
+
+    /* Gemini/Anthropic rate-limited upstream → surface as 429 (frontend
+     * already shows the friendly "wait a minute" message). */
+    if (kind === "rate_limit") {
+      res.status(429).json({ status: "error", message: "rate_limit" });
+      return;
+    }
+
+    /* Last resort before giving up: the local data-driven engine (real
+     * live data, zero external calls). Only when the external model
+     * failed — NOT a canned template: it reads the same snapshots. */
+    try {
+      const localText = await localAiChat(messages);
+      if (localText && !localText.startsWith("⚠️ حدث خطأ")) {
+        await logAiUsage(userKey, "chat-local-fallback", 0);
+        res.json({
+          status: "ok",
+          text: localText,
+          model: "egytrend-local",
+          engine: "local",
+          toolCalls: 0,
+          degraded: true,
+        });
+        return;
+      }
+    } catch (le) {
+      logger.warn({ err: (le as Error)?.message }, "local fallback also failed");
+    }
+
+    /* Everything failed → explicit honest message (never a fake answer). */
+    if (kind === "timeout") {
+      res.status(504).json({ status: "error", message: "timeout", detail: NO_DATA_MSG });
+      return;
+    }
+    res.status(502).json({
+      status: "error",
+      message: "ai_upstream_failed",
+      detail: NO_DATA_MSG,
+    });
   }
 });
 
-router.get("/status", async (_req: Request, res: Response) => {
-  res.json({
+/* `?verify=1` runs ONE real Gemini call from this deployment (proves the
+ * env key authenticates on Vercel, not just locally). Cached 60s + shares
+ * the per-IP rate limiter so a public probe can never burn quota. */
+let verifyCache: { ts: number; result: GeminiVerify } | null = null;
+
+router.get("/status", async (req: Request, res: Response) => {
+  const engine = engineName();
+  const body = {
     status: "ok",
-    provisioned: Boolean(ANTHROPIC_KEY),
+    provisioned: Boolean(geminiKey() || anthropicKey()),
     enabled: await isAiEnabled(),
-    model: DEFAULT_MODEL,
-  });
+    engine,
+    model: activeModel(),
+  };
+
+  if (req.query.verify === undefined || engine !== "gemini") {
+    res.json(body);
+    return;
+  }
+
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  if (rateLimited(ip)) {
+    res.status(429).json({ ...body, verify: { ok: false, model: body.model, latencyMs: 0, error: "rate_limit" } });
+    return;
+  }
+  if (!verifyCache || Date.now() - verifyCache.ts > 60_000) {
+    verifyCache = { ts: Date.now(), result: await geminiVerify() };
+    logger.info(
+      { ok: verifyCache.result.ok, status: verifyCache.result.status, ms: verifyCache.result.latencyMs },
+      "gemini verify",
+    );
+  }
+  res.json({ ...body, verify: verifyCache.result });
 });
 
 export default router;
