@@ -95,6 +95,27 @@ async function logAiUsage(userId: string, requestType: string, tokensEstimate: n
 /* ─── explicit "no data" line the frontend maps to a friendly message ── */
 const NO_DATA_MSG = "لم أتمكن من الوصول إلى بيانات حديثة لهذا الطلب حاليًا. حاول بعد لحظات أو اسأل سؤالًا آخر.";
 
+/* The local engine reads live snapshots; on a cold serverless instance that
+ * build can take seconds. Bounding it keeps the whole request inside the
+ * platform's 60s function limit, so a slow upstream still ends in an honest
+ * message instead of a platform 504 with no body. */
+const LOCAL_FALLBACK_TIMEOUT_MS = 8_000;
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("local fallback timeout")), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
 router.post("/chat", async (req: Request, res: Response) => {
   const isAdmin = isAdminToken(req);
   if (!isAdmin && !(await isVipActive(currentUser(req)))) {
@@ -218,7 +239,7 @@ router.post("/chat", async (req: Request, res: Response) => {
      * live data, zero external calls). Only when the external model
      * failed — NOT a canned template: it reads the same snapshots. */
     try {
-      const localText = await localAiChat(messages);
+      const localText = await withTimeout(localAiChat(messages), LOCAL_FALLBACK_TIMEOUT_MS);
       if (localText && !localText.startsWith("⚠️ حدث خطأ")) {
         await logAiUsage(userKey, "chat-local-fallback", 0);
         res.json({
@@ -251,7 +272,7 @@ router.post("/chat", async (req: Request, res: Response) => {
 /* `?verify=1` runs ONE real Gemini call from this deployment (proves the
  * env key authenticates on Vercel, not just locally). Cached 60s + shares
  * the per-IP rate limiter so a public probe can never burn quota. */
-let verifyCache: { ts: number; result: GeminiVerify } | null = null;
+let verifyCache: { ts: number; model: string; result: GeminiVerify } | null = null;
 
 router.get("/status", async (req: Request, res: Response) => {
   const engine = engineName();
@@ -273,14 +294,23 @@ router.get("/status", async (req: Request, res: Response) => {
     res.status(429).json({ ...body, verify: { ok: false, model: body.model, latencyMs: 0, error: "rate_limit" } });
     return;
   }
-  if (!verifyCache || Date.now() - verifyCache.ts > 60_000) {
-    verifyCache = { ts: Date.now(), result: await geminiVerify() };
+
+  /* Admin-only model probe (?verify=1&model=gemini-x): lets the operator
+   * compare quota/health across candidate models. Clients without an admin
+   * token can never make the server call an arbitrary model name. */
+  const rawModel = typeof req.query.model === "string" ? req.query.model.trim() : "";
+  const probeModel =
+    isAdminToken(req) && /^[a-z0-9.-]{3,60}$/i.test(rawModel) ? rawModel : undefined;
+  const cacheKey = probeModel || body.model;
+
+  if (!verifyCache || verifyCache.model !== cacheKey || Date.now() - verifyCache.ts > 60_000) {
+    verifyCache = { ts: Date.now(), model: cacheKey, result: await geminiVerify(probeModel) };
     logger.info(
-      { ok: verifyCache.result.ok, status: verifyCache.result.status, ms: verifyCache.result.latencyMs },
+      { ok: verifyCache.result.ok, status: verifyCache.result.status, ms: verifyCache.result.latencyMs, model: cacheKey },
       "gemini verify",
     );
   }
-  res.json({ ...body, verify: verifyCache.result });
+  res.json({ ...body, model: verifyCache.model, verify: verifyCache.result });
 });
 
 export default router;

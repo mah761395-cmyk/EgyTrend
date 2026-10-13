@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { logger } from "../lib/logger";
+import { EGX_AR_NAMES } from "../lib/egx-names";
 
 const router: IRouter = Router();
 
@@ -765,23 +766,42 @@ router.get("/calendar", async (_req: Request, res: Response) => {
 
 type StockDef = { sym: string; yahoo: string; name: string; sector: string };
 
+/* Curated names below were re-verified against TradingView's symbol identity
+ * (English description) for each ticker — several entries had been attached
+ * to the WRONG company (GBCO is GB Corp, not Gulf Investment; CCAP is Qalaa,
+ * not Cairo Housing; ISPH is Ibnsina Pharma; OLFI is Obour Land; ASCM is
+ * ASEC Mining; ORWE is Oriental Weavers; AMOC is Alexandria Mineral Oils;
+ * ACGC is Arab Cotton Ginning; MCQE is Misr Cement Qena; SPIN is Alexandria
+ * Spinning; KABO is El Nasr Clothing; CIEB is Crédit Agricole). Wrong labels
+ * made the AI name the wrong company for those tickers. */
+/* Arabic display name for an EGX symbol: the curated EGX_DEFS name wins
+ * (it carries the colloquial name users search for), then the generated
+ * Arabic label, then the raw feed description. */
+function egxName(sym: string, curated?: string): string {
+  return curated || EGX_AR_NAMES[sym] || sym;
+}
+
 /* ─── EGX Stocks (~65 most-liquid listings) ─── */
 const EGX_DEFS: StockDef[] = [
   // بنوك
-  { sym:"CIB",   yahoo:"CIB.CA",   name:"البنك التجاري الدولي",        sector:"بنوك"       },
-  { sym:"COMI",  yahoo:"COMI.CA",  name:"بنك القاهرة",                 sector:"بنوك"       },
+  /* COMI.CA is the EGX ticker of Commercial International Bank (verified
+   * against Yahoo meta), NOT Banque du Caire — the old label made the AI
+   * report the wrong company for «التجاري الدولي». */
+  { sym:"COMI",  yahoo:"COMI.CA",  name:"البنك التجاري الدولي",        sector:"بنوك"       },
   { sym:"HBCO",  yahoo:"HBCO.CA",  name:"HSBC مصر",                    sector:"بنوك"       },
   { sym:"ADIB",  yahoo:"ADIB.CA",  name:"مصرف أبوظبي الإسلامي",        sector:"بنوك"       },
   { sym:"AIBC",  yahoo:"AIBC.CA",  name:"بنك الاستثمار العربي",         sector:"بنوك"       },
   { sym:"ABCB",  yahoo:"ABCB.CA",  name:"بنك ABC مصر",                 sector:"بنوك"       },
   { sym:"EDBE",  yahoo:"EDBE.CA",  name:"بنك تنمية الصادرات",           sector:"بنوك"       },
-  { sym:"MCQE",  yahoo:"MCQE.CA",  name:"مصر كابيتال",                 sector:"بنوك"       },
-  { sym:"FAWRY", yahoo:"FAWRY.CA", name:"فوري للتكنولوجيا",             sector:"تقنية"      },
+  { sym:"MCQE",  yahoo:"MCQE.CA",  name:"مصر للأسمنت - قنا",           sector:"مواد بناء"  },
+  /* TradingView's EGX symbol is FWRY (FAWRY.CA is a dead ticker), so this
+   * entry never matched the live row and «فوري» had no Arabic name to hit. */
+  { sym:"FWRY",  yahoo:"FWRY.CA",  name:"فوري للتكنولوجيا",             sector:"تقنية"      },
   // مالية
   { sym:"HRHO",  yahoo:"HRHO.CA",  name:"هيرميس القابضة",              sector:"مالية"      },
-  { sym:"GBCO",  yahoo:"GBCO.CA",  name:"الخليج لإدارة الاستثمار",      sector:"مالية"      },
+  { sym:"GBCO",  yahoo:"GBCO.CA",  name:"جي بي اوتو (جي بي كورب)",      sector:"صناعة"      },
   { sym:"SFAP",  yahoo:"SFAP.CA",  name:"مصر للتأمين",                 sector:"مالية"      },
-  { sym:"CIEB",  yahoo:"CIEB.CA",  name:"سي آي كابيتال",               sector:"مالية"      },
+  { sym:"CIEB",  yahoo:"CIEB.CA",  name:"كريدي أجريكول مصر",           sector:"بنوك"       },
   { sym:"IDKO",  yahoo:"IDKO.CA",  name:"إيدكو للغاز",                 sector:"مالية"      },
   // تقنية
   { sym:"EFIH",  yahoo:"EFIH.CA",  name:"إي فاينانس",                  sector:"تقنية"      },
@@ -791,28 +811,30 @@ const EGX_DEFS: StockDef[] = [
   { sym:"GGHE",  yahoo:"GGHE.CA",  name:"جلوبال تيليكوم",              sector:"اتصالات"    },
   { sym:"MTEL",  yahoo:"MTEL.CA",  name:"أورنج مصر",                   sector:"اتصالات"    },
   // عقارات
-  { sym:"OCDI",  yahoo:"OCDI.CA",  name:"أوراسكوم للتطوير",            sector:"عقارات"     },
+  { sym:"OCDI",  yahoo:"OCDI.CA",  name:"سوديك",                      sector:"عقارات"     },
   { sym:"TMGH",  yahoo:"TMGH.CA",  name:"طلعت مصطفى",                 sector:"عقارات"     },
-  { sym:"MNHD",  yahoo:"MNHD.CA",  name:"مدينة نصر للإسكان",           sector:"عقارات"     },
+  /* MNHD.CA is gone: the company (Madinet Nasr Housing) rebranded to
+   * Madinet Masr and the EGX ticker moved to MASR, so «مدينة مصر» had no
+   * row to match and the AI answered «لا تتوفر بيانات». */
+  { sym:"MASR",  yahoo:"MASR.CA",  name:"مدينة مصر للإسكان (مدينة نصر)", sector:"عقارات"    },
   { sym:"PHDC",  yahoo:"PHDC.CA",  name:"بالم هيلز",                   sector:"عقارات"     },
-  { sym:"HELI",  yahoo:"HELI.CA",  name:"هيليوبوليس للإسكان",          sector:"عقارات"     },
+  { sym:"HELI",  yahoo:"HELI.CA",  name:"مصر الجديدة للإسكان والتعمير", sector:"عقارات"     },
   { sym:"CIRA",  yahoo:"CIRA.CA",  name:"القاهرة للاستثمار والتعمير",   sector:"عقارات"     },
-  { sym:"PRSM",  yahoo:"PRSM.CA",  name:"سوديك",                      sector:"عقارات"     },
-  { sym:"CCAP",  yahoo:"CCAP.CA",  name:"القاهرة للعقارات والتعمير",    sector:"عقارات"     },
+  { sym:"CCAP",  yahoo:"CCAP.CA",  name:"القلعة للاستشارات المالية",    sector:"مالية"      },
   // صناعة
   { sym:"ABUK",  yahoo:"ABUK.CA",  name:"أبوقير للأسمدة",              sector:"صناعة"      },
   { sym:"SWDY",  yahoo:"SWDY.CA",  name:"السويدي إليكتريك",             sector:"صناعة"      },
   { sym:"ESRS",  yahoo:"ESRS.CA",  name:"عز للصلب",                    sector:"صناعة"      },
-  { sym:"AMOC",  yahoo:"AMOC.CA",  name:"النصر للكيماويات",            sector:"صناعة"      },
-  { sym:"ACGC",  yahoo:"ACGC.CA",  name:"الأهلية للكيماويات والأدوية",  sector:"صناعة"      },
+  { sym:"AMOC",  yahoo:"AMOC.CA",  name:"أموك (الإسكندرية للزيوت المعدنية)", sector:"طاقة"  },
+  { sym:"ACGC",  yahoo:"ACGC.CA",  name:"العربية لحليج الأقطان",        sector:"صناعة"      },
   { sym:"SKPC",  yahoo:"SKPC.CA",  name:"سيدي كرير للبتروكيماويات",    sector:"صناعة"      },
-  { sym:"ORWE",  yahoo:"ORWE.CA",  name:"أوروبا للصناعات",             sector:"صناعة"      },
+  { sym:"ORWE",  yahoo:"ORWE.CA",  name:"النساجون الشرقيون",            sector:"صناعة"      },
   { sym:"ARPH",  yahoo:"ARPH.CA",  name:"العربية للأوراق",              sector:"صناعة"      },
-  { sym:"SPIN",  yahoo:"SPIN.CA",  name:"سبينس",                       sector:"صناعة"      },
-  { sym:"KABO",  yahoo:"KABO.CA",  name:"القابضة للاستثمارات",          sector:"صناعة"      },
+  { sym:"SPIN",  yahoo:"SPIN.CA",  name:"سبينالكس (الإسكندرية للغزل والنسيج)", sector:"صناعة" },
+  { sym:"KABO",  yahoo:"KABO.CA",  name:"كابو (النصر للملابس والمنسوجات)", sector:"صناعة"   },
   // صحة
   { sym:"CLHO",  yahoo:"CLHO.CA",  name:"كليوباترا للمستشفيات",         sector:"صحة"        },
-  { sym:"ISPH",  yahoo:"ISPH.CA",  name:"الصناعات الدوائية الدولية",    sector:"صحة"        },
+  { sym:"ISPH",  yahoo:"ISPH.CA",  name:"ابن سينا فارما",               sector:"صحة"        },
   { sym:"ACDP",  yahoo:"ACDP.CA",  name:"أكوردا إيجيبت",               sector:"صحة"        },
   { sym:"BMWO",  yahoo:"BMWO.CA",  name:"بيوميديكال للرعاية",           sector:"صحة"        },
   // أدوية
@@ -821,13 +843,16 @@ const EGX_DEFS: StockDef[] = [
   // غذائية
   { sym:"EAST",  yahoo:"EAST.CA",  name:"الشرق للدخان",               sector:"غذائية"     },
   { sym:"JUFO",  yahoo:"JUFO.CA",  name:"جهينة للأغذية",               sector:"غذائية"     },
-  { sym:"EKHO",  yahoo:"EKHO.CA",  name:"إيديتا للصناعات الغذائية",    sector:"غذائية"     },
+  { sym:"EFID",  yahoo:"EFID.CA",  name:"إيديتا للصناعات الغذائية",    sector:"غذائية"     },
   { sym:"POUL",  yahoo:"POUL.CA",  name:"القاهرة للدواجن",             sector:"غذائية"     },
-  { sym:"DOMTY", yahoo:"DOMTY.CA", name:"دومتي",                      sector:"غذائية"     },
-  { sym:"OLFI",  yahoo:"OLFI.CA",  name:"الأولفى للتجارة والتوزيع",    sector:"غذائية"     },
-  { sym:"AMER",  yahoo:"AMER.CA",  name:"أمريكانا للمطاعم",             sector:"غذائية"     },
+  { sym:"DOMT",  yahoo:"DOMT.CA",  name:"دومتي (العربية للأغذية)",     sector:"غذائية"     },
+  { sym:"OLFI",  yahoo:"OLFI.CA",  name:"عبور لاند للصناعات الغذائية",  sector:"غذائية"     },
+  /* AMER.CA = Amer Group Holding (عامر جروب) on the EGX. It is not
+   * Americana, which is not listed in Cairo — the wrong label made
+   * «حلل سهم عامر جروب» answer «لا تتوفر بيانات». */
+  { sym:"AMER",  yahoo:"AMER.CA",  name:"عامر جروب",                   sector:"استثمار"    },
   // مواد بناء
-  { sym:"ASCM",  yahoo:"ASCM.CA",  name:"سيناء للصناعة",               sector:"مواد بناء"  },
+  { sym:"ASCM",  yahoo:"ASCM.CA",  name:"أسيك للتعدين",                 sector:"مواد بناء"  },
   { sym:"ARCO",  yahoo:"ARCO.CA",  name:"العربية للمقاولات",           sector:"مواد بناء"  },
   { sym:"HELB",  yahoo:"HELB.CA",  name:"هيلنان للفنادق",              sector:"مواد بناء"  },
   { sym:"KAHA",  yahoo:"KAHA.CA",  name:"قها للمحاصيل الغذائية",       sector:"غذائية"     },
@@ -1066,7 +1091,7 @@ async function fetchTVStocks(): Promise<StockQuote[] | null> {
       const cap = Number(o.market_cap_basic) || 0;
       out.push({
         sym,
-        name:        def?.name || String(o.description || sym),
+        name:        egxName(sym, def?.name) || String(o.description || sym),
         sector:      def?.sector || (o.sector ? String(o.sector) : "أخرى"),
         price,
         prevClose:   price - chgAbs,

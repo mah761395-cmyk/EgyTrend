@@ -286,6 +286,10 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .msg{max-width:86%;padding:9px 12px;border-radius:12px;font-size:12.5px;line-height:1.7;}
 .msg.user{background:var(--gd);border:1px solid rgba(16,185,129,.2);color:var(--t1);align-self:flex-end;direction:rtl;border-radius:12px 12px 3px 12px;}
 .msg.bot{background:var(--s2);border:1px solid var(--b1);color:var(--t2);align-self:flex-start;direction:rtl;border-radius:12px 12px 12px 3px;}
+/* AI output is multi-line plain text (headings, bullets, blank lines).
+ * Without pre-wrap every reply collapses into one unreadable wall of text,
+ * which reads like the feature is broken. */
+.msg,#sig-res,#rep-res,#ai-det-res,#ai-rw-res,#vstk-txt,#ai-analysis-txt,#port-ai-res,#ai-txt,#ai-rw-txt,#adm-ai-txt{white-space:pre-wrap;word-break:break-word;}
 .chat-row{display:flex;gap:6px;}
 .chat-in{flex:1;background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:9px 12px;color:var(--t1);font-size:13px;outline:none;font-family:var(--sans);direction:rtl;transition:border .18s;}
 .chat-in:focus{border-color:rgba(16,185,129,.3);}
@@ -3591,12 +3595,23 @@ async function getAIStockAnalysis(){
 }
 
 /* Chat */
+/* AI replies are plain text with a little markdown (**bold**, bullets, blank
+ * lines). Escape FIRST, then add the few tags we allow — the model output is
+ * never trusted as HTML. */
+function fmtAI(t){
+  return sanitize(String(t||""))
+    .replace(/^\s*#{1,6}\s*/gm,"")            /* "### عنوان" → "عنوان" */
+    .replace(/\*\*([^*\n]{1,140})\*\*/g,"<strong>$1</strong>")
+    .replace(/^\s*[-*•]\s+/gm,"• ")            /* "* بند" → "• بند" */
+    .replace(/\n{2,}/g,"<br><br>")
+    .replace(/\n/g,"<br>");
+}
 function renderChatUI(){
   const cw=document.getElementById("chat-area");if(!cw)return;
   if(!chatHist.length){
     cw.innerHTML=`<div class="msg bot">مرحباً! أنا EgyTrend AI Advisor 🤖\n\nيمكنني:\n• تحليل الأسهم والمؤشرات\n• شرح الأخبار وتأثيرها\n• مراجعة محفظتك الاستثمارية\n• توصيات مبنية على البيانات\n\nاسألني أي شيء! 💬</div>`;return;
   }
-  cw.innerHTML=chatHist.map(m=>`<div class="msg ${m.r==="user"?"user":"bot"}">${sanitize(m.c)}</div>`).join("");
+  cw.innerHTML=chatHist.map(m=>`<div class="msg ${m.r==="user"?"user":"bot"}">${m.r==="user"?sanitize(m.c):fmtAI(m.c)}</div>`).join("");
   cw.scrollTop=cw.scrollHeight;
 }
 

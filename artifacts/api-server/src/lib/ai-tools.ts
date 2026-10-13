@@ -17,6 +17,7 @@
 import { logger } from "./logger";
 import { getMarketsSnapshot, getStocksSnapshot, getCalendarSnapshot, type StockQuote } from "../routes/markets";
 import { getNewsSnapshot } from "../routes/news";
+import { resolveEgxAlias } from "./egx-names";
 
 /* ─── Arabic text normalization (matching only — never mutates display) ── */
 export function normAr(s: string): string {
@@ -103,6 +104,13 @@ export async function getStockData(args: { query?: string; limit?: number }): Pr
     const exact = stocks.filter((s) => s.sym.toUpperCase() === qu || s.sym.toUpperCase() === qu + ".CA");
     let hits = exact;
     if (!hits.length) {
+      /* Colloquial / renamed / Latin spellings («مدينة مصر», «موبكو», «كريدي
+       * أجريكول») resolve through the alias table onto the live symbol —
+       * the live feed often has no Arabic label for those listings. */
+      const aliasSym = resolveEgxAlias(q);
+      if (aliasSym) hits = stocks.filter((s) => s.sym.toUpperCase() === aliasSym);
+    }
+    if (!hits.length) {
       hits = stocks.filter((s) => {
         const ns = normAr(s.name);
         if (ns.includes(nq)) return true;
@@ -113,7 +121,7 @@ export async function getStockData(args: { query?: string; limit?: number }): Pr
       return {
         ok: false,
         error: `لم أجد سهمًا يطابق «${q}» في بيانات البورصة المصرية المتاحة.`,
-        hint: "اسأل المستخدم عن الرمز الصحيح (مثال: COMI أو JUFO أو MNHD).",
+        hint: "اسأل المستخدم عن الرمز الصحيح (مثال: COMI أو JUFO أو MASR).",
       };
     }
     return { ok: true, query: q, matches: hits.slice(0, limit), matchCount: hits.length };
@@ -694,3 +702,19 @@ export async function runTool(
 }
 
 export const TOOL_NAMES = TOOL_DECLARATIONS.map((t) => t.name);
+
+/* ─── snapshot warm-up ─────────────────────────────────────────────────
+   The tools above never hit the network directly: they read the same
+   in-process snapshots the public routes serve. On a cold serverless
+   instance that first read PAYS for the whole upstream fetch (news alone
+   is ~28 feeds, up to 9s). Firing the builders when the request arrives
+   overlaps that cost with the model's first round instead of adding it
+   to the round that happens to call the tool first. Fire-and-forget:
+   never throws, never awaited by the caller's critical path. */
+export function warmSnapshots(): void {
+  for (const p of [getMarketsSnapshot(), getStocksSnapshot(), getNewsSnapshot(), getCalendarSnapshot()]) {
+    void Promise.resolve(p).catch(() => {
+      /* warm-up is best-effort — the tool itself reports "no data" */
+    });
+  }
+}
