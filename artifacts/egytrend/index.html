@@ -1127,11 +1127,9 @@ async function callAI({system, messages, max_tokens=2000, context=null, memory=f
   const ctrl = new AbortController();
   const tid = setTimeout(()=>ctrl.abort(), 85000);
   try{
+    /* No tokens in JS any more: the session lives in an httpOnly cookie that
+     * the browser attaches automatically (same-origin fetch default). */
     const headers={"Content-Type":"application/json"};
-    const userTok=DB.g("userTok","");
-    const adminTok=DB.g("admTok","");
-    if(userTok)headers.Authorization="Bearer "+userTok;
-    if(adminTok)headers["x-admin-token"]=adminTok;
     const body={system, messages, max_tokens};
     /* Own-context for AI tools (portfolio/alerts) — sent only when the
      * caller opts in; the backend reads nothing else from the body. */
@@ -1363,17 +1361,25 @@ function loadUserScopedData(){ wl=DB.g("wl",[]); savedIds=DB.g("sv",[]); portfol
 /* ═══════════════════ INIT ═══════════════════ */
 document.addEventListener("DOMContentLoaded",async()=>{
   wl=DB.g("wl",[]);savedIds=DB.g("sv",[]);portfolio=DB.g("pt",[]);
-  const tok=DB.g("userTok","");
-  const s=DB.g("s",null);
-  if(tok){
+  /* Sessions are server-side only. The browser holds them in an httpOnly
+   * cookie (unreadable by JS), so boot is a server PROBE — never a local
+   * flag. A forged localStorage entry can no longer open the app. */
+  DB.d("s");DB.d("userTok");DB.d("admTok");
+  let restored=false;
+  try{
+    const r=await fetch("/api/user/me",{credentials:"same-origin"});
+    if(r.ok){const d=await r.json();if(d.status==="ok"&&d.user){U=d.user;ensureUserScope(U.phone);restored=true;}}
+  }catch{/* offline → normal login screen */}
+  if(!restored){
     try{
-      const r=await fetch("/api/user/me",{headers:{Authorization:"Bearer "+tok}});
-      const d=await r.json();
-      if(!r.ok||d.status!=="ok")throw new Error("session");
-      U=d.user;DB.s("s",U);bootApp();
-    }catch{DB.d("userTok");DB.d("s");document.getElementById("auth").classList.add("open");}
-  }else if(s?.phone==="admin"&&DB.g("admTok","")){U=s;bootApp();}
-  else{DB.d("s");document.getElementById("auth").classList.add("open");}
+      const ar=await fetch("/api/admin/me",{credentials:"same-origin"});
+      if(ar.ok){const ad=await ar.json();
+        if(ad.status==="ok"&&ad.actor){U={name:ad.actor.name||"المدير",phone:"admin",plan:"admin",role:ad.actor.role};restored=true;}
+      }
+    }catch{/* offline → normal login screen */}
+  }
+  if(restored)await bootApp();
+  else document.getElementById("auth").classList.add("open");
   buildTicker();buildCalendar();buildFAQ();
   // Kick off live data immediately so even pre-login users see real numbers
   fetchMarketsData();fetchCalendarData();
@@ -1534,62 +1540,94 @@ function doAuth(){
       if(pass.length<8){showE("كلمة المرور يجب أن تكون 8 أحرف على الأقل");return;}
       const email=document.getElementById("a-email").value.trim();
       if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){showE("البريد الإلكتروني غير صحيح");return;}
-      const rr=await fetch("/api/user/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,phone,password:pass,email:email||undefined})});
+      const rr=await fetch("/api/user/register",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({name,phone,password:pass,email:email||undefined})});
       const rd=await rr.json().catch(()=>({}));
       if(!rr.ok||rd.status!=="ok"){showE(rd.message||"تعذر إنشاء الحساب");return;}
-      DB.s("userTok",rd.token);U=rd.user;
+      U=rd.user; /* session is in the httpOnly cookie set by the server */
     } else {
       if(!phone||!pass){showE("أدخل الرقم وكلمة المرور");return;}
-      /* Admin: internal check — not exposed in UI.
-       * Exchanges the password for a server-issued bearer token used
-       * by /api/admin/* endpoints. If the server is unreachable we
-       * still allow local-only admin (read-only of CRUD UI). */
+      /* Admin/staff sign-in: the server is the only authority. It either
+       * returns a session (httpOnly cookie) or an error — there is NO
+       * client-side fallback, because a UI-only "admin" would be a lie. */
       if(phone==="admin"||/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(phone)){
         try{
-          /* Email → employee JWT flow; "admin" → legacy ADMIN_PASSWORD flow. */
+          /* Email → employee flow; "admin" → ADMIN_PASSWORD flow. */
           const adminBody = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(phone)
             ? {email:phone.trim().toLowerCase(),password:pass}
             : {password:pass};
-          const lr = await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(adminBody)});
-          const lj = await lr.json();
-          if(lr.ok && lj.status==="ok" && lj.token){
-            U={name:"المدير",phone:"admin",plan:"admin"};
-            DB.s("admTok", lj.token);
-          } else {
-            showE("كلمة مرور المدير غير صحيحة");
+          const lr = await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify(adminBody)});
+          const lj = await lr.json().catch(()=>({}));
+          if(!lr.ok || lj.status!=="ok"){
+            showE(lr.status===429?(lj.message||"محاولات كثيرة — حاول لاحقاً"):"بيانات الدخول غير صحيحة");
             return;
           }
+          U={name:lj.employee?.name||"المدير",phone:"admin",plan:"admin",role:lj.employee?.role||"admin"};
+          await loadAdminPanel();
         }catch{
-          // Offline fallback: legacy local admin (no server CRUD privileges)
-           showE("تعذر الاتصال بالخادم");return;
+          showE("تعذر الاتصال بالخادم");return;
         }
       }
       else{
-        const ur=await fetch("/api/user/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,password:pass})});
+        const ur=await fetch("/api/user/login",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({phone,password:pass})});
         const ud=await ur.json().catch(()=>({}));
         if(!ur.ok||ud.status!=="ok"){showE(ud.message==="invalid credentials"?"الرقم أو كلمة المرور غير صحيحة":ud.message||"تعذر تسجيل الدخول");return;}
-        DB.s("userTok",ud.token);U=ud.user;
+        U=ud.user; /* session is in the httpOnly cookie set by the server */
       }
     }
-    DB.s("s",U);bootApp();
+    await bootApp();
   },550);
 }
 
-function logout(){DB.d("s");DB.d("userTok");DB.d("admTok");U=null;portfolio=[];wl=[];savedIds=[];goNav("home");document.getElementById("main").style.display="none";document.getElementById("auth").classList.add("open");}
+async function logout(){
+  /* End the sessions on the SERVER (clears the httpOnly cookies); local
+   * storage never held the credential, so there is nothing to scrub there. */
+  try{await fetch("/api/admin/logout",{method:"POST",credentials:"same-origin"});}catch{}
+  try{await fetch("/api/user/logout",{method:"POST",credentials:"same-origin"});}catch{}
+  DB.d("s");DB.d("userTok");DB.d("admTok");DB.d("user_owner");
+  U=null;portfolio=[];wl=[];savedIds=[];goNav("home");
+  document.getElementById("main").style.display="none";
+  document.getElementById("auth").classList.add("open");
+}
 
 /* ═══════════════════ ADMIN API HELPER ═══════════════════ */
+/* The admin session is an httpOnly cookie: no token to read, attach or leak.
+ * Every call still carries the cookie automatically (same-origin), and the
+ * server re-checks role + permission on each request. */
 async function admFetch(url, opts={}){
-  const tok = DB.g("admTok", "");
-  if(!tok) throw new Error("not authenticated");
-  const headers = Object.assign({}, opts.headers||{}, {"x-admin-token":tok});
+  const headers = Object.assign({}, opts.headers||{});
   if(opts.body && !headers["Content-Type"]) headers["Content-Type"]="application/json";
-  const r = await fetch(url, Object.assign({}, opts, {headers}));
+  const r = await fetch(url, Object.assign({}, opts, {headers, credentials:"same-origin"}));
   if(r.status===401){
     showToast("⚠️ انتهت صلاحية جلسة المدير");
-    DB.d("admTok");
+    closeAdm();
     throw new Error("unauthorized");
   }
+  if(r.status===403){
+    showToast("⛔ لا تملك صلاحية هذا الإجراء");
+    throw new Error("forbidden");
+  }
   return r;
+}
+
+/* ═══════════════════ ADMIN PANEL LOADER ═══════════════════
+ * The admin interface is NOT part of this public bundle any more. It is a
+ * separate script served by the API at GET /api/admin/panel.js, which answers
+ * 401 for anyone without a verified staff session. So a visitor cannot even
+ * download the panel, let alone use it. */
+let __admPanelPromise=null;
+function loadAdminPanel(){
+  if(window.__egytrendAdminPanel) return Promise.resolve(window.__egytrendAdminPanel);
+  if(!__admPanelPromise){
+    __admPanelPromise=new Promise((resolve,reject)=>{
+      const s=document.createElement("script");
+      s.src="/api/admin/panel.js";
+      s.async=true;
+      s.onload=()=>{ window.__egytrendAdminPanel?resolve(window.__egytrendAdminPanel):reject(new Error("panel did not register")); };
+      s.onerror=()=>{ __admPanelPromise=null; reject(new Error("panel load failed")); };
+      document.head.appendChild(s);
+    });
+  }
+  return __admPanelPromise;
 }
 
 /* ═══════════════════ NOTIFICATIONS (in-app badge + browser Notification API)
