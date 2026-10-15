@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
+import { ADMIN_COOKIE, SESSION_COOKIE } from "./security";
 
 export type UserClaims = {
   sub: number;
@@ -55,7 +56,12 @@ export function verifyUserToken(token: string): UserClaims | null {
   }
 }
 
+/* Session token for app users: httpOnly cookie first (the SPA no longer keeps
+ * tokens in localStorage), then the Authorization header for non-browser
+ * clients that legitimately hold a token. */
 export function bearerToken(req: Request): string {
+  const cookieToken = (req.cookies as Record<string, string> | undefined)?.[SESSION_COOKIE];
+  if (cookieToken) return String(cookieToken).trim();
   return (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim();
 }
 
@@ -63,8 +69,17 @@ export function currentUser(req: Request): UserClaims | null {
   return verifyUserToken(bearerToken(req));
 }
 
+/* Admin/staff session: httpOnly cookie first, legacy header second (kept only
+ * so non-browser tooling that already holds a token keeps working — the web
+ * panel never stores a token again). */
+export function adminToken(req: Request): string {
+  const cookieToken = (req.cookies as Record<string, string> | undefined)?.[ADMIN_COOKIE];
+  if (cookieToken) return String(cookieToken).trim();
+  return (req.header("x-admin-token") || "").trim();
+}
+
 export function isAdminToken(req: Request): boolean {
-  const token = (req.header("x-admin-token") || "").trim();
+  const token = adminToken(req);
   if (!token || !JWT_SECRET) return false;
   try {
     const value = jwt.verify(token, JWT_SECRET);

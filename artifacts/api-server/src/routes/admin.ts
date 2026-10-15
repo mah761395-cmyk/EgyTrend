@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { logger } from "../lib/logger";
-import { currentUser } from "../lib/userAuth";
+import { adminToken, currentUser } from "../lib/userAuth";
+import { ADMIN_COOKIE, ONE_DAY_MS, clearSessionCookie, setSessionCookie } from "../lib/security";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import {
@@ -17,10 +18,14 @@ import { eq, desc, and, gte, lte, like, or, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-/* ─── Secrets ─── */
+/* ─── Secrets ───
+ * NOTE (security audit): the legacy static `ADMIN_TOKEN` was removed. It was a
+ * non-expiring shared string that (a) authenticated as super_admin on EVERY
+ * admin endpoint and (b) made `requireRole` skip all role checks, so a single
+ * leaked value — or a value committed to git — was a permanent full takeover.
+ * Sessions are now short-lived signed JWTs delivered in an httpOnly cookie. */
 const JWT_SECRET = process.env["SESSION_SECRET"];
 const ADMIN_PASSWORD = process.env["ADMIN_PASSWORD"];
-const LEGACY_TOKEN = process.env["ADMIN_TOKEN"] || "";
 
 /* ─── Brute-force protection on /login ─── */
 const loginAttempts = new Map<string, { count: number; until: number }>();
@@ -161,36 +166,36 @@ function checkPassword(pw: string, encoded: string): boolean {
   return crypto.timingSafeEqual(Buffer.from(candidate), Buffer.from(encoded));
 }
 
-/* ─── Auth middleware ─── */
-interface AuthRequest extends Request { actor?: JWTPayload; isLegacyAdmin?: boolean; }
+/* ─── Auth middleware ───
+ * A staff session is proven ONLY by a signed JWT carrying a staff role, read
+ * from the httpOnly `et_admin` cookie (header fallback for non-browser
+ * tooling). There is no static/backdoor token any more. */
+interface AuthRequest extends Request { actor?: JWTPayload; }
 
 function extractToken(req: Request): string {
-  return (req.header("x-admin-token") || "").trim()
-    || (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  return adminToken(req);
 }
 
 function requireAuth(req: AuthRequest, res: Response, next: NextFunction): void {
   const token = extractToken(req);
   if (!token) { res.status(401).json({ status: "error", message: "unauthorized" }); return; }
 
-  // Legacy static token (backward compat for mobile admin flow)
-  if (LEGACY_TOKEN && token === LEGACY_TOKEN) {
-    req.isLegacyAdmin = true;
-    req.actor = { sub: 0, name: "Super Admin", role: "super_admin", email: "admin@egytrend" };
-    next(); return;
-  }
-
-  // JWT token
+  // Signed JWT with a staff role — anything else is rejected.
   const payload = verifyToken(token);
   if (!payload) { res.status(401).json({ status: "error", message: "invalid or expired token" }); return; }
   req.actor = payload;
   next();
 }
 
+/* Role gate. Every admin route must chain this after requireAuth; the actor is
+ * always a verified staff JWT (no bypass path exists any more). */
 function requireRole(...roles: string[]) {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
-    if (req.isLegacyAdmin) { next(); return; }
     if (!req.actor || !roles.includes(req.actor.role)) {
+      logger.warn(
+        { actor: req.actor?.email, role: req.actor?.role, need: roles, path: req.path },
+        "admin role check denied",
+      );
       res.status(403).json({ status: "error", message: "insufficient permissions" });
       return;
     }
@@ -205,8 +210,8 @@ async function auditLog(
 ): Promise<void> {
   try {
     await db.insert(auditLogsTable).values({
-      action, actorId: actor?.sub ?? null, actorName: actor?.name ?? "Legacy Admin",
-      actorRole: actor?.role ?? "super_admin", target: target ?? null,
+      action, actorId: actor?.sub ?? null, actorName: actor?.name ?? "unknown",
+      actorRole: actor?.role ?? "unknown", target: target ?? null,
       detail, ip: ip ?? null,
     });
   } catch (e) {
@@ -324,7 +329,10 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
       await db.update(employeesTable).set({ lastLogin: new Date() }).where(eq(employeesTable.id, emp.id));
       const token = signToken({ sub: emp.id, name: emp.name, role: emp.role, email: emp.email });
       await auditLog("login", { sub: emp.id, name: emp.name, role: emp.role, email: emp.email }, "employee", { email }, req.ip);
-      res.json({ status: "ok", token, employee: { id: emp.id, name: emp.name, role: emp.role, email: emp.email } });
+      /* The session now travels in an httpOnly cookie only — no token is put
+       * in the response body, so nothing can be parked in localStorage. */
+      setSessionCookie(res, ADMIN_COOKIE, token, ONE_DAY_MS);
+      res.json({ status: "ok", employee: { id: emp.id, name: emp.name, role: emp.role, email: emp.email } });
       return;
     }
     recordLoginFailure(ip);
@@ -345,13 +353,38 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
     return;
   }
   clearLoginFailures(ip);
-  const token = LEGACY_TOKEN || signToken({
+  const token = signToken({
     sub: 0,
     name: "Super Admin",
     role: "super_admin",
     email: "admin@egytrend",
   });
-  res.json({ status: "ok", token });
+  await auditLog("login", { sub: 0, name: "Super Admin", role: "super_admin", email: "admin@egytrend" }, "password", {}, req.ip);
+  setSessionCookie(res, ADMIN_COOKIE, token, ONE_DAY_MS);
+  res.json({ status: "ok", employee: { id: 0, name: "Super Admin", role: "super_admin", email: "admin@egytrend" } });
+});
+
+/* Session probe: the admin panel calls this before showing any UI, so the
+ * admin interface is only ever revealed to a server-verified staff session. */
+router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    status: "ok",
+    actor: {
+      id: req.actor?.sub ?? null,
+      name: req.actor?.name ?? "",
+      email: req.actor?.email ?? "",
+      role: req.actor?.role ?? "",
+    },
+  });
+});
+
+/* Explicit logout: clears the httpOnly session cookie server-side, so a
+ * logged-out admin cannot be replayed from any client storage. */
+router.post("/logout", (_req: Request, res: Response) => {
+  clearSessionCookie(res, ADMIN_COOKIE);
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ status: "ok" });
 });
 
 /* Public: check AI config (for frontend to know what's enabled) */

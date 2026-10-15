@@ -12,6 +12,7 @@ import {
 } from "../lib/userAuth";
 import { isSmtpConfigured, resetEmailHtml, sendMail } from "../lib/mailer";
 import { logger } from "../lib/logger";
+import { SESSION_COOKIE, SEVEN_DAYS_MS, clearSessionCookie, setSessionCookie } from "../lib/security";
 
 const router = Router();
 
@@ -78,7 +79,10 @@ router.post("/register", async (req: Request, res: Response) => {
     ...(email ? { email } : {}),
   }).returning();
   const token = signUserToken({ sub: user.id, phone: user.phone, name: user.name, role: "user", plan: user.plan });
-  res.status(201).json({ status: "ok", token, user: publicUser(user) });
+  /* httpOnly cookie only — the SPA never stores a credential any more. */
+  setSessionCookie(res, SESSION_COOKIE, token, SEVEN_DAYS_MS);
+  res.setHeader("Cache-Control", "no-store");
+  res.status(201).json({ status: "ok", user: publicUser(user) });
 });
 
 router.post("/login", async (req: Request, res: Response) => {
@@ -104,7 +108,17 @@ router.post("/login", async (req: Request, res: Response) => {
     ...(normalized.vipExpiresAt ? { vipExpiresAt: normalized.vipExpiresAt } : {}),
   });
   await db.update(appUsersTable).set({ updatedAt: new Date() }).where(eq(appUsersTable.id, user.id));
-  res.json({ status: "ok", token, user: normalized });
+  setSessionCookie(res, SESSION_COOKIE, token, SEVEN_DAYS_MS);
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ status: "ok", user: normalized });
+});
+
+/* Explicit logout: clears the httpOnly cookie. A logged-out session cannot be
+ * revived from any client-side storage because none is kept there. */
+router.post("/logout", (_req: Request, res: Response) => {
+  clearSessionCookie(res, SESSION_COOKIE);
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ status: "ok" });
 });
 
 router.get("/me", async (req: Request, res: Response) => {
@@ -119,6 +133,7 @@ router.get("/me", async (req: Request, res: Response) => {
     res.status(401).json({ status: "error", message: "user not found" });
     return;
   }
+  res.setHeader("Cache-Control", "no-store");
   res.json({ status: "ok", user: publicUser(user) });
 });
 

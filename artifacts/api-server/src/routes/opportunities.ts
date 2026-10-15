@@ -5,7 +5,7 @@ import { eq, desc } from "drizzle-orm";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { logger } from "../lib/logger";
-import { currentUser, isVipActive } from "../lib/userAuth";
+import { adminToken, currentUser, isVipActive } from "../lib/userAuth";
 import { buildLocalOpportunities, type OppCandidate } from "../lib/opp-engine";
 import { getMarketsSnapshot, getStocksSnapshot, type StockQuote } from "./markets";
 import { getNewsSnapshot } from "./news";
@@ -14,7 +14,10 @@ type StockT = OppCandidate extends never ? never : Parameters<typeof buildLocalO
 const router = Router();
 
 const JWT_SECRET = process.env["SESSION_SECRET"];
-const LEGACY_TOKEN = process.env["ADMIN_TOKEN"] || "";
+/* Roles allowed to mutate opportunities. The old static ADMIN_TOKEN backdoor
+ * (a non-expiring shared string that granted admin) was removed — only a
+ * signed staff JWT from the httpOnly admin session cookie is accepted. */
+const OPP_ADMIN_ROLES = new Set(["super_admin", "admin"]);
 
 const ANTHROPIC_BASE =
   process.env["AI_INTEGRATIONS_ANTHROPIC_BASE_URL"] || "https://api.anthropic.com";
@@ -24,21 +27,24 @@ const ANTHROPIC_KEY =
   "";
 const AI_MODEL       = "claude-sonnet-4-6";
 
-function isAdmin(req: { headers: Record<string, string | string[] | undefined> }): boolean {
-  const token = req.headers["x-admin-token"] as string | undefined;
-  if (!token) return false;
-  if (LEGACY_TOKEN && token === LEGACY_TOKEN) return true;
-  if (!JWT_SECRET) return false;
+function isAdmin(req: any): boolean {
+  const token = adminToken(req);
+  if (!token || !JWT_SECRET) return false;
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { role?: string };
-    return payload.role === "admin" || payload.role === "super_admin";
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (!payload || typeof payload === "string") return false;
+    const role = (payload as { role?: string }).role;
+    return !!role && OPP_ADMIN_ROLES.has(role);
   } catch {
     return false;
   }
 }
 
+/* 401 when there is no session at all, 403 when there is one but the role is
+ * not allowed — so a free/regular user can never reach admin mutations. */
 function requireAuth(req: any, res: any, next: any) {
-  if (!isAdmin(req)) return res.status(401).json({ status: "error", message: "unauthorized" });
+  if (!adminToken(req)) return res.status(401).json({ status: "error", message: "unauthorized" });
+  if (!isAdmin(req)) return res.status(403).json({ status: "error", message: "insufficient permissions" });
   next();
 }
 
