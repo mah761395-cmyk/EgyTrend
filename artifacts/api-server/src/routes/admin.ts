@@ -1,4 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import fs from "node:fs";
+import path from "node:path";
 import { logger } from "../lib/logger";
 import { adminToken, currentUser } from "../lib/userAuth";
 import { ADMIN_COOKIE, ONE_DAY_MS, clearSessionCookie, setSessionCookie } from "../lib/security";
@@ -362,6 +364,46 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
   await auditLog("login", { sub: 0, name: "Super Admin", role: "super_admin", email: "admin@egytrend" }, "password", {}, req.ip);
   setSessionCookie(res, ADMIN_COOKIE, token, ONE_DAY_MS);
   res.json({ status: "ok", employee: { id: 0, name: "Super Admin", role: "super_admin", email: "admin@egytrend" } });
+});
+
+/* ── Admin panel asset — server-gated ────────────────────────────────────
+ * The panel used to ship inside the public HTML, so any visitor could read the
+ * complete admin interface (users/payments/subscriptions/coupons/employees/
+ * audit screens). It now lives in a separate file that is only ever sent to a
+ * request carrying a verified staff session cookie. */
+function adminPanelSources(): string[] {
+  const here = typeof __dirname !== "undefined" ? __dirname : path.dirname(new URL(import.meta.url).pathname);
+  return [
+    path.resolve(here, "admin-panel.js"), // build output (dist/admin-panel.js)
+    path.resolve(here, "../assets/admin-panel.js"), // local dev / source tree
+  ];
+}
+
+let panelCache: string | null = null;
+function readAdminPanel(): string | null {
+  if (panelCache !== null) return panelCache;
+  for (const candidate of adminPanelSources()) {
+    try {
+      panelCache = fs.readFileSync(candidate, "utf8");
+      return panelCache;
+    } catch {
+      /* try the next candidate */
+    }
+  }
+  logger.error({ tried: adminPanelSources() }, "admin panel asset not found");
+  return null;
+}
+
+router.get("/panel.js", requireAuth, (_req: Request, res: Response) => {
+  const src = readAdminPanel();
+  if (!src) {
+    res.status(503).type("text/plain").send("admin panel asset unavailable");
+    return;
+  }
+  /* no-store: the asset is role-gated, so it must never sit in a shared cache */
+  res.setHeader("Cache-Control", "no-store, private");
+  res.setHeader("X-Robots-Tag", "noindex, nofollow");
+  res.type("application/javascript").send(src);
 });
 
 /* Session probe: the admin panel calls this before showing any UI, so the
