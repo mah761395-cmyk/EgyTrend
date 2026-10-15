@@ -285,7 +285,11 @@ function validateArticle(input: unknown): CustomArticle | { error: string } {
    PUBLIC ENDPOINTS (no auth)
 ══════════════════════════════════════════════ */
 
-router.get("/bootstrap", (_req, res: Response) => {
+/* Editorial configuration (the full source list and every custom article) —
+ * admin-managed content, so it now requires a staff session. The public UI
+ * reads the source pills from the unauthenticated /api/news/sources instead. */
+router.get("/bootstrap", requireAuth, (_req, res: Response) => {
+  res.setHeader("Cache-Control", "no-store");
   res.json({
     status: "ok",
     sources: listSources().map(s => ({ id: s.id, name: s.name, icon: s.icon, lang: s.lang, cat: s.cat, color: s.color })),
@@ -429,8 +433,10 @@ router.post("/logout", (_req: Request, res: Response) => {
   res.json({ status: "ok" });
 });
 
-/* Public: check AI config (for frontend to know what's enabled) */
-router.get("/ai-status", async (_req, res: Response) => {
+/* AI feature flags — staff only. Nothing in the public bundle calls this
+ * (the AI route itself reads the config server-side), so requiring a session
+ * removes a free probe of the platform's internal switches. */
+router.get("/ai-status", requireAuth, async (_req, res: Response) => {
   try {
     await ensureAiConfig();
     const [cfg] = await db.select().from(aiConfigTable).limit(1);
