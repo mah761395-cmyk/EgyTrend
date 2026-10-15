@@ -757,9 +757,17 @@ router.delete("/coupons/:id", requireAuth, requireWriteRate, requireRole("super_
 });
 
 /* Public: validate coupon code */
-router.post("/coupons/validate", async (req: Request, res: Response) => {
+/* Coupon lookup. Was open to the internet with no limit, so coupon codes
+ * could be enumerated by brute force. It now needs a session (the subscribe
+ * flow is always post-login) AND is rate limited per IP. */
+router.post("/coupons/validate", requireAuth, async (req: AuthRequest, res: Response) => {
   const { code } = req.body || {};
   if (!code) { res.status(400).json({ status: "error", message: "code required" }); return; }
+  if (!rateLimitHit(`coupon:${req.ip || "unknown"}`, 20, 15 * 60 * 1000)) {
+    res.setHeader("Retry-After", "900");
+    res.status(429).json({ status: "error", message: "too many coupon attempts — try again later" });
+    return;
+  }
   const [coupon] = await db.select().from(couponsTable)
     .where(and(eq(couponsTable.code, String(code).toUpperCase()), eq(couponsTable.isActive, true))).limit(1);
   if (!coupon) { res.status(404).json({ status: "error", message: "invalid or inactive coupon" }); return; }

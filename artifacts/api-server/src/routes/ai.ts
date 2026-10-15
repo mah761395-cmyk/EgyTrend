@@ -275,6 +275,14 @@ router.post("/chat", async (req: Request, res: Response) => {
 let verifyCache: { ts: number; model: string; result: GeminiVerify } | null = null;
 
 router.get("/status", async (req: Request, res: Response) => {
+  /* Staff only: this route names the upstream engine/model and, with
+   * `?verify=1`, spends a REAL provider call. Leaving it public let any
+   * visitor fingerprint the AI stack and (within the per-IP limit) burn free
+   * tier quota. The public SPA never calls it. */
+  if (!isAdminToken(req)) {
+    res.status(401).json({ status: "error", message: "unauthorized" });
+    return;
+  }
   const engine = engineName();
   const body = {
     status: "ok",

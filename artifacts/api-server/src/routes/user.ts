@@ -44,6 +44,14 @@ function publicUser(user: typeof appUsersTable.$inferSelect) {
 }
 
 router.post("/register", async (req: Request, res: Response) => {
+  /* Registration had no limit at all: an attacker could mass-create accounts
+   * (and squat phone numbers / emails) from a single IP. 10 sign-ups per hour
+   * per IP is far above real usage and stops bulk abuse. */
+  if (!rateLimitHit(`reg-ip:${req.ip || "unknown"}`, 10, 60 * 60 * 1000)) {
+    res.setHeader("Retry-After", "3600");
+    res.status(429).json({ status: "error", message: "عدد محاولات تسجيل كبير — حاول بعد قليل" });
+    return;
+  }
   const phone = normalizeUserPhone(req.body?.phone);
   const name = String(req.body?.name || "").trim().slice(0, 80);
   const password = String(req.body?.password || "");
