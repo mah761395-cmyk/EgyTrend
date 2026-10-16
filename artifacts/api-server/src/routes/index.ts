@@ -8,6 +8,7 @@ import opportunitiesRouter from "./opportunities";
 import userRouter from "./user";
 import paymentsRouter from "./payments";
 import portfolioRouter from "./portfolio";
+import priceAlertsRouter from "./price-alerts";
 
 const router: IRouter = Router();
 
@@ -19,6 +20,7 @@ router.use("/admin", adminRouter);
 router.use("/user", userRouter);
 router.use(paymentsRouter);
 router.use(portfolioRouter);
+router.use(priceAlertsRouter);
 router.use(opportunitiesRouter);
 
 export default router;

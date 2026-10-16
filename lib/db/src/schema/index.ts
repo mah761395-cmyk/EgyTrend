@@ -10,4 +10,5 @@ export * from "./opportunities";
 export * from "./users";
 export * from "./user_subscriptions";
 export * from "./portfolio_positions";
+export * from "./price_alerts";
 export * from "./market_ohlc";

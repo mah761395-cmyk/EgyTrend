@@ -1448,6 +1448,7 @@ let activeCat="all", activeSrc="all", searchQ="";
 let newsFreshness={loading:false,unavailable:false,reason:"",fetchedAt:0,approvedSources:0};
 let curArt=null, wl=[], savedIds=[], portfolio=[];
 let portfolioState={loaded:false,loading:false,error:"",marketAvailable:false};
+let priceAlertsState={loaded:false,loading:false,error:"",items:[]};
 let chatHist=[];
 let subStep=1, selPlan="monthly", selPay="vodafone";
 let srcStatus={};
@@ -1476,7 +1477,7 @@ const DB = {
  * so we tag the store with its owner and wipe user-scoped keys whenever a
  * DIFFERENT account signs in (the same user keeps their data after logout).
  * NOTE: cross-device sync needs a server table — not present yet. */
-const USER_SCOPED_KEYS = ["wl","sv","saved_opps","notifs_v1","notifSeen","scr_saved","vip_mkt_pref","vip_tab","opps_seen_count","pay_notifs_seen_v1","price_alerts"];
+const USER_SCOPED_KEYS = ["wl","sv","saved_opps","notifs_v1","notifSeen","scr_saved","vip_mkt_pref","vip_tab","opps_seen_count","pay_notifs_seen_v1"];
 function clearUserScopedData(){ for(const k of USER_SCOPED_KEYS){ try{DB.d(k);}catch(e){} } }
 function ensureUserScope(phone){
   if(!phone) return;
@@ -1504,6 +1505,7 @@ function loadUserScopedData(){
    * portfolio endpoint is the only account source after the migration. */
   portfolio=[];
   portfolioState={loaded:false,loading:false,error:"",marketAvailable:false};
+  priceAlertsState={loaded:false,loading:false,error:"",items:[]};
 }
 
 /* ═══════════════════ INIT ═══════════════════ */
@@ -1578,7 +1580,7 @@ async function fetchStocksData(){
     const stocks=normalizeStockList(j.stocks);
     egxStocksFreshness={...normalizeStockFreshness(j),unavailable:j.unavailable===true||stocks.length===0};
     liveStocks=stocks;
-    if(stocks.length)checkPriceAlerts();
+
   }catch{
     if(egxStocksFreshness.fetchedAt)egxStocksFreshness={...egxStocksFreshness,stale:true,loading:false};
     else{egxStocksFreshness={fetchedAt:0,stale:true,source:"غير متاح",unavailable:true,loading:false};liveStocks=[];}
@@ -1755,7 +1757,7 @@ async function logout(){
     fetch("/api/admin/logout",{method:"POST",credentials:"same-origin"}),
   ]);}catch{}
   DB.d("s");DB.d("userTok");DB.d("admTok");
-  U=null;portfolio=[];portfolioState={loaded:false,loading:false,error:"",marketAvailable:false};wl=[];savedIds=[];goNav("home");
+  U=null;portfolio=[];portfolioState={loaded:false,loading:false,error:"",marketAvailable:false};priceAlertsState={loaded:false,loading:false,error:"",items:[]};wl=[];savedIds=[];goNav("home");
   document.getElementById("main").style.display="none";
   document.getElementById("auth").classList.add("open");
 }
@@ -3671,17 +3673,7 @@ function vBuildAlerts(b){
       <div style="color:var(--t5);font-size:9px;margin-top:8px;">التنبيهات تُنشأ تلقائياً: أخبار عاجلة، فرص جديدة، أحداث اقتصادية — وتظهر أيضاً كإشعارات متصفح عند تفعيلها.</div>
     </div>
     ${vSect("🔔","تنبيهات الأسعار")}
-    <div class="vbox">
-      <div class="p-inputs">
-        <input class="mini-in" id="pa-sym" placeholder="الرمز — مثال: COMI" style="flex:1.3;" oninput="this.value=this.value.toUpperCase().slice(0,10)"/>
-        <button class="cp" id="pa-dir" data-dir="above" onclick="paToggleDir(this)" style="padding:7px 10px;">أعلى من ▲</button>
-      </div>
-      <div class="p-inputs" style="margin-top:6px;">
-        <input class="mini-in" id="pa-price" type="number" placeholder="السعر (جنيه)" style="flex:2;"/>
-        <button class="add-btn" onclick="paAdd()">+</button>
-      </div>
-      ${(()=>{const pa=getPriceAlerts();return pa.length?`<div style="margin-top:8px;">${pa.map(a=>`<div class="p-row"><span style="color:var(--t2);font-size:11.5px;font-family:var(--mono);">${sanitize(a.sym)} ${a.dir==="above"?"≥":"≤"} ${a.price} ج ${a.done?"✅":""}</span><span style="cursor:pointer;color:var(--dn);margin-right:4px;" onclick='paDel(${safeJsArg(a.id)})' >✕</span></div>`).join("")}</div>`:`<div style="color:var(--t5);font-size:10.5px;text-align:center;padding:5px;">لا تنبيهات أسعار — أضف رمزًا وحدد السعر</div>`;})()}
-    </div>
+    ${priceAlertsPanelHtml()}
     ${vSect("📥","كل التنبيهات")}
     ${!s.items.length?vEmpty("🔕","لا تنبيهات بعد","ستظهر هنا الأخبار العاجلة والفرص والأحداث تلقائياً"):
       `<div class="vbox" style="padding:0;overflow:hidden;">${s.items.slice(0,50).map(n=>`
@@ -3695,62 +3687,92 @@ function vBuildAlerts(b){
           ${!n.read?`<div style="width:8px;height:8px;background:var(--au);border-radius:50%;flex-shrink:0;"></div>`:""}
         </div>`).join("")}</div>
       <button class="btn btn-full" style="margin-top:9px;padding:9px;font-size:12px;background:var(--dnd);color:var(--dn);border:none;border-radius:10px;" onclick="clearVipAlerts()">🗑️ مسح كل التنبيهات</button>`}`;
+  if(!priceAlertsState.loaded&&!priceAlertsState.loading&&!priceAlertsState.error)loadServerPriceAlerts();
 }
 function vTogglePref(key,val){const s=getNotifsStore();s.prefs[key]=val;saveNotifsStore(s);renderVipTab();}
 function markAllVipAlertsRead(){const s=getNotifsStore();s.items.forEach(n=>n.read=true);s.unread=0;saveNotifsStore(s);updateBellBadge();renderVipTab();}
 function clearVipAlerts(){if(!confirm("مسح كل التنبيهات؟"))return;const s=getNotifsStore();s.items=[];s.unread=0;saveNotifsStore(s);updateBellBadge();renderVipTab();showToast("تم مسح التنبيهات");}
 
-/* ─── تنبيهات الأسعار (حقيقية) ──────────────────────────────────────
- * The user sets a symbol + threshold; we re-check on every LIVE stocks
- * refresh and fire a notification the moment the price crosses it. */
-function normalizePriceAlerts(raw){
+/* ─── Server-backed price / daily-change alerts ─────────────────────── */
+function normalizeServerPriceAlerts(raw){
   if(!Array.isArray(raw))return [];
-  return raw.flatMap(a=>{
-    const id=String(a?.id||"").trim(),sym=String(a?.sym||"").trim().toUpperCase();
-    const price=Number(a?.price);
-    if(!/^[a-z0-9_-]{1,80}$/i.test(id)||!/^[A-Z0-9._-]{1,16}$/.test(sym)||!Number.isFinite(price)||price<=0||price>1e9)return [];
-    return [{id,sym,dir:a?.dir==="below"?"below":"above",price,done:a?.done===true}];
-  }).slice(0,50);
+  const allowed=new Set(["price_above","price_below","change_percent_above","change_percent_below"]);
+  return raw.flatMap(item=>{
+    const a=item&&typeof item==="object"?item:{};
+    const id=String(a.id||""),symbol=String(a.symbol||"").trim().toUpperCase(),condition=String(a.condition||"");
+    const targetValue=Number(a.targetValue);
+    if(!/^[a-z0-9-]{20,80}$/i.test(id)||!/^[A-Z0-9._-]{1,16}$/.test(symbol)||!allowed.has(condition)||!Number.isFinite(targetValue))return [];
+    return [{id,symbol,condition,targetValue,emailEnabled:a.emailEnabled===true,status:String(a.status||""),triggeredAt:a.triggeredAt||null,triggerValue:Number.isFinite(Number(a.triggerValue))?Number(a.triggerValue):null,triggerSource:String(a.triggerSource||""),triggerAsOf:a.triggerAsOf||null,emailStatus:String(a.emailStatus||"not_requested")}];
+  }).slice(0,100);
 }
-function getPriceAlerts(){return normalizePriceAlerts(DB.g("price_alerts",[]));}
-function savePriceAlerts(a){DB.s("price_alerts",normalizePriceAlerts(a));}
-function addPriceAlert(sym,dir,price){
-  const pa=getPriceAlerts();
-  const stock=String(sym||"").trim().toUpperCase();
-  if(!/^[A-Z0-9._-]{1,16}$/.test(stock)||!Number.isFinite(Number(price))||Number(price)<=0)return;
-  pa.push({id:Date.now()+"_"+Math.random().toString(36).slice(2,6),sym:stock,dir:dir==="below"?"below":"above",price:Number(price),done:false});
-  savePriceAlerts(pa.slice(0,50));
+function priceAlertIsPercent(condition){return condition==="change_percent_above"||condition==="change_percent_below";}
+function priceAlertConditionLabel(condition){return ({price_above:"السعر ≥",price_below:"السعر ≤",change_percent_above:"التغير اليومي ≥",change_percent_below:"التغير اليومي ≤"})[condition]||"شرط";}
+function priceAlertStatusLabel(alert){
+  if(alert.status==="triggered")return {label:"تم التحقق",c:"var(--g)",b:"var(--gd)"};
+  if(alert.status==="archived")return {label:"مؤرشف",c:"var(--t4)",b:"var(--s2)"};
+  return {label:"نشط",c:"var(--au)",b:"var(--aud)"};
 }
-function delPriceAlert(id){savePriceAlerts(getPriceAlerts().filter(a=>a.id!==id));}
-function paToggleDir(btn){const d=btn.dataset.dir==="above"?"below":"above";btn.dataset.dir=d;btn.textContent=d==="above"?"أعلى من ▲":"أقل من ▼";}
-function paAdd(){
-  const sym=(document.getElementById("pa-sym")?.value||"").trim().toUpperCase();
-  const price=Number(document.getElementById("pa-price")?.value);
-  const dir=document.getElementById("pa-dir")?.dataset.dir||"above";
-  if(!sym){showToast("⚠️ أدخل رمز السهم");return;}
-  if(!price||price<=0){showToast("⚠️ أدخل سعرًا صحيحًا");return;}
-  addPriceAlert(sym,dir,price);
-  showToast("✅ تم حفظ تنبيه السعر");
-  checkPriceAlerts();
-  renderVipTab();
+function priceAlertsPanelHtml(){
+  const st=priceAlertsState;
+  if(st.loading)return `<div class="vbox">${vLoading("جارٍ تحميل تنبيهات الأسعار من الخادم...")}</div>`;
+  if(st.error)return `<div class="vbox"><div class="vempty"><div style="font-size:28px;">⚠️</div><div style="color:var(--dn);font-weight:700;margin-top:6px;">تعذر تحميل التنبيهات</div><div style="color:var(--t5);font-size:10px;margin-top:4px;">${sanitize(st.error)}</div><button class="btn btn-ghost" style="margin-top:9px;padding:7px 12px;" onclick="priceAlertsState={...priceAlertsState,error:'',loaded:false};loadServerPriceAlerts(true)">↻ إعادة المحاولة</button></div></div>`;
+  const alerts=st.items||[];
+  return `<div class="vbox">
+    <div class="p-inputs">
+      <input class="mini-in" id="pa-sym" placeholder="الرمز — مثال: COMI" style="flex:1.2;" oninput="this.value=this.value.toUpperCase().slice(0,16)"/>
+      <select class="mini-in" id="pa-condition" onchange="paConditionChanged()" style="flex:1.4;"><option value="price_above">سعر أعلى/يساوي</option><option value="price_below">سعر أقل/يساوي</option><option value="change_percent_above">تغير يومي أعلى/يساوي</option><option value="change_percent_below">تغير يومي أقل/يساوي</option></select>
+    </div>
+    <div class="p-inputs" style="margin-top:6px;">
+      <input class="mini-in" id="pa-target" type="number" step="0.01" placeholder="السعر (جنيه)" style="flex:2;"/>
+      <button class="add-btn" onclick="paAdd()">+</button>
+    </div>
+    <label style="display:flex;align-items:flex-start;gap:7px;color:var(--t4);font-size:10px;line-height:1.55;margin-top:8px;cursor:pointer;"><input id="pa-email" type="checkbox" style="margin-top:2px;accent-color:var(--au);"/> أرسل بريدًا إلى عنوان حسابي عند التحقق من الشرط (يتطلب بريدًا مسجلًا وخدمة بريد مفعلة على الخادم).</label><button onclick="openSetEmail()" style="background:none;border:none;color:var(--g);font:inherit;font-size:10px;padding:3px 0;cursor:pointer;">إضافة/تحديث بريد الحساب ←</button>
+    <div style="color:var(--t5);font-size:9.5px;line-height:1.6;margin-top:7px;">يتحقق الخادم من مصدر سعر مرخّص وحديث فقط عند تشغيل مهمة التنبيهات المصرّح بها؛ لا يرسل تنبيهًا من لقطة متأخرة أو بيانات غير متاحة. نسبة التغير هي النسبة اليومية التي يرسلها المصدر، وليست ربحًا شخصيًا.</div>
+    ${alerts.length?`<div style="margin-top:9px;">${alerts.map(a=>{const stat=priceAlertStatusLabel(a),unit=priceAlertIsPercent(a.condition)?"%":" ج";return `<div class="p-row" style="gap:7px;"><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11.5px;font-family:var(--mono);">${sanitize(a.symbol)} · ${priceAlertConditionLabel(a.condition)} ${a.targetValue}${unit}</div><div style="color:var(--t5);font-size:9px;margin-top:2px;">${a.status==="triggered"?`القيمة عند التحقق: ${a.triggerValue??"—"}${unit}${a.triggerSource?` · ${sanitize(a.triggerSource)}`:""}${a.triggerAsOf?` · ${cairoTimestampLabel(new Date(a.triggerAsOf).getTime())}`:""}`:`البريد: ${a.emailEnabled?(a.emailStatus==="sent"?"تم الإرسال":a.emailStatus==="unavailable"?"غير متاح حاليًا":"سيُحاول عند التحقق"):"غير مفعّل"}`}</div></div><span style="background:${stat.b};color:${stat.c};border-radius:7px;padding:3px 6px;font-size:9px;white-space:nowrap;">${stat.label}</span>${a.status==="active"?`<button onclick='paDel(${safeJsArg(a.id)})' style="background:none;border:none;color:var(--dn);font-size:15px;cursor:pointer;">✕</button>`:""}</div>`;}).join("")}</div>`:`<div style="color:var(--t5);font-size:10.5px;text-align:center;padding:9px;">لا توجد تنبيهات محفوظة على الخادم حتى الآن.</div>`}
+  </div>`;
 }
-function paDel(id){delPriceAlert(id);renderVipTab();showToast("تم حذف التنبيه");}
-function checkPriceAlerts(){
-  const pa=getPriceAlerts();
-  if(!pa.length||!liveStocks.length)return;
-  let changed=false;
-  for(const a of pa){
-    if(a.done)continue;
-    const s=liveStocks.find(x=>x.sym===a.sym);
-    if(!s)continue;
-    const hit=a.dir==="above"?s.price>=a.price:s.price<=a.price;
-    if(hit){
-      a.done=true;changed=true;
-      addNotif("price",`🔔 ${a.sym}: ${a.dir==="above"?"بلغ":"هبط إلى"} ${a.price} ج`,`السعر الحالي ${s.price.toFixed(2)} ج — راجع تبويب الأسواق`,"nav:markets","🔔");
-      showToast(`🔔 تنبيه سعر: ${a.sym} عند ${s.price.toFixed(2)} ج`);
-    }
-  }
-  if(changed)savePriceAlerts(pa);
+async function loadServerPriceAlerts(force=false){
+  if(!U||U.plan==="admin"||priceAlertsState.loading||(!force&&priceAlertsState.loaded))return;
+  priceAlertsState={...priceAlertsState,loading:true,error:""};if(vipTab==="alerts")renderVipTab();
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch("/api/price-alerts",{credentials:"same-origin",cache:"no-store",signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(r.status===403){priceAlertsState={loaded:false,loading:false,error:"هذه الميزة تتطلب اشتراك VIP فعّالًا يتحقق منه الخادم.",items:[]};return;}
+    if(!r.ok||!j||j.status!=="ok")throw new Error("تعذر تحميل التنبيهات من الخادم");
+    priceAlertsState={loaded:true,loading:false,error:"",items:normalizeServerPriceAlerts(j.alerts)};
+  }catch(e){priceAlertsState={loaded:false,loading:false,error:"تعذر الاتصال بالخادم. حاول مرة أخرى.",items:[]};}
+  finally{clearTimeout(timer);if(vipTab==="alerts")renderVipTab();}
+}
+function paConditionChanged(){
+  const condition=document.getElementById("pa-condition")?.value||"price_above";
+  const target=document.getElementById("pa-target");if(target)target.placeholder=priceAlertIsPercent(condition)?"نسبة التغير اليومية (%)":"السعر (جنيه)";
+}
+async function paAdd(){
+  const symbol=(document.getElementById("pa-sym")?.value||"").trim().toUpperCase();
+  const condition=document.getElementById("pa-condition")?.value||"price_above";
+  const targetValue=Number(document.getElementById("pa-target")?.value);
+  const emailEnabled=document.getElementById("pa-email")?.checked===true;
+  if(!symbol||!Number.isFinite(targetValue)||targetValue===0){showToast("⚠️ أدخل الرمز والقيمة المستهدفة بشكل صحيح");return;}
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch("/api/price-alerts",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbol,condition,targetValue,emailEnabled}),signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر حفظ التنبيه");
+    priceAlertsState={...priceAlertsState,loaded:false,error:""};await loadServerPriceAlerts(true);showToast(j.restored?"✅ تم إعادة تفعيل التنبيه":"✅ تم حفظ التنبيه على الخادم");
+  }catch(e){showToast("⚠️ "+String(e?.message||"تعذر حفظ التنبيه"));}
+  finally{clearTimeout(timer);}
+}
+async function paDel(id){
+  if(!id||!confirm("أرشفة هذا التنبيه؟"))return;
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch(`/api/price-alerts/${encodeURIComponent(id)}`,{method:"DELETE",credentials:"same-origin",signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر الأرشفة");
+    priceAlertsState={...priceAlertsState,loaded:false,error:""};await loadServerPriceAlerts(true);showToast("✅ تمت أرشفة التنبيه");
+  }catch(e){showToast("⚠️ "+String(e?.message||"تعذر الأرشفة"));}
+  finally{clearTimeout(timer);}
 }
 
 /* ══════════════ TAB 11 — الإعدادات ══════════════ */
@@ -4714,7 +4736,7 @@ function renderProfile(){
   if(!isAdm)btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t2);margin-bottom:9px;" onclick="openMySubscription()">📋 اشتراكي وسجل الدفعات</button>`;
   if(!isVip)btns+=`<button class="prof-btn sub" onclick="openSub()">⭐ اشترك في VIP الآن</button>`;
   if(isAdm)btns+=`<button class="prof-btn" style="background:var(--gd);border:1px solid rgba(16,185,129,.15);color:var(--g);margin-bottom:9px;" onclick="openAdm()">⚙️ لوحة التحكم</button>`;
-  if(U.phone!=="admin")btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openChangePass()">🔒 تغيير كلمة المرور</button>`;
+  if(U.phone!=="admin")btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openSetEmail()">✉️ بريد الاسترداد والتنبيهات</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openChangePass()">🔒 تغيير كلمة المرور</button>`;
   btns+=`<button class="prof-btn out" onclick="logout()">تسجيل الخروج</button>`;
   document.getElementById("pbtns").innerHTML=btns;
   updateStats();
@@ -4754,6 +4776,29 @@ async function doChangePass(){
   document.getElementById("chpass-ov")?.remove();
   showToast("✅ تم تغيير كلمة المرور بنجاح");
 }
+function openSetEmail(){
+  if(!U||U.phone==="admin"){showToast("⚠️ هذه الإعدادات لحساب المستخدم فقط");return;}
+  document.getElementById("set-email-ov")?.remove();
+  const ov=document.createElement("div");ov.id="set-email-ov";ov.style.cssText="position:fixed;inset:0;z-index:700;background:rgba(3,7,18,.92);display:flex;align-items:flex-end;";
+  ov.innerHTML=`<div style="width:100%;max-width:430px;margin:0 auto;background:var(--ink2);border-radius:22px 22px 0 0;padding:20px 18px 30px;"><div style="color:var(--t2);font-weight:800;font-size:15px;margin-bottom:7px;">✉️ بريد الاسترداد والتنبيهات</div><div style="color:var(--t4);font-size:10.5px;line-height:1.65;margin-bottom:12px;">يُستخدم لاستعادة كلمة المرور ولتنبيهات الأسعار التي تختار إرسالها إلى بريد حسابك فقط.</div><input class="a-in" id="set-email-in" type="email" autocomplete="email" dir="ltr" placeholder="name@example.com" style="margin-bottom:9px;"/><div id="set-email-err" style="display:none;color:var(--dn);font-size:12px;margin-bottom:9px;"></div><button class="btn btn-g btn-full" id="set-email-btn" onclick="saveUserEmail()" style="padding:12px;">حفظ البريد</button><button onclick="document.getElementById('set-email-ov').remove()" style="width:100%;margin-top:8px;background:none;border:none;color:var(--t4);font-size:12px;cursor:pointer;font-family:var(--sans);">إلغاء</button></div>`;
+  document.body.appendChild(ov);
+}
+async function saveUserEmail(){
+  const email=(document.getElementById("set-email-in")?.value||"").trim().toLowerCase();
+  const err=document.getElementById("set-email-err"),btn=document.getElementById("set-email-btn");
+  const fail=m=>{if(err){err.textContent=m;err.style.display="block";}};
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){fail("أدخل بريدًا إلكترونيًا صحيحًا");return;}
+  if(err)err.style.display="none";if(btn){btn.disabled=true;btn.textContent="جارٍ الحفظ...";}
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch("/api/user/email",{method:"PUT",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({email}),signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر حفظ البريد");
+    document.getElementById("set-email-ov")?.remove();showToast("✅ تم حفظ بريد الاسترداد والتنبيهات");
+  }catch(e){fail(String(e?.message||"تعذر الاتصال بالخادم"));}
+  finally{clearTimeout(timer);if(btn){btn.disabled=false;btn.textContent="حفظ البريد";}}
+}
+
 function updateStats(){
   const s1=document.getElementById("st-sv"),s2=document.getElementById("st-wl"),s3=document.getElementById("st-src");
   if(s1)s1.textContent=savedIds.length;if(s2)s2.textContent=wl.length;
@@ -5730,9 +5775,9 @@ function tryBrowserNotif(title,body){
   try{new Notification("EgyTrend — "+title,{body,icon:"/favicon.ico"});}catch(e){}
 }
 
-/* ═══════════════════ IN-PLATFORM PAYMENT NOTIFICATIONS ═══════════════════
-   Server-pushed (poll /api/payments/notifications): the moment an admin
-   approves or rejects a payment, the user sees a prominent toast + bell. */
+/* ═══════════════════ IN-PLATFORM SERVER NOTIFICATIONS ═══════════════════
+   Polls only the current user's server rows: payment decisions and verified
+   price-alert triggers become a toast + bell without trusting local storage. */
 const PAY_NOTIF_SEEN_KEY="pay_notifs_seen_v1";
 let payNotifTimer=null;
 function payNotifsSeen(){return DB.g(PAY_NOTIF_SEEN_KEY,[]);}
@@ -5748,8 +5793,9 @@ async function pollPayNotifs(){
       const fresh=j.notifications.filter(n=>!seen.has(n.id));
       if(fresh.length){
         for(const n of fresh){
-          addNotif("sub",n.title,n.body,"nav:vip",n.icon||"💰");
-          showPlatNotif(n.icon||"💰",n.title,n.body);
+          const kind=n.type==="price_alert"?"price":"sub";
+          addNotif(kind,n.title,n.body,"nav:vip",n.icon|| (kind==="price"?"🔔":"💰"));
+          showPlatNotif(n.icon|| (kind==="price"?"🔔":"💰"),n.title,n.body);
         }
         markPayNotifsSeen(j.notifications.map(n=>n.id));
         loadPayStatus();

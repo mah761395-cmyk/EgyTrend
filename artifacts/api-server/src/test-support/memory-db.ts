@@ -135,6 +135,29 @@ export async function createMemoryDatabase(): Promise<{
       UNIQUE(user_id, symbol)
     );
     CREATE INDEX portfolio_positions_user_status_idx ON portfolio_positions(user_id, status);
+    CREATE TABLE user_price_alerts (
+      id text PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES app_users(id),
+      instrument_id text NOT NULL,
+      symbol text NOT NULL,
+      condition text NOT NULL,
+      target_value numeric(18, 6) NOT NULL,
+      email_enabled boolean NOT NULL DEFAULT false,
+      status text NOT NULL DEFAULT 'active',
+      last_evaluated_at timestamp,
+      triggered_at timestamp,
+      trigger_value numeric(18, 6),
+      trigger_source text,
+      trigger_as_of timestamp,
+      email_status text NOT NULL DEFAULT 'not_requested',
+      email_sent_at timestamp,
+      archived_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, symbol, condition, target_value)
+    );
+    CREATE INDEX user_price_alerts_status_idx ON user_price_alerts(status, updated_at);
+    CREATE INDEX user_price_alerts_user_status_idx ON user_price_alerts(user_id, status);
     CREATE TABLE payment_requests (
       id text PRIMARY KEY,
       phone text NOT NULL,

@@ -10,6 +10,7 @@ import {
   employeesTable,
   paymentRequestsTable,
   portfolioPositionsTable,
+  userPriceAlertsTable,
   opportunities,
   subscriptionPlansTable,
   userSubscriptionsTable,
@@ -117,6 +118,8 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
   assert.equal((profileBefore.body?.user as { plan?: string }).plan, "free");
   const freePortfolio = await api("/api/portfolio", userJar);
   assert.equal(freePortfolio.response.status, 403, "portfolio data is server-gated for VIP");
+  const freeAlerts = await api("/api/price-alerts", userJar);
+  assert.equal(freeAlerts.response.status, 403, "price alerts are server-gated for VIP");
 
   /* The former weaker path must not accept a payment even from a session. */
   const retiredPath = await api("/api/admin/requests", userJar, {
@@ -226,6 +229,27 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
   assert.equal(restorePosition.response.status, 200);
   assert.equal(restorePosition.body?.restored, true);
 
+  const createAlert = await api("/api/price-alerts", userJar, {
+    method: "POST",
+    body: JSON.stringify({ symbol: "COMI", condition: "price_above", targetValue: 55, emailEnabled: false }),
+  });
+  assert.equal(createAlert.response.status, 201);
+  const alertId = String(createAlert.body?.id || "");
+  const ownAlerts = await api("/api/price-alerts", userJar);
+  assert.equal(ownAlerts.response.status, 200);
+  assert.equal(((ownAlerts.body?.alerts as Array<{ id?: string; status?: string }>) || []).find((alert) => alert.id === alertId)?.status, "active");
+  const archiveAlert = await api(`/api/price-alerts/${encodeURIComponent(alertId)}`, userJar, { method: "DELETE" });
+  assert.equal(archiveAlert.response.status, 200);
+  const [archivedAlert] = await memory.db.select().from(userPriceAlertsTable)
+    .where(eq(userPriceAlertsTable.id, alertId));
+  assert.equal(archivedAlert?.status, "archived", "price alert records are archived, not deleted");
+  const restoreAlert = await api("/api/price-alerts", userJar, {
+    method: "POST",
+    body: JSON.stringify({ symbol: "COMI", condition: "price_above", targetValue: 55, emailEnabled: false }),
+  });
+  assert.equal(restoreAlert.response.status, 200);
+  assert.equal(restoreAlert.body?.restored, true);
+
   /* An active member may submit one server-priced renewal before expiry;
    * it remains pending until a separate admin approval stacks the duration. */
   const renewalWhileVip = await api("/api/payments", userJar, {
@@ -324,4 +348,27 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
   assert.equal(logout.response.status, 204);
   const profileAfterLogout = await api("/api/user/me", userJar);
   assert.equal(profileAfterLogout.response.status, 401);
+});
+
+test("price-alert evaluator requires a fresh source-backed quote and honors price/change rules", async () => {
+  const { evaluatePriceAlert, quoteEligibleForAlert } = await import("./price-alerts");
+  const now = Date.now();
+  const quote = {
+    instrumentId: "stock:egx:COMI",
+    sym: "COMI",
+    name: "Synthetic COMI",
+    sector: "Banks",
+    price: 55,
+    chgPct: -2.4,
+    ts: now - 60_000,
+    source: "Synthetic licensed test source",
+    freshness: "real-time" as const,
+  };
+  assert.equal(evaluatePriceAlert("price_above", 55, quote), true);
+  assert.equal(evaluatePriceAlert("price_below", 54, quote), false);
+  assert.equal(evaluatePriceAlert("change_percent_below", -2, quote), true);
+  assert.equal(evaluatePriceAlert("change_percent_above", -2, quote), false);
+  assert.equal(quoteEligibleForAlert(quote, now), true);
+  assert.equal(quoteEligibleForAlert({ ...quote, freshness: "end-of-day" }, now), false);
+  assert.equal(quoteEligibleForAlert({ ...quote, ts: now - 25 * 60_000 }, now), false);
 });

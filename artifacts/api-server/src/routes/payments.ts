@@ -279,8 +279,8 @@ router.get("/payments/notifications", async (req: Request, res: Response) => {
     /* Client contract: type = approved|rejected, notes = reason for rejection. */
     const notifications = rows.map((r) => ({
       id: r.id,
-      type: r.kind === "payment_approved" ? "approved" : r.kind === "payment_rejected" ? "rejected" : r.kind,
-      title: r.title,
+        type: r.kind === "payment_approved" ? "approved" : r.kind === "payment_rejected" ? "rejected" : r.kind === "price_alert" ? "price_alert" : r.kind,
+        title: r.title,
       body: r.body,
       notes: r.kind === "payment_rejected" ? r.body.replace(/^تم رفض طلب الدفع\. السبب:\s*/, "") : "",
       icon: r.kind === "payment_approved" ? "🎉" : "📋",
