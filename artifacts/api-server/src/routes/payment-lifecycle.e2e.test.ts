@@ -11,6 +11,8 @@ import {
   paymentRequestsTable,
   portfolioPositionsTable,
   userPriceAlertsTable,
+  userCalculatorActivityTable,
+  userCalculatorScenariosTable,
   opportunities,
   planPriceOffersTable,
   subscriptionPlansTable,
@@ -360,6 +362,124 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
   assert.equal(logout.response.status, 204);
   const profileAfterLogout = await api("/api/user/me", userJar);
   assert.equal(profileAfterLogout.response.status, 401);
+});
+
+test("VIP calculator runtime, persistence and direct asset access are server-gated", async () => {
+  const freeJar: CookieJar = {};
+  const freeRegistration = await api("/api/user/register", freeJar, {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Calculator Free User",
+      phone: "01066660001",
+      password: "CalculatorFreePass1!",
+      email: "calculator.free@example.test",
+    }),
+  });
+  assert.equal(freeRegistration.response.status, 201);
+
+  /* A free authenticated user must fail every route individually. In
+   * particular, a copied JS module URL cannot disclose calculation code. */
+  for (const path of ["/api/calculators/bootstrap", "/api/calculators/runtime.js", "/api/calculators/math.js", "/api/calculators/scenarios?calculator=pl", "/api/calculators/history"]) {
+    const denied = await api(path, freeJar);
+    assert.equal(denied.response.status, 403, `${path} must reject a free user`);
+  }
+  const deniedExport = await api("/api/calculators/export", freeJar, {
+    method: "POST",
+    body: JSON.stringify({ calculatorKey: "pl", inputs: { buyPrice: 100 }, result: { ok: true, net: 1000 } }),
+  });
+  assert.equal(deniedExport.response.status, 403, "PDF export authorization must reject a free user");
+  const deniedSave = await api("/api/calculators/scenarios", freeJar, {
+    method: "POST",
+    body: JSON.stringify({ calculatorKey: "pl", name: "محاولة مجانية", inputs: { buyPrice: 100 }, result: { ok: true, net: 1000 } }),
+  });
+  assert.equal(deniedSave.response.status, 403, "scenario saving must reject a free user");
+  const deniedHistory = await api("/api/calculators/history", freeJar, {
+    method: "POST",
+    body: JSON.stringify({ calculatorKey: "pl", action: "copied", inputs: { buyPrice: 100 }, result: { ok: true, net: 1000 } }),
+  });
+  assert.equal(deniedHistory.response.status, 403, "history writing must reject a free user");
+  const anonymousAsset = await api("/api/calculators/runtime.js", {});
+  assert.equal(anonymousAsset.response.status, 401, "runtime asset must reject an anonymous direct request");
+
+  const [freeUser] = await memory.db.select().from(appUsersTable).where(eq(appUsersTable.phone, "01066660001"));
+  assert.ok(freeUser);
+  const now = new Date();
+  await memory.db.insert(userSubscriptionsTable).values({
+    id: "sub-calculator-vip-test",
+    userId: freeUser.id,
+    planKey: "synthetic-vip",
+    planNameAr: "باقة اختبار الحاسبات",
+    planDurationMonths: 1,
+    planFeatures: [],
+    status: "active",
+    startsAt: now,
+    expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+    source: "test",
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  const bootstrap = await api("/api/calculators/bootstrap", freeJar);
+  assert.equal(bootstrap.response.status, 200);
+  assert.equal(bootstrap.body?.status, "ok");
+  assert.equal(bootstrap.response.headers.get("cache-control"), "private, no-store, max-age=0");
+
+  const runtime = await api("/api/calculators/runtime.js", freeJar);
+  assert.equal(runtime.response.status, 200);
+  assert.match(runtime.raw, /mountCalculatorRuntime/);
+  assert.match(runtime.response.headers.get("content-type") || "", /javascript/);
+  assert.match(runtime.response.headers.get("cache-control") || "", /no-store/);
+  const math = await api("/api/calculators/math.js", freeJar);
+  assert.equal(math.response.status, 200);
+  assert.match(math.raw, /function profitLoss/);
+
+  const scenario = await api("/api/calculators/scenarios", freeJar, {
+    method: "POST",
+    body: JSON.stringify({
+      calculatorKey: "pl", name: "اختبار ربح", inputs: { buyPrice: 100, sellPrice: 120, quantity: 50, commissionPercent: 0 },
+      result: { ok: true, net: 1000, returnPercent: 20 },
+    }),
+  });
+  assert.equal(scenario.response.status, 201);
+  const scenarioId = String(scenario.body?.id || "");
+  assert.match(scenarioId, /^[a-f0-9-]{20,80}$/i);
+  const scenarios = await api("/api/calculators/scenarios?calculator=pl", freeJar);
+  assert.equal(scenarios.response.status, 200);
+  const saved = (scenarios.body?.scenarios as Array<{ id?: string; name?: string }>) || [];
+  assert.equal(saved.find((item) => item.id === scenarioId)?.name, "اختبار ربح");
+  const [savedRow] = await memory.db.select().from(userCalculatorScenariosTable).where(eq(userCalculatorScenariosTable.id, scenarioId));
+  assert.equal(savedRow?.status, "active");
+
+  const exportAuthorization = await api("/api/calculators/export", freeJar, {
+    method: "POST",
+    body: JSON.stringify({ calculatorKey: "pl", inputs: { buyPrice: 100 }, result: { ok: true, net: 1000 } }),
+  });
+  assert.equal(exportAuthorization.response.status, 201);
+  assert.equal(exportAuthorization.body?.exportAuthorized, true);
+  const history = await api("/api/calculators/history", freeJar, {
+    method: "POST",
+    body: JSON.stringify({ calculatorKey: "pl", action: "copied", inputs: { buyPrice: 100 }, result: { ok: true, net: 1000 } }),
+  });
+  assert.equal(history.response.status, 201);
+  const historyList = await api("/api/calculators/history", freeJar);
+  assert.equal(historyList.response.status, 200);
+  assert.ok(((historyList.body?.history as unknown[]) || []).length >= 3, "saving, exporting and copying produce server-owned history");
+  const activities = await memory.db.select().from(userCalculatorActivityTable).where(eq(userCalculatorActivityTable.userId, freeUser.id));
+  assert.ok(activities.some((activity) => activity.action === "saved"));
+  assert.ok(activities.some((activity) => activity.action === "exported"));
+  assert.ok(activities.some((activity) => activity.action === "copied"));
+
+  const archive = await api(`/api/calculators/scenarios/${encodeURIComponent(scenarioId)}`, freeJar, { method: "DELETE" });
+  assert.equal(archive.response.status, 200);
+  const [archivedScenario] = await memory.db.select().from(userCalculatorScenariosTable).where(eq(userCalculatorScenariosTable.id, scenarioId));
+  assert.equal(archivedScenario?.status, "archived", "calculator scenarios archive rather than delete");
+
+  /* No configured provider in this isolated harness may turn into a fake quote
+   * or synthetic FX rate. Both endpoints answer transparently. */
+  const quote = await api("/api/calculators/quote?symbol=COMI", freeJar);
+  assert.equal(quote.response.status, 503);
+  const fx = await api("/api/calculators/fx", freeJar);
+  assert.equal(fx.response.status, 503);
 });
 
 test("subscription price policy schedules, targets, snapshots and authorizes edits on the server", async () => {

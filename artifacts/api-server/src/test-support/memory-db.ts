@@ -192,6 +192,32 @@ export async function createMemoryDatabase(): Promise<{
     );
     CREATE INDEX user_price_alerts_status_idx ON user_price_alerts(status, updated_at);
     CREATE INDEX user_price_alerts_user_status_idx ON user_price_alerts(user_id, status);
+    CREATE TABLE user_calculator_scenarios (
+      id text PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES app_users(id),
+      calculator_key text NOT NULL,
+      name text NOT NULL,
+      inputs jsonb NOT NULL,
+      result jsonb NOT NULL,
+      status text NOT NULL DEFAULT 'active',
+      archived_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX user_calculator_scenarios_user_updated_idx ON user_calculator_scenarios(user_id, updated_at);
+    CREATE INDEX user_calculator_scenarios_user_status_idx ON user_calculator_scenarios(user_id, status);
+    CREATE TABLE user_calculator_activity (
+      id text PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES app_users(id),
+      calculator_key text NOT NULL,
+      action text NOT NULL,
+      inputs jsonb NOT NULL,
+      result jsonb NOT NULL,
+      status text NOT NULL DEFAULT 'active',
+      archived_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX user_calculator_activity_user_created_idx ON user_calculator_activity(user_id, created_at);
     CREATE TABLE payment_requests (
       id text PRIMARY KEY,
       phone text NOT NULL,

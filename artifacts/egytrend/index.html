@@ -960,6 +960,9 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
   <!-- VIP -->
   <div id="page-vip" class="page hidden vip-page"><div id="vip-el"></div></div>
 
+  <!-- INVESTOR CALCULATORS: the complete UI/math is loaded only from the VIP-gated API runtime. -->
+  <div id="page-calculators" class="page hidden" dir="rtl"><div id="calculators-el"></div></div>
+
   <!-- OPPORTUNITIES -->
   <div id="page-opps" class="page hidden">
     <div class="opps-page">
@@ -1556,6 +1559,7 @@ function bootApp(){
   updateBellBadge();
   checkAutoNotifs();
   startPayNotifPolling();
+  if(window.location.pathname==="/calculators")goNav("calculators",{syncUrl:false});
   setInterval(fetchMarketsData,60000);
   setInterval(fetchCalendarData,30*60*1000);
   setInterval(()=>fetchAllNews(true), 5*60*1000);
@@ -2808,6 +2812,7 @@ function renderVIP(){
 
       <div id="pay-status-card" style="margin-bottom:12px;"></div>
       <div id="vip-plan-comparison" style="margin-bottom:12px;"></div>
+      <button class="btn btn-ghost btn-full" style="padding:11px;font-size:12px;margin:0 0 12px;" onclick="goNav('calculators')">🧮 شاهد معاينة حاسبات المستثمر</button>
 
       <div style="background:var(--s1);border:1px solid var(--b1);border-radius:16px;padding:15px 13px;margin-bottom:14px;">
         <div style="color:var(--au);font-weight:900;font-size:14px;margin-bottom:11px;text-align:center;">📱 طريقة الاشتراك في VIP</div>
@@ -2857,13 +2862,69 @@ function renderVIP(){
   el.innerHTML=`
     <div class="row between" style="margin-bottom:12px;">
       <div class="row"><span style="font-size:19px;">⭐</span><div><div style="color:var(--au);font-weight:900;font-size:16px;">مركز VIP</div><div style="color:var(--t4);font-size:9.5px;">${sanitize(U?.name||"عضو VIP")} · كل الأدوات مفتوحة</div></div></div>
-      <button class="btn btn-ghost" style="padding:6px 9px;font-size:10px;" onclick="openMySubscription()">📋 اشتراكي</button>
+      <div style="display:flex;gap:6px;"><button class="btn btn-ghost" style="padding:6px 9px;font-size:10px;" onclick="goNav('calculators')">🧮 الحاسبات</button><button class="btn btn-ghost" style="padding:6px 9px;font-size:10px;" onclick="openMySubscription()">📋 اشتراكي</button></div>
     </div>
     <div class="vtabs-wrap"><div class="vtabs" id="vtabs-bar"></div></div>
     <div id="vip-body"></div>`;
 
   buildVipTabsBar();
   switchVipTab(DB.g("vip_tab","home"),true);
+}
+
+/* ══════════════ INVESTOR CALCULATORS ══════════════
+ * The public shell intentionally contains only an honest preview. The complete
+ * calculation UI and math module are fetched from server-side requireVipUser
+ * routes after a fresh entitlement check; no browser plan flag grants access. */
+const CALCULATOR_PREVIEW_NAMES=["الربح والخسارة","حجم المركز والمخاطرة","العائد المركب","متوسط الشراء","عائد التوزيعات","CAGR ومضاعف رأس المال","العائد الحقيقي بعد التضخم","محول العملات"];
+let calculatorRuntimeLoading=false;
+function calculatorPreviewMarkup(){
+  return `<div style="max-width:760px;margin:0 auto;">
+    <div style="text-align:center;padding:10px 0 17px;"><div style="font-size:38px;">🧮</div><div style="color:var(--t1);font-size:22px;font-weight:900;margin-top:4px;">حاسبات المستثمر</div><div style="color:var(--t4);font-size:12px;line-height:1.7;margin-top:5px;">أدوات منظمة لاتخاذ قرارك، متاحة ضمن عضوية VIP بعد تحقق الخادم من الاشتراك.</div></div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:13px;">${CALCULATOR_PREVIEW_NAMES.map((name,index)=>`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:11px;display:flex;align-items:center;gap:8px;"><span style="color:var(--au);font-weight:900;">${String(index+1).padStart(2,"0")}</span><span style="color:var(--t2);font-size:11.5px;font-weight:700;">${name}</span></div>`).join("")}</div>
+    <div style="position:relative;overflow:hidden;background:linear-gradient(145deg,#12241c,#0c1612);border:1px solid rgba(16,185,129,.25);border-radius:17px;padding:17px;margin-bottom:13px;">
+      <span style="position:absolute;left:10px;top:10px;border-radius:99px;background:rgba(245,158,11,.2);border:1px solid rgba(245,158,11,.4);color:#fcd34d;padding:4px 9px;font-size:10px;font-weight:800;">مثال توضيحي</span>
+      <div style="color:#d8f3e7;font-weight:900;font-size:14px;margin-bottom:14px;">شكل النتيجة داخل الحاسبة</div>
+      <div style="display:grid;grid-template-columns:1.15fr .85fr;gap:9px;opacity:.83;pointer-events:none;"><div style="border:1px solid rgba(255,255,255,.11);border-radius:11px;padding:11px;"><div style="height:9px;border-radius:8px;background:rgba(255,255,255,.16);width:50%;margin-bottom:11px;"></div><div style="height:32px;border-radius:8px;background:rgba(255,255,255,.08);"></div><div style="height:32px;border-radius:8px;background:rgba(255,255,255,.08);margin-top:8px;"></div></div><div style="border:1px solid rgba(16,185,129,.28);background:rgba(16,185,129,.08);border-radius:11px;padding:11px;"><div style="font-size:10px;color:#9ab7aa;">النتيجة</div><div style="font-size:22px;font-weight:900;color:#d6f5e5;margin:6px 0;">—</div><div style="height:8px;border-radius:8px;background:rgba(255,255,255,.13);width:70%;"></div></div></div>
+    </div>
+    <div style="background:var(--aud);border:1px solid rgba(245,158,11,.22);border-radius:14px;padding:13px;text-align:center;"><div style="color:var(--au);font-weight:800;font-size:13px;">المدخلات والحسابات والحفظ والتصدير لأعضاء VIP</div><div style="color:var(--t4);font-size:10.5px;margin:5px 0 10px;">النتائج تقديرية ولا تمثل نصيحة استثمارية.</div><button class="btn btn-au" style="padding:10px 20px;" onclick="openSub()">⭐ اشترك لفتح الحاسبات</button></div>
+  </div>`;
+}
+function calculatorRuntimeError(message,canSubscribe){
+  return `<div style="max-width:620px;margin:34px auto;text-align:center;background:var(--s1);border:1px solid var(--b1);border-radius:17px;padding:24px 18px;"><div style="font-size:35px;margin-bottom:8px;">${canSubscribe?"🔒":"⚠️"}</div><div style="color:${canSubscribe?"var(--au)":"var(--dn)"};font-size:16px;font-weight:900;margin-bottom:7px;">${canSubscribe?"الحاسبات لمشتركي VIP":"تعذر فتح الحاسبات"}</div><div style="color:var(--t3);font-size:12px;line-height:1.8;">${sanitize(message)}</div><div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:14px;">${canSubscribe?`<button class="btn btn-au" onclick="openSub()">عرض اشتراك VIP</button>`:""}<button class="btn btn-ghost" onclick="renderCalculatorsPage()">↻ إعادة المحاولة</button></div></div>`;
+}
+async function loadVipCalculatorRuntime(){
+  const host=document.getElementById("calculators-runtime");
+  if(!host||calculatorRuntimeLoading)return;
+  calculatorRuntimeLoading=true;
+  try{
+    const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),10000);
+    let response;
+    try{response=await fetch("/api/calculators/bootstrap",{credentials:"same-origin",cache:"no-store",signal:controller.signal});}finally{clearTimeout(timer);}
+    const boot=await response.json().catch(()=>({}));
+    if(!response.ok){
+      const access=response.status===401||response.status===403;
+      host.innerHTML=calculatorRuntimeError(access?"يتم فتح الحاسبات فقط بعد تحقق الخادم من اشتراك VIP فعّال.":"تعذر التحقق من الوصول الآن. أعد المحاولة لاحقًا.",access);
+      return;
+    }
+    if(typeof boot.runtime!=="string"||!boot.runtime.startsWith("/api/calculators/"))throw new Error("invalid calculator runtime");
+    /* Unique query forces a server-gated request on each dedicated-page entry;
+       browser-cached UI alone never renews paid access. */
+    const module=await import(`${boot.runtime}?access=${Date.now()}`);
+    if(typeof module.mountCalculatorRuntime!=="function")throw new Error("invalid calculator runtime module");
+    host.innerHTML="";module.mountCalculatorRuntime(host);
+  }catch(error){
+    const msg=error?.name==="AbortError"?"انتهت مهلة تحميل أدوات الحاسبات. تحقق من الاتصال ثم أعد المحاولة.":"تعذر تحميل أدوات الحاسبات الآن. لم يتم عرض نتائج بديلة.";
+    const retry=document.getElementById("calculators-runtime");if(retry)retry.innerHTML=calculatorRuntimeError(msg,false);
+  }finally{calculatorRuntimeLoading=false;}
+}
+function renderCalculatorsPage(){
+  const el=document.getElementById("calculators-el");if(!el)return;
+  /* This hint only chooses the preview; server bootstrap remains the authority. */
+  if(U?.plan!=="vip"){
+    el.innerHTML=calculatorPreviewMarkup();return;
+  }
+  el.innerHTML=`<div id="calculators-runtime" style="min-height:220px;"><div style="max-width:580px;margin:36px auto;text-align:center;color:var(--t4);font-size:12px;"><div class="sp sp-au" style="margin:0 auto 10px;"></div>جارٍ التحقق من اشتراكك وتحميل أدوات الحاسبات…</div></div>`;
+  loadVipCalculatorRuntime();
 }
 
 /* ══════════════ VIP TABS SYSTEM ══════════════ */
@@ -5830,18 +5891,25 @@ async function admRej(id){
 }
 
 /* ═══════════════════ NAVIGATION ═══════════════════ */
-function goNav(id){
-  ["home","markets","vip","opps","profile"].forEach(n=>{
-    document.getElementById(`page-${n}`).classList.toggle("hidden",n!==id);
-    document.getElementById(`nb-${n}`)?.classList.toggle("active",n===id);
+function goNav(id,options={}){
+  const target=["home","markets","vip","opps","profile","calculators"].includes(id)?id:"home";
+  ["home","markets","vip","opps","profile","calculators"].forEach(n=>{
+    document.getElementById(`page-${n}`).classList.toggle("hidden",n!==target);
+    document.getElementById(`nb-${n}`)?.classList.toggle("active",n===target);
   });
-  if(id==="vip")renderVIP();
-  if(id==="profile")renderProfile();
-  if(id==="markets"){buildMarkets();buildCalendar();}
-  if(id==="home") clearNotifs();
-  if(id==="opps") loadOpps();
+  if(target==="vip")renderVIP();
+  if(target==="profile")renderProfile();
+  if(target==="markets"){buildMarkets();buildCalendar();}
+  if(target==="home") clearNotifs();
+  if(target==="opps") loadOpps();
+  if(target==="calculators")renderCalculatorsPage();
+  if(options.syncUrl!==false&&window.history&&window.history.pushState){
+    const wanted=target==="calculators"?"/calculators":"/";
+    if(window.location.pathname!==wanted)window.history.pushState({nav:target},"",wanted);
+  }
   closeNotifPanel();
 }
+window.addEventListener("popstate",()=>goNav(window.location.pathname==="/calculators"?"calculators":"home",{syncUrl:false}));
 
 /* ═══════════════════ NOTIFICATION SYSTEM ═══════════════════ */
 const NOTIF_KEY="notifs_v1";
