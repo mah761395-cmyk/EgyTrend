@@ -41,16 +41,28 @@ function freshness(delayMinutes: number | undefined): "real-time" | "delayed" | 
 }
 
 /**
- * Twelve Data adapter. It cannot make a request unless BOTH an API key and an
- * operator acknowledgement of the customer-facing display license are set.
- * Symbols are supplied through a JSON mapping after the selected plan/exchange
- * agreement is known; this avoids guessing exchange tickers or coverage.
+ * Twelve Data adapter. It cannot make a request unless an API key, an operator
+ * acknowledgement, a non-secret reference to the customer-display license, and
+ * an explicit delay classification are present. Symbols are supplied through a
+ * JSON mapping after the selected plan/exchange agreement is known; this avoids
+ * guessing tickers or coverage. EGX additionally needs its own explicit
+ * acknowledgement and reference.
  */
 export class TwelveDataProvider implements MarketDataProvider {
   readonly id = "twelve-data";
   readonly name = "Twelve Data";
   private readonly apiKey: string;
   private readonly displayLicensed: boolean;
+  /** A separate acknowledgement is needed before a zero-delay quote can be
+   * labelled real-time to the customer. */
+  private readonly realtimeDisplayLicensed: boolean;
+  /** Non-secret contract/ticket reference. Its presence prevents a bare boolean
+   * from accidentally enabling customer-facing redistribution. */
+  private readonly licenseReference: string;
+  /** EGX has an explicit opt-in because current Twelve coverage/redistribution
+   * cannot be inferred from the XCAI catalog listing. */
+  private readonly egxDisplayLicensed: boolean;
+  private readonly egxLicenseReference: string;
   private readonly symbols: Record<string, string>;
   private readonly delayedMinutes?: number;
 
@@ -60,26 +72,41 @@ export class TwelveDataProvider implements MarketDataProvider {
   ) {
     this.apiKey = (env["TWELVE_DATA_API_KEY"] || "").trim();
     this.displayLicensed = env["TWELVE_DATA_EXTERNAL_DISPLAY_LICENSED"] === "true";
+    this.realtimeDisplayLicensed = env["TWELVE_DATA_REALTIME_DISPLAY_LICENSED"] === "true";
+    this.licenseReference = (env["TWELVE_DATA_LICENSE_REFERENCE"] || "").trim();
+    this.egxDisplayLicensed = env["TWELVE_DATA_EGX_DISPLAY_LICENSED"] === "true";
+    this.egxLicenseReference = (env["TWELVE_DATA_EGX_LICENSE_REFERENCE"] || "").trim();
     this.delayedMinutes = optionalDelay(env["TWELVE_DATA_DELAY_MINUTES"]);
     this.symbols = parseSymbolMap(env["TWELVE_DATA_SYMBOLS_JSON"]);
   }
 
+  private isConfigured(): boolean {
+    const timingConfirmed = this.delayedMinutes !== undefined
+      && (this.delayedMinutes > 0 || this.realtimeDisplayLicensed);
+    return Boolean(this.apiKey && this.displayLicensed && this.licenseReference && timingConfirmed);
+  }
+
   descriptor(): ProviderDescriptor {
-    const configured = Boolean(this.apiKey && this.displayLicensed);
+    const configured = this.isConfigured();
     return {
       id: this.id,
       name: this.name,
       state: configured ? "configured" : "not_configured",
       note: configured
         ? "مُفعّل بعد تأكيد المشغّل لحقوق العرض الخارجي؛ التغطية الفعلية تحددها خريطة الرموز والعقد."
-        : "لا يُستدعى قبل وجود مفتاح وخطاب/عقد يجيز العرض الخارجي للمشتركين.",
+        : "لا يُستدعى قبل وجود مفتاح ومرجع عقد/ترخيص ووسم تأخير دقيق يجيز العرض الخارجي للمشتركين.",
       coverage: ["index", "equity", "fx", "commodity", "crypto"],
       externalDisplayConfirmed: configured,
     };
   }
 
   canServe(instrument: MarketInstrument): boolean {
-    return Boolean(this.apiKey && this.displayLicensed && this.symbols[instrument.id]);
+    return Boolean(
+      this.isConfigured()
+      && this.symbols[instrument.id]
+      && (!isEgyptianExchangeInstrument(instrument.id)
+        || (this.egxDisplayLicensed && this.egxLicenseReference)),
+    );
   }
 
   async getQuotes(instruments: MarketInstrument[]): Promise<ProviderQuoteResult> {
@@ -354,6 +381,10 @@ export class TradingEconomicsCalendarProvider implements CalendarDataProvider {
     });
     return { events };
   }
+}
+
+function isEgyptianExchangeInstrument(instrumentId: string): boolean {
+  return instrumentId.startsWith("egx:") || instrumentId.startsWith("stock:egx:");
 }
 
 function parseSymbolMap(raw: string | undefined): Record<string, string> {

@@ -12,6 +12,19 @@ export class UpstreamHttpError extends Error {
   }
 }
 
+/**
+ * Upstream/fetch errors can embed a URL, and a vendor API key may be in that
+ * URL. Use a fixed classification anywhere an error leaves the request layer
+ * (logs, cache state, or owner alerts); never forward `error.message` there.
+ */
+export function safeUpstreamErrorSummary(error: unknown): string {
+  if (error instanceof UpstreamHttpError && typeof error.status === "number") {
+    return `upstream HTTP ${error.status}`;
+  }
+  if (error instanceof Error && error.name === "AbortError") return "upstream timeout";
+  return "upstream request failed";
+}
+
 /** Per-provider spacing prevents an accidental burst from consuming a quota. */
 export class ProviderRateGate {
   private readonly nextAllowedAt = new Map<string, number>();
@@ -37,7 +50,7 @@ export type ResilientFetchOptions = {
 /**
  * Backend-only HTTP client for data vendors. It combines a request timeout,
  * narrow retry/backoff policy and an inter-request rate gate. Credentials are
- * supplied in request headers by a provider and never passed to callers.
+ * supplied only inside a backend provider and never passed to callers.
  */
 export class ResilientHttpClient {
   constructor(
@@ -93,7 +106,10 @@ export class ResilientHttpClient {
       await this.sleep(backoff);
     }
 
-    logger.warn({ provider: opts.providerId, err: lastError }, "market upstream request exhausted retries");
+    logger.warn({
+      provider: opts.providerId,
+      failure: safeUpstreamErrorSummary(lastError),
+    }, "market upstream request exhausted retries");
     throw lastError instanceof Error ? lastError : new UpstreamHttpError("market upstream request failed");
   }
 }

@@ -1,4 +1,5 @@
 import { escapeHtml, sendMail } from "../mailer";
+import { safeUpstreamErrorSummary } from "./http";
 import type { JsonCache } from "./cache";
 import type { ProviderDescriptor, ProviderHealth } from "./types";
 
@@ -106,7 +107,9 @@ async function maybeSendProviderAlert(
   if (!to) return;
 
   const minutes = Math.floor(downForMs / 60_000);
-  const reason = error instanceof Error ? error.message.slice(0, 180) : "unknown error";
+  // A raw fetch error may include a provider URL containing a query API key.
+  // The safe summary intentionally contains no URL or vendor response body.
+  const reason = safeUpstreamErrorSummary(error);
   await sendMail(
     to,
     `EgyTrend: مصدر بيانات متعطل لأكثر من 15 دقيقة (${provider.name})`,

@@ -14,6 +14,7 @@ import type {
 } from "./types";
 
 const instrument = MARKET_INSTRUMENTS.find((item) => item.id === "index:SPX")!;
+const egxInstrument = MARKET_INSTRUMENTS.find((item) => item.id === "egx:EGX30")!;
 
 function descriptor(id: string, state: ProviderDescriptor["state"] = "configured"): ProviderDescriptor {
   return {
@@ -110,6 +111,7 @@ test("Twelve Data adapter normalizes a vendor quote without leaking its key", as
   const provider = new TwelveDataProvider({
     TWELVE_DATA_API_KEY: "test-key-must-not-appear-in-output",
     TWELVE_DATA_EXTERNAL_DISPLAY_LICENSED: "true",
+    TWELVE_DATA_LICENSE_REFERENCE: "test-contract-reference",
     TWELVE_DATA_DELAY_MINUTES: "15",
     TWELVE_DATA_SYMBOLS_JSON: JSON.stringify({ "index:SPX": "SPX_VENDOR" }),
   }, fakeHttp as never);
@@ -120,6 +122,65 @@ test("Twelve Data adapter normalizes a vendor quote without leaking its key", as
   assert.equal(result.quotes[0]?.delayedMinutes, 15);
   assert.ok(calls[0]?.includes("SPX_VENDOR"));
   assert.ok(!JSON.stringify(result).includes("test-key-must-not-appear-in-output"));
+  assert.ok(!JSON.stringify(provider.descriptor()).includes("test-contract-reference"));
+});
+
+test("Twelve Data stays inert without a non-secret display-license reference", async () => {
+  let requestAttempted = false;
+  const provider = new TwelveDataProvider({
+    TWELVE_DATA_API_KEY: "synthetic-key",
+    TWELVE_DATA_EXTERNAL_DISPLAY_LICENSED: "true",
+    TWELVE_DATA_SYMBOLS_JSON: JSON.stringify({ "index:SPX": "SPX_VENDOR" }),
+  }, { async getJson<T>(): Promise<T> {
+    requestAttempted = true;
+    throw new Error("a missing contract reference must stop the request first");
+  } } as never);
+
+  assert.equal(provider.descriptor().state, "not_configured");
+  assert.equal(provider.descriptor().externalDisplayConfirmed, false);
+  assert.deepEqual(await provider.getQuotes([instrument]), { quotes: [], requestedCount: 0 });
+  assert.equal(requestAttempted, false);
+});
+
+test("Twelve Data cannot label a zero-delay quote real-time without a specific acknowledgement", () => {
+  const base = {
+    TWELVE_DATA_API_KEY: "synthetic-key",
+    TWELVE_DATA_EXTERNAL_DISPLAY_LICENSED: "true",
+    TWELVE_DATA_LICENSE_REFERENCE: "test-contract-reference",
+    TWELVE_DATA_DELAY_MINUTES: "0",
+    TWELVE_DATA_SYMBOLS_JSON: JSON.stringify({ "index:SPX": "SPX_VENDOR" }),
+  };
+  const delayedOnly = new TwelveDataProvider(base);
+  assert.equal(delayedOnly.descriptor().state, "not_configured");
+  assert.equal(delayedOnly.canServe(instrument), false);
+
+  const realtimeApproved = new TwelveDataProvider({
+    ...base,
+    TWELVE_DATA_REALTIME_DISPLAY_LICENSED: "true",
+  });
+  assert.equal(realtimeApproved.descriptor().state, "configured");
+  assert.equal(realtimeApproved.canServe(instrument), true);
+});
+
+test("Twelve Data keeps EGX inert until its own coverage and redistribution reference is supplied", async () => {
+  const base = {
+    TWELVE_DATA_API_KEY: "synthetic-key",
+    TWELVE_DATA_EXTERNAL_DISPLAY_LICENSED: "true",
+    TWELVE_DATA_LICENSE_REFERENCE: "global-contract-reference",
+    TWELVE_DATA_DELAY_MINUTES: "15",
+    TWELVE_DATA_SYMBOLS_JSON: JSON.stringify({ "egx:EGX30": "EGX30_VENDOR" }),
+  };
+  const genericApproval = new TwelveDataProvider(base);
+  assert.equal(genericApproval.descriptor().state, "configured");
+  assert.equal(genericApproval.canServe(egxInstrument), false);
+  assert.deepEqual(await genericApproval.getQuotes([egxInstrument]), { quotes: [], requestedCount: 0 });
+
+  const egxApproved = new TwelveDataProvider({
+    ...base,
+    TWELVE_DATA_EGX_DISPLAY_LICENSED: "true",
+    TWELVE_DATA_EGX_LICENSE_REFERENCE: "egx-contract-reference",
+  });
+  assert.equal(egxApproved.canServe(egxInstrument), true);
 });
 
 test("daily snapshot job is opt-in and idempotent through its repository contract", async () => {

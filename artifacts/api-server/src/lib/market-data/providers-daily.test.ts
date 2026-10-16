@@ -19,6 +19,8 @@ test("daily OHLC keeps the vendor candle timestamp and rejects a bar without one
   const provider = new TwelveDataProvider({
     TWELVE_DATA_API_KEY: "synthetic-key",
     TWELVE_DATA_EXTERNAL_DISPLAY_LICENSED: "true",
+    TWELVE_DATA_LICENSE_REFERENCE: "test-contract-reference",
+    TWELVE_DATA_DELAY_MINUTES: "1440",
     TWELVE_DATA_SYMBOLS_JSON: JSON.stringify({ "index:SPX": "SPX_VENDOR" }),
   }, fakeHttp as never);
 
@@ -31,6 +33,8 @@ test("daily OHLC keeps the vendor candle timestamp and rejects a bar without one
   const missingTimeProvider = new TwelveDataProvider({
     TWELVE_DATA_API_KEY: "synthetic-key",
     TWELVE_DATA_EXTERNAL_DISPLAY_LICENSED: "true",
+    TWELVE_DATA_LICENSE_REFERENCE: "test-contract-reference",
+    TWELVE_DATA_DELAY_MINUTES: "1440",
     TWELVE_DATA_SYMBOLS_JSON: JSON.stringify({ "index:SPX": "SPX_VENDOR" }),
   }, { async getJson<T>(): Promise<T> {
     return { values: [{ open: "100", high: "102", low: "99", close: "101" }] } as T;
