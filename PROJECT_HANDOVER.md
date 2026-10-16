@@ -17,6 +17,8 @@
 | `8b6850e` | تنبيهات سعر/نسبة يومية محفوظة على الخادم، runner محمي، وإعداد بريد صاحب الحساب فقط. |
 | `f215a90` | تسعير باقات server-evaluated: عروض مجدولة/مستهدفة، old price/شارة/عداد، payment snapshot وhistory/revert. |
 | `cfb0e09` | حاسبات المستثمر VIP: runtime/math محميان، 8 pure calculators، حفظ/سجل/PDF authorization، quote/FX source-bound وpreview مجاني صادق. |
+| `ecf3169` | تسليم تقني للحاسبات وmigration/verification handover. |
+| `b69af34` | preflight آمن للـnon-payment، gating أدق لـTwelve/EGX، وتوثيق blockers الحقيقيين بلا deploy أو secrets. |
 
 ## ما تم تنفيذه
 
@@ -28,6 +30,15 @@
 - Lightweight Charts محلية مع notice/attribution في `artifacts/egytrend/THIRD_PARTY_NOTICES.md`.
 - الشارت والحجم والفترات الأساسية متاحة حسب المصدر؛ MA/RSI محمية على السيرفر بـ VIP.
 - بطاقات المتابعة وAI المحلي صياغتهما وصفية ومقيدة بالبيانات، بلا توصية شراء/بيع أو أهداف/عوائد متوقعة.
+
+### 1.1) جاهزية مصدر البيانات والنشر بدون مدفوعات (`b69af34`)
+
+- مرجع الحالة التشغيلية والخطوات الخارجية الآمنة موجود في `LIVE_READINESS.md`؛ هو يميز بوضوح بين **code-ready** و**live-configured**.
+- `corepack pnpm run preflight:live` و`preflight:live:full` يفحصان presence/configuration فقط، ولا يطبَعان DB URL أو API key أو passwords أو contract reference، ولا ينفذان network call أو migration.
+- Twelve Data لا يُستدعى إلا مع key + external-display acknowledgement + مرجع عقد غير سري + delay صريح + symbol map مؤكدة. إن كان delay صفرًا، يلزم acknowledgement منفصل للـreal-time.
+- أي `egx:*` أو `stock:egx:*` محجوب برمجيًا حتى `TWELVE_DATA_EGX_DISPLAY_LICENSED=true` ومرجع EGX مستقل؛ وجود XCAI في catalog ليس entitlement للـquote أو redistribution.
+- retry logs ورسائل provider-health لا تمرر raw upstream error، حتى لا يخرج URL قد يحتوي query API key.
+- لم تُضف cron settings إلى `vercel.json` ولم يحدث Vercel link/deploy أو DB connection/migration؛ لا تغيّر هذه الوثائق المشروع الخارجي القائم.
 
 ### 2) الأخبار وحقوق العرض
 
@@ -114,6 +125,8 @@
 corepack pnpm exec tsc -b lib/db
 corepack pnpm --filter @workspace/api-server typecheck
 corepack pnpm --filter @workspace/api-server test
+corepack pnpm --filter @workspace/api-server build
+corepack pnpm run verify:vercel
 corepack pnpm --filter @workspace/egytrend typecheck
 corepack pnpm --filter @workspace/egytrend build
 node --check /tmp/egytrend-inline.js
@@ -121,9 +134,11 @@ node --check /tmp/egytrend-calculator-math.mjs
 node --check /tmp/egytrend-calculator-runtime.mjs
 ```
 
-- API: **32/32 tests passed** باستخدام `pg-mem` synthetic فقط، بلا `DATABASE_URL` حقيقية.
+- API: **36/36 tests passed** باستخدام `pg-mem` synthetic فقط، بلا `DATABASE_URL` حقيقية.
 - suite تغطي: lifecycle دفع/entitlement/renewal، rejection of stale VIP JWT، server portfolio CRUD/archive، alerts CRUD/archive، وسلامة evaluator أمام quote stale/EOD، وتسعير الباقات (بداية/نهاية العرض، targeting، رفض old price غير صالح، snapshot، تجاهل مبلغ المتصفح، ورفض موظف بلا permission)، ومعادلات الحاسبات وحماية free/VIP المباشرة للـruntime/math/save/history/PDF export.
+- تضاف تغطية Twelve الحالية: منع الطلب عند غياب contract reference، منع `real-time` عند delay صفر دون acknowledgement، حجب EGX حتى approval/reference مستقلين، ومنع تلخيص errors من تسريب API key أو request URL.
 - تحذيران `dataStore watch ENOENT` أثناء tests بسبب مسارات JSON غير موجودة داخل test harness؛ ليسا فشلًا ولا كتابة على DB.
+- `preflight:live:full` نجح على environment اصطناعية كاملة فقط، ورفض map EGX بلا acknowledgement/reference خاصين به كما هو مقصود؛ لم تُستخدم أي credentials حقيقية. تفاصيل النتيجة والشروط في `LIVE_READINESS.md`.
 
 ## مصادر ومزودون: الحالة القانونية
 
@@ -144,4 +159,4 @@ node --check /tmp/egytrend-calculator-runtime.mjs
 
 ## الخطوة المنطقية التالية
 
-بعد موافقة منفصلة على **Preview DB + backup workflow فقط**: طبّق migrations في Preview (ومنها `0006`)، نفذ E2E/visual smoke يدوي للحاسبات والحفظ/PDF، ثم نضيف scheduler Preview محدود لتنبيهات الأسعار والموجز الصباحي. لا تنتقل إلى Production أو تضف provider مدفوع دون موافقة صريحة جديدة.
+ابدأ بترتيب المالك الخارجي الموثق في `LIVE_READINESS.md`: تأكيد حقوق العرض/التأخير والرموز من provider، ثم وضع القيم في Vercel بدون مشاركتها في chat أو Git. بعد موافقة منفصلة على **Preview DB + backup workflow فقط**: طبّق migrations في Preview (ومنها `0006`)، نفذ E2E/visual smoke يدوي للحاسبات والحفظ/PDF، ثم أضف scheduler Preview محدود لتنبيهات الأسعار والموجز الصباحي. لا تنتقل إلى Production أو تضف provider مدفوع دون موافقة صريحة جديدة.
