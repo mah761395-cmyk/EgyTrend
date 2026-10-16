@@ -11,6 +11,8 @@ import {
   signUserToken,
   USER_SESSION_COOKIE,
   sessionCookieOptions,
+  getVipEntitlement,
+  type VipEntitlement,
 } from "../lib/userAuth";
 import { isSmtpConfigured, resetEmailHtml, sendMail } from "../lib/mailer";
 import { logger } from "../lib/logger";
@@ -34,13 +36,31 @@ function rateLimitHit(key: string, max: number, windowMs: number): boolean {
   return e.n > max;
 }
 
-function publicUser(user: typeof appUsersTable.$inferSelect) {
+function publicUser(user: typeof appUsersTable.$inferSelect, entitlement?: VipEntitlement) {
+  /* A user-visible plan is a server-side entitlement view, not the stale JWT
+   * or the transitional app_users projection. Registration is the sole call
+   * without an entitlement and is necessarily a free account. */
+  const activeVip = entitlement?.active === true;
   return {
     id: user.id,
     phone: user.phone,
     name: user.name,
-    plan: user.plan === "vip" && user.vipExpiresAt && user.vipExpiresAt.getTime() <= Date.now() ? "free" : user.plan,
-    vipExpiresAt: user.vipExpiresAt?.toISOString() || null,
+    plan: activeVip ? "vip" : "free",
+    vipExpiresAt: activeVip ? entitlement?.expiresAt?.toISOString() || null : null,
+  };
+}
+
+function publicSubscription(entitlement: VipEntitlement) {
+  return {
+    active: entitlement.active,
+    status: entitlement.status,
+    planKey: entitlement.planKey,
+    planNameAr: entitlement.planNameAr,
+    planFeatures: entitlement.planFeatures,
+    expiresAt: entitlement.expiresAt?.toISOString() || null,
+    /* Compatibility is visible to the account only as neutral state; the
+     * browser still never determines authorization. */
+    source: entitlement.source,
   };
 }
 
@@ -97,7 +117,8 @@ router.post("/login", async (req: Request, res: Response) => {
     res.status(401).json({ status: "error", message: "invalid credentials" });
     return;
   }
-  const normalized = publicUser(user);
+  const entitlement = await getVipEntitlement({ sub: user.id });
+  const normalized = publicUser(user, entitlement);
   const token = signUserToken({
     sub: user.id,
     phone: user.phone,
@@ -108,7 +129,7 @@ router.post("/login", async (req: Request, res: Response) => {
   });
   await db.update(appUsersTable).set({ updatedAt: new Date() }).where(eq(appUsersTable.id, user.id));
   res.cookie(USER_SESSION_COOKIE, token, sessionCookieOptions(7 * 24 * 60 * 60 * 1000));
-  res.json({ status: "ok", user: normalized });
+  res.json({ status: "ok", user: normalized, subscription: publicSubscription(entitlement) });
 });
 
 router.post("/logout", (_req: Request, res: Response) => {
@@ -128,7 +149,8 @@ router.get("/me", async (req: Request, res: Response) => {
     res.status(401).json({ status: "error", message: "user not found" });
     return;
   }
-  res.json({ status: "ok", user: publicUser(user) });
+  const entitlement = await getVipEntitlement({ sub: user.id });
+  res.json({ status: "ok", user: publicUser(user, entitlement), subscription: publicSubscription(entitlement) });
 });
 
 router.put("/password", async (req: Request, res: Response) => {

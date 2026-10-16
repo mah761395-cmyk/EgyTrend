@@ -19,7 +19,7 @@ import {
   subscriptionPlansTable,
   userNotificationsTable,
 } from "@workspace/db/schema";
-import { currentUser, isVipActive } from "../lib/userAuth";
+import { currentUser, getVipEntitlement } from "../lib/userAuth";
 import { logger } from "../lib/logger";
 import { checkPayRateLimit } from "./admin";
 
@@ -64,6 +64,7 @@ router.get("/payments/config", async (_req: Request, res: Response) => {
         nameAr: subscriptionPlansTable.nameAr,
         price: subscriptionPlansTable.price,
         durationMonths: subscriptionPlansTable.durationMonths,
+        features: subscriptionPlansTable.features,
         badge: subscriptionPlansTable.badge,
       })
       .from(subscriptionPlansTable)
@@ -100,7 +101,20 @@ router.get("/payments/my", async (req: Request, res: Response) => {
       .where(eq(paymentRequestsTable.phone, user.phone))
       .orderBy(desc(paymentRequestsTable.createdAt))
       .limit(10);
-    res.json({ status: "ok", requests: rows, plan: user.plan ?? "free" });
+    const entitlement = await getVipEntitlement(user);
+    res.json({
+      status: "ok",
+      requests: rows,
+      plan: entitlement.active ? "vip" : "free",
+      subscription: {
+        active: entitlement.active,
+        status: entitlement.status,
+        planKey: entitlement.planKey,
+        planNameAr: entitlement.planNameAr,
+        planFeatures: entitlement.planFeatures,
+        expiresAt: entitlement.expiresAt?.toISOString() || null,
+      },
+    });
   } catch (e) {
     logger.error({ err: e }, "payments my error");
     res.status(500).json({ status: "error", message: "server error" });
@@ -119,13 +133,9 @@ router.post("/payments", async (req: Request, res: Response) => {
     return;
   }
 
-  /* VIP already active → no reason to pay again. DB-backed check handles
-   * stale JWT claims in both directions (upgraded after login / revoked). */
-  if (await isVipActive(user)) {
-    res.status(409).json({ status: "error", message: "اشتراكك VIP نشط بالفعل — لا حاجة للدفع" });
-    return;
-  }
-
+  /* Active members may submit one renewal request before expiry. The server
+   * still owns plan price/duration and approval stacks time transactionally;
+   * a pending request below prevents accidental duplicate renewals. */
   const b = (req.body || {}) as Record<string, unknown>;
   const planKey = String(b.planKey || "").trim().replace(/[^a-z0-9_\-]/gi, "").slice(0, 30);
   const method = String(b.method || "vodafone").trim().toLowerCase().replace(/[^a-z]/g, "").slice(0, 20);
@@ -207,6 +217,15 @@ router.post("/payments", async (req: Request, res: Response) => {
       .limit(1);
     if (dup) {
       res.status(409).json({ status: "error", message: "رقم العملية مستخدم من قبل — كل تحويل له رقم مختلف" });
+      return;
+    }
+
+    const [pending] = await db.select({ id: paymentRequestsTable.id })
+      .from(paymentRequestsTable)
+      .where(and(eq(paymentRequestsTable.phone, user.phone), eq(paymentRequestsTable.status, "pending")))
+      .limit(1);
+    if (pending) {
+      res.status(409).json({ status: "error", message: "لديك طلب دفع قيد المراجعة بالفعل — تابع حالته من صفحة اشتراكي" });
       return;
     }
 

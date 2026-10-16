@@ -103,6 +103,23 @@ export async function createMemoryDatabase(): Promise<{
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE user_subscriptions (
+      id text PRIMARY KEY,
+      user_id integer NOT NULL UNIQUE REFERENCES app_users(id),
+      plan_key text NOT NULL,
+      plan_name_ar text NOT NULL,
+      plan_duration_months integer NOT NULL,
+      plan_features jsonb NOT NULL DEFAULT '[]'::jsonb,
+      status text NOT NULL DEFAULT 'active',
+      starts_at timestamp NOT NULL,
+      expires_at timestamp NOT NULL,
+      payment_request_id text,
+      source text NOT NULL DEFAULT 'payment',
+      cancelled_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX user_subscriptions_active_expiry_idx ON user_subscriptions(status, expires_at);
     CREATE TABLE payment_requests (
       id text PRIMARY KEY,
       phone text NOT NULL,

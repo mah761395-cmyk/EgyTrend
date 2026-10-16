@@ -5,7 +5,7 @@ import { eq, desc } from "drizzle-orm";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { logger } from "../lib/logger";
-import { ADMIN_SESSION_COOKIE, currentUser, isVipActive, readSessionCookie } from "../lib/userAuth";
+import { ADMIN_SESSION_COOKIE, currentUser, hasVip, readSessionCookie } from "../lib/userAuth";
 import { buildLocalOpportunities, type OppCandidate } from "../lib/opp-engine";
 import { getMarketsSnapshot, getStocksSnapshot, type StockQuote } from "./markets";
 import { getNewsSnapshot } from "./news";
@@ -158,7 +158,7 @@ async function buildLiveOpportunityRows(): Promise<Array<Record<string, unknown>
 router.get("/opportunities", async (req, res) => {
   const admin = isAdmin(req);
   let vip = false;
-  try { vip = await isVipActive(currentUser(req)); } catch { /* treat as non-vip */ }
+  try { vip = await hasVip(currentUser(req)); } catch { /* treat as non-vip */ }
   const mask = (o: any) => (admin || vip || !o.vipOnly ? o : { ...o, details: null });
 
   try {

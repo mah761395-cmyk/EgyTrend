@@ -8,4 +8,5 @@ export * from "./user_notifications";
 export * from "./settings";
 export * from "./opportunities";
 export * from "./users";
+export * from "./user_subscriptions";
 export * from "./market_ohlc";

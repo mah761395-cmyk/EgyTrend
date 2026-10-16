@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { logger } from "../lib/logger";
-import { currentUser, isAdminToken, isVipActive } from "../lib/userAuth";
+import { currentUser, isAdminToken, hasVip } from "../lib/userAuth";
 import { db } from "@workspace/db";
 import { aiConfigTable, aiUsageTable } from "@workspace/db";
 import { and, eq, gte, sql } from "drizzle-orm";
@@ -141,7 +141,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 router.post("/chat", async (req: Request, res: Response) => {
   const claims = currentUser(req);
   const isAdmin = isAdminToken(req);
-  if (!isAdmin && !(await isVipActive(claims))) {
+  if (!isAdmin && !(await hasVip(claims))) {
     res.status(req.header("authorization") ? 403 : 401).json({ status: "error", message: "VIP subscription required" });
     return;
   }

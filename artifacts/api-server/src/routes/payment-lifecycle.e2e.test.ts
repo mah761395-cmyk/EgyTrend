@@ -11,6 +11,7 @@ import {
   paymentRequestsTable,
   opportunities,
   subscriptionPlansTable,
+  userSubscriptionsTable,
 } from "@workspace/db/schema";
 import { createMemoryDatabase } from "../test-support/memory-db";
 
@@ -189,8 +190,9 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
   assert.equal(profileAfter.response.status, 200);
   assert.equal((profileAfter.body?.user as { plan?: string }).plan, "vip");
 
-  /* A server-backed check prevents another payment while VIP is active. */
-  const duplicateWhileVip = await api("/api/payments", userJar, {
+  /* An active member may submit one server-priced renewal before expiry;
+   * it remains pending until a separate admin approval stacks the duration. */
+  const renewalWhileVip = await api("/api/payments", userJar, {
     method: "POST",
     body: JSON.stringify({
       planKey: "synthetic-vip",
@@ -199,27 +201,50 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
       proofImage: "data:image/png;base64,iVBORw0KGgo=",
     }),
   });
-  assert.equal(duplicateWhileVip.response.status, 409);
+  assert.equal(renewalWhileVip.response.status, 200);
+  assert.equal(renewalWhileVip.body?.status, "ok");
+  const renewalId = String(renewalWhileVip.body?.id || "");
+  assert.match(renewalId, /^req-/);
+  const membershipView = await api("/api/payments/my", userJar);
+  assert.equal(membershipView.response.status, 200);
+  assert.equal((membershipView.body?.subscription as { active?: boolean }).active, true);
+  assert.ok(((membershipView.body?.requests as unknown[]) || []).length >= 2, "own payment history is returned");
 
   const [user] = await memory.db.select().from(appUsersTable)
     .where(eq(appUsersTable.phone, "01012345678"));
   assert.ok(user);
-  await memory.db.update(appUsersTable).set({ plan: "free", vipExpiresAt: null }).where(eq(appUsersTable.id, user.id));
+  const [subscription] = await memory.db.select().from(userSubscriptionsTable)
+    .where(eq(userSubscriptionsTable.userId, user.id));
+  assert.equal(subscription?.status, "active", "approval must write the server entitlement record");
+  assert.equal(subscription?.planKey, "synthetic-vip");
+  assert.ok(subscription?.expiresAt && subscription.expiresAt > new Date());
 
-  /* A forged/stale VIP claim must not fail open once the DB says free. */
+  const renewalApproval = await api(`/api/admin/requests/${encodeURIComponent(renewalId)}`, adminJar, {
+    method: "PUT",
+    body: JSON.stringify({ status: "approved" }),
+  });
+  assert.equal(renewalApproval.response.status, 200);
+  const [renewedSubscription] = await memory.db.select().from(userSubscriptionsTable)
+    .where(eq(userSubscriptionsTable.userId, user.id));
+  assert.ok(renewedSubscription?.expiresAt && subscription?.expiresAt && renewedSubscription.expiresAt > subscription.expiresAt,
+    "approved renewal must extend the same central entitlement");
+
+  /* The entitlement table wins over both the legacy projection and a forged
+   * JWT. Cancelling it must fail closed even while app_users still says VIP. */
+  await memory.db.update(userSubscriptionsTable).set({
+    status: "cancelled",
+    cancelledAt: new Date(),
+    updatedAt: new Date(),
+  }).where(eq(userSubscriptionsTable.userId, user.id));
+
   const staleVipJar: CookieJar = {
     value: `et_user_session=${jwt.sign({ sub: user.id, phone: user.phone, name: user.name, role: "user", plan: "vip" }, process.env.SESSION_SECRET!, { expiresIn: "1h" })}`,
   };
-  const staleVipAttempt = await api("/api/payments", staleVipJar, {
+  const staleVipAttempt = await api("/api/ai/chat", staleVipJar, {
     method: "POST",
-    body: JSON.stringify({
-      planKey: "synthetic-vip",
-      method: "vodafone",
-      tx: "synthetic-transfer-003",
-      proofImage: "data:image/png;base64,iVBORw0KGgo=",
-    }),
+    body: JSON.stringify({ messages: [{ role: "user", content: "test" }] }),
   });
-  assert.equal(staleVipAttempt.response.status, 200, "stale JWT VIP must not grant paid access");
+  assert.equal(staleVipAttempt.response.status, 401, "stale JWT VIP must not grant paid access");
 
   /* A public status probe cannot trigger a provider health call. */
   const anonymousProbe = await api("/api/ai/status?verify=1", {});

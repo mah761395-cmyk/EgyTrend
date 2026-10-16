@@ -16,7 +16,7 @@ import {
 import { db } from "@workspace/db";
 import {
   employeesTable, subscriptionPlansTable, couponsTable,   auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable, appUsersTable, userNotificationsTable,
-  appSettingsTable,
+  userSubscriptionsTable, appSettingsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, like, or, sql } from "drizzle-orm";
 
@@ -652,9 +652,12 @@ router.put("/plans/:id", requireAuth, requireWriteRate, requireRole("super_admin
 router.delete("/plans/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
   if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
-  await db.delete(subscriptionPlansTable).where(eq(subscriptionPlansTable.id, id));
-  await auditLog("delete_plan", req.actor, String(id), {}, req.ip);
-  res.json({ status: "ok" });
+  /* Plans are archived, never deleted. Existing subscriptions have their own
+   * immutable snapshot, and this keeps plan/payment audit context intact. */
+  await db.update(subscriptionPlansTable).set({ isActive: false, updatedAt: new Date() })
+    .where(eq(subscriptionPlansTable.id, id));
+  await auditLog("archive_plan", req.actor, String(id), {}, req.ip);
+  res.json({ status: "ok", archived: true });
 });
 
 /* ─── Coupons ─── */
@@ -804,22 +807,58 @@ router.get("/audit-logs", requireAuth, requireRole("super_admin", "admin"), asyn
 });
 
 /* ─── User Management (via localStorage sync) ─── */
-router.get("/users", requireAuth, requireRole("super_admin", "admin", "support"), async (req: Request, res: Response) => {
-  const users = await db.select({
+router.get("/users", requireAuth, requireRole("super_admin", "admin", "support"), async (_req: Request, res: Response) => {
+  const rows = await db.select({
     id: appUsersTable.id,
     phone: appUsersTable.phone,
     name: appUsersTable.name,
-    plan: appUsersTable.plan,
-    vipExpiresAt: appUsersTable.vipExpiresAt,
+    legacyPlan: appUsersTable.plan,
+    legacyVipExpiresAt: appUsersTable.vipExpiresAt,
     status: appUsersTable.status,
     createdAt: appUsersTable.createdAt,
-  }).from(appUsersTable).orderBy(desc(appUsersTable.createdAt)).limit(1000);
+    subscriptionStatus: userSubscriptionsTable.status,
+    subscriptionExpiresAt: userSubscriptionsTable.expiresAt,
+    subscriptionPlanKey: userSubscriptionsTable.planKey,
+  }).from(appUsersTable)
+    .leftJoin(userSubscriptionsTable, eq(userSubscriptionsTable.userId, appUsersTable.id))
+    .orderBy(desc(appUsersTable.createdAt)).limit(1000);
+  const now = new Date();
+  const users = rows.map((row) => {
+    /* Administrative display follows the same entitlement precedence as
+     * hasVip(): a present subscription always overrides legacy projection. */
+    const hasSubscription = row.subscriptionStatus !== null;
+    const subscriptionActive = row.subscriptionStatus === "active"
+      && !!row.subscriptionExpiresAt && row.subscriptionExpiresAt > now;
+    const legacyActive = row.legacyPlan === "vip"
+      && (!row.legacyVipExpiresAt || row.legacyVipExpiresAt > now);
+    return {
+      id: row.id,
+      phone: row.phone,
+      name: row.name,
+      plan: hasSubscription ? (subscriptionActive ? "vip" : "free") : (legacyActive ? "vip" : "free"),
+      vipExpiresAt: hasSubscription ? row.subscriptionExpiresAt : row.legacyVipExpiresAt,
+      subscriptionStatus: hasSubscription ? (subscriptionActive ? "active" : row.subscriptionStatus) : "legacy",
+      subscriptionPlanKey: row.subscriptionPlanKey,
+      status: row.status,
+      createdAt: row.createdAt,
+    };
+  });
   res.json({ status: "ok", users });
 });
 
 router.post("/users/action", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "support"), async (req: AuthRequest, res: Response) => {
-  const { action, phone, name, reason } = req.body || {};
-  const validActions = ["ban_user", "unban_user", "upgrade_vip", "downgrade_vip"];
+  const { action, phone } = req.body || {};
+  const validActions = ["ban_user", "unban_user", "downgrade_vip"];
+  /* A manual one-month upgrade would bypass the plan snapshot, payment
+   * history, and central entitlement record. Never fabricate one: use the
+   * reviewed payment-request path instead. */
+  if (String(action) === "upgrade_vip") {
+    res.status(409).json({
+      status: "error",
+      message: "لا توجد ترقية VIP يدوية؛ راجع/اعتمد طلب دفع مرتبطًا بباقة حتى يُسجل الاشتراك بصورة صحيحة",
+    });
+    return;
+  }
   if (!validActions.includes(String(action))) {
     res.status(400).json({ status: "error", message: "action must be: " + validActions.join(", ") });
     return;
@@ -827,23 +866,38 @@ router.post("/users/action", requireAuth, requireWriteRate, requireRole("super_a
   if (!phone) { res.status(400).json({ status: "error", message: "phone required" }); return; }
   const [user] = await db.select().from(appUsersTable).where(eq(appUsersTable.phone, String(phone))).limit(1);
   if (!user) { res.status(404).json({ status: "error", message: "user not found" }); return; }
-  const updates: Partial<typeof appUsersTable.$inferInsert> = { updatedAt: new Date() };
-  if (action === "upgrade_vip") {
-    const expires = new Date();
-    expires.setMonth(expires.getMonth() + 1);
-    updates.plan = "vip";
-    updates.vipExpiresAt = expires;
-  } else if (action === "downgrade_vip") {
-    updates.plan = "free";
-    updates.vipExpiresAt = null;
-  } else if (action === "ban_user") {
-    updates.status = "banned";
-  } else if (action === "unban_user") {
-    updates.status = "active";
+
+  try {
+    if (action === "downgrade_vip") {
+      /* Revoke is an archived state transition, not a destructive delete. */
+      await db.transaction(async (tx) => {
+        const now = new Date();
+        await tx.update(userSubscriptionsTable).set({
+          status: "cancelled",
+          cancelledAt: now,
+          updatedAt: now,
+        }).where(eq(userSubscriptionsTable.userId, user.id));
+        await tx.update(appUsersTable).set({
+          /* Compatibility projection only; hasVip() reads the cancellation
+           * from user_subscriptions and fails closed immediately. */
+          plan: "free",
+          vipExpiresAt: null,
+          updatedAt: now,
+        }).where(eq(appUsersTable.id, user.id));
+      });
+    } else {
+      const updates: Partial<typeof appUsersTable.$inferInsert> = {
+        updatedAt: new Date(),
+        ...(action === "ban_user" ? { status: "banned" } : { status: "active" }),
+      };
+      await db.update(appUsersTable).set(updates).where(eq(appUsersTable.id, user.id));
+    }
+    await auditLog(String(action), req.actor, `user:${user.id}`, {}, req.ip);
+    res.json({ status: "ok", action, phone });
+  } catch (e) {
+    logger.error({ err: e }, "user status/subscription action failed");
+    res.status(500).json({ status: "error", message: "server error" });
   }
-  await db.update(appUsersTable).set(updates).where(eq(appUsersTable.id, user.id));
-  await auditLog(String(action), req.actor, `user:${user.id}`, {}, req.ip);
-  res.json({ status: "ok", action, phone });
 });
 
 /* ══════════════════════════════════════════════
@@ -938,33 +992,83 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
       let planNameAr = existing.planKey;
       if (requestedStatus === "approved") {
         const [plan] = await tx.select({
+          key: subscriptionPlansTable.key,
           durationMonths: subscriptionPlansTable.durationMonths,
           nameAr: subscriptionPlansTable.nameAr,
+          features: subscriptionPlansTable.features,
         }).from(subscriptionPlansTable)
           .where(and(eq(subscriptionPlansTable.key, existing.planKey), eq(subscriptionPlansTable.isActive, true)))
           .limit(1);
+        /* Lock the user row as well as the request: separate approved renewal
+         * requests for the same user must stack rather than race. */
         const [user] = await tx.select({
           id: appUsersTable.id,
           plan: appUsersTable.plan,
           vipExpiresAt: appUsersTable.vipExpiresAt,
           status: appUsersTable.status,
-        }).from(appUsersTable).where(eq(appUsersTable.phone, existing.phone)).limit(1);
+        }).from(appUsersTable).where(eq(appUsersTable.phone, existing.phone)).for("update").limit(1);
 
         /* Never report a successful approval when activation cannot happen. */
         if (!plan || !user || user.status !== "active") {
           throw new PaymentDecisionError(409, "تعذر تفعيل الاشتراك؛ راجع الخطة وحالة الحساب قبل الموافقة");
         }
+        const [currentSubscription] = await tx.select({
+          startsAt: userSubscriptionsTable.startsAt,
+          expiresAt: userSubscriptionsTable.expiresAt,
+          status: userSubscriptionsTable.status,
+        }).from(userSubscriptionsTable).where(eq(userSubscriptionsTable.userId, user.id)).limit(1);
+
         planNameAr = plan.nameAr;
-        /* Stack paid time on an existing active VIP instead of restarting it. */
-        const base = user.plan === "vip" && user.vipExpiresAt && new Date(user.vipExpiresAt) > new Date()
-          ? new Date(user.vipExpiresAt)
-          : new Date();
-        const expires = new Date(base);
+        const now = new Date();
+        /* The subscription table is the entitlement source. The legacy fields
+         * are considered only when extending a user that predates the backfill.
+         * They are then kept as a compatibility projection for rollback. */
+        const existingExpiry = currentSubscription?.status === "active" && currentSubscription.expiresAt > now
+          ? currentSubscription.expiresAt
+          : user.plan === "vip" && user.vipExpiresAt && user.vipExpiresAt > now
+            ? user.vipExpiresAt
+            : now;
+        const expires = new Date(existingExpiry);
         expires.setMonth(expires.getMonth() + plan.durationMonths);
+        const startsAt = currentSubscription?.startsAt || now;
+
+        await tx.insert(userSubscriptionsTable).values({
+          id: `sub-${user.id}`,
+          userId: user.id,
+          planKey: plan.key,
+          planNameAr: plan.nameAr,
+          planDurationMonths: plan.durationMonths,
+          planFeatures: Array.isArray(plan.features) ? plan.features : [],
+          status: "active",
+          startsAt,
+          expiresAt: expires,
+          paymentRequestId: existing.id,
+          source: "payment",
+          cancelledAt: null,
+          createdAt: now,
+          updatedAt: now,
+        }).onConflictDoUpdate({
+          target: userSubscriptionsTable.userId,
+          set: {
+            planKey: plan.key,
+            planNameAr: plan.nameAr,
+            planDurationMonths: plan.durationMonths,
+            planFeatures: Array.isArray(plan.features) ? plan.features : [],
+            status: "active",
+            startsAt,
+            expiresAt: expires,
+            paymentRequestId: existing.id,
+            source: "payment",
+            cancelledAt: null,
+            updatedAt: now,
+          },
+        });
         await tx.update(appUsersTable).set({
+          /* Compatibility projection only. New server authorization reads
+           * user_subscriptions through hasVip(). */
           plan: "vip",
           vipExpiresAt: expires,
-          updatedAt: new Date(),
+          updatedAt: now,
         }).where(eq(appUsersTable.id, user.id));
       }
 
@@ -982,8 +1086,8 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
       return;
     }
 
-    /* Notifications are helpful but cannot invalidate a paid activation if a
-     * pre-existing deployment has not created the optional table yet. */
+    /* Notifications are best-effort only; entitlement and payment status were
+     * already committed together in the transaction above. */
     try {
       const notifId = `un-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       await db.insert(userNotificationsTable).values({

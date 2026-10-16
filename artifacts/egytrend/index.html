@@ -1425,6 +1425,8 @@ const FAQ = [
    a:"تظهر المزايا الحالية مع الباقة عند فتح صفحة الاشتراك. لا تعتمد على هذه الصفحة لمعرفة سعر أو ميزة قبل تحميل إعدادات الاشتراك."},
   {q:"ماذا أفعل إذا لم يُفعَّل اشتراكي؟",
    a:"تابع حالة الطلب من صفحة VIP. إذا ظهرت ملاحظة رفض، صحّح بيانات العملية ثم أرسل طلبًا جديدًا."},
+  {q:"كيف يعمل الإلغاء أو الاسترداد؟",
+   a:"التجديد اختياري بطلب دفع جديد. يمكن طلب الإلغاء خلال أول 48 ساعة من التفعيل إذا لم تُستخدم المزايا المدفوعة، ويكون الاسترداد الكامل خلال 7 أيام عمل بنفس وسيلة الدفع. بعد 48 ساعة أو استخدام المزايا المدفوعة لا يتوفر استرداد؛ راجع الشروط والأحكام للتفاصيل."},
   {q:"هل بيانات الأسواق حقيقية؟",
    a:"تعرض المنصة مصدر البيانات ووقت جمعها وحالتها. عند تعذر المصدر لا تعرض رقمًا بديلًا وتظهر «غير متاح حاليًا»، وقد تظهر علامة «متأخر» عند استخدام لقطة مخزنة."},
 ];
@@ -1435,6 +1437,12 @@ const FAQ = [
 
 /* ═══════════════════ STATE ═══════════════════ */
 let U=null, allArts=[], filteredArts=[];
+function setCurrentUser(user){
+  if(!user||typeof user!=="object")return;
+  /* Only a fresh server response seeds the UI hint. Server endpoints still
+   * verify hasVip() themselves; this merely keeps expiry labels coherent. */
+  U={...user,exp:user.vipExpiresAt||user.exp||null};
+}
 let activeCat="all", activeSrc="all", searchQ="";
 /* News is server-aggregated and ranked. Empty does not mean "still loading". */
 let newsFreshness={loading:false,unavailable:false,reason:"",fetchedAt:0,approvedSources:0};
@@ -1502,7 +1510,7 @@ document.addEventListener("DOMContentLoaded",async()=>{
   try{
     const r=await fetch("/api/user/me",{credentials:"same-origin"});
     const d=await r.json().catch(()=>({}));
-    if(r.ok&&d.status==="ok"&&d.user){U=d.user;bootApp();}
+    if(r.ok&&d.status==="ok"&&d.user){setCurrentUser(d.user);bootApp();}
     else{
       const ar=await fetch("/api/admin/session",{credentials:"same-origin"});
       const ad=await ar.json().catch(()=>({}));
@@ -1702,7 +1710,7 @@ function doAuth(){
       const rr=await fetch("/api/user/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,phone,password:pass,email:email||undefined})});
       const rd=await rr.json().catch(()=>({}));
       if(!rr.ok||rd.status!=="ok"||!rd.user){showE(rd.message||"تعذر إنشاء الحساب");return;}
-      U=rd.user;
+      setCurrentUser(rd.user);
     } else {
       if(!phone||!pass){showE("أدخل الرقم وكلمة المرور");return;}
       /* Admin authentication is server-verified and establishes an HttpOnly
@@ -1730,7 +1738,7 @@ function doAuth(){
         const ur=await fetch("/api/user/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,password:pass})});
         const ud=await ur.json().catch(()=>({}));
         if(!ur.ok||ud.status!=="ok"||!ud.user){showE(ud.message==="invalid credentials"?"الرقم أو كلمة المرور غير صحيحة":ud.message||"تعذر تسجيل الدخول");return;}
-        U=ud.user;
+        setCurrentUser(ud.user);
       }
     }
     bootApp();
@@ -2785,6 +2793,7 @@ function renderVIP(){
       </div>
 
       <div id="pay-status-card" style="margin-bottom:12px;"></div>
+      <div id="vip-plan-comparison" style="margin-bottom:12px;"></div>
 
       <div style="background:var(--s1);border:1px solid var(--b1);border-radius:16px;padding:15px 13px;margin-bottom:14px;">
         <div style="color:var(--au);font-weight:900;font-size:14px;margin-bottom:11px;text-align:center;">📱 طريقة الاشتراك في VIP</div>
@@ -2824,8 +2833,9 @@ function renderVIP(){
       <button class="btn btn-au btn-full" style="padding:15px;font-size:15px;font-weight:900;" onclick="openSub()">
         ⭐ اشترك الآن
       </button>
-      <div style="text-align:center;color:var(--t5);font-size:10px;margin-top:8px;">يُفعّل بعد مراجعة إثبات الدفع · تابع حالة الطلب من صفحة VIP</div>`;
-    loadPayStatus();
+      <button class="btn btn-ghost btn-full" style="padding:10px;font-size:12px;margin-top:8px;" onclick="openMySubscription()">📋 متابعة طلباتي واشتراكي</button>
+      <div style="text-align:center;color:var(--t5);font-size:10px;margin-top:8px;">يُفعّل بعد مراجعة إثبات الدفع من الخادم.</div>`;
+    loadPayStatus();loadVipPlanComparison();
     return;
   }
 
@@ -2833,7 +2843,7 @@ function renderVIP(){
   el.innerHTML=`
     <div class="row between" style="margin-bottom:12px;">
       <div class="row"><span style="font-size:19px;">⭐</span><div><div style="color:var(--au);font-weight:900;font-size:16px;">مركز VIP</div><div style="color:var(--t4);font-size:9.5px;">${sanitize(U?.name||"عضو VIP")} · كل الأدوات مفتوحة</div></div></div>
-      <span style="background:var(--gd);border:1px solid rgba(16,185,129,.22);border-radius:8px;padding:2px 9px;font-size:10px;color:var(--g);font-weight:700;">نشط</span>
+      <button class="btn btn-ghost" style="padding:6px 9px;font-size:10px;" onclick="openMySubscription()">📋 اشتراكي</button>
     </div>
     <div class="vtabs-wrap"><div class="vtabs" id="vtabs-bar"></div></div>
     <div id="vip-body"></div>`;
@@ -4285,10 +4295,57 @@ function normalizeSubscriptionPlans(raw){
     const key=String(p.key||"").trim();
     const price=Number(p.price),months=Number(p.durationMonths);
     if(!/^[a-z0-9_-]{1,40}$/i.test(key)||!Number.isFinite(price)||price<0||price>1e7||!Number.isInteger(months)||months<1||months>120)return out;
-    out[key]={l:String(p.nameAr||key).slice(0,100),p:price,per:months===1?"شهر":months===3?"٣ شهور":months===12?"سنة":`${months} شهر`,m:months,badge:String(p.badge||"").slice(0,50)};
+    const features=Array.isArray(p.features)?p.features.map(x=>String(x||"").trim().slice(0,160)).filter(Boolean).slice(0,12):[];
+    out[key]={l:String(p.nameAr||key).slice(0,100),p:price,per:months===1?"شهر":months===3?"٣ شهور":months===12?"سنة":`${months} شهر`,m:months,badge:String(p.badge||"").slice(0,50),features};
     return out;
   },{});
 }
+function subscriptionPolicyHtml(compact=false){
+  return `<div style="margin-top:${compact?"10":"14"}px;background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:10px 11px;color:var(--t4);font-size:10.5px;line-height:1.8;">
+    <div style="color:var(--t2);font-weight:800;margin-bottom:4px;">الإلغاء والاسترداد</div>
+    <div>التجديد اختياري بطلب دفع جديد ولا يوجد تجديد تلقائي. يمكن طلب الإلغاء خلال أول 48 ساعة من التفعيل إذا لم تُستخدم المزايا المدفوعة؛ ويكون الاسترداد الكامل خلال 7 أيام عمل بنفس وسيلة الدفع. بعد 48 ساعة أو استخدام المزايا المدفوعة لا يتوفر استرداد.</div>
+    <a href="/terms.html" target="_blank" rel="noopener noreferrer" style="color:var(--g);">اقرأ الشروط والأحكام كاملة ←</a>
+  </div>`;
+}
+function planComparisonHtml(plans){
+  const entries=Object.entries(plans||{});
+  if(!entries.length)return `<div class="empty" style="padding:15px;"><div>لا توجد باقات منشورة من الخادم حاليًا.</div></div>`;
+  return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:16px;padding:13px;margin-top:13px;">
+    <div style="color:var(--t2);font-weight:900;font-size:13px;margin-bottom:9px;">مقارنة المجاني وVIP</div>
+    <div style="display:grid;grid-template-columns:repeat(${Math.min(entries.length+1,3)},minmax(0,1fr));gap:7px;overflow:auto;">
+      <div style="min-width:120px;background:var(--ink);border:1px solid var(--b1);border-radius:11px;padding:9px;">
+        <div style="color:var(--t2);font-weight:800;font-size:11px;">مجاني</div>
+        <div style="color:var(--t4);font-size:9.5px;line-height:1.65;margin-top:5px;">الشارت الأساسي والحجم عند توافر مصدر مرخّص.<br/>MA وRSI لا يظهران إلا مع صلاحية VIP من الخادم.</div>
+      </div>
+      ${entries.map(([key,p])=>`<div style="min-width:120px;background:var(--aud);border:1px solid rgba(245,158,11,.22);border-radius:11px;padding:9px;">
+        <div style="color:var(--au);font-weight:800;font-size:11px;">${sanitize(p.l)}</div>
+        <div style="color:var(--t1);font-family:var(--mono);font-weight:900;font-size:15px;margin-top:3px;">${finiteNumber(p.p,0)} ج</div>
+        <div style="color:var(--t4);font-size:9px;">${sanitize(p.per)}</div>
+        <div style="color:var(--t3);font-size:9.5px;line-height:1.55;margin-top:5px;">${p.features.length?p.features.map(f=>`✓ ${sanitize(f)}`).join("<br/>"):"تفاصيل المزايا تُدار من إعدادات الباقة."}</div>
+      </div>`).join("")}
+    </div>
+  </div>`;
+}
+async function fetchSubscriptionConfig(signal){
+  const r=await fetch("/api/payments/config",{cache:"no-store",credentials:"same-origin",signal});
+  const j=await r.json().catch(()=>null);
+  if(!r.ok||!j||j.status!=="ok")throw new Error("config_unavailable");
+  const plans=normalizeSubscriptionPlans(j.plans);
+  if(!Object.keys(plans).length)throw new Error("plans_unavailable");
+  return {plans,methods:normalizeSubscriptionMethods(j.methods)};
+}
+async function loadVipPlanComparison(){
+  const el=document.getElementById("vip-plan-comparison");if(!el)return;
+  el.innerHTML=`<div class="empty" style="padding:15px;"><div class="sp sp-au sp-sm" style="margin:0 auto 7px;"></div><div>جارٍ تحميل الباقات الحالية من الخادم...</div></div>`;
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const cfg=await fetchSubscriptionConfig(ctrl.signal);
+    el.innerHTML=planComparisonHtml(cfg.plans)+subscriptionPolicyHtml();
+  }catch{
+    el.innerHTML=`<div class="empty" style="padding:15px;"><div style="color:var(--dn);font-weight:800;">تعذر تحميل الباقات الآن</div><div style="font-size:10.5px;margin-top:4px;">لن نعرض أسعارًا أو مزايا بديلة. حاول مرة أخرى.</div><button class="btn btn-ghost" style="margin-top:9px;padding:7px 12px;" onclick="loadVipPlanComparison()">↻ إعادة المحاولة</button></div>`;
+  }finally{clearTimeout(timer);}
+}
+
 function normalizeSubscriptionMethods(raw){
   if(!Array.isArray(raw))return [];
   return raw.flatMap(item=>{
@@ -4304,12 +4361,11 @@ async function loadSubConfig(){
   SUB_CONFIG_STATE="loading";SUB_CONFIG_ERROR="";
   if(document.getElementById("sub-ov")?.classList.contains("open"))renderSub();
   try{
-    const r=await fetch("/api/payments/config",{cache:"no-store"});
-    const j=await r.json().catch(()=>null);
-    if(!r.ok||!j||j.status!=="ok")throw new Error("config_unavailable");
-    const map=normalizeSubscriptionPlans(j.plans);
-    const methods=normalizeSubscriptionMethods(j.methods);
-    if(!Object.keys(map).length)throw new Error("plans_unavailable");
+    const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+    let cfg;
+    try{cfg=await fetchSubscriptionConfig(ctrl.signal);}finally{clearTimeout(timer);}
+    const map=cfg.plans;
+    const methods=cfg.methods;
     if(!methods.length)throw new Error("methods_unavailable");
     SUB_PLANS=map;SUB_METHODS=methods;
     if(!map[selPlan])selPlan=Object.keys(map)[0];
@@ -4345,7 +4401,10 @@ function renderSub(){
       <div style="text-align:center;margin-bottom:18px;"><div style="font-size:32px;margin-bottom:4px;">⭐</div><div style="color:var(--au);font-weight:900;font-size:18px;">اشتراك VIP</div><div style="color:var(--t4);font-size:11.5px;margin-top:2px;">الأسعار وطرق الدفع أدناه من إعدادات الخادم الحالية</div></div>
       <div class="plan-grid">${Object.entries(P).map(([k,p])=>`<div class="plan-c${selPlan===k?" active":""}" onclick='sPlan(${safeJsArg(k)})'>${p.badge?`<span class="plan-badge">${sanitize(p.badge)}</span>`:""}<div class="plan-label">${sanitize(p.l)}</div><div class="plan-price">${finiteNumber(p.p,0)}</div><div class="plan-period">ج / ${sanitize(p.per)}</div></div>`).join("")}</div>
       <div style="color:var(--t4);font-size:10.5px;line-height:1.75;background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:9px 10px;margin:11px 0;">بعد اختيار الباقة، تظهر وسائل الدفع المفعّلة من الخادم. لا يُفعّل الاشتراك إلا بعد مراجعة إثبات الدفع.</div>
-      <button class="btn btn-au btn-full" style="padding:13px;font-size:14px;" onclick="subToPayment()">متابعة إلى وسيلة الدفع</button>`;
+      ${planComparisonHtml(P)}
+      ${subscriptionPolicyHtml(true)}
+      <div style="margin-top:10px;"><details class="faq-item"><summary class="faq-q">متى يتفعّل الاشتراك؟<span style="color:var(--g);">+</span></summary><div class="faq-a">بعد اعتماد الإدارة لطلب الدفع فقط؛ إرسال الصورة أو رقم العملية لا يفعّل الاشتراك تلقائيًا.</div></details></div>
+      <button class="btn btn-au btn-full" style="padding:13px;font-size:14px;margin-top:11px;" onclick="subToPayment()">متابعة إلى وسيلة الدفع</button>`;
   } else if(subStep===2){
     const price=P[selPlan].p;
     el.innerHTML=`
@@ -4461,6 +4520,66 @@ async function loadPayStatus(){
     }else el.innerHTML="";
   }catch(e){el.innerHTML="";}
 }
+function subscriptionDateLabel(value){
+  const d=new Date(value||"");
+  return Number.isFinite(d.getTime())?d.toLocaleDateString("ar-EG",{year:"numeric",month:"long",day:"numeric"}):"غير متاح";
+}
+function subscriptionDaysLeft(value){
+  const d=new Date(value||"");
+  if(!Number.isFinite(d.getTime()))return null;
+  return Math.max(0,Math.ceil((d.getTime()-Date.now())/86400000));
+}
+function closeMySubscription(){document.getElementById("my-sub-ov")?.remove();}
+function syncSubscriptionView(subscription){
+  if(!U||U.plan==="admin"||!subscription||typeof subscription!=="object")return;
+  const active=subscription.active===true;
+  U.plan=active?"vip":"free";
+  U.exp=active&&subscription.expiresAt?String(subscription.expiresAt):null;
+  renderHdrVip();
+  if(document.getElementById("profile")?.classList.contains("open"))renderProfile();
+}
+function subscriptionRequestState(status){
+  return status==="approved"?{label:"مقبول",c:"var(--g)",b:"var(--gd)"}:status==="rejected"?{label:"مرفوض",c:"var(--dn)",b:"var(--dnd)"}:{label:"قيد المراجعة",c:"var(--au)",b:"var(--aud)"};
+}
+async function loadMySubscription(){
+  const body=document.getElementById("my-sub-body");if(!body)return;
+  body.innerHTML=`<div class="empty" style="padding:32px 12px;"><div class="sp sp-au sp-md" style="margin:0 auto 11px;"></div><div>جارٍ تحميل حالة الاشتراك وسجل الدفعات من الخادم...</div></div>`;
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch("/api/payments/my",{credentials:"same-origin",cache:"no-store",signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(r.status===401){body.innerHTML=`<div class="empty">سجّل الدخول أولًا لمتابعة اشتراكك.</div>`;return;}
+    if(!r.ok||!j||j.status!=="ok")throw new Error("subscription_unavailable");
+    const sub=j.subscription&&typeof j.subscription==="object"?j.subscription:{};
+    syncSubscriptionView(sub);
+    const active=sub.active===true;
+    const days=subscriptionDaysLeft(sub.expiresAt);
+    const status=sub.status==="cancelled"?"تم إيقافه":sub.status==="expired"?"منتهي":active?"نشط":"غير نشط";
+    const statusColor=active?"var(--g)":sub.status==="cancelled"?"var(--dn)":"var(--au)";
+    const requests=Array.isArray(j.requests)?j.requests.slice(0,10):[];
+    body.innerHTML=`
+      <div style="background:${active?"var(--gd)":"var(--s1)"};border:1px solid ${active?"rgba(16,185,129,.25)":"var(--b1)"};border-radius:15px;padding:14px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div><div style="color:var(--t4);font-size:10px;">حالة الاشتراك</div><div style="color:${statusColor};font-weight:900;font-size:17px;margin-top:2px;">${status}</div></div><span style="font-size:22px;">${active?"⭐":"📋"}</span></div>
+        <div style="margin-top:9px;color:var(--t2);font-size:12px;">الباقة: <b>${sanitize(sub.planNameAr||sub.planKey||"غير متاح")}</b></div>
+        ${active?`<div style="color:var(--t4);font-size:11px;margin-top:4px;">تنتهي في: ${subscriptionDateLabel(sub.expiresAt)}${days!==null?` · متبقّي ${days} يوم`:""}</div>`:`<div style="color:var(--t4);font-size:11px;margin-top:4px;">لا توجد صلاحية VIP فعالة في الخادم الآن.</div>`}
+        ${Array.isArray(sub.planFeatures)&&sub.planFeatures.length?`<div style="color:var(--t4);font-size:10px;line-height:1.65;margin-top:8px;">${sub.planFeatures.slice(0,8).map(f=>`✓ ${sanitize(f)}`).join("<br/>")}</div>`:""}
+        <button class="btn btn-au btn-full" style="margin-top:12px;padding:10px;font-size:12px;" onclick="closeMySubscription();openSub()">${active?"🔄 تجديد باقة / إضافة مدة":"⭐ عرض الباقات وطلب اشتراك"}</button>
+      </div>
+      <div style="color:var(--t2);font-weight:800;font-size:13px;margin:0 0 8px;">سجل الدفعات</div>
+      ${requests.length?`<div style="display:flex;flex-direction:column;gap:7px;">${requests.map(req=>{const st=subscriptionRequestState(String(req.status||"pending"));const price=Number(req.price);return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:10px 11px;display:flex;justify-content:space-between;gap:8px;align-items:center;"><div><div style="color:var(--t2);font-size:11.5px;font-weight:700;">${sanitize(req.planKey||"باقة")}${Number.isFinite(price)?` · ${price} ج`:""}</div><div style="color:var(--t5);font-size:9.5px;margin-top:3px;">${subscriptionDateLabel(req.createdAt)} · ${sanitize(payMethodLabel(String(req.method||"")))}</div></div><span style="background:${st.b};color:${st.c};border-radius:8px;padding:3px 7px;font-size:9.5px;font-weight:800;white-space:nowrap;">${st.label}</span></div>`;}).join("")}</div>`:`<div class="empty" style="padding:14px;">لا يوجد سجل دفعات لهذا الحساب حتى الآن.</div>`}
+      ${subscriptionPolicyHtml()}`;
+  }catch{
+    body.innerHTML=`<div class="empty" style="padding:28px 12px;"><div style="color:var(--dn);font-weight:800;">تعذر تحميل حالة الاشتراك</div><div style="font-size:10.5px;margin-top:5px;">تحقق من الاتصال ثم أعد المحاولة؛ لا نعتمد على بيانات محفوظة في المتصفح لهذه الحالة.</div><button class="btn btn-ghost" style="margin-top:11px;padding:8px 13px;" onclick="loadMySubscription()">↻ إعادة المحاولة</button></div>`;
+  }finally{clearTimeout(timer);}
+}
+function openMySubscription(){
+  if(!U){showToast("⚠️ سجّل الدخول أولًا");return;}
+  closeMySubscription();
+  const ov=document.createElement("div");ov.id="my-sub-ov";ov.className="overlay open";
+  ov.innerHTML=`<div class="modal" style="max-width:480px;max-height:92vh;overflow:auto;"><button class="modal-close" onclick="closeMySubscription()">✕</button><div style="color:var(--au);font-weight:900;font-size:16px;margin-bottom:12px;">📋 اشتراكي</div><div id="my-sub-body"></div></div>`;
+  document.body.appendChild(ov);loadMySubscription();
+}
+
 function viewProof(src){
   const ov=document.createElement("div");
   ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:2000;display:flex;align-items:center;justify-content:center;padding:18px;cursor:zoom-out;";
@@ -4529,6 +4648,7 @@ function renderProfile(){
   }
   document.getElementById("pchip").innerHTML=chipHtml;
   let btns="";
+  if(!isAdm)btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t2);margin-bottom:9px;" onclick="openMySubscription()">📋 اشتراكي وسجل الدفعات</button>`;
   if(!isVip)btns+=`<button class="prof-btn sub" onclick="openSub()">⭐ اشترك في VIP الآن</button>`;
   if(isAdm)btns+=`<button class="prof-btn" style="background:var(--gd);border:1px solid rgba(16,185,129,.15);color:var(--g);margin-bottom:9px;" onclick="openAdm()">⚙️ لوحة التحكم</button>`;
   if(U.phone!=="admin")btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openChangePass()">🔒 تغيير كلمة المرور</button>`;
@@ -4697,7 +4817,7 @@ async function renderAdmUsers(el){
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
-            ${u.plan!=="vip"&&u.plan!=="admin"?`<button class="r-btn app" style="font-size:10px;" onclick='admUserAction("upgrade_vip",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})' >⭐ ترقية VIP</button>`:`<button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick='admUserAction("downgrade_vip",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})' >↓ إلغاء VIP</button>`}
+            ${u.plan==="vip"?`<button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick='admUserAction("downgrade_vip",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})' >↓ إيقاف VIP</button>`:`<span style="color:var(--t5);font-size:9px;max-width:120px;text-align:end;">التفعيل عبر اعتماد طلب دفع فقط</span>`}
              ${u.status==="banned"?`<button class="r-btn app" style="font-size:10px;" onclick='admUserAction("unban_user",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})' >✓ فك الحظر</button>`:`<button class="r-btn rej" style="font-size:10px;" onclick='admUserAction("ban_user",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})' >🚫 حظر</button>`}
           </div>
         </div>
@@ -4713,7 +4833,7 @@ async function renderAdmUsers(el){
 }
 
 async function admUserAction(action,phone,name){
-  const labels={upgrade_vip:"ترقية VIP",downgrade_vip:"إلغاء VIP",ban_user:"حظر",unban_user:"فك الحظر"};
+  const labels={downgrade_vip:"إيقاف VIP",ban_user:"حظر",unban_user:"فك الحظر"};
   if(!confirm(`${labels[action]} للمستخدم: ${name}؟`)) return;
   try{
     const r=await admFetch("/api/admin/users/action",{method:"POST",body:JSON.stringify({action,phone,name})});
@@ -5006,25 +5126,28 @@ async function loadAdmPlans(){
             ${p.features&&p.features.length?`<div style="color:var(--t4);font-size:10px;margin-top:4px;">${p.features.map(f=>`✓ ${sanitize(f)}`).join(" · ")}</div>`:""}
           </div>
           <div style="display:flex;flex-direction:column;gap:5px;">
-            <button class="r-btn" style="font-size:10px;background:var(--s1);color:var(--t2);" onclick='editAdmPlanPrice(${safeJsArg(p.id)},${safeJsArg(p.price)},${safeJsArg(p.key)})' >✏️ السعر</button>
+            <button class="r-btn" style="font-size:10px;background:var(--s1);color:var(--t2);" onclick='editAdmPlan(${safeJsArg(p.id)},${safeJsArg(p.key)},${safeJsArg(p.price)},${safeJsArg(p.durationMonths)},${safeJsArg(Array.isArray(p.features)?p.features.join("\n"):"")},${safeJsArg(p.badge||"")})' >✏️ تعديل</button>
             <button class="r-btn" style="font-size:10px;background:${p.isActive?"var(--dnd)":"var(--gd)"};color:${p.isActive?"var(--dn)":"var(--g)"};" onclick='toggleAdmPlan(${safeJsArg(p.id)},${safeJsBool(!p.isActive)})' >${p.isActive?"تعطيل":"تفعيل"}</button>
-            <button class="r-btn rej" style="font-size:10px;" onclick='delAdmPlan(${safeJsArg(p.id)},${safeJsArg(p.nameAr)})' >حذف</button>
+            ${p.isActive?`<button class="r-btn rej" style="font-size:10px;" onclick='archiveAdmPlan(${safeJsArg(p.id)},${safeJsArg(p.nameAr)})' >أرشفة</button>`:""}
           </div>
         </div>
       </div>`).join(""):`<div class="empty" style="padding:20px;"><div style="font-size:26px;">💎</div><div>لا توجد خطط بعد</div></div>`;
   }catch(e){const el=document.getElementById("apl-list");if(el)el.innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;}
 }
 
-async function editAdmPlanPrice(id,cur,key){
-  const v=prompt(`سعر الخطة «${key}» (جنيه):`,cur);
-  if(v===null)return;
-  const price=Number(v);
-  if(!Number.isFinite(price)||price<0){showToast("⚠️ سعر غير صحيح");return;}
+async function editAdmPlan(id,key,curPrice,curDuration,curFeatures,curBadge){
+  const p=prompt(`سعر الخطة «${key}» (جنيه):`,curPrice);if(p===null)return;
+  const price=Number(p);if(!Number.isFinite(price)||price<0){showToast("⚠️ سعر غير صحيح");return;}
+  const durationText=prompt(`مدة الخطة «${key}» بالشهور:`,curDuration);if(durationText===null)return;
+  const durationMonths=Number(durationText);if(!Number.isInteger(durationMonths)||durationMonths<1||durationMonths>120){showToast("⚠️ أدخل مدة صحيحة من 1 إلى 120 شهرًا");return;}
+  const featuresText=prompt("المزايا (سطر لكل ميزة):",curFeatures||"");if(featuresText===null)return;
+  const badge=prompt("الشارة (اختياري):",curBadge||"");if(badge===null)return;
+  const features=featuresText.split("\n").map(f=>f.trim()).filter(Boolean).slice(0,12);
   try{
-    const r=await admFetch(`/api/admin/plans/${id}`,{method:"PUT",body:JSON.stringify({price})});
+    const r=await admFetch(`/api/admin/plans/${id}`,{method:"PUT",body:JSON.stringify({price,durationMonths,features,badge:badge.trim()||null})});
     const j=await r.json();
     if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
-    showToast("✅ تم تحديث السعر — ظهر للمستخدمين فورًا");
+    showToast("✅ تم تحديث الباقة. الاشتراكات القائمة تحتفظ بمدتها ولقطتها الأصلية.");
     await loadAdmPlans();
   }catch(e){showToast("❌ "+String(e.message||e));}
 }
@@ -5051,13 +5174,13 @@ async function toggleAdmPlan(id,isActive){
   }catch(e){showToast("❌ "+String(e.message||e));}
 }
 
-async function delAdmPlan(id,name){
-  if(!confirm(`حذف خطة "${name}"؟`)) return;
+async function archiveAdmPlan(id,name){
+  if(!confirm(`أرشفة خطة "${name}"؟ لن تظهر لطلبات جديدة، ولا تتأثر اشتراكات المشتركين الحاليين.`)) return;
   try{
     const r=await admFetch(`/api/admin/plans/${id}`,{method:"DELETE"});
     const j=await r.json();
-    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحذف"));return;}
-    showToast("✅ تم الحذف");await loadAdmPlans();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الأرشفة"));return;}
+    showToast("✅ تم أرشفة الخطة");await loadAdmPlans();
   }catch(e){showToast("❌ "+String(e.message||e));}
 }
 
@@ -5758,7 +5881,7 @@ async function loadOpps(force=false){
         const mr=await fetch("/api/user/me",{credentials:"same-origin"});
         const md=await mr.json().catch(()=>({}));
         if(mr.ok&&md.status==="ok"&&md.user){
-          U=md.user;
+          setCurrentUser(md.user);
           if(U.plan==="vip"||U.plan==="admin"){renderHdrVip();return loadOpps(force);}
         }
       }catch{}

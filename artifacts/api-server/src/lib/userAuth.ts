@@ -100,38 +100,115 @@ export function isAdminToken(req: Request): boolean {
   }
 }
 
-export function isVipClaims(claims: UserClaims | null): boolean {
-  if (!claims || claims.plan !== "vip") return false;
-  return !claims.vipExpiresAt || new Date(claims.vipExpiresAt).getTime() > Date.now();
+export type VipEntitlement = {
+  /** `true` only after a server-side user + entitlement check. */
+  active: boolean;
+  /** subscription is the post-migration source of truth; legacy is temporary compatibility only. */
+  source: "subscription" | "legacy" | "none";
+  planKey: string | null;
+  planNameAr: string | null;
+  planFeatures: string[];
+  status: "active" | "cancelled" | "expired" | "none";
+  expiresAt: Date | null;
+};
+
+const NO_VIP: VipEntitlement = {
+  active: false,
+  source: "none",
+  planKey: null,
+  planNameAr: null,
+  planFeatures: [],
+  status: "none",
+  expiresAt: null,
+};
+
+function legacyEntitlement(row: { plan: string; vipExpiresAt: Date | null }): VipEntitlement {
+  if (row.plan !== "vip") return NO_VIP;
+  /* Compatibility bridge for users that predate 0002. It is deliberately
+   * server-side, never based on the JWT, and will disappear only after every
+   * legacy record has been reconciled. A missing historic expiry is preserved
+   * rather than silently inventing an expiry or breaking a paid user. */
+  const active = !row.vipExpiresAt || row.vipExpiresAt.getTime() > Date.now();
+  return {
+    active,
+    source: "legacy",
+    planKey: "legacy-vip",
+    planNameAr: "اشتراك VIP سابق",
+    planFeatures: [],
+    status: active ? "active" : "expired",
+    expiresAt: row.vipExpiresAt,
+  };
 }
 
-/* DB-backed VIP check: the JWT embeds the plan for up to 7 days, so without
- * this a banned or downgraded user would keep VIP access until token expiry.
- * Also the reverse: a user upgraded AFTER login carries a stale non-VIP
- * claim — the DB is the source of truth, so re-verify before rejecting.
- * Authorization is deliberately fail-closed: an unavailable database can
- * never turn an old client-side claim into paid access. */
-async function dbVipCheck(userId: number): Promise<boolean> {
+function subscriptionTableMissing(error: unknown): boolean {
+  const e = error as { code?: unknown; cause?: { code?: unknown }; message?: unknown } | null;
+  const code = String(e?.code || e?.cause?.code || "");
+  const message = String(e?.message || "");
+  return code === "42P01" || /user_subscriptions.+(?:does not exist|undefined)/i.test(message);
+}
+
+/**
+ * Resolves the single server-side VIP entitlement. New approvals always write
+ * `user_subscriptions`; the legacy projection is read only as a temporary,
+ * documented migration bridge for accounts that have not been backfilled.
+ * JWT `plan` / browser state never grants access.
+ */
+export async function getVipEntitlement(claims: Pick<UserClaims, "sub"> | null): Promise<VipEntitlement> {
+  if (!claims || !Number.isInteger(claims.sub) || claims.sub <= 0) return NO_VIP;
   const { db } = await import("@workspace/db");
-  const { appUsersTable } = await import("@workspace/db/schema");
+  const { appUsersTable, userSubscriptionsTable } = await import("@workspace/db/schema");
   const { and, eq } = await import("drizzle-orm");
-  const [row] = await db
+
+  const [user] = await db
     .select({ plan: appUsersTable.plan, status: appUsersTable.status, vipExpiresAt: appUsersTable.vipExpiresAt })
     .from(appUsersTable)
-    .where(and(eq(appUsersTable.id, userId), eq(appUsersTable.status, "active")))
+    .where(and(eq(appUsersTable.id, claims.sub), eq(appUsersTable.status, "active")))
     .limit(1);
-  if (!row) return false; // user deleted or banned
-  if (row.plan !== "vip") return false; // downgraded or not yet VIP
-  return !row.vipExpiresAt || row.vipExpiresAt.getTime() > Date.now();
+  if (!user) return NO_VIP;
+
+  try {
+    const [subscription] = await db
+      .select({
+        planKey: userSubscriptionsTable.planKey,
+        planNameAr: userSubscriptionsTable.planNameAr,
+        planFeatures: userSubscriptionsTable.planFeatures,
+        status: userSubscriptionsTable.status,
+        expiresAt: userSubscriptionsTable.expiresAt,
+      })
+      .from(userSubscriptionsTable)
+      .where(eq(userSubscriptionsTable.userId, claims.sub))
+      .limit(1);
+
+    if (subscription) {
+      const expiresAt = subscription.expiresAt;
+      const active = subscription.status === "active" && expiresAt.getTime() > Date.now();
+      return {
+        active,
+        source: "subscription",
+        planKey: subscription.planKey,
+        planNameAr: subscription.planNameAr,
+        planFeatures: Array.isArray(subscription.planFeatures) ? subscription.planFeatures : [],
+        status: active ? "active" : subscription.status === "active" ? "expired" : subscription.status === "cancelled" ? "cancelled" : "expired",
+        expiresAt,
+      };
+    }
+  } catch (error) {
+    /* A deployment must run 0002 before application code. The narrow fallback
+     * makes rollback/old Preview environments safe without treating any other
+     * database failure as a VIP grant. */
+    if (!subscriptionTableMissing(error)) throw error;
+    return legacyEntitlement(user);
+  }
+
+  return legacyEntitlement(user);
 }
 
-export async function isVipActive(claims: UserClaims | null): Promise<boolean> {
-  if (!claims) return false;
-  // Both stale-VIP and stale-free claims must be resolved by the server-side
-  // record. Any lookup failure is an authorization failure, not a grant.
+/** The one authorization predicate used by every paid API/content gate. */
+export async function hasVip(claims: Pick<UserClaims, "sub"> | null): Promise<boolean> {
   try {
-    return await dbVipCheck(claims.sub);
+    return (await getVipEntitlement(claims)).active;
   } catch {
+    /* Authorization always fails closed on an unavailable/corrupt database. */
     return false;
   }
 }
@@ -142,11 +219,10 @@ export async function requireVipUser(req: Request, res: Response, next: NextFunc
     res.status(401).json({ status: "error", message: "login required" });
     return;
   }
-  // DB-backed (handles stale claims both ways: revoked VIP → 403 even with
-  // an old vip token; freshly-granted VIP → allowed even with an old free token).
-  if (!(await isVipActive(claims))) {
+  if (!(await hasVip(claims))) {
     res.status(403).json({ status: "error", message: "VIP subscription required" });
     return;
   }
   next();
 }
+
