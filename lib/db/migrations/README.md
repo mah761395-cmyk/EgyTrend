@@ -6,6 +6,7 @@ They are intentionally SQL files rather than a `drizzle-kit push`: no verified i
 
 - `0001_market_daily_ohlc` adds licensed-market daily snapshot storage.
 - `0002_user_subscriptions` introduces the server-side VIP entitlement record. It backfills only existing VIP accounts with a recorded future expiry. Records with a missing legacy expiry are left untouched and use the temporary compatibility path until an operator verifies them; the migration never invents an expiry date.
+- `0003_portfolio_positions` stores user-entered positions server-side. It never stores a market quote: all displayed market values remain runtime source/as-of data, and rollback archives the personal records.
 
 ## Safe execution sequence
 

@@ -9,6 +9,7 @@ import {
   appUsersTable,
   employeesTable,
   paymentRequestsTable,
+  portfolioPositionsTable,
   opportunities,
   subscriptionPlansTable,
   userSubscriptionsTable,
@@ -114,6 +115,8 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
   const profileBefore = await api("/api/user/me", userJar);
   assert.equal(profileBefore.response.status, 200);
   assert.equal((profileBefore.body?.user as { plan?: string }).plan, "free");
+  const freePortfolio = await api("/api/portfolio", userJar);
+  assert.equal(freePortfolio.response.status, 403, "portfolio data is server-gated for VIP");
 
   /* The former weaker path must not accept a payment even from a session. */
   const retiredPath = await api("/api/admin/requests", userJar, {
@@ -189,6 +192,39 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
   const profileAfter = await api("/api/user/me", userJar);
   assert.equal(profileAfter.response.status, 200);
   assert.equal((profileAfter.body?.user as { plan?: string }).plan, "vip");
+
+  /* Portfolio positions live in the isolated server database. Entry cost is
+   * user input; a missing licensed quote must remain `market: null`. */
+  const createPosition = await api("/api/portfolio/positions", userJar, {
+    method: "POST",
+    body: JSON.stringify({ symbol: "COMI", quantity: 25, averageCost: 42.5 }),
+  });
+  assert.equal(createPosition.response.status, 201);
+  const positionId = String(createPosition.body?.id || "");
+  const portfolio = await api("/api/portfolio", userJar);
+  assert.equal(portfolio.response.status, 200);
+  const positions = (portfolio.body?.positions as Array<{ id?: string; symbol?: string; averageCost?: number; market?: unknown }>) || [];
+  assert.equal(positions.length, 1);
+  assert.equal(positions[0]?.id, positionId);
+  assert.equal(positions[0]?.symbol, "COMI");
+  assert.equal(positions[0]?.averageCost, 42.5);
+  assert.equal(positions[0]?.market, null, "no provider must not create a fake quote");
+  const updatePosition = await api(`/api/portfolio/positions/${encodeURIComponent(positionId)}`, userJar, {
+    method: "PUT",
+    body: JSON.stringify({ symbol: "COMI", quantity: 30, averageCost: 41.25 }),
+  });
+  assert.equal(updatePosition.response.status, 200);
+  const archivePosition = await api(`/api/portfolio/positions/${encodeURIComponent(positionId)}`, userJar, { method: "DELETE" });
+  assert.equal(archivePosition.response.status, 200);
+  const [archivedPosition] = await memory.db.select().from(portfolioPositionsTable)
+    .where(eq(portfolioPositionsTable.id, positionId));
+  assert.equal(archivedPosition?.status, "archived", "portfolio records are archived, not deleted");
+  const restorePosition = await api("/api/portfolio/positions", userJar, {
+    method: "POST",
+    body: JSON.stringify({ symbol: "COMI", quantity: 30, averageCost: 41.25 }),
+  });
+  assert.equal(restorePosition.response.status, 200);
+  assert.equal(restorePosition.body?.restored, true);
 
   /* An active member may submit one server-priced renewal before expiry;
    * it remains pending until a separate admin approval stacks the duration. */

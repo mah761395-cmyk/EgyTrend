@@ -1447,6 +1447,7 @@ let activeCat="all", activeSrc="all", searchQ="";
 /* News is server-aggregated and ranked. Empty does not mean "still loading". */
 let newsFreshness={loading:false,unavailable:false,reason:"",fetchedAt:0,approvedSources:0};
 let curArt=null, wl=[], savedIds=[], portfolio=[];
+let portfolioState={loaded:false,loading:false,error:"",marketAvailable:false};
 let chatHist=[];
 let subStep=1, selPlan="monthly", selPay="vodafone";
 let srcStatus={};
@@ -1475,7 +1476,7 @@ const DB = {
  * so we tag the store with its owner and wipe user-scoped keys whenever a
  * DIFFERENT account signs in (the same user keeps their data after logout).
  * NOTE: cross-device sync needs a server table — not present yet. */
-const USER_SCOPED_KEYS = ["pt","wl","sv","saved_opps","notifs_v1","notifSeen","scr_saved","vip_mkt_pref","vip_tab","opps_seen_count","pay_notifs_seen_v1","price_alerts"];
+const USER_SCOPED_KEYS = ["wl","sv","saved_opps","notifs_v1","notifSeen","scr_saved","vip_mkt_pref","vip_tab","opps_seen_count","pay_notifs_seen_v1","price_alerts"];
 function clearUserScopedData(){ for(const k of USER_SCOPED_KEYS){ try{DB.d(k);}catch(e){} } }
 function ensureUserScope(phone){
   if(!phone) return;
@@ -1499,7 +1500,10 @@ function normalizePortfolio(value){
 function loadUserScopedData(){
   wl=localTextList(DB.g("wl",[]),80);
   savedIds=localTextList(DB.g("sv",[]),80);
-  portfolio=normalizePortfolio(DB.g("pt",[]));
+  /* Positions are deliberately not loaded from localStorage. The server-backed
+   * portfolio endpoint is the only account source after the migration. */
+  portfolio=[];
+  portfolioState={loaded:false,loading:false,error:"",marketAvailable:false};
 }
 
 /* ═══════════════════ INIT ═══════════════════ */
@@ -1751,7 +1755,7 @@ async function logout(){
     fetch("/api/admin/logout",{method:"POST",credentials:"same-origin"}),
   ]);}catch{}
   DB.d("s");DB.d("userTok");DB.d("admTok");
-  U=null;portfolio=[];wl=[];savedIds=[];goNav("home");
+  U=null;portfolio=[];portfolioState={loaded:false,loading:false,error:"",marketAvailable:false};wl=[];savedIds=[];goNav("home");
   document.getElementById("main").style.display="none";
   document.getElementById("auth").classList.add("open");
 }
@@ -3451,11 +3455,45 @@ async function analyzeSymbolAI(){
 
 
 /* ══════════════ TAB 8 — المحفظة ══════════════ */
+function normalizeServerPortfolio(raw){
+  if(!Array.isArray(raw))return [];
+  return raw.flatMap(item=>{
+    const p=item&&typeof item==="object"?item:{};
+    const id=String(p.id||"");const sym=String(p.symbol||"").trim().toUpperCase();
+    const qty=Number(p.quantity),price=Number(p.averageCost);
+    if(!/^[a-z0-9-]{20,80}$/i.test(id)||!/^[A-Z0-9._-]{1,16}$/.test(sym)||!Number.isInteger(qty)||qty<1||!Number.isFinite(price)||price<=0)return [];
+    const m=p.market&&typeof p.market==="object"?p.market:null;
+    const market=m&&Number.isFinite(Number(m.price))&&String(m.source||"").trim()?{
+      price:Number(m.price),source:String(m.source).slice(0,160),asOf:Number(m.asOf),delayedMinutes:Number.isFinite(Number(m.delayedMinutes))?Number(m.delayedMinutes):undefined,freshness:String(m.freshness||"").slice(0,30)
+    }:null;
+    return [{id,sym,qty,price,instrumentId:String(p.instrumentId||""),market}];
+  }).slice(0,100);
+}
+async function loadServerPortfolio(force=false){
+  if(!U||U.plan==="admin")return;
+  if(portfolioState.loading||(!force&&portfolioState.loaded))return;
+  portfolioState={...portfolioState,loading:true,error:""};
+  if(vipTab==="port")renderVipTab();
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch("/api/portfolio",{credentials:"same-origin",cache:"no-store",signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(r.status===403){portfolio=[];portfolioState={loaded:true,loading:false,error:"vip_required",marketAvailable:false};return;}
+    if(!r.ok||!j||j.status!=="ok")throw new Error("portfolio_unavailable");
+    portfolio=normalizeServerPortfolio(j.positions);
+    portfolioState={loaded:true,loading:false,error:"",marketAvailable:j.marketAvailable===true};
+  }catch{
+    portfolio=[];portfolioState={loaded:false,loading:false,error:"تعذر تحميل المحفظة من الخادم. تحقق من الاتصال ثم أعد المحاولة.",marketAvailable:false};
+  }finally{
+    clearTimeout(timer);
+    if(vipTab==="port")renderVipTab();
+    updateStats();
+  }
+}
 function portStats(){
   let cost=0,current=0,allPricesVerified=true;const rows=[];
   portfolio.forEach(p=>{
-    const live=liveStocks.find(x=>x.sym===p.sym||x.sym===p.sym+".CA");
-    const pr=live&&Number.isFinite(live.price)&&live.source&&live.source!=="غير متاح"?live.price:null;
+    const pr=p.market&&Number.isFinite(p.market.price)&&p.market.source?p.market.price:null;
     cost+=p.price*p.qty;
     if(pr===null)allPricesVerified=false;else current+=pr*p.qty;
     rows.push({p,pr,pnl:pr!==null?((pr-p.price)/p.price*100):null,pnlEgp:pr!==null?((pr-p.price)*p.qty):null});
@@ -3470,6 +3508,12 @@ function portNews(sym){
   return allArts.filter(a=>(nm&&nm.length>2&&a.title.includes(nm))||a.title.toUpperCase().includes(sym)).slice(0,3);
 }
 function vBuildPort(b){
+  if(portfolioState.loading){b.innerHTML=vLoading("جارٍ تحميل محفظتك من الخادم...");return;}
+  if(portfolioState.error){
+    b.innerHTML=`<div class="vbox bl"><div class="vbox-title" style="color:#93c5fd;">💼 محفظتي</div><div class="vempty"><div style="font-size:28px;">⚠️</div><div style="color:var(--dn);font-weight:700;margin-top:6px;">${sanitize(portfolioState.error==="vip_required"?"هذه الميزة لمشتركي VIP":"تعذر تحميل المحفظة")}</div><div style="color:var(--t5);font-size:10.5px;margin-top:5px;">${portfolioState.error==="vip_required"?"يعرض الخادم بيانات المحفظة فقط بعد التحقق من اشتراك VIP فعّال.":sanitize(portfolioState.error)}</div><button class="btn btn-ghost" style="margin-top:10px;padding:8px 13px;" onclick="portfolioState={...portfolioState,error:'',loaded:false};loadServerPortfolio(true)">↻ إعادة المحاولة</button></div></div>`;
+    return;
+  }
+  if(!portfolioState.loaded){b.innerHTML=vLoading("جارٍ تحميل محفظتك من الخادم...");loadServerPortfolio();return;}
   const st=portStats();
   b.innerHTML=`
     ${portfolio.length?`
@@ -3483,7 +3527,7 @@ function vBuildPort(b){
       <div class="vbox-title" style="color:#93c5fd;">💼 متابع المحفظة</div>
       <div class="p-inputs">
         <input class="mini-in" id="p-sym" placeholder="رمز السهم" oninput="this.value=this.value.toUpperCase().slice(0,10)"/>
-        <input class="mini-in" id="p-pr" placeholder="سعر الشراء" type="number" min="0" step="0.01"/>
+        <input class="mini-in" id="p-pr" placeholder="متوسط سعر الإدخال" type="number" min="0" step="0.01"/>
         <input class="mini-in" id="p-qty" placeholder="الكمية" type="number" min="1"/>
         <button class="add-btn" onclick="addPort()">+</button>
       </div>
@@ -3498,12 +3542,12 @@ function vBuildPort(b){
                 <span style="background:var(--bld);border:1px solid rgba(59,130,246,.22);border-radius:7px;padding:2px 8px;color:#93c5fd;font-weight:700;font-size:11px;font-family:var(--mono);">${sanitize(r.p.sym)}</span>
                 <span style="color:var(--t4);font-size:10px;">${r.p.qty} × ${r.p.price.toFixed(2)} ج</span>
               </div>
-              <div style="color:var(--t5);font-size:9px;margin-top:3px;">الآن: ${r.pr!==null?r.pr.toFixed(2)+" ج":"بانتظار سعر السوق"}${r.pnlEgp!=null?` · ${r.pnlEgp>=0?"+":""}${r.pnlEgp.toFixed(0)} ج`:""}${liveStocks.find(x=>x.sym===r.p.sym||x.sym===r.p.sym+".CA")?.divYield?` · توزيعات: ${liveStocks.find(x=>x.sym===r.p.sym||x.sym===r.p.sym+".CA").divYield.toFixed(1)}%`:""}</div>
+              <div style="color:var(--t5);font-size:9px;margin-top:3px;">الآن: ${r.pr!==null?r.pr.toFixed(2)+" ج":"سعر السوق غير متاح"}${r.pnlEgp!=null?` · ${r.pnlEgp>=0?"+":""}${r.pnlEgp.toFixed(0)} ج`:""}${r.p.market?` · ${sanitize(r.p.market.source)} · ${cairoTimestampLabel(r.p.market.asOf)}`:""}</div>
               ${(()=>{const nws=portNews(r.p.sym);return nws.length?`<div class="row" style="gap:4px;margin-top:4px;flex-wrap:wrap;">${nws.map(n=>`<span class="vchip" style="cursor:pointer;" onclick='openArt(${safeJsArg(n.id)})'>📰 ${sanitize(n.title).slice(0,38)}…</span>`).join("")}</div>`:"";})()}
             </div>
             <div style="display:flex;align-items:center;gap:7px;">
               <span style="color:${r.pnl==null?"var(--t5)":r.pnl>=0?"var(--g)":"var(--dn)"};font-weight:800;font-size:12px;font-family:var(--mono);">${r.pnl==null?"—":(r.pnl>=0?"+":"")+r.pnl.toFixed(2)+"%"}</span>
-              <button onclick="delPort(${portfolio.indexOf(r.p)})" style="background:var(--dnd);border:none;border-radius:7px;padding:3px 9px;color:var(--dn);font-size:11px;cursor:pointer;">حذف</button>
+              <button onclick='delPort(${safeJsArg(r.p.id)})' style="background:var(--dnd);border:none;border-radius:7px;padding:3px 9px;color:var(--dn);font-size:11px;cursor:pointer;">أرشفة</button>
             </div>
           </div>`).join("")}
       </div>`:""}
@@ -4214,27 +4258,46 @@ async function getClosing(){
 }
 
 
-/* Portfolio */
-function addPort(){
-  const sym=document.getElementById("p-sym").value.trim().slice(0,10).toUpperCase();
-  const pr=parseFloat(document.getElementById("p-pr").value)||0;
-  const qty=parseInt(document.getElementById("p-qty").value)||1;
-  if(!sym||pr<=0)return;
-  portfolio.push({sym,price:pr,qty});DB.s("pt",portfolio);
-  document.getElementById("p-sym").value="";document.getElementById("p-pr").value="";document.getElementById("p-qty").value="";
-  renderPortList();showToast(`✅ تمت إضافة ${sym}`);updateStats();
+/* Server-backed portfolio mutations. The browser sends only a user's
+ * explicit entry data; the server validates the symbol and owns persistence. */
+async function addPort(){
+  const sym=(document.getElementById("p-sym")?.value||"").trim().slice(0,16).toUpperCase();
+  const averageCost=Number(document.getElementById("p-pr")?.value||0);
+  const quantity=Number(document.getElementById("p-qty")?.value||0);
+  if(!sym||!Number.isFinite(averageCost)||averageCost<=0||!Number.isInteger(quantity)||quantity<1){showToast("⚠️ أدخل رمز السهم ومتوسط السعر والكمية بشكل صحيح");return;}
+  const btn=document.querySelector("#vip-body .add-btn");if(btn){btn.disabled=true;btn.textContent="…";}
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch("/api/portfolio/positions",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbol:sym,averageCost,quantity}),signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر الحفظ");
+    ["p-sym","p-pr","p-qty"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+    portfolioState={...portfolioState,loaded:false,error:""};
+    await loadServerPortfolio(true);showToast(j.restored?`✅ تمت استعادة ${sym} إلى المحفظة`:`✅ تمت إضافة ${sym}`);
+  }catch(e){showToast("⚠️ "+String(e?.message||"تعذر حفظ المركز"));}
+  finally{clearTimeout(timer);if(btn){btn.disabled=false;btn.textContent="+";}}
 }
-function delPort(i){portfolio.splice(i,1);DB.s("pt",portfolio);renderPortList();updateStats();}
+async function delPort(id){
+  if(!id||!confirm("أرشفة هذا المركز من محفظتك؟ يمكنك إضافته مرة أخرى لاحقًا."))return;
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch(`/api/portfolio/positions/${encodeURIComponent(id)}`,{method:"DELETE",credentials:"same-origin",signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر الأرشفة");
+    portfolioState={...portfolioState,loaded:false,error:""};await loadServerPortfolio(true);showToast("✅ تمت أرشفة المركز");
+  }catch(e){showToast("⚠️ "+String(e?.message||"تعذر الأرشفة"));}
+  finally{clearTimeout(timer);}
+}
 function renderPortList(){
   const el=document.getElementById("port-list");if(!el)return;
-  if(!portfolio.length){el.innerHTML=`<div style="text-align:center;padding:10px 0;color:var(--t5);font-size:12px;">أضف أسهمك لتتبّع المحفظة</div>`;const b=document.getElementById("port-ai-btn");if(b)b.style.display="none";return;}
+  if(!portfolio.length){el.innerHTML=`<div style="text-align:center;padding:10px 0;color:var(--t5);font-size:12px;">لا توجد مراكز محفوظة في محفظتك حتى الآن.</div>`;const b=document.getElementById("port-ai-btn");if(b)b.style.display="none";return;}
   el.innerHTML=portfolio.map((s,i)=>`
     <div class="p-row" style="${i===portfolio.length-1?"border:none":""}">
       <div class="row" style="gap:8px;">
         <span style="background:var(--bld);border:1px solid rgba(59,130,246,.22);border-radius:7px;padding:2px 8px;color:#93c5fd;font-weight:700;font-size:11.5px;font-family:var(--mono);">${sanitize(s.sym)}</span>
-        <span style="color:var(--t3);font-size:11.5px;">${s.price.toFixed(2)} ج × ${s.qty}</span>
+        <span style="color:var(--t3);font-size:11.5px;">متوسط إدخال المستخدم ${s.price.toFixed(2)} ج × ${s.qty}</span>
       </div>
-      <button onclick="delPort(${i})" style="background:var(--dnd);border:none;border-radius:7px;padding:3px 9px;color:var(--dn);font-size:11px;cursor:pointer;">حذف</button>
+      <button onclick='delPort(${safeJsArg(s.id)})' style="background:var(--dnd);border:none;border-radius:7px;padding:3px 9px;color:var(--dn);font-size:11px;cursor:pointer;">أرشفة</button>
     </div>`).join("");
   const b=document.getElementById("port-ai-btn");if(b)b.style.display="flex";
 }
@@ -4243,18 +4306,18 @@ async function analyzePort(){
   const btn=document.getElementById("port-ai-btn");
   const res=document.getElementById("port-ai-res");
   if(!btn||!res)return;
-  if(!hasVerifiedStockRows()){
-    res.textContent="📡 لا توجد أسعار أسهم موثّقة كافية لعرض ملخص المحفظة الآن. لن نستخدم أسعارًا بديلة أو توصيات.";res.style.display="block";return;
+  if(!portfolio.some(item=>item.market&&Number.isFinite(item.market.price)&&item.market.source)){
+    res.textContent="📡 لا توجد أسعار سوق موثّقة لمراكز محفظتك الآن. لن نستخدم أسعارًا بديلة أو توصيات.";res.style.display="block";return;
   }
   btn.innerHTML='<div class="sp sp-bl sp-sm"></div> جارٍ إعداد الملخص...';btn.disabled=true;
   res.style.display="none";
   try{
     const hl=allArts.slice(0,5).map(a=>a.title).join("\n")||"لا توجد عناوين مرخّصة متاحة";
     const portLines=portfolio.map(item=>{
-      const live=liveStocks.find(x=>x.sym===item.sym||x.sym===item.sym+".CA");
-      const curPrice=live?.price;
+      const market=item.market;
+      const curPrice=market?.price;
       const pnl=Number.isFinite(curPrice)?((curPrice-item.price)/item.price*100):null;
-      return `${item.sym}: ${item.qty} سهم × سعر إدخال المستخدم ${item.price.toFixed(2)} ج${Number.isFinite(curPrice)?` | السعر المتاح: ${curPrice.toFixed(2)} ج | الفرق الحسابي: ${pnl>=0?"+":""}${pnl.toFixed(2)}% | المصدر: ${live.source||egxStocksFreshness.source||"غير متاح"}`:" | السعر المتاح: غير متاح"}`;
+      return `${item.sym}: ${item.qty} سهم × سعر إدخال المستخدم ${item.price.toFixed(2)} ج${Number.isFinite(curPrice)?` | السعر المتاح: ${curPrice.toFixed(2)} ج | الفرق الحسابي: ${pnl>=0?"+":""}${pnl.toFixed(2)}% | المصدر: ${market.source||"غير متاح"} | وقت المصدر: ${cairoTimestampLabel(market.asOf)}`:" | السعر المتاح: غير متاح"}`;
     }).join("\n");
     const txt = await callAI({
       max_tokens:1800,

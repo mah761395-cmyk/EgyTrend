@@ -9,4 +9,5 @@ export * from "./settings";
 export * from "./opportunities";
 export * from "./users";
 export * from "./user_subscriptions";
+export * from "./portfolio_positions";
 export * from "./market_ohlc";

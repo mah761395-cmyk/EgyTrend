@@ -7,6 +7,7 @@ import adminRouter from "./admin";
 import opportunitiesRouter from "./opportunities";
 import userRouter from "./user";
 import paymentsRouter from "./payments";
+import portfolioRouter from "./portfolio";
 
 const router: IRouter = Router();
 
@@ -17,6 +18,7 @@ router.use("/ai", aiRouter);
 router.use("/admin", adminRouter);
 router.use("/user", userRouter);
 router.use(paymentsRouter);
+router.use(portfolioRouter);
 router.use(opportunitiesRouter);
 
 export default router;

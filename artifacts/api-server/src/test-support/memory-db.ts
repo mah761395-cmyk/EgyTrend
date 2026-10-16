@@ -120,6 +120,21 @@ export async function createMemoryDatabase(): Promise<{
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX user_subscriptions_active_expiry_idx ON user_subscriptions(status, expires_at);
+    CREATE TABLE portfolio_positions (
+      id text PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES app_users(id),
+      instrument_id text NOT NULL,
+      symbol text NOT NULL,
+      quantity integer NOT NULL,
+      average_cost numeric(18, 6) NOT NULL,
+      currency text NOT NULL DEFAULT 'EGP',
+      status text NOT NULL DEFAULT 'active',
+      archived_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, symbol)
+    );
+    CREATE INDEX portfolio_positions_user_status_idx ON portfolio_positions(user_id, status);
     CREATE TABLE payment_requests (
       id text PRIMARY KEY,
       phone text NOT NULL,
