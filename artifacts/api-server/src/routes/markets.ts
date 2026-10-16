@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
+import yahooFinance from "yahoo-finance2";
 import { logger } from "../lib/logger";
 import { EGX_AR_NAMES } from "../lib/egx-names";
 
@@ -23,6 +24,8 @@ type Quote = {
   c: string;
   up: boolean;
   s?: string;
+  /** Provider that supplied this row, not a generic marketing label. */
+  source?: string;
   clickable?: boolean;
 };
 
@@ -143,13 +146,16 @@ async function warmAVForexCache(): Promise<void> {
   logger.info("AV forex cache warmed");
 }
 
-// Fire-and-forget on startup, then refresh every 6 hours
-setTimeout(() => {
-  warmAVForexCache().catch((e) => logger.warn({ err: (e as Error).message }, "AV warm failed"));
+// Fire-and-forget on startup, then refresh every 6 hours. Unref keeps these
+// convenience timers from pinning test/serverless processes after a request.
+const avWarmTimer = setTimeout(() => {
+  warmAVForexCache().catch((e) => logger.warn({ err: e }, "AV warm failed"));
 }, 500);
-setInterval(() => {
-  warmAVForexCache().catch((e) => logger.warn({ err: (e as Error).message }, "AV refresh failed"));
+avWarmTimer.unref?.();
+const avRefreshTimer = setInterval(() => {
+  warmAVForexCache().catch((e) => logger.warn({ err: e }, "AV refresh failed"));
 }, AV_FOREX_TTL_MS);
+avRefreshTimer.unref?.();
 
 /* ═══════════════════════════════════════════════════
    LAYER 3: Legacy scrapers (fallbacks)
@@ -222,10 +228,10 @@ async function mapStaggeredQuotes<T, R>(
   return results;
 }
 
-async function fetchEGX30(): Promise<{ price: number; pctChange: number } | null> {
+async function fetchEGX30(): Promise<{ price: number; pctChange: number; source: string } | null> {
   // 1) Yahoo Finance (^CASE30 — real EGX 30 index, no scraping)
   const y = await fetchYahooIndexQuote("^CASE30");
-  if (y) return { price: y.price, pctChange: y.pct };
+  if (y) return { price: y.price, pctChange: y.pct, source: "Yahoo Finance" };
   // 2) TradingEconomics scraper (fallback)
   try {
     const html = await fetchText("https://tradingeconomics.com/egypt/stock-market", 10000);
@@ -250,7 +256,7 @@ async function fetchEGX30(): Promise<{ price: number; pctChange: number } | null
       if (altPct) pct = parseFloat(altPct[1]);
     }
     if (!Number.isFinite(pct)) pct = 0;
-    return { price, pctChange: pct };
+    return { price, pctChange: pct, source: "Trading Economics" };
   } catch (e) {
     logger.warn({ err: (e as Error).message }, "EGX30 fetch failed");
     return null;
@@ -288,7 +294,7 @@ async function buildIndexQuote(def: IndexDef): Promise<Quote | null> {
   if (def.yahoo) {
     const y = await fetchYahooIndexQuote(def.yahoo);
     if (y) {
-      return { n: def.n, v: fmtNumber(y.price, { decimals: 2, commas: true }), c: fmtPct(y.pct), up: y.pct >= 0, s: def.s };
+      return { n: def.n, v: fmtNumber(y.price, { decimals: 2, commas: true }), c: fmtPct(y.pct), up: y.pct >= 0, s: def.s, source: "Yahoo Finance" };
     }
   }
   // 2) Fetch Finnhub ETF for % change AND scrapers for real price — in parallel
@@ -302,16 +308,16 @@ async function buildIndexQuote(def: IndexDef): Promise<Quote | null> {
   if (googleData) {
     const scrapePct = googleData.prev > 0 ? ((googleData.price - googleData.prev) / googleData.prev) * 100 : 0;
     const pct = fh ? fh.dp : scrapePct; // Finnhub % is more accurate (real-time)
-    return { n: def.n, v: fmtNumber(googleData.price, { decimals: 2, commas: true }), c: fmtPct(pct), up: pct >= 0, s: def.s };
+    return { n: def.n, v: fmtNumber(googleData.price, { decimals: 2, commas: true }), c: fmtPct(pct), up: pct >= 0, s: def.s, source: fh ? "Google Finance + Finnhub" : "Google Finance" };
   }
   if (stooqData) {
     const scrapePct = stooqData.open > 0 ? ((stooqData.price - stooqData.open) / stooqData.open) * 100 : 0;
     const pct = fh ? fh.dp : scrapePct;
-    return { n: def.n, v: fmtNumber(stooqData.price, { decimals: 2, commas: true }), c: fmtPct(pct), up: pct >= 0, s: def.s };
+    return { n: def.n, v: fmtNumber(stooqData.price, { decimals: 2, commas: true }), c: fmtPct(pct), up: pct >= 0, s: def.s, source: fh ? "Stooq + Finnhub" : "Stooq" };
   }
   // Last resort: ETF price from Finnhub (price will be ETF value, not index points)
   if (fh) {
-    return { n: def.n, v: fmtNumber(fh.c, { decimals: 2, commas: true }), c: fmtPct(fh.dp), up: fh.dp >= 0, s: def.s };
+    return { n: def.n, v: fmtNumber(fh.c, { decimals: 2, commas: true }), c: fmtPct(fh.dp), up: fh.dp >= 0, s: def.s, source: "Finnhub ETF proxy" };
   }
   return null;
 }
@@ -336,7 +342,7 @@ async function buildFxQuote(def: FxDef): Promise<Quote | null> {
     if (y) {
       const rate = def.viaUsd ? y.price / SAR_PER_USD : y.price;
       const pct = def.viaUsd ? y.pct : y.pct; // peg keeps % identical to USD/EGP
-      return { n: def.n, v: fmtNumber(rate, { decimals: 2, commas: false }), c: fmtPct(pct), up: pct >= 0, s: def.s };
+      return { n: def.n, v: fmtNumber(rate, { decimals: 2, commas: false }), c: fmtPct(pct), up: pct >= 0, s: def.s, source: def.viaUsd ? "Yahoo Finance (USD/EGP ÷ 3.75)" : "Yahoo Finance" };
     }
   }
   // 2) Alpha Vantage (realtime, 6hr cached)
@@ -346,14 +352,14 @@ async function buildFxQuote(def: FxDef): Promise<Quote | null> {
     const pct = av.bid > 0 && av.ask > 0
       ? ((av.rate - (av.bid + av.ask) / 2) / ((av.bid + av.ask) / 2)) * 100
       : 0;
-    return { n: def.n, v: fmtNumber(av.rate, { decimals: 2, commas: false }), c: fmtPct(pct), up: pct >= 0, s: def.s };
+    return { n: def.n, v: fmtNumber(av.rate, { decimals: 2, commas: false }), c: fmtPct(pct), up: pct >= 0, s: def.s, source: "Alpha Vantage" };
   }
   // 2) Google Finance
   if (def.google) {
     const g = await fetchGoogleFinance(def.google);
     if (g) {
       const pct = g.prev > 0 ? ((g.price - g.prev) / g.prev) * 100 : 0;
-      return { n: def.n, v: fmtNumber(g.price, { decimals: 2, commas: false }), c: fmtPct(pct), up: pct >= 0, s: def.s };
+      return { n: def.n, v: fmtNumber(g.price, { decimals: 2, commas: false }), c: fmtPct(pct), up: pct >= 0, s: def.s, source: "Google Finance" };
     }
   }
   // 3) Stooq
@@ -361,7 +367,7 @@ async function buildFxQuote(def: FxDef): Promise<Quote | null> {
     const sq = await fetchStooq(def.stooq);
     if (sq) {
       const pct = sq.open > 0 ? ((sq.price - sq.open) / sq.open) * 100 : 0;
-      return { n: def.n, v: fmtNumber(sq.price, { decimals: 2, commas: false }), c: fmtPct(pct), up: pct >= 0, s: def.s };
+      return { n: def.n, v: fmtNumber(sq.price, { decimals: 2, commas: false }), c: fmtPct(pct), up: pct >= 0, s: def.s, source: "Stooq" };
     }
   }
   return null;
@@ -407,7 +413,7 @@ async function buildCommodityQuote(def: CommodityDef): Promise<Quote | null> {
     const y = await fetchYahooIndexQuote(def.yahoo);
     if (y) {
       const v = `${def.prefix ?? ""}${fmtNumber(y.price, { decimals: def.decimals ?? 2, commas: def.commas ?? true })}${def.suffix ?? ""}`;
-      return { n: def.n, v, c: fmtPct(y.pct), up: y.pct >= 0, s: def.s };
+      return { n: def.n, v, c: fmtPct(y.pct), up: y.pct >= 0, s: def.s, source: "Yahoo Finance" };
     }
   }
   // 2) Finnhub ETF (realtime %, calibrated spot price)
@@ -417,7 +423,7 @@ async function buildCommodityQuote(def: CommodityDef): Promise<Quote | null> {
       const factor = def.finnhubFactor ?? 1;
       const price = fh.c * factor;
       const v = `${def.prefix ?? ""}${fmtNumber(price, { decimals: def.decimals ?? 2, commas: def.commas ?? true })}${def.suffix ?? ""}`;
-      return { n: def.n, v, c: fmtPct(fh.dp), up: fh.dp >= 0, s: def.s };
+      return { n: def.n, v, c: fmtPct(fh.dp), up: fh.dp >= 0, s: def.s, source: "Finnhub ETF proxy" };
     }
   }
   // 3) Google Finance (fallback — real spot price)
@@ -426,7 +432,7 @@ async function buildCommodityQuote(def: CommodityDef): Promise<Quote | null> {
     if (g) {
       const pct = g.prev > 0 ? ((g.price - g.prev) / g.prev) * 100 : 0;
       const v = `${def.prefix ?? ""}${fmtNumber(g.price, { decimals: def.decimals ?? 2, commas: def.commas ?? true })}${def.suffix ?? ""}`;
-      return { n: def.n, v, c: fmtPct(pct), up: pct >= 0, s: def.s };
+      return { n: def.n, v, c: fmtPct(pct), up: pct >= 0, s: def.s, source: "Google Finance" };
     }
   }
   return null;
@@ -452,7 +458,7 @@ async function buildCryptoQuote(spec: CryptoSpec): Promise<Quote> {
       : price >= 1
         ? `$${price.toFixed(2)}`
         : `$${price.toFixed(4)}`;
-    return { n: spec.n, v, c: fmtPct(fh.dp), up: fh.dp >= 0, s: spec.s };
+    return { n: spec.n, v, c: fmtPct(fh.dp), up: fh.dp >= 0, s: spec.s, source: "Finnhub / Binance" };
   }
   // Fallback: CoinGecko (no key required)
   try {
@@ -472,9 +478,9 @@ async function buildCryptoQuote(spec: CryptoSpec): Promise<Quote> {
     const pct = data[id]?.usd_24h_change ?? 0;
     if (!Number.isFinite(price)) throw new Error("no price");
     const v = price >= 1000 ? `$${(price / 1000).toFixed(1)}K` : price >= 1 ? `$${price.toFixed(2)}` : `$${price.toFixed(4)}`;
-    return { n: spec.n, v, c: fmtPct(pct), up: pct >= 0, s: spec.s };
+    return { n: spec.n, v, c: fmtPct(pct), up: pct >= 0, s: spec.s, source: "CoinGecko" };
   } catch {
-    return { n: spec.n, v: "—", c: "—", up: true, s: spec.s };
+    return { n: spec.n, v: "غير متاح", c: "—", up: true, s: spec.s, source: "غير متاح" };
   }
 }
 
@@ -482,16 +488,36 @@ async function buildCryptoQuote(spec: CryptoSpec): Promise<Quote> {
    MARKETS CACHE + BUILDER
    ═══════════════════════════════════════════════════ */
 
+type MarketSection = "eg" | "gl" | "cm" | "cr";
 type MarketsPayload = {
   status: "ok";
+  /** Epoch when upstream data was assembled, not the browser render time. */
   ts: number;
   sources: { indices: string; forex: string; commodities: string; crypto: string };
+  freshness: {
+    fetchedAt: number;
+    stale: boolean;
+    cacheTtlSeconds: number;
+    sections: Record<MarketSection, { sources: string; unavailable: boolean }>;
+  };
   markets: { eg: Quote[]; gl: Quote[]; cm: Quote[]; cr: Quote[] };
   ticker: Quote[];
 };
 
 let marketsCache: { ts: number; data: MarketsPayload } | null = null;
 const MARKETS_TTL_MS = 60 * 1000; // 1 minute
+
+function summarizeQuoteSources(rows: Quote[]): string {
+  const sources = [...new Set(rows
+    .map((row) => row.source?.trim())
+    .filter((source): source is string => Boolean(source && source !== "غير متاح")))];
+  return sources.length ? sources.join(" + ") : "غير متاح";
+}
+
+function sectionFreshness(rows: Quote[]) {
+  const sources = summarizeQuoteSources(rows);
+  return { sources, unavailable: sources === "غير متاح" };
+}
 
 async function buildMarketsPayload(): Promise<MarketsPayload> {
   // EGX30 first (one Yahoo call), then stagger the rest to stay under Yahoo burst limits
@@ -504,7 +530,15 @@ async function buildMarketsPayload(): Promise<MarketsPayload> {
   ]);
 
   const egx30: Quote | null = egx30Raw
-    ? { n: "EGX30", v: fmtNumber(egx30Raw.price, { decimals: 2, commas: true }), c: fmtPct(egx30Raw.pctChange), up: egx30Raw.pctChange >= 0, s: "مؤشر رئيسي", clickable: true }
+    ? {
+        n: "EGX30",
+        v: fmtNumber(egx30Raw.price, { decimals: 2, commas: true }),
+        c: fmtPct(egx30Raw.pctChange),
+        up: egx30Raw.pctChange >= 0,
+        s: "مؤشر رئيسي",
+        source: egx30Raw.source,
+        clickable: true,
+      }
     : null;
 
   const fx = fxResults.filter((x): x is Quote => x !== null);
@@ -525,18 +559,30 @@ async function buildMarketsPayload(): Promise<MarketsPayload> {
   if (cr[0]) ticker.push(cr[0]);
   if (cr[1]) ticker.push(cr[1]);
 
-  // Track which sources actually responded
-  const hasFinnhub = !!FINNHUB_KEY && gl.length > 0;
-  const hasAV = !!AV_KEY && fx.length > 0;
+  const fetchedAt = Date.now();
+  const sectionSources = {
+    eg: sectionFreshness(eg),
+    gl: sectionFreshness(gl),
+    cm: sectionFreshness(cm),
+    cr: sectionFreshness(cr),
+  };
 
   return {
     status: "ok",
-    ts: Date.now(),
+    ts: fetchedAt,
+    /* These labels are derived from rows that actually made this response;
+     * they are never a claim about a preferred provider that may have failed. */
     sources: {
-      indices: "Yahoo Finance",
-      forex: hasAV ? "Yahoo Finance + Alpha Vantage" : "Yahoo Finance",
-      commodities: "Yahoo Finance",
-      crypto: hasFinnhub ? "Finnhub/Binance" : "CoinGecko",
+      indices: sectionSources.gl.sources,
+      forex: summarizeQuoteSources(fx),
+      commodities: sectionSources.cm.sources,
+      crypto: sectionSources.cr.sources,
+    },
+    freshness: {
+      fetchedAt,
+      stale: false,
+      cacheTtlSeconds: MARKETS_TTL_MS / 1000,
+      sections: sectionSources,
     },
     markets: { eg, gl, cm, cr },
     ticker,
@@ -577,15 +623,24 @@ export function getMarketsSnapshot(): Promise<SnapshotResult> {
   return marketsBuildInFlight;
 }
 
+function marketsResponse(data: MarketsPayload, stale: boolean): MarketsPayload & { stale?: boolean } {
+  if (!stale) return data;
+  return {
+    ...data,
+    stale: true,
+    freshness: { ...data.freshness, stale: true },
+  };
+}
+
 router.get("/", async (_req: Request, res: Response) => {
   const now = Date.now();
   if (marketsCache && now - marketsCache.ts < MARKETS_TTL_MS) {
-    res.json(marketsCache.data);
+    res.json(marketsResponse(marketsCache.data, false));
     return;
   }
   const snap = await getMarketsSnapshot();
   if (snap) {
-    res.json(snap.stale ? { ...snap.data, stale: true } : snap.data);
+    res.json(marketsResponse(snap.data, Boolean(snap.stale)));
     return;
   }
   res.status(503).json({ status: "error", message: "markets unavailable" });
@@ -941,20 +996,15 @@ export type StockQuote = {
 };
 
 /* yahoo-finance2 v2 is pinned because it supports the committed Node 20
- * runtime. v3.14+ advertises Node 20 but rejects it at runtime. Keep this
- * tiny compatibility shim so an intentional provider upgrade can be tested
- * without changing every quote call. */
+ * runtime. v3.14+ advertises Node 20 but rejects it at runtime. Use its ESM
+ * export directly so source-mode tests do not depend on the build banner's
+ * CommonJS `require` shim. */
 type YahooClient = {
   quote: (symbol: string, queryOptions?: Record<string, unknown>, moduleOptions?: Record<string, unknown>) => Promise<Record<string, unknown>>;
   chart: (symbol: string, queryOptions?: Record<string, unknown>, moduleOptions?: Record<string, unknown>) => Promise<{ quotes?: Array<{ volume?: number | null; date?: unknown }>; meta?: Record<string, unknown> }>;
   suppressNotices?: (notices: string[]) => void;
 };
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const yahooFinanceModule = require("yahoo-finance2") as { default?: YahooClient | (new (opts?: Record<string, unknown>) => YahooClient) };
-const yahooDefault = yahooFinanceModule.default;
-const yf: YahooClient = typeof yahooDefault === "function"
-  ? new yahooDefault({ suppressNotices: ["yahooSurvey"] })
-  : (yahooDefault as YahooClient);
+const yf = yahooFinance as unknown as YahooClient;
 yf.suppressNotices?.(["yahooSurvey"]);
 
 /* The Yahoo quote endpoint omits regularMarketVolume for EGX (Egyptian Exchange)
@@ -1048,8 +1098,9 @@ async function fetchStocksBatched(defs: StockDef[], batchSize = 25, delayMs = 40
   return results;
 }
 
-let stocksCache:   { ts: number; stocks: StockQuote[] } | null = null;
-let usStocksCache: { ts: number; stocks: StockQuote[] } | null = null;
+type StockSnapshot = { ts: number; stocks: StockQuote[]; source: "TradingView" | "Yahoo Finance" };
+let stocksCache: StockSnapshot | null = null;
+let usStocksCache: StockSnapshot | null = null;
 
 /* ─── TradingView Egypt scanner — real-time full EGX universe ────
  * Yahoo's quote endpoint serves STALE prices for many EGX tickers
@@ -1147,7 +1198,11 @@ export function getStocksSnapshot(): Promise<StockQuote[] | null> {
       try {
         const tvStocks = await fetchTVStocks();
         const stocks = tvStocks ?? await fetchStocksBatched(EGX_DEFS);
-        stocksCache = { ts: Date.now(), stocks };
+        stocksCache = {
+          ts: Date.now(),
+          stocks,
+          source: tvStocks ? "TradingView" : "Yahoo Finance",
+        };
         return stocks;
       } catch (e) {
         logger.error({ err: (e as Error).message }, "egx-stocks build failed");
@@ -1163,13 +1218,27 @@ export function getStocksSnapshot(): Promise<StockQuote[] | null> {
 router.get("/stocks", async (_req: Request, res: Response) => {
   const now = Date.now();
   if (stocksCache && now - stocksCache.ts < STOCKS_TTL_MS) {
-    res.json({ status: "ok", ts: stocksCache.ts, stocks: stocksCache.stocks });
+    res.json({
+      status: "ok",
+      ts: stocksCache.ts,
+      fetchedAt: stocksCache.ts,
+      source: stocksCache.source,
+      stale: false,
+      stocks: stocksCache.stocks,
+    });
     return;
   }
   const stocks = await getStocksSnapshot();
   if (stocks) {
-    const fresh = stocksCache && Date.now() - stocksCache.ts < STOCKS_TTL_MS;
-    res.json({ status: "ok", ts: stocksCache?.ts ?? now, stocks, ...(fresh ? {} : { stale: true }) });
+    const fresh = Boolean(stocksCache && Date.now() - stocksCache.ts < STOCKS_TTL_MS);
+    res.json({
+      status: "ok",
+      ts: stocksCache?.ts ?? now,
+      fetchedAt: stocksCache?.ts ?? now,
+      source: stocksCache?.source ?? "غير متاح",
+      stale: !fresh,
+      stocks,
+    });
     return;
   }
   res.status(503).json({ status: "error", message: "EGX stocks data unavailable" });
@@ -1178,17 +1247,31 @@ router.get("/stocks", async (_req: Request, res: Response) => {
 router.get("/us-stocks", async (_req: Request, res: Response) => {
   const now = Date.now();
   if (usStocksCache && now - usStocksCache.ts < US_STOCKS_TTL_MS) {
-    res.json({ status: "ok", ts: usStocksCache.ts, stocks: usStocksCache.stocks });
+    res.json({
+      status: "ok",
+      ts: usStocksCache.ts,
+      fetchedAt: usStocksCache.ts,
+      source: usStocksCache.source,
+      stale: false,
+      stocks: usStocksCache.stocks,
+    });
     return;
   }
   try {
     const stocks = await fetchStocksBatched(US_DEFS, 20, 500);
-    usStocksCache = { ts: now, stocks };
-    res.json({ status: "ok", ts: now, stocks });
+    usStocksCache = { ts: now, stocks, source: "Yahoo Finance" };
+    res.json({ status: "ok", ts: now, fetchedAt: now, source: "Yahoo Finance", stale: false, stocks });
   } catch (e) {
-    logger.error({ err: (e as Error).message }, "us-stocks build failed");
+    logger.error({ err: e }, "us-stocks build failed");
     if (usStocksCache) {
-      res.json({ status: "ok", ts: usStocksCache.ts, stocks: usStocksCache.stocks, stale: true });
+      res.json({
+        status: "ok",
+        ts: usStocksCache.ts,
+        fetchedAt: usStocksCache.ts,
+        source: usStocksCache.source,
+        stale: true,
+        stocks: usStocksCache.stocks,
+      });
     } else {
       res.status(503).json({ status: "error", message: "US stocks data unavailable" });
     }

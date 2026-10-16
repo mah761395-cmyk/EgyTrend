@@ -1228,8 +1228,38 @@ function normalizeMarketRows(raw){
     const m=item&&typeof item==="object"?item:{};
     const n=String(m.n||"").trim().slice(0,80);
     if(!n)return [];
-    return [{n,v:String(m.v??"").slice(0,80),c:String(m.c??"").slice(0,80),s:String(m.s??"").slice(0,120),up:m.up===true,clickable:m.clickable===true}];
+    return [{n,v:String(m.v??"").slice(0,80),c:String(m.c??"").slice(0,80),s:String(m.s??"").slice(0,120),source:String(m.source??"").slice(0,160),up:m.up===true,clickable:m.clickable===true}];
   }).slice(0,100);
+}
+function normalizeMarketFreshness(raw,topLevelStale){
+  const f=raw&&typeof raw==="object"?raw:{};
+  const ts=finiteNumber(f.fetchedAt,0);
+  const incoming=f.sections&&typeof f.sections==="object"?f.sections:{};
+  const sections={};
+  ["eg","gl","cm","cr"].forEach(key=>{
+    const sec=incoming[key]&&typeof incoming[key]==="object"?incoming[key]:{};
+    const sources=String(sec.sources||"غير متاح").slice(0,200);
+    sections[key]={sources,unavailable:sec.unavailable===true||sources==="غير متاح"};
+  });
+  const unavailable=Object.values(sections).every(sec=>sec.unavailable);
+  return {fetchedAt:ts>0?ts:0,stale:topLevelStale===true||f.stale===true,unavailable,loading:false,sections};
+}
+function normalizeStockFreshness(raw){
+  const ts=finiteNumber(raw?.fetchedAt??raw?.ts,0);
+  const source=String(raw?.source||"غير متاح").slice(0,160);
+  return {fetchedAt:ts>0?ts:0,stale:raw?.stale===true,source,unavailable:raw?.unavailable===true||source==="غير متاح",loading:false};
+}
+function marketAgeLabel(meta){
+  const ts=finiteNumber(meta?.fetchedAt,0);
+  if(!ts)return meta?.loading?"جارٍ تحميل البيانات...":meta?.unavailable?"وقت آخر محاولة غير متاح":"وقت التحديث غير متاح";
+  const sec=Math.max(0,Math.round((Date.now()-ts)/1000));
+  const age=sec<60?sec+"ث":Math.round(sec/60)+"د";
+  return `${meta?.unavailable?"آخر محاولة":"آخر تحديث"}: ${age}`;
+}
+function marketStateLabel(meta){
+  if(meta?.loading)return "⏳ جارٍ التحميل";
+  if(meta?.unavailable)return "غير متاح حاليًا";
+  return meta?.stale?"⚠️ متأخر":"● محدث";
 }
 function normalizeCalendarEvents(raw){
   if(!Array.isArray(raw))return [];
@@ -1338,6 +1368,22 @@ const TICKS_STATIC = [
   {n:"BTC",    v:"...",c:"...",up:true},
   {n:"ETH",    v:"...",c:"...",up:true},
 ];
+function unavailableMarketRows(section){
+  return (MARKET_STATIC[section]||[]).map(row=>({
+    ...row,v:"غير متاح حاليًا",c:"—",up:false,source:"غير متاح",
+  }));
+}
+function markMarketsUnavailable(){
+  if(marketFreshness.fetchedAt){
+    marketFreshness={...marketFreshness,stale:true,loading:false};
+  }else{
+    const sections={};
+    ["eg","gl","cm","cr"].forEach(key=>{sections[key]={sources:"غير متاح",unavailable:true};liveMarkets[key]=unavailableMarketRows(key);});
+    marketFreshness={fetchedAt:0,stale:true,unavailable:true,loading:false,sections};
+    liveTicks=[];
+  }
+  buildTicker();buildMarkets();buildMarketStrip();
+}
 
 /* Live calendar — populated from /api/markets/calendar (ForexFactory). */
 let liveCalendar = [];
@@ -1346,31 +1392,20 @@ let liveCalendar = [];
 const STOCKS_API    = "/api/markets/stocks";
 const US_STOCKS_API = "/api/markets/us-stocks";
 
-const PLANS = {
-  monthly:  {l:"شهري",    p:99,  per:"شهر",  m:1},
-  quarterly:{l:"ربع سنوي",p:249, per:"3 أشهر",m:3, badge:"وفر 16%"},
-  yearly:   {l:"سنوي",    p:799, per:"سنة",  m:12,badge:"الأفضل"},
-};
-const PAYS = [
-  {id:"vodafone",n:"فودافون كاش",i:"🔴",num:"01008605139"},
-  {id:"etisalat",n:"اتصالات كاش",i:"🟡",num:"01008605139"},
-  {id:"orange",  n:"أورنج كاش",  i:"🟠",num:"01008605139"},
-];
-
 /* ─── Secure FAQ (admin question removed) ─── */
 const FAQ = [
   {q:"كيف أشترك في VIP؟",
-   a:"اضغط VIP ← اختر الباقة ← اختر وسيلة الدفع ← حوّل المبلغ ← أدخل كود العملية. يُفعَّل خلال 30 دقيقة."},
+   a:"اضغط VIP ثم اختر باقة ووسيلة دفع من الخيارات التي يعرضها الخادم، وارفع إثبات التحويل. تتغير الحالة بعد مراجعة الطلب."},
   {q:"من أين تأتي الأخبار؟",
    a:"من 16+ مصدر موثوق: Reuters، CNBC، Yahoo Finance، MarketWatch، BBC، الجزيرة، العربية، مصراوي، اليوم السابع، أموال الغد، CoinDesk وغيرها."},
   {q:"ما وسائل الدفع المتاحة؟",
-   a:"فودافون كاش، اتصالات كاش، أورنج كاش. جميعها على رقم 01008605139."},
+   a:"تعرض صفحة الاشتراك وسائل الدفع المفعّلة حاليًا وأرقامها من إعدادات الخادم. إذا لم تظهر وسيلة، فهي غير متاحة حاليًا."},
   {q:"ما مميزات VIP؟",
-   a:"AI Advisor مستشار مالي ذكي، إشارات تداول يومية، Stock Screener احترافي، مستهدفات الأسعار، Morning & Closing Reports، تنبيهات مبكرة."},
+   a:"تظهر المزايا الحالية مع الباقة عند فتح صفحة الاشتراك. لا تعتمد على هذه الصفحة لمعرفة سعر أو ميزة قبل تحميل إعدادات الاشتراك."},
   {q:"ماذا أفعل إذا لم يُفعَّل اشتراكي؟",
-   a:"تواصل فوراً عبر واتساب 01008605139 مع كود العملية وسنُفعّل اشتراكك خلال دقائق."},
+   a:"تابع حالة الطلب من صفحة VIP. إذا ظهرت ملاحظة رفض، صحّح بيانات العملية ثم أرسل طلبًا جديدًا."},
   {q:"هل بيانات الأسواق حقيقية؟",
-   a:"نعم! بيانات أسهم EGX حقيقية من Yahoo Finance (20 سهم، تُحدَّث كل دقيقتين)، بيانات الكريبتو من CoinGecko، وأسعار الصرف من Alpha Vantage. جميع البيانات تلقائية وحقيقية."},
+   a:"تعرض المنصة مصدر البيانات ووقت جمعها وحالتها. عند تعذر المصدر لا تعرض رقمًا بديلًا وتظهر «غير متاح حاليًا»، وقد تظهر علامة «متأخر» عند استخدام لقطة مخزنة."},
 ];
 
 /* ─── FALLBACK IMAGES ─── */
@@ -1389,9 +1424,12 @@ let curArt=null, wl=[], savedIds=[], portfolio=[];
 let chatHist=[];
 let subStep=1, selPlan="monthly", selPay="vodafone";
 let srcStatus={};
-let liveMarkets = JSON.parse(JSON.stringify(MARKET_STATIC)); // deep copy
+let liveMarkets = JSON.parse(JSON.stringify(MARKET_STATIC)); // loading placeholders only — never financial values
+let marketFreshness = {fetchedAt:0,stale:true,unavailable:false,loading:true,sections:{}};
 let liveStocks = []; // EGX stocks — populated from /api/markets/stocks
+let egxStocksFreshness = {fetchedAt:0,stale:true,source:"غير متاح",unavailable:false,loading:true};
 let usStocks   = []; // US stocks  — populated from /api/markets/us-stocks
+let usStocksFreshness = {fetchedAt:0,stale:true,source:"غير متاح",unavailable:false,loading:true};
 let scrMarket  = "egx"; // active screener market: "egx" | "us"
 let scrSearch  = "";
 let scrFilters = {sector:"all",perf:"all",priceMin:"",priceMax:"",volMin:"",peFilter:"all",divFilter:"all",epsFilter:"all",sortBy:"chgPct",sortDir:-1};
@@ -1488,34 +1526,38 @@ function bootApp(){
 /* ─── EGX Stocks live fetch ─── */
 async function fetchStocksData(){
   try{
-    const r=await fetch(STOCKS_API);
-    if(!r.ok) return;
+    const r=await fetch(STOCKS_API,{cache:"no-store"});
+    if(!r.ok)throw new Error("stocks unavailable");
     const j=await r.json();
-    if(j.status==="ok" && Array.isArray(j.stocks) && j.stocks.length){
-      const stocks=normalizeStockList(j.stocks);
-      if(!stocks.length)return;
-      liveStocks=stocks;
-      checkPriceAlerts();
-      const ep=document.getElementById("egx-page");
-      if(ep&&ep.classList.contains("open")) renderStocks();
-      if(scrMarket==="egx") renderScrResults();
-    }
-  }catch{}
+    if(j.status!=="ok" || !Array.isArray(j.stocks))throw new Error("invalid stocks payload");
+    const stocks=normalizeStockList(j.stocks);
+    egxStocksFreshness={...normalizeStockFreshness(j),unavailable:stocks.length===0};
+    liveStocks=stocks;
+    if(stocks.length)checkPriceAlerts();
+  }catch{
+    if(egxStocksFreshness.fetchedAt)egxStocksFreshness={...egxStocksFreshness,stale:true,loading:false};
+    else{egxStocksFreshness={fetchedAt:0,stale:true,source:"غير متاح",unavailable:true,loading:false};liveStocks=[];}
+  }
+  const ep=document.getElementById("egx-page");
+  if(ep&&ep.classList.contains("open")) renderStocks();
+  if(scrMarket==="egx") renderScrResults();
 }
 
 /* ─── US Stocks live fetch ─── */
 async function fetchUsStocksData(){
   try{
-    const r=await fetch(US_STOCKS_API);
-    if(!r.ok) return;
+    const r=await fetch(US_STOCKS_API,{cache:"no-store"});
+    if(!r.ok)throw new Error("us stocks unavailable");
     const j=await r.json();
-    if(j.status==="ok" && Array.isArray(j.stocks) && j.stocks.length){
-      const stocks=normalizeStockList(j.stocks);
-      if(!stocks.length)return;
-      usStocks=stocks;
-      if(scrMarket==="us") renderScrResults();
-    }
-  }catch{}
+    if(j.status!=="ok" || !Array.isArray(j.stocks))throw new Error("invalid us stocks payload");
+    const stocks=normalizeStockList(j.stocks);
+    usStocksFreshness={...normalizeStockFreshness(j),unavailable:stocks.length===0};
+    usStocks=stocks;
+  }catch{
+    if(usStocksFreshness.fetchedAt)usStocksFreshness={...usStocksFreshness,stale:true,loading:false};
+    else{usStocksFreshness={fetchedAt:0,stale:true,source:"غير متاح",unavailable:true,loading:false};usStocks=[];}
+  }
+  if(scrMarket==="us") renderScrResults();
 }
 
 /* ─── Helpers for stocks ─── */
@@ -1786,21 +1828,24 @@ async function fetchMarketsData(force){
     if(!r.ok)throw new Error("HTTP "+r.status);
     const d=await r.json();
     if(d.status!=="ok"||!d.markets)throw new Error("bad payload");
+    marketFreshness=normalizeMarketFreshness(d.freshness,d.stale===true);
 
-    // Replace section data only after its response rows pass the UI boundary.
+    // A missing section is not permission to retain a visual placeholder or
+    // an old number: show an explicit unavailable state for that section.
     ["eg","gl","cm","cr"].forEach(k=>{
       const rows=normalizeMarketRows(d.markets[k]);
-      if(rows.length)liveMarkets[k]=rows;
+      liveMarkets[k]=rows.length?rows:unavailableMarketRows(k);
     });
 
-    // Update ticker
+    // Update ticker only with rows the server actually supplied.
     const ticker=normalizeMarketRows(d.ticker);
-    if(ticker.length)liveTicks=ticker;
+    liveTicks=ticker;
 
     buildTicker();buildMarkets();buildMarketStrip();
     vipDataPulse();
   }catch(e){
-    // Keep last known data — partial UI better than empty
+    // Preserve a verified prior snapshot as stale; otherwise say unavailable.
+    markMarketsUnavailable();
   }
 }
 
@@ -1823,28 +1868,35 @@ async function fetchCalendarData(){
 
 /* ═══════════════════ TICKER ═══════════════════ */
 function buildTicker(){
-  const src=(liveTicks&&liveTicks.length)?liveTicks:TICKS_STATIC;
+  const el=document.getElementById("tick-inner");if(!el)return;
+  const src=(liveTicks&&liveTicks.length)?liveTicks:(marketFreshness.unavailable?[]:TICKS_STATIC);
+  if(!src.length){el.innerHTML=`<span class="ti" style="color:var(--t4);">📡 بيانات الأسواق غير متاحة حاليًا</span>`;return;}
   const items=[...src,...src,...src];
-  document.getElementById("tick-inner").innerHTML=items.map(t=>`
-    <span class="ti">
+  el.innerHTML=items.map(t=>{
+    const unavailable=t.source==="غير متاح"||t.v==="غير متاح حاليًا";
+    return `<span class="ti">
       <span style="color:var(--ink4);font-size:7px;">◆</span>
       <span style="color:var(--t4);font-weight:600;">${sanitize(t.n)}</span>
-      <span style="color:var(--t2);font-weight:700;">${sanitize(t.v)}</span>
-      <span style="color:${t.up?"var(--up)":"var(--dn)"};">${t.up?"▲":"▼"}${sanitize(t.c)}</span>
-    </span>`).join("");
+      <span style="color:var(--t2);font-weight:700;">${sanitize(unavailable?"غير متاح حاليًا":t.v)}</span>
+      <span style="color:${unavailable?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${unavailable?"—":(t.up?"▲":"▼")+sanitize(t.c)}</span>
+    </span>`;
+  }).join("");
 }
 
 /* ═══════════════════ MARKET STRIP ═══════════════════ */
 function buildMarketStrip(){
   const strip=document.getElementById("mstrip");
   if(!strip)return;
-  const src=(liveTicks&&liveTicks.length)?liveTicks:TICKS_STATIC;
-  strip.innerHTML=src.slice(0,5).map(t=>`
-    <div class="ms-item">
+  const src=(liveTicks&&liveTicks.length)?liveTicks:(marketFreshness.unavailable?[]:TICKS_STATIC);
+  if(!src.length){strip.innerHTML=`<div class="ms-item" style="width:100%;text-align:center;color:var(--t4);">📡 بيانات الأسواق غير متاحة حاليًا</div>`;return;}
+  strip.innerHTML=src.slice(0,5).map(t=>{
+    const unavailable=t.source==="غير متاح"||t.v==="غير متاح حاليًا";
+    return `<div class="ms-item">
       <div class="ms-n">${sanitize(t.n)}</div>
-      <div class="ms-v">${sanitize(t.v)}</div>
-      <div class="ms-c" style="color:${t.up?"var(--up)":"var(--dn)"};">${t.up?"▲":"▼"}${sanitize(t.c)}</div>
-    </div>`).join("");
+      <div class="ms-v">${sanitize(unavailable?"غير متاح حاليًا":t.v)}</div>
+      <div class="ms-c" style="color:${unavailable?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${unavailable?"—":(t.up?"▲":"▼")+sanitize(t.c)}</div>
+    </div>`;
+  }).join("");
 }
 
 /* ═══════════════════ PILLS ═══════════════════ */
@@ -2198,17 +2250,24 @@ function buildMarkets(){
   const secs={eg:"mkt-eg",gl:"mkt-gl",cm:"mkt-cm",cr:"mkt-cr"};
   Object.entries(secs).forEach(([key,elId])=>{
     const el=document.getElementById(elId);if(!el)return;
-    el.innerHTML=liveMarkets[key].map((m,idx)=>`
-      <div class="mc clickable${wl.includes(m.n)?" wl":""}" onclick="openMarketDetail('${key}',${idx})">
+    const secMeta=marketFreshness.sections?.[key]||{sources:"غير متاح",unavailable:true};
+    el.innerHTML=liveMarkets[key].map((m,idx)=>{
+      const unavailable=secMeta.unavailable===true||m.source==="غير متاح"||m.v==="غير متاح حاليًا";
+      return `<div class="mc clickable${wl.includes(m.n)?" wl":""}" onclick="openMarketDetail('${key}',${idx})">
         <div class="mc-hdr"><div class="mc-name">${sanitize(m.n)}</div><button class="wl-btn" onclick='event.stopPropagation();toggleWL(${safeJsArg(m.n)})'>${wl.includes(m.n)?"⭐":"☆"}</button></div>
-        <div class="mc-val">${sanitize(m.v)}</div>
-        <div class="mc-chg" style="color:${m.up?"var(--up)":"var(--dn)"};">${m.up?"▲":"▼"} ${sanitize(m.c)}</div>
+        <div class="mc-val">${sanitize(unavailable?"غير متاح حاليًا":m.v)}</div>
+        <div class="mc-chg" style="color:${unavailable?"var(--t5)":m.up?"var(--up)":"var(--dn)"};">${unavailable?"—":(m.up?"▲":"▼")+" "+sanitize(m.c)}</div>
         <div class="mc-sub">${sanitize(m.s||"")}</div>
-      </div>`).join("");
+        <div style="color:var(--t5);font-size:8px;margin-top:3px;">المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")}</div>
+      </div>`;
+    }).join("");
   });
-  // Update last-updated label
+  // Show server collection time, source, and stale state — never browser render time.
   const upd=document.getElementById("mkt-last-upd");
-  if(upd)upd.textContent="آخر تحديث: "+new Date().toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"});
+  if(upd){
+    const sources=[...new Set(Object.values(marketFreshness.sections||{}).map(s=>s?.sources).filter(Boolean))].join(" · ")||"غير متاح";
+    upd.textContent=`${marketAgeLabel(marketFreshness)} · ${marketStateLabel(marketFreshness)} · المصدر: ${sources}`;
+  }
 }
 function toggleWL(n){
   const i=wl.indexOf(n);if(i>=0)wl.splice(i,1);else wl.push(n);
@@ -2221,7 +2280,9 @@ function openMarketDetail(sec,idx){
   const m=arr?arr[idx]:null;
   if(!m)return;
   const ctx=MKT_CTX[m.n]||{icon:"📊",en:m.n,desc:"",cat:"سوق",trading:"—"};
-  const tvSym=TV_SYMS[m.n]||null;
+  const secMeta=marketFreshness.sections?.[sec]||{sources:"غير متاح",unavailable:true};
+  const quoteUnavailable=secMeta.unavailable===true||m.source==="غير متاح"||m.v==="غير متاح حاليًا";
+  const tvSym=quoteUnavailable?null:(TV_SYMS[m.n]||null);
   const col=SEC_COL[sec]||"var(--g)";
   const inWL=wl.includes(m.n);
 
@@ -2239,6 +2300,7 @@ function openMarketDetail(sec,idx){
           <div style="color:var(--t1);font-size:20px;font-weight:900;line-height:1.1;">${sanitize(m.n)}</div>
           <div style="color:var(--t4);font-size:11px;margin-top:3px;">${sanitize(ctx.en)}</div>
           <span style="display:inline-block;margin-top:5px;background:${col}18;border:1px solid ${col}35;border-radius:20px;padding:1px 9px;font-size:10px;color:${col};font-weight:700;">${sanitize(ctx.cat)}</span>
+          <div style="color:var(--t5);font-size:9px;margin-top:5px;">${marketAgeLabel(marketFreshness)} · ${marketStateLabel(quoteUnavailable?{...marketFreshness,unavailable:true}:marketFreshness)}<br/>المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")}</div>
         </div>
         <div style="text-align:left;flex-shrink:0;">
           <div style="color:var(--t1);font-size:22px;font-weight:900;font-family:var(--mono);">${sanitize(m.v)}</div>
@@ -2413,13 +2475,13 @@ function renderStocks(){
   const el=document.getElementById("stocks-list");
   if(!el) return;
   if(!liveStocks.length){
-    el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">⏳</div><div>جارٍ تحميل بيانات الأسهم...</div></div>`;
+    const unavailable=egxStocksFreshness.unavailable===true;
+    el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">${unavailable?"📡":"⏳"}</div><div>${unavailable?"بيانات أسهم EGX غير متاحة حاليًا":"جارٍ تحميل بيانات الأسهم..."}</div>${unavailable?`<div style="font-size:10px;color:var(--t5);margin-top:5px;">المصدر: ${sanitize(egxStocksFreshness.source||"غير متاح")}</div>`:""}</div>`;
     return;
   }
   if(!curStocks.length){el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">📋</div><div>لا توجد أسهم مطابقة</div></div>`;return;}
-  const ts=liveStocks[0]?.ts;
-  const age=ts?Math.round((Date.now()-ts)/1000):null;
-  el.innerHTML=(age!==null?`<div style="color:var(--t5);font-size:9px;text-align:center;padding:4px 0 2px;font-family:var(--mono);">آخر تحديث: ${age<60?age+"ث":Math.round(age/60)+"د"} · بيانات حقيقية من Yahoo Finance</div>`:"")
+  const source=egxStocksFreshness.source||"غير متاح";
+  el.innerHTML=`<div style="color:var(--t5);font-size:9px;text-align:center;padding:4px 0 2px;font-family:var(--mono);">${marketAgeLabel(egxStocksFreshness)} · ${marketStateLabel(egxStocksFreshness)} · المصدر: ${sanitize(source)}</div>`
   +curStocks.map(s=>{
     const up=s.chgPct>=0;
     return`<div class="stock-row" onclick='openStockDetail(${safeJsArg(s.sym)})'>
@@ -2481,7 +2543,7 @@ function renderVIP(){
           ["🔍","Stock Screener","فلتر 20 سهم مصري بعشرات المعايير: P/E، الحجم، القطاع — مثل Investing.com تماماً"],
           ["💼","متابع المحفظة","أدخل أسهمك وأسعار شرائها — AI يحلل أداءك ويوصي بقرارات مبنية على بيانات"],
           ["🌅","تقارير يومية","تقرير صباحي قبل فتح السوق وتقرير إغلاق مسائي — لا تبدأ يومك بدونه"],
-          ["📊","بيانات حقيقية","Yahoo Finance · Finnhub · Alpha Vantage — أسعار مباشرة وليست مؤخرة"]
+          ["📊","شفافية البيانات","يظهر مصدر كل بيانات السوق ووقت جمعها وحالة التأخر عند توفرها"]
         ].map(f=>`
           <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:13px 11px;text-align:center;">
             <div style="font-size:26px;margin-bottom:5px;">${f[0]}</div>
@@ -2501,7 +2563,7 @@ function renderVIP(){
       <button class="btn btn-au btn-full" style="padding:15px;font-size:15px;font-weight:900;" onclick="openSub()">
         ⭐ اشترك الآن
       </button>
-      <div style="text-align:center;color:var(--t5);font-size:10px;margin-top:8px;">يُفعّل بعد مراجعة إثبات الدفع · دعم واتساب 01008605139</div>`;
+      <div style="text-align:center;color:var(--t5);font-size:10px;margin-top:8px;">يُفعّل بعد مراجعة إثبات الدفع · تابع حالة الطلب من صفحة VIP</div>`;
     loadPayStatus();
     return;
   }
@@ -2841,7 +2903,7 @@ function vBuildMkts(b){
 
   b.innerHTML=`
     <div class="row between" style="margin-bottom:10px;">
-      <div style="color:var(--t4);font-size:10px;">📡 بيانات مباشرة من /api/markets</div>
+      <div style="color:var(--t4);font-size:10px;">📡 ${marketAgeLabel(marketFreshness)} · ${marketStateLabel(marketFreshness)}<br/>المصادر: ${sanitize([...new Set(Object.values(marketFreshness.sections||{}).map(s=>s?.sources).filter(Boolean))].join(" · ")||"غير متاح")}</div>
       <button onclick="refreshVipMkts()" style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);color:#93c5fd;font-size:10px;padding:4px 10px;border-radius:7px;cursor:pointer;font-family:var(--sans);">↻ تحديث</button>
     </div>
     ${["eg","gl","cm","cr"].map(k=>`
@@ -2994,7 +3056,7 @@ function vBuildScr(b){
         </table>
       </div>
       <div style="margin-top:8px;padding:6px;background:rgba(59,130,246,.05);border-radius:8px;border:1px solid rgba(59,130,246,.1);">
-        <div style="color:var(--t5);font-size:9px;text-align:center;direction:rtl;" id="scr-footer">📡 بيانات حقيقية من Yahoo Finance · EGX كل 3 دقائق · US كل 5 دقائق</div>
+        <div style="color:var(--t5);font-size:9px;text-align:center;direction:rtl;" id="scr-footer">📡 جارٍ تحميل مصدر ووقت بيانات الأسهم...</div>
       </div>
     </div>`;
   renderScrSectorPills();
@@ -3589,11 +3651,14 @@ function renderScrResults(){
   const tb=document.getElementById("scr-results");
   if(!tb) return;
   const countEl=document.getElementById("scr-count");
+  const meta=scrMarket==="egx"?egxStocksFreshness:usStocksFreshness;
+  const footer=document.getElementById("scr-footer");
+  if(footer)footer.textContent=`📡 ${marketAgeLabel(meta)} · ${marketStateLabel(meta)} · المصدر: ${meta.source||"غير متاح"}`;
 
   const stocks_src=scrMarket==="egx"?liveStocks:usStocks;
   if(!stocks_src.length){
-    tb.innerHTML=`<tr><td colspan="10" class="scr-empty">⏳ جارٍ تحميل بيانات الأسهم...</td></tr>`;
-    if(countEl) countEl.textContent="جارٍ...";
+    tb.innerHTML=`<tr><td colspan="10" class="scr-empty">${meta.unavailable?"📡 بيانات الأسهم غير متاحة حاليًا":"⏳ جارٍ تحميل بيانات الأسهم..."}</td></tr>`;
+    if(countEl) countEl.textContent=meta.unavailable?"غير متاح":"جارٍ...";
     return;
   }
 
@@ -3896,21 +3961,28 @@ async function analyzePort(){
   btn.innerHTML="🤖 إعادة التحليل";btn.disabled=false;
 }
 
-/* ═══════════════════ SUB MODAL (Vodafone Cash) ═══════════════════ */
-let SUB_PLANS=null;       /* live plans from /api/payments/config (admin-editable prices) */
-let SUB_METHODS=null;     /* enabled payment methods from /api/payments/config */
-let SUB_METHOD="vodafone";
+/* ═══════════ SUB MODAL (server-configured payment only) ═══════════ */
+let SUB_PLANS=null;       /* live plans from /api/payments/config (admin-editable) */
+let SUB_METHODS=null;     /* live enabled methods from /api/payments/config */
+let SUB_METHOD="";
+let SUB_CONFIG_STATE="idle"; /* idle | loading | ready | error */
+let SUB_CONFIG_ERROR="";
 const SUB_METHOD_META={vodafone:{emoji:"🔴",label:"فودافون كاش"},orange:{emoji:"🟠",label:"أورنج كاش"},etisalat:{emoji:"🟢",label:"اتصالات كاش"},instapay:{emoji:"💳",label:"إنستاباي"}};
-function SUB_M(){const arr=SUB_METHODS||[];return arr.find(m=>m.id===SUB_METHOD)||{id:"vodafone",label:"فودافون كاش",number:"01008605139",instructions:""};}
-function payMethodLabel(id){const m=SUB_METHOD_META[id];return m?m.emoji+" "+m.label:(id||"");}
+function SUB_M(){const arr=Array.isArray(SUB_METHODS)?SUB_METHODS:[];return arr.find(m=>m.id===SUB_METHOD)||null;}
+function payMethodLabel(id){const m=SUB_METHOD_META[id];return m?m.emoji+" "+m.label:(id||"غير متاح");}
 let payProofData=null, payProofName="";
-function openSub(){subStep=1;selPlan="monthly";payProofData=null;payProofName="";renderSub();document.getElementById("sub-ov").classList.add("open");loadSubConfig();}
+function openSub(){
+  subStep=1;selPlan="";SUB_METHOD="";payProofData=null;payProofName="";
+  /* Never reuse a price, wallet, or method from an earlier response. */
+  SUB_PLANS=null;SUB_METHODS=null;SUB_CONFIG_STATE="loading";SUB_CONFIG_ERROR="";
+  renderSub();document.getElementById("sub-ov").classList.add("open");loadSubConfig();
+}
 function closeSub(){document.getElementById("sub-ov").classList.remove("open");if(typeof clearPayStatus==="function")clearPayStatus();}
 /* clearPayStatus previously did not exist → closeSub() threw a ReferenceError
  * every time the payment modal closed. It simply empties the status card so
  * the next open re-fetches fresh state via loadPayStatus(). */
 function clearPayStatus(){const el=document.getElementById("pay-status-card");if(el)el.innerHTML="";}
-function subPlans(){return SUB_PLANS||PLANS;}
+function subPlans(){return SUB_PLANS||{};}
 function normalizeSubscriptionPlans(raw){
   if(!Array.isArray(raw))return {};
   return raw.reduce((out,item)=>{
@@ -3934,68 +4006,88 @@ function normalizeSubscriptionMethods(raw){
   });
 }
 async function loadSubConfig(){
+  SUB_CONFIG_STATE="loading";SUB_CONFIG_ERROR="";
+  if(document.getElementById("sub-ov")?.classList.contains("open"))renderSub();
   try{
-    const r=await fetch("/api/payments/config");
+    const r=await fetch("/api/payments/config",{cache:"no-store"});
     const j=await r.json().catch(()=>null);
-    if(j&&j.status==="ok"){
-      const map=normalizeSubscriptionPlans(j.plans);
-      if(Object.keys(map).length){SUB_PLANS=map;if(!map[selPlan])selPlan=Object.keys(map)[0];}
-      const methods=normalizeSubscriptionMethods(j.methods);
-      if(methods.length){
-        SUB_METHODS=methods;
-        if(!methods.some(m=>m.id===SUB_METHOD))SUB_METHOD=methods[0].id;
-      }
-      if((subStep===1||subStep===2)&&document.getElementById("sub-ov").classList.contains("open"))renderSub();
-    }
-  }catch(e){/* keep static fallback */}
+    if(!r.ok||!j||j.status!=="ok")throw new Error("config_unavailable");
+    const map=normalizeSubscriptionPlans(j.plans);
+    const methods=normalizeSubscriptionMethods(j.methods);
+    if(!Object.keys(map).length)throw new Error("plans_unavailable");
+    if(!methods.length)throw new Error("methods_unavailable");
+    SUB_PLANS=map;SUB_METHODS=methods;
+    if(!map[selPlan])selPlan=Object.keys(map)[0];
+    if(!methods.some(m=>m.id===SUB_METHOD))SUB_METHOD=methods[0].id;
+    SUB_CONFIG_STATE="ready";
+  }catch(e){
+    SUB_PLANS=null;SUB_METHODS=null;SUB_METHOD="";selPlan="";
+    SUB_CONFIG_STATE="error";
+    SUB_CONFIG_ERROR="تعذر تحميل الباقات أو وسائل الدفع من الخادم. لا تظهر أي أسعار أو أرقام بديلة؛ حاول مرة أخرى لاحقًا.";
+  }
+  if(document.getElementById("sub-ov")?.classList.contains("open"))renderSub();
+}
+function subConfigState(){
+  const el=document.getElementById("sub-el");if(!el)return true;
+  if(SUB_CONFIG_STATE==="loading"){
+    el.innerHTML=`<div class="empty" style="padding:34px 12px;"><div class="sp sp-au sp-md" style="margin:0 auto 12px;"></div><div>جارٍ تحميل الباقات ووسائل الدفع من الخادم...</div></div>`;
+    return true;
+  }
+  if(SUB_CONFIG_STATE!=="ready"){
+    el.innerHTML=`<div class="empty" style="padding:30px 12px;"><div style="font-size:30px;margin-bottom:8px;">⚠️</div><div style="color:var(--dn);font-weight:800;margin-bottom:6px;">لا يمكن بدء طلب الدفع الآن</div><div style="font-size:11px;line-height:1.7;max-width:280px;">${sanitize(SUB_CONFIG_ERROR||"بيانات الاشتراك غير متاحة حاليًا.")}</div><button class="btn btn-ghost" style="margin-top:14px;padding:9px 18px;" onclick="loadSubConfig()">↻ إعادة المحاولة</button></div>`;
+    return true;
+  }
+  return false;
 }
 function renderSub(){
-  const el=document.getElementById("sub-el");
+  const el=document.getElementById("sub-el");if(!el)return;
+  if(subConfigState())return;
   const P=subPlans();
+  const method=SUB_M();
+  if(!P[selPlan]||!method){SUB_CONFIG_STATE="error";SUB_CONFIG_ERROR="إعدادات الدفع تغيّرت. أعد تحميل الخيارات قبل المتابعة.";subStep=1;renderSub();return;}
   if(subStep===1){
     el.innerHTML=`
-      <div style="text-align:center;margin-bottom:18px;"><div style="font-size:32px;margin-bottom:4px;">⭐</div><div style="color:var(--au);font-weight:900;font-size:18px;">اشتراك VIP</div><div style="color:var(--t4);font-size:11.5px;margin-top:2px;">AI Advisor + إشارات + Screener + 16+ مصدر</div></div>
+      <div style="text-align:center;margin-bottom:18px;"><div style="font-size:32px;margin-bottom:4px;">⭐</div><div style="color:var(--au);font-weight:900;font-size:18px;">اشتراك VIP</div><div style="color:var(--t4);font-size:11.5px;margin-top:2px;">الأسعار وطرق الدفع أدناه من إعدادات الخادم الحالية</div></div>
       <div class="plan-grid">${Object.entries(P).map(([k,p])=>`<div class="plan-c${selPlan===k?" active":""}" onclick='sPlan(${safeJsArg(k)})'>${p.badge?`<span class="plan-badge">${sanitize(p.badge)}</span>`:""}<div class="plan-label">${sanitize(p.l)}</div><div class="plan-price">${finiteNumber(p.p,0)}</div><div class="plan-period">ج / ${sanitize(p.per)}</div></div>`).join("")}</div>
-      <div class="feat-list">${["AI Advisor مستشار مالي ذكي","16+ مصدر أخبار موثوق","إشارات تداول يومية","Stock Screener (Investing-style)","مستهدفات الأسعار","Morning & Closing Reports","تنبيهات مبكرة","دعم واتساب مباشر"].map(f=>`<div class="feat-it"><span style="color:var(--g);font-size:11px;">✓</span>${f}</div>`).join("")}</div>
-      <button class="btn btn-au btn-full" style="padding:13px;font-size:14px;" onclick="subStep=2;renderSub()">اشترك — ${P[selPlan]?finiteNumber(P[selPlan].p,0):""} جنيه</button>`;
+      <div style="color:var(--t4);font-size:10.5px;line-height:1.75;background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:9px 10px;margin:11px 0;">بعد اختيار الباقة، تظهر وسائل الدفع المفعّلة من الخادم. لا يُفعّل الاشتراك إلا بعد مراجعة إثبات الدفع.</div>
+      <button class="btn btn-au btn-full" style="padding:13px;font-size:14px;" onclick="subToPayment()">متابعة إلى وسيلة الدفع</button>`;
   } else if(subStep===2){
-    const price=P[selPlan]?P[selPlan].p:"";
+    const price=P[selPlan].p;
     el.innerHTML=`
       <div style="color:var(--t2);font-weight:800;font-size:13.5px;margin-bottom:10px;text-align:center;">💳 اختر وسيلة الدفع</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-        ${(SUB_METHODS&&SUB_METHODS.length?SUB_METHODS:[SUB_M()]).map(m=>{const meta=SUB_METHOD_META[m.id]||{emoji:"💳"};return `<button class="cp${SUB_METHOD===m.id?" active":""}" onclick='sPayMethod(${safeJsArg(m.id)})' style="padding:7px 12px;">${sanitize(meta.emoji)} ${sanitize(m.label)}</button>`;}).join("")}
+        ${SUB_METHODS.map(m=>{const meta=SUB_METHOD_META[m.id]||{emoji:"💳"};return `<button class="cp${SUB_METHOD===m.id?" active":""}" onclick='sPayMethod(${safeJsArg(m.id)})' style="padding:7px 12px;">${sanitize(meta.emoji)} ${sanitize(m.label)}</button>`;}).join("")}
       </div>
       <div style="background:var(--aud);border:1px solid rgba(245,158,11,.25);border-radius:13px;padding:13px;margin-bottom:10px;text-align:center;">
-        <div style="color:var(--au);font-weight:700;font-size:12.5px;margin-bottom:5px;">حوّل ${price} جنيه إلى رقم المحفظة:</div>
-        <div id="pay-num" style="color:var(--t1);font-size:22px;font-weight:900;font-family:var(--mono);letter-spacing:1.5px;direction:ltr;">${sanitize(SUB_M().number)}</div>
+        <div style="color:var(--au);font-weight:700;font-size:12.5px;margin-bottom:5px;">حوّل ${finiteNumber(price,0)} جنيه إلى رقم المحفظة:</div>
+        <div id="pay-num" style="color:var(--t1);font-size:22px;font-weight:900;font-family:var(--mono);letter-spacing:1.5px;direction:ltr;">${sanitize(method.number)}</div>
         <button class="btn btn-g" style="padding:8px 24px;font-size:12px;margin-top:9px;" onclick="copyWallet()">📋 نسخ الرقم</button>
       </div>
-      <div style="color:var(--t4);font-size:10.5px;line-height:1.8;margin-bottom:11px;background:var(--s1);border-radius:9px;padding:8px 10px;">
-        1. افتح تطبيق ${sanitize(SUB_M().label)} وحوّل ${finiteNumber(price,0)} جنيه للرقم أعلاه<br/>
-        2. خذ Screenshot لرسالة تأكيد التحويل<br/>
-        3. أدخل رقم العملية وارفع الصورة هنا
-      </div>
-      <input class="tx-in" id="tx-in" placeholder="رقم عملية التحويل (من رسالة فودافون)" maxlength="100"/>
+      ${method.instructions?`<div style="color:var(--t4);font-size:10.5px;line-height:1.8;margin-bottom:11px;background:var(--s1);border-radius:9px;padding:8px 10px;">${sanitize(method.instructions)}</div>`:""}
+      <div style="color:var(--t4);font-size:10.5px;line-height:1.8;margin-bottom:11px;background:var(--s1);border-radius:9px;padding:8px 10px;">1. حوّل القيمة للرقم أعلاه<br/>2. خذ Screenshot لتأكيد التحويل<br/>3. أدخل رقم العملية وارفع الصورة هنا</div>
+      <input class="tx-in" id="tx-in" placeholder="رقم عملية التحويل" maxlength="100"/>
       <label id="proof-lbl" for="proof-in" style="display:flex;align-items:center;justify-content:center;gap:6px;background:var(--s1);border:1px dashed var(--b1);border-radius:11px;padding:11px;margin-top:8px;color:var(--t3);font-size:12px;cursor:pointer;font-family:var(--sans);">📎 ارفع Screenshot إثبات الدفع</label>
       <input type="file" id="proof-in" accept="image/*" style="display:none" onchange="onProofPick(this)"/>
       <img id="proof-prev" alt="" style="display:none;width:100%;max-height:170px;object-fit:contain;border-radius:10px;margin-top:8px;background:rgba(0,0,0,.25);"/>
       <button class="btn btn-g btn-full" id="pay-submit" style="padding:12px;font-size:14px;margin-top:10px;" onclick="submitPay()">✅ تأكيد الاشتراك</button>
       <button onclick="subStep=1;renderSub();" style="width:100%;margin-top:7px;background:none;border:none;color:var(--t4);font-size:12px;cursor:pointer;font-family:var(--sans);">← رجوع</button>`;
   } else {
-    el.innerHTML=`<div style="text-align:center;padding:14px 0;"><div style="font-size:50px;margin-bottom:9px;">⏳</div><div style="color:var(--au);font-weight:900;font-size:18px;margin-bottom:7px;">جاري مراجعة الدفع</div><div style="color:var(--t3);font-size:13px;line-height:1.88;">وصلنا طلبك وسيتم تفعيل VIP فور تأكيد التحويل.<br/>تقدر تتابع حالة طلبك من صفحة VIP في أي وقت.<br/>للاستفسار: <a href="https://wa.me/${WA}" target="_blank" rel="noopener" style="color:var(--g);text-decoration:none;">واتساب 01008605139</a></div><button class="btn btn-ghost" style="margin:15px auto 0;padding:10px 24px;" onclick="closeSub();loadPayStatus();">متابعة حالة الطلب</button></div>`;
+    el.innerHTML=`<div style="text-align:center;padding:14px 0;"><div style="font-size:50px;margin-bottom:9px;">⏳</div><div style="color:var(--au);font-weight:900;font-size:18px;margin-bottom:7px;">طلب الدفع قيد المراجعة</div><div style="color:var(--t3);font-size:13px;line-height:1.88;">تم تسجيل الطلب. لن يتفعّل اشتراك VIP إلا بعد اعتماد الدفع من الخادم.<br/>يمكنك متابعة حالته من صفحة VIP.</div><button class="btn btn-ghost" style="margin:15px auto 0;padding:10px 24px;" onclick="closeSub();loadPayStatus();">متابعة حالة الطلب</button></div>`;
   }
 }
+function subToPayment(){if(SUB_CONFIG_STATE!=="ready"||!subPlans()[selPlan]){SUB_CONFIG_STATE="error";SUB_CONFIG_ERROR="بيانات الباقة غير متاحة حاليًا.";renderSub();return;}subStep=2;renderSub();}
 function sPlan(k){const plans=subPlans();if(Object.prototype.hasOwnProperty.call(plans,k)){selPlan=k;renderSub();}}
 function sPayMethod(m){if((SUB_METHODS||[]).some(method=>method.id===m)){SUB_METHOD=m;renderSub();}}
 function copyWallet(){
-  const num=SUB_M().number;
-  const done=()=>showToast("✅ تم نسخ رقم المحفظة: "+num);
+  const method=SUB_M();const num=method?.number||"";
+  if(!num){showToast("⚠️ رقم وسيلة الدفع غير متاح حاليًا");return;}
+  const done=()=>showToast("✅ تم نسخ رقم المحفظة");
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(num).then(done).catch(()=>copyWalletFallback(done));}
   else copyWalletFallback(done);
 }
 function copyWalletFallback(done){
-  const num=SUB_M().number;
-  try{const t=document.createElement("textarea");t.value=num;t.style.position="fixed";t.style.opacity="0";document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);done();}catch(e){showToast("رقم المحفظة: "+num);}
+  const num=SUB_M()?.number||"";if(!num){showToast("⚠️ رقم وسيلة الدفع غير متاح حاليًا");return;}
+  try{const t=document.createElement("textarea");t.value=num;t.style.position="fixed";t.style.opacity="0";document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);done();}catch(e){showToast("⚠️ تعذر نسخ الرقم");}
 }
 function compressImage(file,maxDim,q){
   return new Promise((res,rej)=>{
@@ -4028,6 +4120,8 @@ async function onProofPick(inp){
 }
 async function submitPay(){
   if(!U){showToast("⚠️ سجّل الدخول أولًا");return;}
+  const method=SUB_M();
+  if(SUB_CONFIG_STATE!=="ready"||!subPlans()[selPlan]||!method){showToast("⚠️ إعدادات الدفع غير متاحة حاليًا — أعد تحميل الخيارات");return;}
   const tx=(document.getElementById("tx-in")&&document.getElementById("tx-in").value||"").trim().slice(0,100);
   if(!tx){showToast("⚠️ أدخل رقم عملية التحويل");return;}
   if(!payProofData){showToast("⚠️ ارفع صورة إثبات الدفع");return;}
@@ -4035,9 +4129,9 @@ async function submitPay(){
   if(btn){btn.disabled=true;btn.textContent="⏳ جارٍ الإرسال...";}
   try{
     const headers={"Content-Type":"application/json"};
-    const response=await fetch("/api/payments",{method:"POST",headers,credentials:"same-origin",body:JSON.stringify({planKey:selPlan,method:SUB_METHOD,tx,proofImage:payProofData,proofName:payProofName})});
+    const response=await fetch("/api/payments",{method:"POST",headers,credentials:"same-origin",body:JSON.stringify({planKey:selPlan,method:method.id,tx,proofImage:payProofData,proofName:payProofName})});
     const result=await response.json().catch(()=>null);
-    if(!response.ok||!result||result.status!=="ok") throw new Error((result&&result.message)||"تعذر إرسال الطلب");
+    if(!response.ok||!result||result.status!=="ok")throw new Error((result&&result.message)||"تعذر إرسال الطلب");
     payProofData=null;payProofName="";
     subStep=3;renderSub();
   }catch(e){
@@ -4369,7 +4463,7 @@ async function renderAdmReqs(el){
           <div style="color:var(--t2);font-weight:700;font-size:13px;">${sanitize(req.name)}</div>
           <div style="color:var(--t4);font-size:10.5px;font-family:var(--mono);">${sanitize(req.phone)}</div>
           <div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;">
-            <span class="bdg" style="background:var(--aud);color:var(--au);">${PLANS[req.planKey]?.l||sanitize(req.planKey)} — ${Number.isFinite(Number(req.price))?Number(req.price):"—"} ج</span>
+            <span class="bdg" style="background:var(--aud);color:var(--au);">${sanitize(req.planKey||"غير متاح")} — ${Number.isFinite(Number(req.price))?Number(req.price):"—"} ج</span>
             <span class="bdg" style="background:var(--bld);color:#93c5fd;">${methodBadges[req.payMethod]||sanitize(req.payMethod||"")}</span>
             <span class="bdg" style="background:var(--s1);color:var(--t4);font-family:var(--mono);font-size:9px;">TX:${sanitize(req.tx)}</span>
             ${req.status==="pending"?`<span class="bdg ${isOld?"pay-pulse":""}" style="background:${isOld?"rgba(239,68,68,.12)":"rgba(245,158,11,.1)"};color:${isOld?"var(--dn)":"var(--au)"};">⏱ ${waitTxt}</span>`:""}
