@@ -15,6 +15,7 @@
 | `bc2d639` | إغلاق مصادر RSS غير المرخّصة للعرض التجاري fail-closed. |
 | `cc559bd` | محفظة VIP محفوظة على الخادم مع أسعار source-bound فقط. |
 | `8b6850e` | تنبيهات سعر/نسبة يومية محفوظة على الخادم، runner محمي، وإعداد بريد صاحب الحساب فقط. |
+| `f215a90` | تسعير باقات server-evaluated: عروض مجدولة/مستهدفة، old price/شارة/عداد، payment snapshot وhistory/revert. |
 
 ## ما تم تنفيذه
 
@@ -45,6 +46,11 @@
 - حذف الباقة من لوحة الإدارة أصبح archive (`isActive=false`) وليس delete.
 - صفحة **اشتراكي** تعرض الباقة، الانتهاء، الأيام المتبقية، التجديد وسجل الدفعات من `/api/payments/my`.
 - واجهة الباقات فيها مقارنة free/VIP وFAQ وسياسة الإلغاء/الاسترداد المطابقة لـ`terms.html`.
+- **تسعير الباقات (`f215a90`):** المصدر الوحيد هو `artifacts/api-server/src/lib/pricing.ts` → `getEffectivePrice(user, plan, now)`. صفحات الباقات/الدفع تقرأ السعر الحالي والقديم والخصم/الشارة والعداد من `/api/payments/config` المبني من هذه الدالة؛ إنشاء الدفع يعيد الحساب في الخادم ولا يقرأ مبلغاً من المتصفح.
+- السعر الأساسي في `subscription_plans`، والعروض في `plan_price_offers`: جمهور `all` أو `new_users` أو `expired_subscribers`، موعد بداية/نهاية Africa/Cairo، old price أكبر من الحالي، وشارة تلقائية أو نصية. انتهاء الوقت يعيد السعر الأساسي من الخادم بلا scheduler. config public عليها `Cache-Control: no-store` ولا يوجد TTL process cache للأسعار، لذلك يظهر أي حفظ فورًا.
+- كل طلب دفع جديد يحفظ `payment_requests.price` و`price_snapshot` و`price_locked_until` (24 ساعة افتراضيًا، 1–168 ساعة من لوحة الإدارة). token freshness يمنع modal قديم من إنشاء طلب بسعر اختلف بعد العرض؛ الطلب المعلّق يبقى على snapshot ولا يتغير بعد تعديل الباقة.
+- سجل `plan_price_change_logs` يحتفظ before/after ومن غيّر/متى، و`POST /api/admin/plans/:id/pricing/revert` يعيد آخر تغيير غير متراجع بدون حذف offers. `effectivePriceTemplateVariables()`/`interpolatePriceTemplate()` تملآن `{{price}}` و`{{old_price}}` و`{{discount_percent}}` من نفس النتيجة لأي email/admin template مستقبلي. صلاحية السعر server-side: super_admin أو permission صريحة `pricing.manage` فقط؛ منحها محصور على super_admin.
+- الـUI يوضح السعر الحالي بخط أكبر، السعر الأصلي muted مشطوب، aria-label مناسب، وتوجد معاينة موبايل/ديسكتوب قبل النشر. لا يوجد رقم اشتراك ثابت في الواجهة.
 
 ### 4) المحفظة الحقيقية
 
@@ -73,6 +79,7 @@
 | `0002_user_subscriptions` | entitlement VIP وbackfill آمن للـ legacy ذي expiry الموثق. |
 | `0003_portfolio_positions` | المراكز الشخصية المحفوظة. |
 | `0004_user_price_alerts` | قواعد تنبيهات السعر/النسبة وprovenance trigger. |
+| `0005_subscription_plan_pricing` | عروض أسعار server-side/targeting/history وsnapshot طلب الدفع/مدة تثبيت السعر. |
 
 كل ملف `down.sql` غير مدمر: يعيد تسمية table إلى rollback archive بدل الحذف. تفاصيل التسلسل في `lib/db/migrations/README.md`.
 
@@ -99,8 +106,8 @@ corepack pnpm --filter @workspace/egytrend build
 node --check /tmp/egytrend-inline.js
 ```
 
-- API: **21/21 tests passed** باستخدام `pg-mem` synthetic فقط، بلا `DATABASE_URL` حقيقية.
-- suite تغطي: lifecycle دفع/entitlement/renewal، rejection of stale VIP JWT، server portfolio CRUD/archive، alerts CRUD/archive، وسلامة evaluator أمام quote stale/EOD.
+- API: **22/22 tests passed** باستخدام `pg-mem` synthetic فقط، بلا `DATABASE_URL` حقيقية.
+- suite تغطي: lifecycle دفع/entitlement/renewal، rejection of stale VIP JWT، server portfolio CRUD/archive، alerts CRUD/archive، وسلامة evaluator أمام quote stale/EOD، وتسعير الباقات (بداية/نهاية العرض، targeting، رفض old price غير صالح، snapshot، تجاهل مبلغ المتصفح، ورفض موظف بلا permission).
 - تحذيران `dataStore watch ENOENT` أثناء tests بسبب مسارات JSON غير موجودة داخل test harness؛ ليسا فشلًا ولا كتابة على DB.
 
 ## مصادر ومزودون: الحالة القانونية
