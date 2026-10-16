@@ -165,6 +165,11 @@ function pickImage(it: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+/* Keep syndicated content to the permitted display shape: headline, short
+ * snippet, named source and link back. We never fetch/publish article bodies. */
+const NEWS_TITLE_MAX = 300;
+const NEWS_SNIPPET_MAX = 280;
+
 type FeedItem = {
   title: string;
   link: string;
@@ -205,13 +210,13 @@ function parseFeed(xml: string): FeedItem[] {
 
   return rawItems
     .map((it) => {
-      const title = clean(pickText(it["title"]));
+      const title = clean(pickText(it["title"])).slice(0, NEWS_TITLE_MAX);
       const description = clean(
         pickText(it["description"]) ||
           pickText(it["content:encoded"]) ||
           pickText(it["summary"]) ||
           "",
-      );
+      ).slice(0, NEWS_SNIPPET_MAX);
       const link = safeUrl(pickLink(it["link"]) || pickText(it["guid"]));
       const rawDate =
         pickText(it["pubDate"]) ||
@@ -220,10 +225,9 @@ function parseFeed(xml: string): FeedItem[] {
         pickText(it["updated"]) ||
         "";
       const parsed = rawDate ? new Date(rawDate) : null;
-      const pubDate =
-        parsed && !Number.isNaN(parsed.getTime())
-          ? parsed.toISOString()
-          : new Date().toISOString();
+      // Do not invent a current timestamp for undated items: recency ranking
+      // must be based on publisher metadata, not fetch time.
+      const pubDate = parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : "";
       const guid = clean(pickText(it["guid"]).replace(/["'<>\\)\\]/g, "")) || link || title;
       const img = pickImage(it);
       return {
@@ -319,7 +323,7 @@ function customArticlesFeed(): {
   const items: FeedItem[] = articles.map((a) => ({
     title: a.title,
     link: a.link,
-    description: a.description,
+    description: a.description.slice(0, NEWS_SNIPPET_MAX),
     pubDate: a.pubDate,
     guid: a.id,
     ...(a.thumbnail
@@ -350,7 +354,8 @@ router.get("/news/sources", (_req, res) => {
     cat: s.cat,
     color: s.color,
   }));
-  // Always advertise the admin pseudo-source so the UI can filter to it.
+  // Always advertise the platform's own editorial pseudo-source. Third-party
+  // RSS sources are listed only after a documented commercial review.
   sources.unshift({
     id: "admin",
     name: "تحرير المنصة",
@@ -359,13 +364,76 @@ router.get("/news/sources", (_req, res) => {
     cat: "egypt",
     color: "#a855f7",
   });
-  res.json({ status: "ok", sources });
+  res.json({
+    status: "ok",
+    sources,
+    thirdPartyApprovedCount: sources.length - 1,
+    policy: "third_party_rss_requires_commercial_redisplay_approval",
+  });
 });
 
 type NewsFeed = { status: "ok"; items: FeedItem[]; meta: SourceMeta };
+
+function newsDedupKey(item: FeedItem): string {
+  const title = item.title.toLocaleLowerCase("ar")
+    .replace(/[^\u0600-\u06ffa-z0-9]+/gi, "")
+    .slice(0, 120);
+  return title || item.link.toLowerCase().slice(0, 240);
+}
+
+function newsImportance(item: FeedItem): number {
+  const title = item.title.toLowerCase();
+  const breaking = /\b(breaking|urgent|alert)\b|عاجل|فوري/.test(title) ? 1_000_000_000_000 : 0;
+  const published = Date.parse(item.pubDate);
+  return breaking + (Number.isFinite(published) ? published : 0);
+}
+
+/** Deduplicate across sources and rank newest/urgent items without copying text. */
+function dedupeAndRankFeeds(feeds: NewsFeed[]): NewsFeed[] {
+  const seen = new Set<string>();
+  const normalized = feeds.map((feed) => ({
+    ...feed,
+    items: [...feed.items]
+      .sort((a, b) => newsImportance(b) - newsImportance(a))
+      .filter((item) => {
+        const key = newsDedupKey(item);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 12),
+  })).filter((feed) => feed.items.length > 0);
+  return normalized.sort((a, b) => newsImportance(b.items[0]!) - newsImportance(a.items[0]!));
+}
+
+function rankedItemsFromFeeds(feeds: NewsFeed[]): RankedNewsItem[] {
+  return feeds.flatMap((feed) => feed.items.map((item) => ({
+    ...item,
+    source: {
+      id: feed.meta.id,
+      name: feed.meta.name,
+      icon: feed.meta.icon,
+      lang: feed.meta.lang,
+      cat: feed.meta.cat,
+      color: feed.meta.color,
+    },
+    importance: newsImportance(item),
+  }))).sort((a, b) => b.importance - a.importance);
+}
+
+type RankedNewsItem = FeedItem & {
+  source: Pick<SourceMeta, "id" | "name" | "icon" | "lang" | "cat" | "color">;
+  importance: number;
+};
+
 type NewsSnapshot = {
   status: "ok";
+  /** `feeds` remains for server-side consumers such as the local AI. */
   feeds: NewsFeed[];
+  /** Canonical, server-ranked presentation list for browser clients. */
+  items: RankedNewsItem[];
+  availability: "available" | "unavailable";
+  reason?: "no_approved_sources" | "upstream_unavailable";
   errors: Array<{ source: string; message: string }>;
 };
 
@@ -395,7 +463,19 @@ async function buildNewsAgg(): Promise<NewsSnapshot | null> {
     const custom = customArticlesFeed();
     if (custom.items.length > 0) feeds.unshift(custom);
     if (errors.length > 0) logger.warn({ errors }, "some news sources failed");
-    const data: NewsSnapshot = { status: "ok", feeds, errors };
+    const rankedFeeds = dedupeAndRankFeeds(feeds);
+    const items = rankedItemsFromFeeds(rankedFeeds);
+    const availability = items.length > 0 ? "available" : "unavailable";
+    const data: NewsSnapshot = {
+      status: "ok",
+      feeds: rankedFeeds,
+      items,
+      availability,
+      ...(availability === "unavailable"
+        ? { reason: sources.length === 0 ? "no_approved_sources" as const : "upstream_unavailable" as const }
+        : {}),
+      errors,
+    };
     newsAggCache = { ts: Date.now(), data };
     return data;
   } catch (e) {
@@ -451,5 +531,15 @@ router.get("/news", async (req, res) => {
     });
   }
 });
+
+/* Test-only access to deterministic parsing/ranking logic; routes remain the
+ * production interface. */
+export const __newsTest = {
+  parseFeed,
+  newsDedupKey,
+  newsImportance,
+  dedupeAndRankFeeds,
+  rankedItemsFromFeeds,
+};
 
 export default router;

@@ -9,7 +9,7 @@ import {
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import {
-  listSources, upsertSource, deleteSource,
+  listSources, listSourceInventory, upsertSource, deleteSource,
   listCustomArticles, upsertCustomArticle, deleteCustomArticle,
   type SourceMeta, type CustomArticle,
 } from "../lib/dataStore";
@@ -466,7 +466,9 @@ function contentStorageUnavailable(res: Response, err: unknown): void {
 
 /* ─── Sources (existing, enhanced) ─── */
 router.get("/sources", requireAuth, (_req, res: Response) => {
-  res.json({ status: "ok", sources: listSources() });
+  // Editors need to see pending and archived entries to complete the legal
+  // review, but public/news routes receive only approved active sources.
+  res.json({ status: "ok", sources: listSourceInventory() });
 });
 
 router.post("/sources", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {

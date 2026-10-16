@@ -24,6 +24,15 @@ const DATA_DIR = path.resolve(moduleDir, "..", "data");
 import embeddedSources from "../../data/sources.json" with { type: "json" };
 import embeddedArticles from "../../data/articles.json" with { type: "json" };
 
+export type CommercialRedisplayReview = {
+  /** Only an explicit written commercial redisplay grant can be `approved`. */
+  status: "approved" | "pending" | "not_approved";
+  /** Public contract/terms URL or internal contract reference; never a secret. */
+  evidence?: string;
+  reviewedAt?: string;
+  note?: string;
+};
+
 export type SourceMeta = {
   id: string;
   name: string;
@@ -32,6 +41,11 @@ export type SourceMeta = {
   cat: "egypt" | "global" | "stocks" | "crypto";
   color: string;
   url: string;
+  /**
+   * RSS availability alone is not permission to republish in a paid product.
+   * Missing metadata is treated as pending, and pending sources are never fetched.
+   */
+  commercialRedisplay?: CommercialRedisplayReview;
   /** Soft-deletion marker; archived content is retained on disk for recovery. */
   archivedAt?: string;
 };
@@ -130,17 +144,40 @@ startWatcher(ARTICLES_FILE, async () => {
 
 /* ─── Public API ─── */
 
+/** A source is live only after a documented commercial redisplay review. */
+export function isCommercialRedisplayApproved(source: SourceMeta): boolean {
+  const review = source.commercialRedisplay;
+  return !source.archivedAt
+    && review?.status === "approved"
+    && typeof review.evidence === "string"
+    && review.evidence.trim().length >= 8;
+}
+
+/** Active sources are the only third-party feeds that network code may fetch. */
 export function listSources(): SourceMeta[] {
-  return Object.values(sourcesCache).filter((source) => !source.archivedAt);
+  return Object.values(sourcesCache).filter(isCommercialRedisplayApproved);
+}
+
+/** Full inventory is admin-only; it includes archived/pending entries for review. */
+export function listSourceInventory(): SourceMeta[] {
+  return Object.values(sourcesCache);
 }
 
 export function getSource(id: string): SourceMeta | undefined {
   const source = sourcesCache[id];
-  return source?.archivedAt ? undefined : source;
+  return source && isCommercialRedisplayApproved(source) ? source : undefined;
 }
 
 export async function upsertSource(src: SourceMeta): Promise<void> {
-  const next = { ...sourcesCache, [src.id]: { ...src, archivedAt: undefined } };
+  const existing = sourcesCache[src.id];
+  // Admin-created feeds always begin disabled. Approval needs a separately
+  // documented legal review rather than trusting an RSS URL or a form field.
+  const commercialRedisplay = existing?.commercialRedisplay ?? {
+    status: "pending" as const,
+    reviewedAt: new Date().toISOString(),
+    note: "Awaiting documented commercial redisplay approval.",
+  };
+  const next = { ...sourcesCache, [src.id]: { ...src, commercialRedisplay, archivedAt: undefined } };
   await writeJSONAtomic(SOURCES_FILE, next);
   sourcesCache = next;
 }
