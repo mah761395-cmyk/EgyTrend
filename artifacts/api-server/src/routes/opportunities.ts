@@ -16,14 +16,6 @@ const router = Router();
 const JWT_SECRET = process.env["SESSION_SECRET"];
 const LEGACY_TOKEN = process.env["ADMIN_TOKEN"] || "";
 
-const ANTHROPIC_BASE =
-  process.env["AI_INTEGRATIONS_ANTHROPIC_BASE_URL"] || "https://api.anthropic.com";
-const ANTHROPIC_KEY =
-  process.env["AI_INTEGRATIONS_ANTHROPIC_API_KEY"] ||
-  process.env["ANTHROPIC_API_KEY"] ||
-  "";
-const AI_MODEL       = "claude-sonnet-4-6";
-
 function isAdmin(req: Request): boolean {
   const token = readSessionCookie(req, ADMIN_SESSION_COOKIE)
     || (req.header("x-admin-token") || "").trim()
@@ -87,7 +79,10 @@ function validateOpportunityInput(body: unknown, partial = false): OpportunityIn
     if (raw[key] !== undefined && typeof raw[key] !== "boolean") return { error: `${key} must be boolean` };
   }
   const optional = (key: string, max: number): string | null | undefined => boundedText(raw[key], max);
-  const fields: Array<[string, number]> = [["details", 8000], ["expectedReturn", 100], ["sector", 100], ["duration", 100], ["deadline", 100]];
+  // expectedReturn is a legacy read field only. Accepting and silently
+  // ignoring it keeps old clients from clearing historical content while
+  // preventing new projected-return claims from being written.
+  const fields: Array<[string, number]> = [["details", 8000], ["sector", 100], ["duration", 100], ["deadline", 100]];
   const out: OpportunityInput = {
     ...(partial ? {} : { title: title as string, summary: summary as string, type: type!, market: market! }),
     ...(partial && raw.title !== undefined ? { title: title as string } : {}),
@@ -139,8 +134,8 @@ function stableOppId(title: string): string {
   return "loc-" + crypto.createHash("md5").update(title).digest("hex").slice(0, 10);
 }
 
-/* Data-backed opportunity rows (never fake). Shared by the GET fallback,
- * /generate and /seed so every path shows the SAME real picks. */
+/* Source-backed observation rows. Shared by GET fallback, /generate and
+ * /seed so each path presents the same descriptive cards without rankings. */
 async function buildLiveOpportunityRows(): Promise<Array<Record<string, unknown>>> {
   const { markets, stocks, newsTitles } = await collectLiveInputs();
   if (!stocks.length) return [];
@@ -155,7 +150,7 @@ async function buildLiveOpportunityRows(): Promise<Array<Record<string, unknown>
     type: c.type, market: c.market, expectedReturn: c.expectedReturn,
     riskLevel: c.riskLevel, sector: c.sector, duration: c.duration,
     deadline: null, status: "active", featured: c.featured, vipOnly: c.vipOnly,
-    createdAt: now, updatedAt: now, source: "live",
+    createdAt: now, updatedAt: now, source: c.source, sourceAsOf: c.sourceAsOf, autoObservation: true,
   }));
 }
 
@@ -201,7 +196,8 @@ router.post("/opportunities", requireAuth, async (req, res) => {
       details: input.details ?? null,
       type: input.type!,
       market: input.market!,
-      expectedReturn: input.expectedReturn ?? null,
+      // Projected return is deprecated: never create a new value for it.
+      expectedReturn: null,
       riskLevel: input.riskLevel ?? 3,
       sector: input.sector ?? null,
       duration: input.duration ?? null,
@@ -236,201 +232,103 @@ router.put("/opportunities/:id", requireAuth, async (req, res) => {
 });
 
 /* ─── DELETE /api/opportunities/:id ─────────────────────────── */
+/* Compatibility endpoint: archive/close instead of destructive deletion so
+ * administrative history remains recoverable. Existing clients may retain the
+ * DELETE verb, but it never removes a financial-content record. */
 router.delete("/opportunities/:id", requireAuth, async (req, res) => {
   const id = String(req.params.id || "").trim();
   if (!OPP_ID_RX.test(id)) return res.status(400).json({ status: "error", message: "invalid opportunity id" });
   try {
-    await db.delete(opportunities).where(eq(opportunities.id, id));
-    return res.json({ status: "ok" });
+    await db.update(opportunities)
+      .set({ status: "closed", updatedAt: new Date() })
+      .where(eq(opportunities.id, id));
+    return res.json({ status: "ok", archived: true });
   } catch (e) {
-    logger.error({ err: e }, "opportunity delete failed");
-    return res.status(500).json({ status: "error", message: "Failed to delete opportunity" });
+    logger.error({ err: e }, "opportunity archive failed");
+    return res.status(500).json({ status: "error", message: "Failed to archive opportunity" });
   }
 });
 
 /* ─── POST /api/opportunities/generate ───────────────────────
-   AI-powered: reads real market data → asks Claude → inserts fresh opportunities.
-   Admin-only. Replaces AI-generated ones so they stay current.
+   Admin-only, deterministic generation from verified licensed snapshots.
+   It never asks a language model to invent an opportunity or target return.
    ─────────────────────────────────────────────────────────── */
-router.post("/opportunities/generate", requireAuth, async (req, res) => {
-  /* No Anthropic key → local rule-based engine over REAL live data
-   * (markets + stocks + news). Same contract, zero fake data. */
-  if (!ANTHROPIC_BASE || !ANTHROPIC_KEY) {
-    try {
-      /* In-process snapshots — serverless-safe (no localhost self-fetch). */
-      const { markets: mkData, stocks: allStocks, newsTitles } = await collectLiveInputs();
-      const list = buildLocalOpportunities(mkData, allStocks as StockT[], newsTitles,
-        new Date().toLocaleDateString("ar-EG", { weekday: "long", year: "numeric", month: "long", day: "numeric" }));
-      if (!list.length) {
-        return res.status(502).json({ status: "error", message: "لا توجد بيانات سوق كافية حاليًا — أعد المحاولة بعد التحديث" });
-      }
-      /* Persist best-effort: if the DB is unavailable we STILL return the
-       * freshly-built rows so the admin gets a result instead of a 500. */
-      const rows = list.map((opp) => ({ id: crypto.randomUUID().slice(0, 12), ...opp }));
-      try {
-        const now = new Date();
-        const existingAll = await db.select().from(opportunities);
-        const aiGenIds = existingAll.filter(o => o.sector?.startsWith("[AI]")).map(o => o.id);
-        for (const id of aiGenIds) {
-          await db.update(opportunities).set({ status: "closed", updatedAt: now }).where(eq(opportunities.id, id));
-        }
-        for (const opp of list) {
-          await db.insert(opportunities).values({
-            id: crypto.randomUUID().slice(0, 12),
-            title: opp.title, summary: opp.summary, details: opp.details,
-            type: opp.type, market: opp.market,
-            expectedReturn: opp.expectedReturn, riskLevel: opp.riskLevel,
-            sector: `[AI] ${opp.sector}`, duration: opp.duration,
-            deadline: null, status: "active",
-            featured: opp.featured, vipOnly: opp.vipOnly,
-          });
-        }
-        logger.info({ inserted: list.length, closedOld: aiGenIds.length, engine: "local" }, "opportunities generated");
-        return res.json({ status: "ok", inserted: list.length, closedOld: aiGenIds.length, engine: "local" });
-      } catch (e) {
-        logger.warn({ err: (e as Error)?.message }, "opportunities persist failed — returning live rows");
-        return res.json({ status: "ok", inserted: 0, persisted: false, engine: "local", opportunities: rows });
-      }
-    } catch (e) {
-      logger.warn({ err: e }, "local opportunity generation failed");
-      return res.status(500).json({ status: "error", message: "تعذر التوليد — أعد المحاولة" });
-    }
-  }
+router.post("/opportunities/generate", requireAuth, async (_req, res) => {
   try {
-    // Live data read IN-PROCESS (serverless-safe — no localhost self-fetch).
-    const liveInput = await collectLiveInputs();
-    const mkData = liveInput.markets || {};
-    const newsData: { feeds?: Array<{ items?: Array<{ title?: string }> }> } =
-      { feeds: [{ items: liveInput.newsTitles.map((t) => ({ title: t })) }] };
-
-    const mkSummary = JSON.stringify(mkData).slice(0, 3000);
-    /* /api/news returns { feeds: [{ items: [...] }] } — flatten titles from
-     * every feed (previously read a non-existent "articles" key → empty list). */
-    const newsSummary = (newsData.feeds || [])
-      .flatMap(f => f.items || [])
-      .slice(0, 15)
-      .map(a => `• ${a.title || ""}`)
-      .filter(Boolean)
-      .join("\n");
-
-    const today = new Date().toLocaleDateString("ar-EG", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-
-    const prompt = `أنت محلل مالي متخصص بالأسواق المصرية والعالمية. اليوم ${today}.
-
-بيانات السوق الحالية (JSON):
-${mkSummary}
-
-أبرز الأخبار المالية اليوم:
-${newsSummary || "لا توجد أخبار"}
-
-مطلوب: ولّد 8 فرص استثمارية حقيقية ومتنوعة مناسبة للمستثمر المصري الآن.
-التنوع المطلوب: أسهم مصرية (2)، كريبتو (1)، ذهب أو سلع (1)، أذون خزانة أو سندات (1)، عقارات (1)، ETF أو صناديق (1)، سوق خليجي أو أمريكي (1).
-
-أعد JSON فقط بدون أي نص إضافي — array من 8 objects، كل object يحتوي:
-{
-  "title": "عنوان قصير وجذاب بالعربي",
-  "summary": "جملتان تشرحان الفرصة والسبب وراءها بناءً على السوق الحالي (بالعربي)",
-  "details": "فقرة تفصيلية: نقاط القوة، المخاطر، وكيف يستفيد المستثمر (بالعربي، 3-4 جمل)",
-  "type": "stock|ipo|realestate|fund|etf|bond|crypto|commodity",
-  "market": "egypt|us|gulf|crypto|global",
-  "expectedReturn": "مثال: 18-25% سنوياً",
-  "riskLevel": 1-5,
-  "sector": "اسم القطاع",
-  "duration": "مثال: 3-6 أشهر",
-  "featured": true|false,
-  "vipOnly": true|false
-}
-
-قواعد:
-- اجعل العوائد واقعية بناءً على البيانات المتاحة، لا مبالغة
-- 2 فرص على الأقل vipOnly: true (التفاصيل الحصرية)
-- 1-2 فرص featured: true (الأبرز اليوم)
-- استند إلى الأرقام الحقيقية من بيانات السوق
-- أسهم EGX: اذكر رمز السهم في العنوان`;
-
-    const aiRes = await fetch(`${ANTHROPIC_BASE}/v1/messages`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        max_tokens: 4000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-      signal: AbortSignal.timeout(45_000),
-    });
-
-    if (!aiRes.ok) {
-      const err = await aiRes.text();
-      logger.warn({ err }, "AI generation failed");
-      return res.status(502).json({ status: "error", message: "AI request failed" });
-    }
-
-    const aiData: any = await aiRes.json();
-    const rawText: string = aiData?.content?.[0]?.text || "[]";
-
-    // Extract JSON array from response
-    const match = rawText.match(/\[[\s\S]*\]/);
-    if (!match) return res.status(502).json({ status: "error", message: "AI returned invalid JSON" });
-
-    const oppList: any[] = JSON.parse(match[0]);
-    if (!Array.isArray(oppList) || oppList.length === 0) {
-      return res.status(502).json({ status: "error", message: "AI returned empty list" });
-    }
-
-    // Delete previous AI-generated opportunities (those with source="ai")
-    // We tag them via sector prefixed "AI:" — instead just insert new, mark old closed
-    // Strategy: insert all new ones; close old AI-generated ones (sector starts with "[AI]")
-    const existingAll = await db.select().from(opportunities);
-    const aiGenIds = existingAll
-      .filter(o => o.sector?.startsWith("[AI]"))
-      .map(o => o.id);
-
-    for (const id of aiGenIds) {
-      await db.update(opportunities)
-        .set({ status: "closed", updatedAt: new Date() })
-        .where(eq(opportunities.id, id));
-    }
-
-    // Insert new ones
-    let inserted = 0;
-    for (const opp of oppList) {
-      if (!opp.title || !opp.summary || !opp.type || !opp.market) continue;
-      const id = crypto.randomUUID().slice(0, 12);
-      await db.insert(opportunities).values({
-        id,
-        title: opp.title,
-        summary: opp.summary,
-        details: opp.details || null,
-        type: opp.type,
-        market: opp.market,
-        expectedReturn: opp.expectedReturn || null,
-        riskLevel: Math.min(5, Math.max(1, Number(opp.riskLevel) || 3)),
-        sector: `[AI] ${opp.sector || ""}`,
-        duration: opp.duration || null,
-        deadline: null,
-        status: "active",
-        featured: opp.featured ?? false,
-         vipOnly: Boolean(opp.vipOnly),
+    /* In-process snapshots — serverless-safe and sourced only from the
+     * licensed market layer. Empty data is a blocker, not an invitation for
+     * an AI model to fill gaps. */
+    const { markets, stocks, newsTitles } = await collectLiveInputs();
+    if (!stocks.length) {
+      return res.status(503).json({
+        status: "error",
+        message: "لا توجد بيانات أسهم موثقة كافية حاليًا — لم يتم إنشاء بطاقات وصفية.",
       });
-      inserted++;
+    }
+    const list = buildLocalOpportunities(
+      markets,
+      stocks as StockT[],
+      newsTitles,
+      new Date().toLocaleDateString("ar-EG", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric",
+      }),
+    );
+    if (!list.length) {
+      return res.status(503).json({
+        status: "error",
+        message: "لا توجد لقطة قابلة للتحقق من البيانات الحالية — لم يتم إنشاء بطاقات وصفية.",
+      });
     }
 
-    logger.info({ inserted }, "AI opportunities generated");
-    return res.json({ status: "ok", inserted, closedOld: aiGenIds.length });
-  } catch (e: unknown) {
-    logger.error({ err: e }, "generate opportunities error");
-    return res.status(500).json({ status: "error", message: "تعذر التوليد — أعد المحاولة" });
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      const existing = await tx.select().from(opportunities);
+      const generatedIds = existing
+        .filter((opportunity) => /^\[(?:AI|AUTO)\]/.test(opportunity.sector || ""))
+        .map((opportunity) => opportunity.id);
+      for (const id of generatedIds) {
+        await tx.update(opportunities)
+          .set({ status: "closed", updatedAt: now })
+          .where(eq(opportunities.id, id));
+      }
+      for (const opportunity of list) {
+        await tx.insert(opportunities).values({
+          id: crypto.randomUUID().slice(0, 12),
+          title: opportunity.title,
+          summary: opportunity.summary,
+          details: opportunity.details,
+          type: opportunity.type,
+          market: opportunity.market,
+          // No target-return field: the verified feeds do not supply a
+          // defensible projection, so emitting one would be fabricated.
+          expectedReturn: null,
+          riskLevel: opportunity.riskLevel,
+          sector: `[AUTO] ${opportunity.sector}`,
+          duration: opportunity.duration,
+          deadline: null,
+          status: "active",
+          featured: opportunity.featured,
+          vipOnly: opportunity.vipOnly,
+        });
+      }
+    });
+    logger.info({ inserted: list.length, engine: "deterministic" }, "market observation cards generated");
+    return res.json({ status: "ok", inserted: list.length, engine: "deterministic" });
+  } catch (error) {
+    // Do not return generated rows as a successful result when durable storage
+    // failed. The admin can safely retry without assuming they were published.
+    logger.error({ err: error }, "deterministic opportunity generation failed");
+    return res.status(503).json({
+      status: "error",
+      message: "تعذّر حفظ الفرص بشكل دائم — لم يتم تطبيق أي تغيير.",
+    });
   }
 });
 
 /* ─── POST /api/opportunities/seed ───────────────────────────
-   Seeds opportunities from the LIVE data engine (real market data).
-   No hardcoded numbers — fields the upstream data does not provide are
-   omitted rather than invented. Admin-only. */
+   Persists source-backed descriptive cards from the configured market layer.
+   Fields unavailable upstream remain omitted; no values are invented.
+   Admin-only. */
 router.post("/opportunities/seed", requireAuth, async (req, res) => {
   const { force } = req.body || {};
   try {
@@ -442,30 +340,30 @@ router.post("/opportunities/seed", requireAuth, async (req, res) => {
     if (!rows.length) {
       return res.status(502).json({ status: "error", message: "لا توجد بيانات سوق كافية حاليًا" });
     }
-    let inserted = 0;
-    for (const r of rows) {
-      await db.insert(opportunities).values({
-        id: String(r.id),
-        title: String(r.title),
-        summary: String(r.summary),
-        details: (r.details as string) || null,
-        type: String(r.type),
-        market: String(r.market),
-        expectedReturn: (r.expectedReturn as string) || null,
-        riskLevel: Number(r.riskLevel) || 3,
-        sector: String(r.sector || ""),
-        duration: (r.duration as string) || null,
-        deadline: null,
-        status: "active",
-        featured: Boolean(r.featured),
-        vipOnly: Boolean(r.vipOnly),
-      });
-      inserted++;
-    }
-    return res.json({ status: "ok", inserted, source: "live" });
+    await db.transaction(async (tx) => {
+      for (const r of rows) {
+        await tx.insert(opportunities).values({
+          id: String(r.id),
+          title: String(r.title),
+          summary: String(r.summary),
+          details: (r.details as string) || null,
+          type: String(r.type),
+          market: String(r.market),
+          expectedReturn: null,
+          riskLevel: Number(r.riskLevel) || 3,
+          sector: `[AUTO] ${String(r.sector || "")}`,
+          duration: (r.duration as string) || null,
+          deadline: null,
+          status: "active",
+          featured: Boolean(r.featured),
+          vipOnly: Boolean(r.vipOnly),
+        });
+      }
+    });
+    return res.json({ status: "ok", inserted: rows.length, source: "live" });
   } catch (e: unknown) {
     logger.error({ err: e }, "seed opportunities error");
-    return res.status(500).json({ status: "error", message: "تعذر تجهيز الفرص — أعد المحاولة" });
+    return res.status(503).json({ status: "error", message: "تعذّر حفظ الفرص بشكل دائم — لم يتم تطبيق أي تغيير" });
   }
 });
 

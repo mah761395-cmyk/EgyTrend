@@ -9,6 +9,7 @@ import {
   appUsersTable,
   employeesTable,
   paymentRequestsTable,
+  opportunities,
   subscriptionPlansTable,
 } from "@workspace/db/schema";
 import { createMemoryDatabase } from "../test-support/memory-db";
@@ -148,6 +149,29 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
   assert.equal(adminLogin.body?.status, "ok");
   assert.match(adminJar.value || "", /^et_admin_session=/);
 
+  /* Opportunity removal is archival, never a destructive data delete. The
+   * deprecated target-return input is ignored rather than stored anew. */
+  const observationCreate = await api("/api/opportunities", adminJar, {
+    method: "POST",
+    body: JSON.stringify({
+      title: "Synthetic observation",
+      summary: "Synthetic source-backed test content",
+      type: "stock",
+      market: "egypt",
+      expectedReturn: "99% fabricated input",
+    }),
+  });
+  assert.equal(observationCreate.response.status, 200);
+  assert.equal(observationCreate.body?.status, "ok");
+  const observationId = String(observationCreate.body?.id || "");
+  const archive = await api(`/api/opportunities/${encodeURIComponent(observationId)}`, adminJar, { method: "DELETE" });
+  assert.equal(archive.response.status, 200);
+  assert.equal(archive.body?.archived, true);
+  const [archivedObservation] = await memory.db.select().from(opportunities)
+    .where(eq(opportunities.id, observationId));
+  assert.equal(archivedObservation?.status, "closed");
+  assert.equal(archivedObservation?.expectedReturn, null);
+
   const requests = await api("/api/admin/requests", adminJar);
   assert.equal(requests.response.status, 200);
   const listed = (requests.body?.requests as Array<{ id?: string }>) || [];
@@ -200,6 +224,40 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
   /* A public status probe cannot trigger a provider health call. */
   const anonymousProbe = await api("/api/ai/status?verify=1", {});
   assert.equal(anonymousProbe.response.status, 403);
+
+  /* With no licensed market provider configured, the API must be transparent:
+   * no Yahoo/TradingView/other unlicensed fallback and no fabricated price. */
+  const markets = await api("/api/markets", {});
+  assert.equal(markets.response.status, 200);
+  assert.equal(markets.body?.status, "ok");
+  const marketPayload = markets.body?.markets as Record<string, unknown[]>;
+  assert.deepEqual(marketPayload.eg, []);
+  assert.deepEqual(marketPayload.gl, []);
+  assert.equal((markets.body?.freshness as { sections?: Record<string, { unavailable?: boolean }> }).sections?.eg?.unavailable, true);
+
+  /* Historical chart reads are also fail-closed. With no currently-approved
+   * external-display provider, old/missing DB rows cannot become a fabricated
+   * chart and the basic free endpoint remains an explicit empty state. */
+  const history = await api("/api/markets/history/index%3ASPX?range=1M&indicators=1", {});
+  assert.equal(history.response.status, 200);
+  assert.equal(history.body?.status, "ok");
+  assert.equal(history.body?.available, false);
+  assert.deepEqual(history.body?.points, []);
+  assert.equal(history.body?.indicatorAccess, "vip_required");
+
+  const sparklines = await api("/api/markets/sparklines?ids=index%3ASPX%2Cstock%3Aegx%3ACOMI", {});
+  assert.equal(sparklines.response.status, 200);
+  assert.equal(sparklines.body?.status, "ok");
+  assert.ok(Array.isArray(sparklines.body?.series));
+  assert.ok((sparklines.body?.series as Array<{ available?: boolean }>).every((series) => series.available === false));
+
+  const marketSources = await api("/api/markets/sources", {});
+  assert.equal(marketSources.response.status, 200);
+  assert.equal(marketSources.body?.status, "ok");
+  assert.ok(Array.isArray(marketSources.body?.providers));
+
+  const snapshotAttempt = await api("/api/markets/internal/daily-snapshot", {}, { method: "POST" });
+  assert.equal(snapshotAttempt.response.status, 404, "history writing route stays invisible without a configured cron secret");
 
   const logout = await api("/api/user/logout", userJar, { method: "POST" });
   assert.equal(logout.response.status, 204);

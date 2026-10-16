@@ -8,7 +8,7 @@
     "build": "node ./build.mjs || bun ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs || bun ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/**/*.test.ts"
+    "test": "tsx --test $(find src -type f -name '*.test.ts' -print)"
   },
   "dependencies": {
     "@types/jsonwebtoken": "^9.0.10",
@@ -19,11 +19,11 @@
     "drizzle-orm": "catalog:",
     "express": "^5",
     "fast-xml-parser": "^5.7.2",
+    "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^7.0.10",
     "pino": "^9",
-    "pino-http": "^10",
-    "yahoo-finance2": "2.13.3"
+    "pino-http": "^10"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
