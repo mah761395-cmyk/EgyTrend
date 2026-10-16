@@ -16,6 +16,7 @@
 | `cc559bd` | محفظة VIP محفوظة على الخادم مع أسعار source-bound فقط. |
 | `8b6850e` | تنبيهات سعر/نسبة يومية محفوظة على الخادم، runner محمي، وإعداد بريد صاحب الحساب فقط. |
 | `f215a90` | تسعير باقات server-evaluated: عروض مجدولة/مستهدفة، old price/شارة/عداد، payment snapshot وhistory/revert. |
+| `cfb0e09` | حاسبات المستثمر VIP: runtime/math محميان، 8 pure calculators، حفظ/سجل/PDF authorization، quote/FX source-bound وpreview مجاني صادق. |
 
 ## ما تم تنفيذه
 
@@ -52,7 +53,18 @@
 - سجل `plan_price_change_logs` يحتفظ before/after ومن غيّر/متى، و`POST /api/admin/plans/:id/pricing/revert` يعيد آخر تغيير غير متراجع بدون حذف offers. `effectivePriceTemplateVariables()`/`interpolatePriceTemplate()` تملآن `{{price}}` و`{{old_price}}` و`{{discount_percent}}` من نفس النتيجة لأي email/admin template مستقبلي. صلاحية السعر server-side: super_admin أو permission صريحة `pricing.manage` فقط؛ منحها محصور على super_admin.
 - الـUI يوضح السعر الحالي بخط أكبر، السعر الأصلي muted مشطوب، aria-label مناسب، وتوجد معاينة موبايل/ديسكتوب قبل النشر. لا يوجد رقم اشتراك ثابت في الواجهة.
 
-### 4) المحفظة الحقيقية
+### 4) حاسبات المستثمر VIP (`/calculators`)
+
+- مسار `/calculators` في الـSPA يعرض للمستخدم المجاني **preview صادقًا** بأسماء الأدوات ولقطة موسومة «مثال توضيحي» وزر الاشتراك فقط؛ لا توجد معادلات أو نتائج مالية حقيقية في الـ public shell.
+- أدوات VIP الكاملة لا تُربط في الصفحة العامة: `/api/calculators/bootstrap` ثم `/runtime.js` و`/math.js` كلها خلف `requireVipUser` و`Cache-Control: no-store`. حتى نسخ رابط JavaScript مباشر يُرفض للمجاني (`403`) ولغير المسجل (`401`).
+- `artifacts/api-server/src/lib/calculators/math.ts` يحتوي pure functions مختبرة لـ P/L، position risk، compound، average، dividends، CAGR، inflation، وcurrency conversion. الخادم يرسل **نفس أجسام الدوال** كـES module محمي للمتصفح، لذلك لا توجد نسخة واجهة منفصلة يمكن أن تنحرف عن الاختبارات.
+- الواجهة RTL/mobile-first: sidebar يتحول إلى dropdown، تحديث فوري، Reset/Copy، نتائج كبيرة وتفاصيل ومعادلة، لون ربح/خسارة، جدول/رسم compound، صفوف متوسط شراء ديناميكية، وتحذير ثابت «النتائج تقديرية ولا تمثل نصيحة استثمارية».
+- زر «استخدم السعر الحالي» يمر عبر `/api/calculators/quote` فقط؛ يتطلب مصدرًا مرخّصًا و`asOf` وfreshness صالحين. real-time الأقدم من 5 دقائق أو EOD/unknown يُرفض، والـdelayed يظهر بعلامة **متأخر**؛ لا fallback وهمي.
+- محول العملات يقرأ `/api/calculators/fx` من طبقة market-data server-side فقط (EGP/USD/EUR/GBP/SAR حسب المتاح)، ويعرض source/as-of لكل عملة مستخدمة. عند غياب المصدر أو stale snapshot يرد `غير متاح حاليًا` بلا سعر ثابت بديل.
+- حفظ السيناريوهات وسجل النسخ/الحفظ/التصدير server-backed في `user_calculator_scenarios` و`user_calculator_activity`، وكل الحذف archive. تصدير PDF هو نافذة طباعة المتصفح بعد `POST /api/calculators/export` المحمي؛ يختار المستخدم «حفظ كـ PDF» للحفاظ على العربية دون خدمة خارجية.
+- نتائج المعادلات التفصيلية المتوقع/الفعلي في `CALCULATOR_TEST_RESULTS.md`.
+
+### 5) المحفظة الحقيقية
 
 - جدول `portfolio_positions` وخدمات `/api/portfolio` و`/api/portfolio/positions` محمية بـ VIP server-side.
 - position هو إدخال صريح من المستخدم (الرمز/الكمية/متوسط التكلفة)، وليس quote سوق.
@@ -60,7 +72,7 @@
 - حذف مركز يحوله إلى `archived`؛ إعادة إضافة الرمز تستعيد نفس record بدل delete.
 - الواجهة توقفت عن استخدام `localStorage` كمصدر للمحفظة. بيانات `pt` القديمة لا تُرفع تلقائيًا حتى لا تتحول بيانات متصفح غير موثوقة إلى سجل حساب.
 
-### 5) تنبيهات السعر/النسبة والبريد
+### 6) تنبيهات السعر/النسبة والبريد
 
 - جدول `user_price_alerts` وواجهات `/api/price-alerts` محمية بـ VIP server-side.
 - الأنواع المدعومة: `price_above`، `price_below`، `change_percent_above`، `change_percent_below`.
@@ -80,8 +92,9 @@
 | `0003_portfolio_positions` | المراكز الشخصية المحفوظة. |
 | `0004_user_price_alerts` | قواعد تنبيهات السعر/النسبة وprovenance trigger. |
 | `0005_subscription_plan_pricing` | عروض أسعار server-side/targeting/history وsnapshot طلب الدفع/مدة تثبيت السعر. |
+| `0006_user_calculator_scenarios` | سيناريوهات حاسبات VIP وسجل save/copy/PDF export؛ archive-only rollback. |
 
-كل ملف `down.sql` غير مدمر: يعيد تسمية table إلى rollback archive بدل الحذف. تفاصيل التسلسل في `lib/db/migrations/README.md`.
+كل ملف `down.sql` غير مدمر: يحتفظ بـrollback archive أو يعلّم السجلات archived بدل الحذف. تفاصيل التسلسل في `lib/db/migrations/README.md`.
 
 ### شرط التنفيذ لاحقًا
 
@@ -104,10 +117,12 @@ corepack pnpm --filter @workspace/api-server test
 corepack pnpm --filter @workspace/egytrend typecheck
 corepack pnpm --filter @workspace/egytrend build
 node --check /tmp/egytrend-inline.js
+node --check /tmp/egytrend-calculator-math.mjs
+node --check /tmp/egytrend-calculator-runtime.mjs
 ```
 
-- API: **22/22 tests passed** باستخدام `pg-mem` synthetic فقط، بلا `DATABASE_URL` حقيقية.
-- suite تغطي: lifecycle دفع/entitlement/renewal، rejection of stale VIP JWT، server portfolio CRUD/archive، alerts CRUD/archive، وسلامة evaluator أمام quote stale/EOD، وتسعير الباقات (بداية/نهاية العرض، targeting، رفض old price غير صالح، snapshot، تجاهل مبلغ المتصفح، ورفض موظف بلا permission).
+- API: **32/32 tests passed** باستخدام `pg-mem` synthetic فقط، بلا `DATABASE_URL` حقيقية.
+- suite تغطي: lifecycle دفع/entitlement/renewal، rejection of stale VIP JWT، server portfolio CRUD/archive، alerts CRUD/archive، وسلامة evaluator أمام quote stale/EOD، وتسعير الباقات (بداية/نهاية العرض، targeting، رفض old price غير صالح، snapshot، تجاهل مبلغ المتصفح، ورفض موظف بلا permission)، ومعادلات الحاسبات وحماية free/VIP المباشرة للـruntime/math/save/history/PDF export.
 - تحذيران `dataStore watch ENOENT` أثناء tests بسبب مسارات JSON غير موجودة داخل test harness؛ ليسا فشلًا ولا كتابة على DB.
 
 ## مصادر ومزودون: الحالة القانونية
@@ -129,4 +144,4 @@ node --check /tmp/egytrend-inline.js
 
 ## الخطوة المنطقية التالية
 
-بعد موافقة منفصلة على **Preview DB + backup workflow فقط**: طبّق migrations في Preview، نفذ E2E smoke يدوي، ثم نضيف scheduler Preview محدود لتنبيهات الأسعار والموجز الصباحي. لا تنتقل إلى Production أو تضف provider مدفوع دون موافقة صريحة جديدة.
+بعد موافقة منفصلة على **Preview DB + backup workflow فقط**: طبّق migrations في Preview (ومنها `0006`)، نفذ E2E/visual smoke يدوي للحاسبات والحفظ/PDF، ثم نضيف scheduler Preview محدود لتنبيهات الأسعار والموجز الصباحي. لا تنتقل إلى Production أو تضف provider مدفوع دون موافقة صريحة جديدة.
