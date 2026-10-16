@@ -1128,10 +1128,6 @@ async function callAI({system, messages, max_tokens=2000, context=null, memory=f
   const tid = setTimeout(()=>ctrl.abort(), 85000);
   try{
     const headers={"Content-Type":"application/json"};
-    const userTok=DB.g("userTok","");
-    const adminTok=DB.g("admTok","");
-    if(userTok)headers.Authorization="Bearer "+userTok;
-    if(adminTok)headers["x-admin-token"]=adminTok;
     const body={system, messages, max_tokens};
     /* Own-context for AI tools (portfolio/alerts) — sent only when the
      * caller opts in; the backend reads nothing else from the body. */
@@ -1141,6 +1137,7 @@ async function callAI({system, messages, max_tokens=2000, context=null, memory=f
       method:"POST",
       headers,
       body: JSON.stringify(body),
+      credentials:"same-origin",
       signal: ctrl.signal
     });
     if(!r.ok){
@@ -1189,12 +1186,76 @@ function aiErrMsg(e){
   return "❌ تعذر الاتصال بالخادم — تحقق من اتصالك بالإنترنت ثم أعد المحاولة.";
 }
 
-/* ─── Security: Input sanitization ─── */
-const sanitize = str => String(str||"").replace(/[<>&"']/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
-const sanitizeURL = url => {
-  try { const u = new URL(url); return ['http:','https:'].includes(u.protocol) ? url : '#'; }
-  catch { return '#'; }
+/* ─── Security: context-aware rendering helpers ─────────────────────────
+ * User, admin, RSS and AI content is data — never HTML. `sanitize` uses the
+ * browser DOM encoder instead of a hand-written regex so every text node
+ * interpolated into a template is encoded consistently. URLs, CSS colors and
+ * JavaScript arguments have separate, stricter encoders for their contexts. */
+const sanitize = value => {
+  const node=document.createElement("span");
+  node.textContent=String(value??"");
+  return node.innerHTML;
 };
+const sanitizeURL = value => {
+  try {
+    const u=new URL(String(value??""));
+    return ["http:","https:"].includes(u.protocol)?u.href:"#";
+  } catch { return "#"; }
+};
+const sanitizeImageURL = value => {
+  const raw=String(value??"");
+  if(/^data:image\/(?:png|jpe?g|webp|gif|bmp);base64,[A-Za-z0-9+/=]+$/i.test(raw)&&raw.length<=290000)return raw;
+  return sanitizeURL(raw);
+};
+const safeColor = (value,fallback="#64748b") => {
+  const color=String(value??"").trim();
+  return /^#[0-9a-f]{6}$/i.test(color)?color.toLowerCase():fallback;
+};
+const safeJsArg = value => JSON.stringify(String(value??""))
+  .replace(/[<>&']/g,c=>({"<":"\\u003c",">":"\\u003e","&":"\\u0026","'":"\\u0027"}[c]));
+const safeJsBool = value => value?"true":"false";
+const safeDomId = value => encodeURIComponent(String(value??"")).replace(/%/g,"_");
+
+/* Response-shape guards: market providers, RSS and local browser data are
+ * all treated as untrusted at the UI boundary. */
+const finiteNumber = (value,fallback=0) => {
+  const number=Number(value);
+  return Number.isFinite(number)?number:fallback;
+};
+function normalizeMarketRows(raw){
+  if(!Array.isArray(raw))return [];
+  return raw.flatMap(item=>{
+    const m=item&&typeof item==="object"?item:{};
+    const n=String(m.n||"").trim().slice(0,80);
+    if(!n)return [];
+    return [{n,v:String(m.v??"").slice(0,80),c:String(m.c??"").slice(0,80),s:String(m.s??"").slice(0,120),up:m.up===true,clickable:m.clickable===true}];
+  }).slice(0,100);
+}
+function normalizeCalendarEvents(raw){
+  if(!Array.isArray(raw))return [];
+  return raw.flatMap(item=>{
+    const e=item&&typeof item==="object"?item:{};
+    const text=(key,max)=>String(e[key]??"").slice(0,max);
+    const date=String(e.date||e.tISO||"").slice(0,64);
+    return [{ev:text("ev",300),evEn:text("evEn",300),t:text("t",80),tISO:text("tISO",64),date,imp:text("imp",40),c:safeColor(e.c),country:text("country",40),countryAr:text("countryAr",100),flag:text("flag",16),forecast:text("forecast",100),previous:text("previous",100)}];
+  }).filter(e=>e.ev||e.evEn).slice(0,30);
+}
+function normalizeStockList(raw){
+  if(!Array.isArray(raw))return [];
+  return raw.flatMap(item=>{
+    const s=item&&typeof item==="object"?item:{};
+    const sym=String(s.sym||"").trim().toUpperCase();
+    const price=finiteNumber(s.price,NaN);
+    if(!/^[A-Z0-9.^_-]{1,16}$/.test(sym)||!Number.isFinite(price)||price<=0)return [];
+    const optional=key=>{const value=finiteNumber(s[key],NaN);return Number.isFinite(value)?value:undefined;};
+    return [{
+      sym,name:String(s.name||sym).slice(0,160),sector:String(s.sector||"").slice(0,100),price,
+      prevClose:finiteNumber(s.prevClose,price),chg:finiteNumber(s.chg,0),chgPct:finiteNumber(s.chgPct,0),
+      vol:Math.max(0,finiteNumber(s.vol,0)),high:finiteNumber(s.high,price),low:finiteNumber(s.low,price),open:finiteNumber(s.open,price),
+      mktCapM:optional("mktCapM"),pe:optional("pe"),forwardPE:optional("forwardPE"),divYield:optional("divYield"),eps:optional("eps"),bookValue:optional("bookValue"),priceToBook:optional("priceToBook"),sharesM:optional("sharesM"),high52w:optional("high52w"),low52w:optional("low52w"),ts:finiteNumber(s.ts,Date.now()),
+    }];
+  }).slice(0,600);
+}
 
 /* ─── Backend API endpoints ─── */
 const NEWS_API     = "/api/news";
@@ -1358,22 +1419,45 @@ function ensureUserScope(phone){
   if(owner && owner!==phone) clearUserScopedData();
   if(owner!==phone) DB.s("user_owner",phone);
 }
-function loadUserScopedData(){ wl=DB.g("wl",[]); savedIds=DB.g("sv",[]); portfolio=DB.g("pt",[]); }
+function localTextList(value,max=80){
+  return Array.isArray(value)?[...new Set(value.map(v=>String(v||"").trim().slice(0,max)).filter(Boolean))].slice(0,100):[];
+}
+function normalizePortfolio(value){
+  if(!Array.isArray(value))return [];
+  return value.flatMap(raw=>{
+    const p=raw&&typeof raw==="object"?raw:{};
+    const sym=String(p.sym||"").trim().toUpperCase();
+    const price=Number(p.price),qty=Number(p.qty);
+    if(!/^[A-Z0-9._-]{1,16}$/.test(sym)||!Number.isFinite(price)||price<=0||price>1e9||!Number.isInteger(qty)||qty<1||qty>1e9)return [];
+    return [{sym,price,qty}];
+  }).slice(0,100);
+}
+function loadUserScopedData(){
+  wl=localTextList(DB.g("wl",[]),80);
+  savedIds=localTextList(DB.g("sv",[]),80);
+  portfolio=normalizePortfolio(DB.g("pt",[]));
+}
 
 /* ═══════════════════ INIT ═══════════════════ */
 document.addEventListener("DOMContentLoaded",async()=>{
-  wl=DB.g("wl",[]);savedIds=DB.g("sv",[]);portfolio=DB.g("pt",[]);
-  const tok=DB.g("userTok","");
-  const s=DB.g("s",null);
-  if(tok){
-    try{
-      const r=await fetch("/api/user/me",{headers:{Authorization:"Bearer "+tok}});
-      const d=await r.json();
-      if(!r.ok||d.status!=="ok")throw new Error("session");
-      U=d.user;DB.s("s",U);bootApp();
-    }catch{DB.d("userTok");DB.d("s");document.getElementById("auth").classList.add("open");}
-  }else if(s?.phone==="admin"&&DB.g("admTok","")){U=s;bootApp();}
-  else{DB.d("s");document.getElementById("auth").classList.add("open");}
+  /* Authentication state is verified only with the server's HttpOnly session
+   * cookie. Local storage remains for non-sensitive UI preferences only. */
+  loadUserScopedData();
+  try{
+    const r=await fetch("/api/user/me",{credentials:"same-origin"});
+    const d=await r.json().catch(()=>({}));
+    if(r.ok&&d.status==="ok"&&d.user){U=d.user;bootApp();}
+    else{
+      const ar=await fetch("/api/admin/session",{credentials:"same-origin"});
+      const ad=await ar.json().catch(()=>({}));
+      if(ar.ok&&ad.status==="ok"&&ad.employee){
+        U={name:ad.employee.name||"المدير",phone:"admin",plan:"admin",role:ad.employee.role};
+        bootApp();
+      }else document.getElementById("auth").classList.add("open");
+    }
+  }catch{document.getElementById("auth").classList.add("open");}
+  /* Remove tokens and stale identity snapshots left by pre-cookie releases. */
+  DB.d("userTok");DB.d("admTok");DB.d("s");
   buildTicker();buildCalendar();buildFAQ();
   // Kick off live data immediately so even pre-login users see real numbers
   fetchMarketsData();fetchCalendarData();
@@ -1408,7 +1492,9 @@ async function fetchStocksData(){
     if(!r.ok) return;
     const j=await r.json();
     if(j.status==="ok" && Array.isArray(j.stocks) && j.stocks.length){
-      liveStocks=j.stocks;
+      const stocks=normalizeStockList(j.stocks);
+      if(!stocks.length)return;
+      liveStocks=stocks;
       checkPriceAlerts();
       const ep=document.getElementById("egx-page");
       if(ep&&ep.classList.contains("open")) renderStocks();
@@ -1424,7 +1510,9 @@ async function fetchUsStocksData(){
     if(!r.ok) return;
     const j=await r.json();
     if(j.status==="ok" && Array.isArray(j.stocks) && j.stocks.length){
-      usStocks=j.stocks;
+      const stocks=normalizeStockList(j.stocks);
+      if(!stocks.length)return;
+      usStocks=stocks;
       if(scrMarket==="us") renderScrResults();
     }
   }catch{}
@@ -1536,14 +1624,12 @@ function doAuth(){
       if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){showE("البريد الإلكتروني غير صحيح");return;}
       const rr=await fetch("/api/user/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,phone,password:pass,email:email||undefined})});
       const rd=await rr.json().catch(()=>({}));
-      if(!rr.ok||rd.status!=="ok"){showE(rd.message||"تعذر إنشاء الحساب");return;}
-      DB.s("userTok",rd.token);U=rd.user;
+      if(!rr.ok||rd.status!=="ok"||!rd.user){showE(rd.message||"تعذر إنشاء الحساب");return;}
+      U=rd.user;
     } else {
       if(!phone||!pass){showE("أدخل الرقم وكلمة المرور");return;}
-      /* Admin: internal check — not exposed in UI.
-       * Exchanges the password for a server-issued bearer token used
-       * by /api/admin/* endpoints. If the server is unreachable we
-       * still allow local-only admin (read-only of CRUD UI). */
+      /* Admin authentication is server-verified and establishes an HttpOnly
+       * same-origin session cookie. There is no offline/admin fallback. */
       if(phone==="admin"||/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(phone)){
         try{
           /* Email → employee JWT flow; "admin" → legacy ADMIN_PASSWORD flow. */
@@ -1552,9 +1638,8 @@ function doAuth(){
             : {password:pass};
           const lr = await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(adminBody)});
           const lj = await lr.json();
-          if(lr.ok && lj.status==="ok" && lj.token){
-            U={name:"المدير",phone:"admin",plan:"admin"};
-            DB.s("admTok", lj.token);
+          if(lr.ok && lj.status==="ok"){
+            U={name:lj.employee?.name||"المدير",phone:"admin",plan:"admin",role:lj.employee?.role||"admin"};
           } else {
             showE("كلمة مرور المدير غير صحيحة");
             return;
@@ -1567,26 +1652,32 @@ function doAuth(){
       else{
         const ur=await fetch("/api/user/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,password:pass})});
         const ud=await ur.json().catch(()=>({}));
-        if(!ur.ok||ud.status!=="ok"){showE(ud.message==="invalid credentials"?"الرقم أو كلمة المرور غير صحيحة":ud.message||"تعذر تسجيل الدخول");return;}
-        DB.s("userTok",ud.token);U=ud.user;
+        if(!ur.ok||ud.status!=="ok"||!ud.user){showE(ud.message==="invalid credentials"?"الرقم أو كلمة المرور غير صحيحة":ud.message||"تعذر تسجيل الدخول");return;}
+        U=ud.user;
       }
     }
-    DB.s("s",U);bootApp();
+    bootApp();
   },550);
 }
 
-function logout(){DB.d("s");DB.d("userTok");DB.d("admTok");U=null;portfolio=[];wl=[];savedIds=[];goNav("home");document.getElementById("main").style.display="none";document.getElementById("auth").classList.add("open");}
+async function logout(){
+  try{await Promise.all([
+    fetch("/api/user/logout",{method:"POST",credentials:"same-origin"}),
+    fetch("/api/admin/logout",{method:"POST",credentials:"same-origin"}),
+  ]);}catch{}
+  DB.d("s");DB.d("userTok");DB.d("admTok");
+  U=null;portfolio=[];wl=[];savedIds=[];goNav("home");
+  document.getElementById("main").style.display="none";
+  document.getElementById("auth").classList.add("open");
+}
 
 /* ═══════════════════ ADMIN API HELPER ═══════════════════ */
 async function admFetch(url, opts={}){
-  const tok = DB.g("admTok", "");
-  if(!tok) throw new Error("not authenticated");
-  const headers = Object.assign({}, opts.headers||{}, {"x-admin-token":tok});
-  if(opts.body && !headers["Content-Type"]) headers["Content-Type"]="application/json";
-  const r = await fetch(url, Object.assign({}, opts, {headers}));
+  const headers=Object.assign({},opts.headers||{});
+  if(opts.body&&!headers["Content-Type"])headers["Content-Type"]="application/json";
+  const r=await fetch(url,Object.assign({},opts,{headers,credentials:"same-origin"}));
   if(r.status===401){
     showToast("⚠️ انتهت صلاحية جلسة المدير");
-    DB.d("admTok");
     throw new Error("unauthorized");
   }
   return r;
@@ -1660,9 +1751,27 @@ async function syncSources(){
     if(!r.ok) return;
     const d = await r.json();
     if(d.status==="ok" && Array.isArray(d.sources) && d.sources.length){
+      // Treat server-managed source metadata as untrusted display data. IDs,
+      // categories and colors are constrained before they reach inline UI.
+      const safeSources=d.sources.flatMap(raw=>{
+        const s=raw&&typeof raw==="object"?raw:{};
+        const id=String(s.id||"").trim();
+        const lang=String(s.lang||"");
+        const cat=String(s.cat||"");
+        if(!/^[a-z0-9_-]{2,40}$/i.test(id)||!["ar","en"].includes(lang)||!["egypt","global","stocks","crypto"].includes(cat)) return [];
+        return [{
+          id,
+          name:String(s.name||id).slice(0,60),
+          icon:String(s.icon||"📰").slice(0,12),
+          lang,
+          cat,
+          color:safeColor(s.color),
+        }];
+      });
+      if(!safeSources.length) return;
       // Replace the in-memory SOURCES array (keep object identity behaviour)
       SOURCES.length=0;
-      d.sources.forEach(s=>SOURCES.push(s));
+      SOURCES.push(...safeSources);
       buildSrcPills();
     }
   }catch{ /* keep static fallback */ }
@@ -1678,17 +1787,15 @@ async function fetchMarketsData(force){
     const d=await r.json();
     if(d.status!=="ok"||!d.markets)throw new Error("bad payload");
 
-    // Replace section data, but only for sections that came back non-empty
+    // Replace section data only after its response rows pass the UI boundary.
     ["eg","gl","cm","cr"].forEach(k=>{
-      if(Array.isArray(d.markets[k])&&d.markets[k].length){
-        liveMarkets[k]=d.markets[k];
-      }
+      const rows=normalizeMarketRows(d.markets[k]);
+      if(rows.length)liveMarkets[k]=rows;
     });
 
     // Update ticker
-    if(Array.isArray(d.ticker)&&d.ticker.length){
-      liveTicks=d.ticker;
-    }
+    const ticker=normalizeMarketRows(d.ticker);
+    if(ticker.length)liveTicks=ticker;
 
     buildTicker();buildMarkets();buildMarketStrip();
     vipDataPulse();
@@ -1704,7 +1811,9 @@ async function fetchCalendarData(){
     if(!r.ok)throw new Error("HTTP "+r.status);
     const d=await r.json();
     if(d.status!=="ok"||!Array.isArray(d.events))throw new Error("bad payload");
-    liveCalendar=d.events;
+    const events=normalizeCalendarEvents(d.events);
+    if(!events.length)return;
+    liveCalendar=events;
     buildCalendar();
     checkCalendarNotifs(liveCalendar);
   }catch(e){
@@ -1742,7 +1851,7 @@ function buildMarketStrip(){
 function buildSrcPills(){
   document.getElementById("src-pills").innerHTML=
     `<button class="sp-btn active" onclick="setSrc('all',this)"><span class="sp-dot" style="background:var(--g);"></span> الكل</button>`+
-    SOURCES.map(s=>`<button class="sp-btn" onclick="setSrc('${s.id}',this)"><span class="sp-dot" style="background:${s.color};"></span>${s.icon} ${s.name}</button>`).join("");
+    SOURCES.map(s=>`<button class="sp-btn" onclick='setSrc(${safeJsArg(s.id)},this)'><span class="sp-dot" style="background:${safeColor(s.color)};"></span>${sanitize(s.icon)} ${sanitize(s.name)}</button>`).join("");
 }
 function setSrc(id,el){activeSrc=id;document.querySelectorAll(".sp-btn").forEach(b=>b.classList.remove("active"));el.classList.add("active");applyFilters();}
 
@@ -1797,8 +1906,10 @@ async function fetchSource(src){
         id:`${src.id}-${idx}-${Date.now()}`,
         srcId:src.id,srcName:src.name,srcIcon:src.icon,srcColor:src.color,srcLang:src.lang,
         cat:src.cat,
-        title:sanitize(rawTitle),
-        summary:sanitize(rawDesc.slice(0,230)+(rawDesc.length>230?"...":"")),
+        // Store source text as text, not pre-escaped HTML. Every rendering
+        // path below uses the DOM-based `sanitize` encoder at its own sink.
+        title:rawTitle,
+        summary:rawDesc.slice(0,230)+(rawDesc.length>230?"...":""),
         link,img,
         ts:item.pubDate?new Date(item.pubDate).getTime():Date.now()-idx*600000,
         impact,impLabel,impColor,score,isBreaking,
@@ -1895,16 +2006,28 @@ function renderFeed(){
   }
   let html="";
   filteredArts.forEach((a,i)=>{
+    const articleId=safeJsArg(a.id);
+    const articleDomId=safeDomId(a.id);
+    const title=sanitize(a.title);
+    const summary=sanitize(a.summary);
+    const srcName=sanitize(a.srcName);
+    const srcIcon=sanitize(a.srcIcon);
+    const srcColor=safeColor(a.srcColor);
+    const img=sanitize(sanitizeURL(a.img));
+    const fallback=sanitize(sanitizeURL(catImg(a.cat)));
     const sv=savedIds.includes(a.id);
-    const catLbl=CATS.find(c=>c.id===a.cat)?.label||"";
-    const srcBdg=`<span class="bdg" style="background:${a.srcColor}18;color:${a.srcColor};border:1px solid ${a.srcColor}28;">${a.srcIcon} ${a.srcName}</span>`;
-    const impBdg=`<span class="bdg bdg-${a.impact}">${a.impLabel}</span>`;
+    const catLbl=sanitize(CATS.find(c=>c.id===a.cat)?.label||"");
+    const impact=["up","dn","nu"].includes(a.impact)?a.impact:"nu";
+    const impLabel=sanitize(a.impLabel||"محايد");
+    const score=Number.isFinite(Number(a.score))?Math.max(0,Math.min(100,Math.round(Number(a.score)))):0;
+    const srcBdg=`<span class="bdg" style="background:${srcColor}18;color:${srcColor};border:1px solid ${srcColor}28;">${srcIcon} ${srcName}</span>`;
+    const impBdg=`<span class="bdg bdg-${impact}">${impLabel}</span>`;
     const brkBdg=a.isBreaking?`<span class="bdg bdg-brk"><span style="animation:blink 1.2s infinite">●</span> عاجل</span>`:"";
-    const svBtn=`<button onclick="event.stopPropagation();toggleSave('${a.id}')" style="background:rgba(0,0,0,.55);backdrop-filter:blur(4px);border:none;border-radius:8px;cursor:pointer;color:${sv?"var(--au)":"rgba(255,255,255,.65)"};font-size:13px;display:flex;align-items:center;justify-content:center;transition:all .2s;width:28px;height:28px;" id="sv-${a.id}">🔖</button>`;
+    const svBtn=`<button onclick='event.stopPropagation();toggleSave(${articleId})' style="background:rgba(0,0,0,.55);backdrop-filter:blur(4px);border:none;border-radius:8px;cursor:pointer;color:${sv?"var(--au)":"rgba(255,255,255,.65)"};font-size:13px;display:flex;align-items:center;justify-content:center;transition:all .2s;width:28px;height:28px;" id="sv-${articleDomId}">🔖</button>`;
 
     if(i===0){
-      html+=`<div class="card-hero fu" onclick="openArt('${a.id}')">
-        <img src="${a.img}" alt="" onerror="this.src='${catImg(a.cat)}'"/>
+      html+=`<div class="card-hero fu" onclick='openArt(${articleId})'>
+        <img src="${img}" alt="" data-fallback="${fallback}" onerror="this.onerror=null;this.src=this.dataset.fallback"/>
         <div class="ch-ov"></div>
         <div style="position:absolute;top:10px;right:10px;display:flex;gap:5px;">${brkBdg}${srcBdg}</div>
         <div style="position:absolute;top:10px;left:10px;">${svBtn}</div>
@@ -1913,29 +2036,29 @@ function renderFeed(){
             <span class="bdg" style="background:rgba(16,185,129,.15);color:var(--g);font-size:9px;">${catLbl}</span>
             <span style="color:var(--t4);font-size:10px;">${timeAgo(a.ts)}</span>
           </div>
-          <div class="ch-title">${a.title}</div>
+          <div class="ch-title">${title}</div>
           <div style="background:rgba(16,185,129,.12);border-radius:7px;padding:5px 9px;margin-bottom:7px;">
             <span style="color:var(--g);font-size:9px;font-weight:800;">⚡ TL;DR: </span>
-            <span style="color:var(--t2);font-size:11px;">${a.summary.slice(0,80)}...</span>
+            <span style="color:var(--t2);font-size:11px;">${summary.slice(0,80)}...</span>
           </div>
-          <div style="display:flex;gap:7px;align-items:center;">${impBdg}<span style="background:rgba(255,255,255,.07);border-radius:5px;padding:1px 7px;font-size:9.5px;color:var(--t3);font-family:var(--mono);">Score ${a.score}/100</span></div>
+          <div style="display:flex;gap:7px;align-items:center;">${impBdg}<span style="background:rgba(255,255,255,.07);border-radius:5px;padding:1px 7px;font-size:9.5px;color:var(--t3);font-family:var(--mono);">Score ${score}/100</span></div>
         </div>
       </div>`;
     } else {
-      html+=`<div class="card fu" onclick="openArt('${a.id}')" style="animation-delay:${Math.min(i,10)*.04}s;">
+      html+=`<div class="card fu" onclick='openArt(${articleId})' style="animation-delay:${Math.min(i,10)*.04}s;">
         <div class="cimg">
-          <img src="${a.img}" alt="" loading="lazy" onerror="this.src='${catImg(a.cat)}'"/>
+          <img src="${img}" alt="" loading="lazy" data-fallback="${fallback}" onerror="this.onerror=null;this.src=this.dataset.fallback"/>
           <div class="cimg-ov"></div>
           <div style="position:absolute;top:8px;right:8px;display:flex;gap:4px;">${brkBdg}</div>
           <div style="position:absolute;top:8px;left:8px;">${svBtn}</div>
           <div style="position:absolute;bottom:7px;right:8px;">${srcBdg}</div>
         </div>
         <div class="cbody">
-          <div class="tldr"><div class="tldr-l">⚡ TL;DR</div><div class="tldr-t">${a.summary.slice(0,95)}...</div></div>
-          <div class="ctitle">${a.title}</div>
-          <div class="csum">${a.summary}</div>
+          <div class="tldr"><div class="tldr-l">⚡ TL;DR</div><div class="tldr-t">${summary.slice(0,95)}...</div></div>
+          <div class="ctitle">${title}</div>
+          <div class="csum">${summary}</div>
           <div class="cmeta">
-            <div style="display:flex;gap:5px;align-items:center;">${impBdg}<span style="background:rgba(255,255,255,.05);border-radius:5px;padding:1px 6px;font-size:9.5px;color:var(--t4);font-family:var(--mono);">${a.score}/100</span></div>
+            <div style="display:flex;gap:5px;align-items:center;">${impBdg}<span style="background:rgba(255,255,255,.05);border-radius:5px;padding:1px 6px;font-size:9.5px;color:var(--t4);font-family:var(--mono);">${score}/100</span></div>
             <span style="color:var(--t5);font-size:10px;">${timeAgo(a.ts)}</span>
           </div>
         </div>
@@ -1949,7 +2072,7 @@ function toggleSave(id){
   const i=savedIds.indexOf(id);
   if(i>=0)savedIds.splice(i,1);else savedIds.push(id);
   DB.s("sv",savedIds);
-  const b=document.getElementById("sv-"+id);
+  const b=document.getElementById("sv-"+safeDomId(id));
   if(b)b.style.color=savedIds.includes(id)?"var(--au)":"rgba(255,255,255,.65)";
   showToast(savedIds.includes(id)?"🔖 تم الحفظ":"تمت الإزالة");
   updateStats();
@@ -1960,31 +2083,43 @@ function openArt(id){
   const a=allArts.find(n=>n.id===id);if(!a)return;
   curArt=a;const isVip=U?.plan==="vip"||U?.plan==="admin";
   const dp=document.getElementById("det");dp.classList.add("open");dp.scrollTop=0;
+  const srcColor=safeColor(a.srcColor);
+  const srcName=sanitize(a.srcName);
+  const srcIcon=sanitize(a.srcIcon);
+  const impact=["up","dn","nu"].includes(a.impact)?a.impact:"nu";
+  const impactLabel=sanitize(a.impLabel||"محايد");
+  const impactColor={up:"var(--up)",dn:"var(--dn)",nu:"var(--nu)"}[impact];
+  const score=Number.isFinite(Number(a.score))?Math.max(0,Math.min(100,Math.round(Number(a.score)))):0;
 
-  document.getElementById("det-tags").innerHTML=`<span class="bdg" style="background:${a.srcColor}18;color:${a.srcColor};border:1px solid ${a.srcColor}28;">${a.srcIcon} ${a.srcName}</span>`;
-  const img=document.getElementById("det-img");img.src=a.img;img.onerror=()=>{img.parentElement.style.display="none";};
+  document.getElementById("det-tags").innerHTML=`<span class="bdg" style="background:${srcColor}18;color:${srcColor};border:1px solid ${srcColor}28;">${srcIcon} ${srcName}</span>`;
+  const img=document.getElementById("det-img");img.src=sanitizeURL(a.img);img.onerror=()=>{img.parentElement.style.display="none";};
   document.getElementById("det-badges").innerHTML=`${a.isBreaking?`<span class="bdg bdg-brk"><span style="animation:blink 1.2s infinite">●</span> عاجل</span>`:""}`;
-  document.getElementById("det-meta").innerHTML=`<span>📰 ${a.srcName}</span><span>🕐 ${timeAgo(a.ts)}</span><span class="bdg bdg-${a.impact}">${a.impLabel}</span><span style="background:rgba(255,255,255,.06);border-radius:5px;padding:1px 7px;font-size:9.5px;color:var(--t4);font-family:var(--mono);">Score ${a.score}/100</span>`;
-  document.getElementById("det-title").textContent=a.title;
+  document.getElementById("det-meta").innerHTML=`<span>📰 ${srcName}</span><span>🕐 ${timeAgo(a.ts)}</span><span class="bdg bdg-${impact}">${impactLabel}</span><span style="background:rgba(255,255,255,.06);border-radius:5px;padding:1px 7px;font-size:9.5px;color:var(--t4);font-family:var(--mono);">Score ${score}/100</span>`;
+  document.getElementById("det-title").textContent=String(a.title||"");
   const ib=document.getElementById("det-imp");
-  ib.style.cssText=`background:${a.impColor}10;border:1px solid ${a.impColor}28;border-radius:12px;padding:10px 14px;margin-bottom:15px;display:flex;align-items:center;gap:9px;`;
-  ib.innerHTML=`<span style="font-size:20px;">${a.impact==="up"?"📈":a.impact==="dn"?"📉":"🔍"}</span><div><div style="color:${a.impColor};font-weight:700;font-size:13px;">التأثير: ${a.impLabel}</div><div style="color:var(--t4);font-size:10.5px;">Impact Score: ${a.score}/100</div></div>`;
-  document.getElementById("det-tldr").innerHTML=`<div class="det-tldr"><div style="color:var(--g);font-size:9.5px;font-weight:800;letter-spacing:.8px;margin-bottom:4px;">⚡ TL;DR — الخلاصة</div><div style="color:var(--t2);font-size:13.5px;line-height:1.7;">${a.summary}</div></div>`;
+  ib.style.cssText=`background:${impactColor}10;border:1px solid ${impactColor}28;border-radius:12px;padding:10px 14px;margin-bottom:15px;display:flex;align-items:center;gap:9px;`;
+  ib.innerHTML=`<span style="font-size:20px;">${impact==="up"?"📈":impact==="dn"?"📉":"🔍"}</span><div><div style="color:${impactColor};font-weight:700;font-size:13px;">التأثير: ${impactLabel}</div><div style="color:var(--t4);font-size:10.5px;">Impact Score: ${score}/100</div></div>`;
+  const summary=sanitize(a.summary);
+  document.getElementById("det-tldr").innerHTML=`<div class="det-tldr"><div style="color:var(--g);font-size:9.5px;font-weight:800;letter-spacing:.8px;margin-bottom:4px;">⚡ TL;DR — الخلاصة</div><div style="color:var(--t2);font-size:13.5px;line-height:1.7;">${summary}</div></div>`;
   const bw=document.getElementById("det-body");
   if(a.isVip&&!isVip){
     bw.innerHTML=`<div class="vip-lock-big"><div style="font-size:42px;margin-bottom:10px;">🔒</div><div style="color:var(--au);font-weight:900;font-size:18px;margin-bottom:8px;">محتوى VIP حصري</div><div style="color:var(--t3);font-size:13px;line-height:1.8;margin-bottom:20px;">اشترك للوصول الفوري.</div><button class="btn btn-au" onclick="closeDet();openSub();" style="padding:12px 28px;">اشترك من 99 جنيه / شهر</button></div>`;
   }else{
-    bw.innerHTML=`<div class="det-body">${a.summary}\n\n${a.srcLang==="en"?"📌 لقراءة الخبر الكامل اضغط على رابط المصدر أدناه.":"📌 للتفاصيل الكاملة، انقر على رابط المصدر الأصلي أدناه."}</div>`;
+    bw.innerHTML=`<div class="det-body">${summary}\n\n${a.srcLang==="en"?"📌 لقراءة الخبر الكامل اضغط على رابط المصدر أدناه.":"📌 للتفاصيل الكاملة، انقر على رابط المصدر الأصلي أدناه."}</div>`;
   }
-  const srcLink=document.getElementById("src-link");srcLink.href=a.link;srcLink.textContent=`🔗 قراءة الخبر الكامل على ${a.srcName}`;
+  const srcLink=document.getElementById("src-link");srcLink.href=sanitizeURL(a.link);srcLink.textContent=`🔗 قراءة الخبر الكامل على ${String(a.srcName||"")}`;
   document.getElementById("ai-det-res").style.display="none";
   const canAI = isVIPOrAdmin();
   document.getElementById("ai-det-btn").style.display=canAI?"inline-flex":"none";
   document.getElementById("ai-det-btn").innerHTML="حلّل الآن";
   document.getElementById("ai-det-vip-lock").style.display=canAI?"none":"block";
   const related=allArts.filter(n=>n.cat===a.cat&&n.id!==a.id).slice(0,4);
-  document.getElementById("det-rel").innerHTML=related.length?`<div class="rel-hdr">📰 أخبار ذات صلة</div>${related.map(r=>`<div class="rel-row" onclick="openArt('${r.id}')"><div class="rel-thumb"><img src="${r.img}" alt="" onerror="this.src='${catImg(r.cat)}'"/></div><div><div class="rel-title">${r.title}</div><div class="rel-src" style="color:${r.srcColor};">${r.srcIcon} ${r.srcName} · ${timeAgo(r.ts)}</div></div></div>`).join("")}`:"";
+  document.getElementById("det-rel").innerHTML=related.length?`<div class="rel-hdr">📰 أخبار ذات صلة</div>${related.map(r=>{
+    const rId=safeJsArg(r.id),rImg=sanitize(sanitizeURL(r.img)),rFallback=sanitize(sanitizeURL(catImg(r.cat)));
+    return`<div class="rel-row" onclick='openArt(${rId})'><div class="rel-thumb"><img src="${rImg}" alt="" data-fallback="${rFallback}" onerror="this.onerror=null;this.src=this.dataset.fallback"/></div><div><div class="rel-title">${sanitize(r.title)}</div><div class="rel-src" style="color:${safeColor(r.srcColor)};">${sanitize(r.srcIcon)} ${sanitize(r.srcName)} · ${timeAgo(r.ts)}</div></div></div>`;
+  }).join("")}`:"";
 }
+
 function closeDet(){document.getElementById("det").classList.remove("open");curArt=null;}
 
 async function aiAnalyze(){
@@ -2065,7 +2200,7 @@ function buildMarkets(){
     const el=document.getElementById(elId);if(!el)return;
     el.innerHTML=liveMarkets[key].map((m,idx)=>`
       <div class="mc clickable${wl.includes(m.n)?" wl":""}" onclick="openMarketDetail('${key}',${idx})">
-        <div class="mc-hdr"><div class="mc-name">${sanitize(m.n)}</div><button class="wl-btn" onclick="event.stopPropagation();toggleWL('${m.n}')">${wl.includes(m.n)?"⭐":"☆"}</button></div>
+        <div class="mc-hdr"><div class="mc-name">${sanitize(m.n)}</div><button class="wl-btn" onclick='event.stopPropagation();toggleWL(${safeJsArg(m.n)})'>${wl.includes(m.n)?"⭐":"☆"}</button></div>
         <div class="mc-val">${sanitize(m.v)}</div>
         <div class="mc-chg" style="color:${m.up?"var(--up)":"var(--dn)"};">${m.up?"▲":"▼"} ${sanitize(m.c)}</div>
         <div class="mc-sub">${sanitize(m.s||"")}</div>
@@ -2099,11 +2234,11 @@ function openMarketDetail(sec,idx){
 
       <!-- Asset Header -->
       <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:18px;">
-        <div style="font-size:36px;line-height:1;">${ctx.icon}</div>
+        <div style="font-size:36px;line-height:1;">${sanitize(ctx.icon)}</div>
         <div style="flex:1;min-width:0;">
           <div style="color:var(--t1);font-size:20px;font-weight:900;line-height:1.1;">${sanitize(m.n)}</div>
-          <div style="color:var(--t4);font-size:11px;margin-top:3px;">${ctx.en}</div>
-          <span style="display:inline-block;margin-top:5px;background:${col}18;border:1px solid ${col}35;border-radius:20px;padding:1px 9px;font-size:10px;color:${col};font-weight:700;">${ctx.cat}</span>
+          <div style="color:var(--t4);font-size:11px;margin-top:3px;">${sanitize(ctx.en)}</div>
+          <span style="display:inline-block;margin-top:5px;background:${col}18;border:1px solid ${col}35;border-radius:20px;padding:1px 9px;font-size:10px;color:${col};font-weight:700;">${sanitize(ctx.cat)}</span>
         </div>
         <div style="text-align:left;flex-shrink:0;">
           <div style="color:var(--t1);font-size:22px;font-weight:900;font-family:var(--mono);">${sanitize(m.v)}</div>
@@ -2128,23 +2263,23 @@ function openMarketDetail(sec,idx){
         </div>
         <div class="mkt-stat">
           <label>نوع الأصل</label>
-          <div class="sv">${ctx.cat}</div>
+          <div class="sv">${sanitize(ctx.cat)}</div>
         </div>
         <div class="mkt-stat">
           <label>أوقات التداول</label>
-          <div class="sv" style="font-size:10px;">${ctx.trading}</div>
+          <div class="sv" style="font-size:10px;">${sanitize(ctx.trading)}</div>
         </div>
       </div>
 
       <!-- Description -->
       <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:14px;margin-bottom:14px;">
         <div style="color:var(--t5);font-size:10px;font-weight:700;margin-bottom:7px;letter-spacing:.5px;">ℹ️ عن هذا الأصل</div>
-        <div style="color:var(--t3);font-size:12.5px;line-height:1.75;direction:rtl;">${ctx.desc}</div>
+        <div style="color:var(--t3);font-size:12.5px;line-height:1.75;direction:rtl;">${sanitize(ctx.desc)}</div>
       </div>
 
       <!-- Actions -->
       <div style="display:flex;gap:8px;">
-        <button id="wl-toggle-btn" class="btn btn-sm" style="flex:1;background:var(--s1);border:1px solid var(--b1);color:var(--t3);padding:11px;font-size:12px;" onclick="toggleWLDetail('${m.n}')">
+        <button id="wl-toggle-btn" class="btn btn-sm" style="flex:1;background:var(--s1);border:1px solid var(--b1);color:var(--t3);padding:11px;font-size:12px;" onclick='toggleWLDetail(${safeJsArg(m.n)})'>
           ${inWL?"⭐ في المفضلة":"☆ أضف للمفضلة"}
         </button>
         <button class="btn btn-sm" style="flex:1;background:${col}18;border:1px solid ${col}35;color:${col};padding:11px;font-size:12px;" onclick="refreshMktDetail('${sec}',${idx})">
@@ -2232,8 +2367,8 @@ function buildCalendar(){
   // Show next ~12 events
   const evs=liveCalendar.slice(0,12);
   wrap.innerHTML=evs.map((ev,i)=>{
-    const c=ev.c||"#64748b";
-    const flag=ev.flag||"🌐";
+    const c=safeColor(ev.c);
+    const flag=sanitize(ev.flag||"🌐");
     const country=sanitize(ev.countryAr||ev.country||"");
     const evName=sanitize(ev.ev||ev.evEn||"");
     const fc=ev.forecast?`متوقع: ${sanitize(ev.forecast)}`:"";
@@ -2258,7 +2393,7 @@ function openEgx(name){
   const m=liveMarkets.eg.find(x=>x.n===name);
   document.getElementById("egx-name").textContent=name;
   document.getElementById("egx-val").textContent=m?.v||"";
-  document.getElementById("egx-chg").innerHTML=`<span style="color:${m?.up?"var(--up)":"var(--dn)"};">${m?.up?"▲":"▼"} ${m?.c||""}</span>`;
+  document.getElementById("egx-chg").innerHTML=`<span style="color:${m?.up?"var(--up)":"var(--dn)"};">${m?.up?"▲":"▼"} ${sanitize(m?.c||"")}</span>`;
   curStocks=[...liveStocks];
   document.querySelectorAll(".sort-btn").forEach((b,i)=>b.classList.toggle("active",i===0));
   renderStocks();document.getElementById("egx-page").classList.add("open");
@@ -2287,7 +2422,7 @@ function renderStocks(){
   el.innerHTML=(age!==null?`<div style="color:var(--t5);font-size:9px;text-align:center;padding:4px 0 2px;font-family:var(--mono);">آخر تحديث: ${age<60?age+"ث":Math.round(age/60)+"د"} · بيانات حقيقية من Yahoo Finance</div>`:"")
   +curStocks.map(s=>{
     const up=s.chgPct>=0;
-    return`<div class="stock-row" onclick="openStockDetail('${s.sym}')">
+    return`<div class="stock-row" onclick='openStockDetail(${safeJsArg(s.sym)})'>
       <div>
         <div class="st-sym">${sanitize(s.sym)} ${wl.includes(s.sym)?"⭐":""}</div>
         <div class="st-name">${sanitize(s.name)}</div>
@@ -2483,7 +2618,7 @@ function vBuildHome(b){
     <div class="vhome-grid" style="margin-bottom:4px;">
       <button class="vstat" onclick="vGo('news')"><div class="vstat-ic">🚨</div><div class="vstat-n">${allArts.length}</div><div class="vstat-l">خبر اليوم</div>${breaking.length?`<div class="vstat-sub" style="color:var(--dn);">${breaking.length} عاجل</div>`:""}</button>
       <button class="vstat" onclick="vGo('opps')"><div class="vstat-ic">💡</div><div class="vstat-n">${oppsData.length||"…"}</div><div class="vstat-l">فرصة نشطة</div></button>
-      <button class="vstat" onclick="vGo('mkt')"><div class="vstat-ic">📈</div><div class="vstat-n">${liveMarkets.eg[0]?.v||"…"}</div><div class="vstat-l">EGX30 ${liveMarkets.eg[0]?.c||""}</div></button>
+      <button class="vstat" onclick="vGo('mkt')"><div class="vstat-ic">📈</div><div class="vstat-n">${sanitize(liveMarkets.eg[0]?.v||"…")}</div><div class="vstat-l">EGX30 ${sanitize(liveMarkets.eg[0]?.c||"")}</div></button>
       <button class="vstat" onclick="vGo('port')"><div class="vstat-ic">💼</div><div class="vstat-n">${portfolio.length}</div><div class="vstat-l">سهم في محفظتك</div>${portfolio.length&&st.plPct?`<div class="vstat-sub" style="color:${st.plPct>=0?"var(--g)":"var(--dn)"};">${st.plPct>=0?"+":""}${st.plPct.toFixed(1)}%</div>`:""}</button>
     </div>
 
@@ -2492,9 +2627,9 @@ function vBuildHome(b){
       !newsReady?vLoading("محرك الأخبار يجمع 23 مصدراً حياً..."):
       !topNews.length?vEmpty("📭","لا توجد أخبار بعد","اضغط تحديث في تبويب الأخبار"):
       topNews.map(a=>`
-        <div class="vnews-row" onclick="openArt('${a.id}')">
+        <div class="vnews-row" onclick='openArt(${safeJsArg(a.id)})'>
           <div style="flex:1;min-width:0;">
-            <div class="vnews-t">${a.title}</div>
+            <div class="vnews-t">${sanitize(a.title)}</div>
             <div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap;">
               ${vImpChip(a)}
               <span style="color:var(--t5);font-size:9.5px;">${sanitize(a.srcName)} · ${vTime(a.ts)}</span>
@@ -2506,13 +2641,13 @@ function vBuildHome(b){
 
     ${vSect("💡","آخر الفرص","opps")}
     ${!oppsData.length?vLoading("جارٍ جلب الفرص..."):newOpps.map(o=>`
-      <div class="vbox vopp-mini" onclick="openOppDetail('${o.id}')" style="cursor:pointer;">
+      <div class="vbox vopp-mini" onclick='openOppDetail(${safeJsArg(o.id)})' style="cursor:pointer;">
         <div class="row between">
           <div style="color:var(--t1);font-weight:800;font-size:12.5px;flex:1;min-width:0;">${sanitize(o.title)}</div>
           <span class="vscore">${oppScore(o)}</span>
         </div>
         <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap;">
-          <span class="vchip">${(OPP_TYPES[o.type]||{}).l||o.type}</span>
+          <span class="vchip">${sanitize((OPP_TYPES[o.type]||OPP_TYPES.stock).l)}</span>
           ${o.expectedReturn?`<span class="vchip" style="color:var(--g);">${sanitize(o.expectedReturn)}</span>`:""}
           <span class="vchip">${RISK_LABELS[o.riskLevel||3]}</span>
         </div>
@@ -2530,14 +2665,14 @@ function vBuildHome(b){
 
     ${vSect("🔔","أهم التنبيهات","alerts")}
     ${(()=>{const s=getNotifsStore();const items=s.items.slice(0,3);return items.length?`<div class="vbox" style="padding:0;overflow:hidden;">${items.map(n=>`
-      <div class="vnews-row" onclick="openVipAlert('${sanitize(n.link||"")}')"><div style="flex:1;min-width:0;"><div class="vnews-t" style="font-size:11.5px;">${n.icon} ${sanitize(n.title)}</div><div style="color:var(--t5);font-size:9.5px;margin-top:2px;">${sanitize(n.body||"").slice(0,70)} · ${vTime(n.ts)}</div></div></div>`).join("")}</div>`:vEmpty("🔕","لا تنبيهات جديدة","التنبيهات تظهر هنا تلقائياً");})()}
+      <div class="vnews-row" onclick='openVipAlert(${safeJsArg(n.link||"")})'><div style="flex:1;min-width:0;"><div class="vnews-t" style="font-size:11.5px;">${sanitize(n.icon)} ${sanitize(n.title)}</div><div style="color:var(--t5);font-size:9.5px;margin-top:2px;">${sanitize(n.body||"").slice(0,70)} · ${vTime(n.ts)}</div></div></div>`).join("")}</div>`:vEmpty("🔕","لا تنبيهات جديدة","التنبيهات تظهر هنا تلقائياً");})()}
 
     ${vSect("📅","أحداث اقتصادية قادمة","mkt")}
     ${evs.length?`<div class="vbox" style="padding:0;overflow:hidden;">${evs.map(ev=>`
       <div class="vnews-row" style="cursor:default;">
-        <div style="font-size:16px;">${ev.flag||"🌐"}</div>
+        <div style="font-size:16px;">${sanitize(ev.flag||"🌐")}</div>
         <div style="flex:1;min-width:0;"><div class="vnews-t" style="font-size:11.5px;">${sanitize(ev.ev||ev.evEn||"")}</div><div style="color:var(--t5);font-size:9.5px;">${sanitize(ev.t||"")}</div></div>
-        <span class="vimp" style="color:${ev.c||"#64748b"};background:${(ev.c||"#64748b")}18;">${sanitize(ev.imp||"")}</span>
+        <span class="vimp" style="color:${safeColor(ev.c)};background:${safeColor(ev.c)}18;">${sanitize(ev.imp||"")}</span>
       </div>`).join("")}</div>`:vEmpty("📅","جارٍ تحميل التقويم الاقتصادي...")}
 
     ${vSect("💼","محفظتك","port")}
@@ -2593,13 +2728,13 @@ function vBuildNews(b){
       `<div style="margin-bottom:6px;color:var(--t5);font-size:9.5px;">${list.length} خبر · مرتبة بالتأثير</div>`+
       list.slice(0,40).map(a=>{
         const assets=vAffectedAssets(a);
-        return `<div class="vbox ${a.isBreaking?"au":"g"}" style="cursor:pointer;" onclick="openArt('${a.id}')">
+        return `<div class="vbox ${a.isBreaking?"au":"g"}" style="cursor:pointer;" onclick='openArt(${safeJsArg(a.id)})'>
           <div class="row between" style="margin-bottom:5px;align-items:flex-start;">
             ${vImpChip(a)}
             <span style="color:var(--t5);font-size:9px;font-family:var(--mono);">Impact ${a.score}</span>
           </div>
-          <div style="color:var(--t1);font-weight:800;font-size:13px;line-height:1.65;margin-bottom:5px;">${a.title}</div>
-          ${a.summary?`<div style="color:var(--t3);font-size:11px;line-height:1.7;margin-bottom:7px;">${a.summary}</div>`:""}
+          <div style="color:var(--t1);font-weight:800;font-size:13px;line-height:1.65;margin-bottom:5px;">${sanitize(a.title)}</div>
+          ${a.summary?`<div style="color:var(--t3);font-size:11px;line-height:1.7;margin-bottom:7px;">${sanitize(a.summary)}</div>`:""}
           ${assets.length?`<div class="row" style="gap:5px;flex-wrap:wrap;margin-bottom:7px;">${assets.map(x=>`<span class="vchip">${x}</span>`).join("")}</div>`:""}
           <div class="row between">
             <span style="color:var(--t5);font-size:9.5px;">${a.srcIcon||"📡"} ${sanitize(a.srcName)} · ${vTime(a.ts)}</span>
@@ -2620,8 +2755,8 @@ function vBuildOpps(b){
   if(vOppF.type!=="all")list=list.filter(o=>o.type===vOppF.type);
   if(vOppF.mkt!=="all")list=list.filter(o=>o.market===vOppF.mkt);
   list.sort((x,y)=>oppScore(y)-oppScore(x));
-  const types=[...new Set(oppsData.map(o=>o.type))];
-  const mkts=[...new Set(oppsData.map(o=>o.market))];
+  const types=[...new Set(oppsData.map(o=>o.type))].filter(t=>Object.prototype.hasOwnProperty.call(OPP_TYPES,t));
+  const mkts=[...new Set(oppsData.map(o=>o.market))].filter(m=>Object.prototype.hasOwnProperty.call(OPP_MARKETS,m));
   const mName={egypt:"🇪🇬 مصر",us:"🇺🇸 أمريكا",gulf:"🌙 الخليج",crypto:"₿ كريبتو",global:"🌐 عالمي"};
   const saved=DB.g("saved_opps",[]);
 
@@ -2635,45 +2770,48 @@ function vBuildOpps(b){
     </div>
     ${oppsData.length?`
     <div style="margin-bottom:7px;"><div style="color:var(--t5);font-size:9px;font-weight:700;margin-bottom:4px;">النوع</div>
-      <div class="scr-filters" id="vopp-type-row"><button class="scr-f${vOppF.type==="all"?" active":""}" onclick="vSetOppF('type','all',this)">الكل</button>${types.map(t=>`<button class="scr-f${vOppF.type===t?" active":""}" onclick="vSetOppF('type','${t}',this)">${(OPP_TYPES[t]||{}).l||t}</button>`).join("")}</div></div>
+      <div class="scr-filters" id="vopp-type-row"><button class="scr-f${vOppF.type==="all"?" active":""}" onclick="vSetOppF('type','all',this)">الكل</button>${types.map(t=>`<button class="scr-f${vOppF.type===t?" active":""}" onclick='vSetOppF("type",${safeJsArg(t)},this)'>${sanitize(OPP_TYPES[t].l)}</button>`).join("")}</div></div>
     <div style="margin-bottom:9px;"><div style="color:var(--t5);font-size:9px;font-weight:700;margin-bottom:4px;">السوق</div>
-      <div class="scr-filters"><button class="scr-f${vOppF.mkt==="all"?" active":""}" onclick="vSetOppF('mkt','all',this)">الكل</button>${mkts.map(m=>`<button class="scr-f${vOppF.mkt===m?" active":""}" onclick="vSetOppF('mkt','${m}',this)">${mName[m]||m}</button>`).join("")}</div></div>`:""}
+      <div class="scr-filters"><button class="scr-f${vOppF.mkt==="all"?" active":""}" onclick="vSetOppF('mkt','all',this)">الكل</button>${mkts.map(m=>`<button class="scr-f${vOppF.mkt===m?" active":""}" onclick='vSetOppF("mkt",${safeJsArg(m)},this)'>${sanitize(mName[m])}</button>`).join("")}</div></div>`:""}
     ${
       !oppsData.length?vLoading("جارٍ جلب الفرص الاستثمارية..."):
       !list.length?vEmpty("💡","لا توجد فرص في هذه الفئة","جرّب فلتراً آخر أو عد لاحقاً"):
       list.map(o=>{
-        const t=OPP_TYPES[o.type]||{l:o.type,c:"#64748b",bg:"rgba(100,116,139,.12)"};
-        const rColor=RISK_COLORS[(o.riskLevel||3)-1];
+        const t=OPP_TYPES[o.type]||OPP_TYPES.stock;
+        const rColor=RISK_COLORS[(o.riskLevel||3)-1]||RISK_COLORS[2];
         const daysLeft=o.deadline?Math.ceil((new Date(o.deadline)-new Date())/(1e3*60*60*24)):null;
         const ageHrs=o.createdAt?Math.floor((Date.now()-new Date(o.createdAt))/(1e3*3600)):999;
-        const sc=oppScore(o);
+        const sc=Number(oppScore(o));
+        const score=Number.isFinite(sc)?Math.max(0,Math.round(sc)):0;
         const isSaved=saved.includes(o.id);
-        return `<div class="vbox${o.featured?" au":""}" style="cursor:pointer;" onclick="openOppDetail('${o.id}')">
+        const id=safeJsArg(o.id);
+        return `<div class="vbox${o.featured?" au":""}" style="cursor:pointer;" onclick='openOppDetail(${id})'>
           <div class="row between" style="align-items:flex-start;margin-bottom:6px;">
             <div class="row" style="gap:5px;flex-wrap:wrap;">
-              <span class="opp-type-badge" style="color:${t.c};background:${t.bg};">${t.l}</span>
-              <span class="vchip">${mName[o.market]||o.market}</span>
-              ${ageHrs<48?`<span class="vchip" style="color:#22c55e;background:rgba(34,197,94,.12);">🟢 جديدة</span>`:""}
+              <span class="opp-type-badge" style="color:${t.c};background:${t.bg};">${sanitize(t.l)}</span>
+              <span class="vchip">${sanitize(mName[o.market]||"غير محدد")}</span>
+              ${Number.isFinite(ageHrs)&&ageHrs>=0&&ageHrs<48?`<span class="vchip" style="color:#22c55e;background:rgba(34,197,94,.12);">🟢 جديدة</span>`:""}
               ${o.featured?`<span class="vchip" style="color:var(--au);background:var(--aud);">⭐ مميزة</span>`:""}
             </div>
-            <div style="text-align:center;flex-shrink:0;"><div class="vscore">${sc}</div><div style="color:var(--t5);font-size:7.5px;">Score</div></div>
+            <div style="text-align:center;flex-shrink:0;"><div class="vscore">${score}</div><div style="color:var(--t5);font-size:7.5px;">Score</div></div>
           </div>
           <div style="color:var(--t1);font-weight:800;font-size:13.5px;line-height:1.6;margin-bottom:7px;">${sanitize(o.title)}</div>
-          <div style="color:var(--t3);font-size:11px;line-height:1.75;margin-bottom:9px;">${sanitize((o.summary||"").slice(0,160))}${(o.summary||"").length>160?"…":""}</div>
+          <div style="color:var(--t3);font-size:11px;line-height:1.75;margin-bottom:9px;">${sanitize(o.summary.slice(0,160))}${o.summary.length>160?"…":""}</div>
           <div class="opp-meta">
             ${o.expectedReturn?`<div class="opp-meta-item"><div class="opp-meta-label">العائد المحتمل</div><div class="opp-meta-val" style="color:var(--g);">${sanitize(o.expectedReturn)}</div></div>`:""}
-            <div class="opp-meta-item"><div class="opp-meta-label">المخاطرة</div><div><div class="opp-risk">${[1,2,3,4,5].map(i=>`<div class="opp-risk-dot" style="background:${i<=(o.riskLevel||3)?rColor:"var(--b2)"};"></div>`).join("")}</div><div style="color:${rColor};font-size:9px;margin-top:2px;">${RISK_LABELS[o.riskLevel||3]}</div></div></div>
+            <div class="opp-meta-item"><div class="opp-meta-label">المخاطرة</div><div><div class="opp-risk">${[1,2,3,4,5].map(i=>`<div class="opp-risk-dot" style="background:${i<=(o.riskLevel||3)?rColor:"var(--b2)"};"></div>`).join("")}</div><div style="color:${rColor};font-size:9px;margin-top:2px;">${RISK_LABELS[o.riskLevel||3]||RISK_LABELS[3]}</div></div></div>
             ${o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">مدة الاستثمار</div><div class="opp-meta-val">${sanitize(o.duration)}</div></div>`:""}
             ${o.sector?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${sanitize(o.sector.replace(/^\[AI\]\s*/,""))}</div></div>`:""}
           </div>
-          ${daysLeft!==null?`<div class="opp-deadline">⏰ ${daysLeft<=0?"آخر يوم":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>`:""}
+          ${daysLeft!==null&&Number.isFinite(daysLeft)?`<div class="opp-deadline">⏰ ${daysLeft<=0?"آخر يوم":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>`:""}
           <div class="row" style="gap:6px;margin-top:9px;">
-            <button class="btn btn-sm" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);" onclick="event.stopPropagation();vSaveOpp('${o.id}',this)">${isSaved?"🔖 محفوظة":"📌 حفظ"}</button>
-            ${o.deadline?`<button class="btn btn-sm" style="background:var(--aud);border:1px solid rgba(245,158,11,.2);color:var(--au);" onclick="event.stopPropagation();vAlertOpp('${o.id}')">🔔 تنبيه</button>`:""}
-            <button class="btn btn-g btn-sm" onclick="event.stopPropagation();openOppDetail('${o.id}')">التفاصيل ←</button>
+            <button class="btn btn-sm" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);" onclick='event.stopPropagation();vSaveOpp(${id},this)'>${isSaved?"🔖 محفوظة":"📌 حفظ"}</button>
+            ${o.deadline?`<button class="btn btn-sm" style="background:var(--aud);border:1px solid rgba(245,158,11,.2);color:var(--au);" onclick='event.stopPropagation();vAlertOpp(${id})'>🔔 تنبيه</button>`:""}
+            <button class="btn btn-g btn-sm" onclick='event.stopPropagation();openOppDetail(${id})'>التفاصيل ←</button>
           </div>
         </div>`;}).join("")}`;
 }
+
 function vSetOppF(dim,val,btn){
   vOppF[dim]=val;
   btn.parentElement.querySelectorAll(".scr-f").forEach(x=>x.classList.remove("active"));
@@ -2710,7 +2848,7 @@ function vBuildMkts(b){
       ${vSect("📊",secName[k])}
       <div class="vhome-grid" style="margin-bottom:4px;">
         ${liveMarkets[k].map(m=>`
-          <div class="vstat"${m.clickable?` onclick="openEgx('${(m.n||"").replace(/'/g,"")}')"`:""} style="${m.clickable?"cursor:pointer;":""}">
+          <div class="vstat"${m.clickable?` onclick='openEgx(${safeJsArg(m.n)})'`:""} style="${m.clickable?"cursor:pointer;":""}">
             <div class="vstat-l" style="font-weight:800;color:var(--t2);">${sanitize(m.n)}</div>
             <div class="vstat-n" style="font-size:15px;">${sanitize(m.v)}</div>
             <div class="vstat-sub" style="color:${m.up?"var(--g)":"var(--dn)"};">${m.up?"▲":"▼"} ${sanitize(m.c)}</div>
@@ -2750,9 +2888,9 @@ function vBuildCal(){
   const wrap=document.getElementById("vcal-wrap");if(!wrap)return;
   if(!liveCalendar||!liveCalendar.length){wrap.innerHTML=`<div style="padding:14px;text-align:center;color:var(--t4);font-size:11px;">جارٍ تحميل التقويم الاقتصادي...</div>`;return;}
   wrap.innerHTML=liveCalendar.slice(0,10).map((ev,i)=>{
-    const c=ev.c||"#64748b";
+    const c=safeColor(ev.c);
     return `<div class="vnews-row" style="cursor:default;${i===9?"border:none":""}">
-      <div style="font-size:16px;">${ev.flag||"🌐"}</div>
+      <div style="font-size:16px;">${sanitize(ev.flag||"🌐")}</div>
       <div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11.5px;font-weight:600;">${sanitize(ev.ev||ev.evEn||"")}</div><div style="color:var(--t5);font-size:9.5px;">${sanitize(ev.t||"")}${ev.countryAr?` · ${sanitize(ev.countryAr)}`:""}</div></div>
       <span class="vimp" style="color:${c};background:${c}18;">${sanitize(ev.imp||"")}</span>
     </div>`;}).join("");
@@ -2902,7 +3040,7 @@ function vBuildStk(b){
         <button class="add-btn" onclick="analyzeSymbolAI()" id="vstk-btn">حلّل</button>
       </div>
       <div class="scr-filters" style="margin-top:8px;">
-        ${liveStocks.slice(0,8).map(s=>`<button class="scr-f" onclick="document.getElementById('vstk-in').value='${s.sym}';analyzeSymbolAI()">${s.sym}</button>`).join("")}
+        ${liveStocks.slice(0,8).map(s=>`<button class="scr-f" onclick='document.getElementById("vstk-in").value=${safeJsArg(s.sym)};analyzeSymbolAI()'>${sanitize(s.sym)}</button>`).join("")}
       </div>
       <div id="vstk-res" style="display:none;margin-top:12px;background:rgba(245,158,11,.05);border-radius:12px;padding:13px;border:1px solid rgba(245,158,11,.15);">
         <div style="color:var(--au);font-size:10px;font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;">
@@ -3037,7 +3175,7 @@ function vBuildPort(b){
                 <span style="color:var(--t4);font-size:10px;">${r.p.qty} × ${r.p.price.toFixed(2)} ج</span>
               </div>
               <div style="color:var(--t5);font-size:9px;margin-top:3px;">الآن: ${r.pr!==null?r.pr.toFixed(2)+" ج":"بانتظار سعر السوق"}${r.pnlEgp!=null?` · ${r.pnlEgp>=0?"+":""}${r.pnlEgp.toFixed(0)} ج`:""}${liveStocks.find(x=>x.sym===r.p.sym||x.sym===r.p.sym+".CA")?.divYield?` · توزيعات: ${liveStocks.find(x=>x.sym===r.p.sym||x.sym===r.p.sym+".CA").divYield.toFixed(1)}%`:""}</div>
-              ${(()=>{const nws=portNews(r.p.sym);return nws.length?`<div class="row" style="gap:4px;margin-top:4px;flex-wrap:wrap;">${nws.map(n=>`<span class="vchip" style="cursor:pointer;" onclick="openArt('${n.id}')">📰 ${sanitize(n.title).slice(0,38)}…</span>`).join("")}</div>`:"";})()}
+              ${(()=>{const nws=portNews(r.p.sym);return nws.length?`<div class="row" style="gap:4px;margin-top:4px;flex-wrap:wrap;">${nws.map(n=>`<span class="vchip" style="cursor:pointer;" onclick='openArt(${safeJsArg(n.id)})'>📰 ${sanitize(n.title).slice(0,38)}…</span>`).join("")}</div>`:"";})()}
             </div>
             <div style="display:flex;align-items:center;gap:7px;">
               <span style="color:${r.pnl==null?"var(--t5)":r.pnl>=0?"var(--g)":"var(--dn)"};font-weight:800;font-size:12px;font-family:var(--mono);">${r.pnl==null?"—":(r.pnl>=0?"+":"")+r.pnl.toFixed(2)+"%"}</span>
@@ -3052,11 +3190,11 @@ function vBuildPort(b){
     </div>
     ${vSect("📅","أحداث قادمة تؤثر على محفظتك","mkt")}
     ${(liveCalendar||[]).length?`<div class="vbox" style="padding:0;overflow:hidden;">${liveCalendar.slice(0,3).map(ev=>`
-      <div class="vnews-row" style="cursor:default;"><div style="font-size:15px;">${ev.flag||"🌐"}</div>
+      <div class="vnews-row" style="cursor:default;"><div style="font-size:15px;">${sanitize(ev.flag||"🌐")}</div>
       <div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-weight:600;">${sanitize(ev.ev||ev.evEn||"")}</div><div style="color:var(--t5);font-size:9px;">${sanitize(ev.t||"")}</div></div>
-      <span class="vimp" style="color:${ev.c||"#64748b"};background:${(ev.c||"#64748b")}18;">${sanitize(ev.imp||"")}</span></div>`).join("")}</div>`:vEmpty("📅","التقويم قيد التحميل...")}
+      <span class="vimp" style="color:${safeColor(ev.c)};background:${safeColor(ev.c)}18;">${sanitize(ev.imp||"")}</span></div>`).join("")}</div>`:vEmpty("📅","التقويم قيد التحميل...")}
     ${vSect("🔔","تنبيهات المحفظة","alerts")}
-    ${(()=>{const s=getNotifsStore();const rel=s.items.filter(n=>n.type==="opps"||portfolio.some(p=>(n.title+n.body).toUpperCase().includes(p.sym))).slice(0,3);return rel.length?`<div class="vbox" style="padding:0;overflow:hidden;">${rel.map(n=>`<div class="vnews-row" onclick="openVipAlert('${sanitize(n.link||"")}')"><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;">${n.icon} ${sanitize(n.title)}</div><div style="color:var(--t5);font-size:9px;">${vTime(n.ts)}</div></div></div>`).join("")}</div>`:vEmpty("🔕","لا تنبيهات متعلقة بمحفظتك");})()}`;
+    ${(()=>{const s=getNotifsStore();const rel=s.items.filter(n=>n.type==="opps"||portfolio.some(p=>(n.title+n.body).toUpperCase().includes(p.sym))).slice(0,3);return rel.length?`<div class="vbox" style="padding:0;overflow:hidden;">${rel.map(n=>`<div class="vnews-row" onclick='openVipAlert(${safeJsArg(n.link||"")})'><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;">${sanitize(n.icon)} ${sanitize(n.title)}</div><div style="color:var(--t5);font-size:9px;">${vTime(n.ts)}</div></div></div>`).join("")}</div>`:vEmpty("🔕","لا تنبيهات متعلقة بمحفظتك");})()}`;
   renderPortList();
 }
 
@@ -3098,7 +3236,7 @@ function vBuildRep(b){
 
     ${vSect("📰","ملخص أهم الأخبار","news")}
     ${!allArts.length?vLoading():`<div class="vbox" style="padding:0;overflow:hidden;">${allArts.slice(0,6).map(a=>`
-      <div class="vnews-row" onclick="openArt('${a.id}')"><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-weight:600;line-height:1.6;">${a.title}</div><div style="color:var(--t5);font-size:9px;margin-top:2px;">${sanitize(a.srcName)} · ${vTime(a.ts)}</div></div></div>`).join("")}</div>`}
+      <div class="vnews-row" onclick='openArt(${safeJsArg(a.id)})'><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-weight:600;line-height:1.6;">${sanitize(a.title)}</div><div style="color:var(--t5);font-size:9px;margin-top:2px;">${sanitize(a.srcName)} · ${vTime(a.ts)}</div></div></div>`).join("")}</div>`}
 
     ${vSect("📈","أهم تحركات السوق","mkt")}
     ${!liveStocks.length?vEmpty("⏳","بانتظار بيانات البورصة..."):`
@@ -3106,13 +3244,13 @@ function vBuildRep(b){
 
     ${vSect("💡","ملخص الفرص","opps")}
     ${!oppsData.length?vEmpty("💡","جارٍ جلب الفرص..."):`<div class="vbox" style="padding:0;overflow:hidden;">${oppsData.slice(0,3).map(o=>`
-      <div class="vnews-row" onclick="openOppDetail('${o.id}')"><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-weight:600;">${sanitize(o.title)}</div><div style="color:var(--t5);font-size:9px;">${(OPP_TYPES[o.type]||{}).l||o.type}${o.expectedReturn?` · ${sanitize(o.expectedReturn)}`:""}</div></div><span class="vscore">${oppScore(o)}</span></div>`).join("")}</div>`}
+      <div class="vnews-row" onclick='openOppDetail(${safeJsArg(o.id)})'><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-weight:600;">${sanitize(o.title)}</div><div style="color:var(--t5);font-size:9px;">${sanitize((OPP_TYPES[o.type]||OPP_TYPES.stock).l)}${o.expectedReturn?` · ${sanitize(o.expectedReturn)}`:""}</div></div><span class="vscore">${oppScore(o)}</span></div>`).join("")}</div>`}
 
     ${vSect("🗓️","أهم الأحداث القادمة","mkt")}
     ${evs.length?`<div class="vbox" style="padding:0;overflow:hidden;">${evs.map(ev=>`
-      <div class="vnews-row" style="cursor:default;"><div style="font-size:15px;">${ev.flag||"🌐"}</div>
+      <div class="vnews-row" style="cursor:default;"><div style="font-size:15px;">${sanitize(ev.flag||"🌐")}</div>
       <div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-weight:600;">${sanitize(ev.ev||ev.evEn||"")}</div><div style="color:var(--t5);font-size:9px;">${sanitize(ev.t||"")}</div></div>
-      <span class="vimp" style="color:${ev.c||"#64748b"};background:${(ev.c||"#64748b")}18;">${sanitize(ev.imp||"")}</span></div>`).join("")}</div>`:vEmpty("📅","التقويم قيد التحميل...")}`;
+      <span class="vimp" style="color:${safeColor(ev.c)};background:${safeColor(ev.c)}18;">${sanitize(ev.imp||"")}</span></div>`).join("")}</div>`:vEmpty("📅","التقويم قيد التحميل...")}`;
 }
 
 /* ══════════════ TAB 10 — التنبيهات ══════════════ */
@@ -3155,13 +3293,13 @@ function vBuildAlerts(b){
         <input class="mini-in" id="pa-price" type="number" placeholder="السعر (جنيه)" style="flex:2;"/>
         <button class="add-btn" onclick="paAdd()">+</button>
       </div>
-      ${(()=>{const pa=getPriceAlerts();return pa.length?`<div style="margin-top:8px;">${pa.map(a=>`<div class="p-row"><span style="color:var(--t2);font-size:11.5px;font-family:var(--mono);">${sanitize(a.sym)} ${a.dir==="above"?"≥":"≤"} ${a.price} ج ${a.done?"✅":""}</span><span style="cursor:pointer;color:var(--dn);margin-right:4px;" onclick="paDel('${a.id}')">✕</span></div>`).join("")}</div>`:`<div style="color:var(--t5);font-size:10.5px;text-align:center;padding:5px;">لا تنبيهات أسعار — أضف رمزًا وحدد السعر</div>`;})()}
+      ${(()=>{const pa=getPriceAlerts();return pa.length?`<div style="margin-top:8px;">${pa.map(a=>`<div class="p-row"><span style="color:var(--t2);font-size:11.5px;font-family:var(--mono);">${sanitize(a.sym)} ${a.dir==="above"?"≥":"≤"} ${a.price} ج ${a.done?"✅":""}</span><span style="cursor:pointer;color:var(--dn);margin-right:4px;" onclick='paDel(${safeJsArg(a.id)})' >✕</span></div>`).join("")}</div>`:`<div style="color:var(--t5);font-size:10.5px;text-align:center;padding:5px;">لا تنبيهات أسعار — أضف رمزًا وحدد السعر</div>`;})()}
     </div>
     ${vSect("📥","كل التنبيهات")}
     ${!s.items.length?vEmpty("🔕","لا تنبيهات بعد","ستظهر هنا الأخبار العاجلة والفرص والأحداث تلقائياً"):
       `<div class="vbox" style="padding:0;overflow:hidden;">${s.items.slice(0,50).map(n=>`
-        <div class="vnews-row" onclick="openVipAlert('${sanitize(n.link||"")}')">
-          <div style="font-size:16px;">${n.icon||"🔔"}</div>
+        <div class="vnews-row" onclick='openVipAlert(${safeJsArg(n.link||"")})'>
+          <div style="font-size:16px;">${sanitize(n.icon||"🔔")}</div>
           <div style="flex:1;min-width:0;">
             <div style="color:${n.read?"var(--t3)":"var(--t1)"};font-size:11.5px;font-weight:${n.read?"500":"700"};">${sanitize(n.title)}</div>
             ${n.body?`<div style="color:var(--t5);font-size:9.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${sanitize(n.body)}</div>`:""}
@@ -3178,11 +3316,22 @@ function clearVipAlerts(){if(!confirm("مسح كل التنبيهات؟"))return
 /* ─── تنبيهات الأسعار (حقيقية) ──────────────────────────────────────
  * The user sets a symbol + threshold; we re-check on every LIVE stocks
  * refresh and fire a notification the moment the price crosses it. */
-function getPriceAlerts(){return DB.g("price_alerts",[]);}
-function savePriceAlerts(a){DB.s("price_alerts",a);}
+function normalizePriceAlerts(raw){
+  if(!Array.isArray(raw))return [];
+  return raw.flatMap(a=>{
+    const id=String(a?.id||"").trim(),sym=String(a?.sym||"").trim().toUpperCase();
+    const price=Number(a?.price);
+    if(!/^[a-z0-9_-]{1,80}$/i.test(id)||!/^[A-Z0-9._-]{1,16}$/.test(sym)||!Number.isFinite(price)||price<=0||price>1e9)return [];
+    return [{id,sym,dir:a?.dir==="below"?"below":"above",price,done:a?.done===true}];
+  }).slice(0,50);
+}
+function getPriceAlerts(){return normalizePriceAlerts(DB.g("price_alerts",[]));}
+function savePriceAlerts(a){DB.s("price_alerts",normalizePriceAlerts(a));}
 function addPriceAlert(sym,dir,price){
   const pa=getPriceAlerts();
-  pa.push({id:Date.now()+"_"+Math.random().toString(36).slice(2,6),sym:String(sym).toUpperCase(),dir,price:Number(price),done:false});
+  const stock=String(sym||"").trim().toUpperCase();
+  if(!/^[A-Z0-9._-]{1,16}$/.test(stock)||!Number.isFinite(Number(price))||Number(price)<=0)return;
+  pa.push({id:Date.now()+"_"+Math.random().toString(36).slice(2,6),sym:stock,dir:dir==="below"?"below":"above",price:Number(price),done:false});
   savePriceAlerts(pa.slice(0,50));
 }
 function delPriceAlert(id){savePriceAlerts(getPriceAlerts().filter(a=>a.id!==id));}
@@ -3228,7 +3377,7 @@ function vBuildSet(b){
     <div class="vbox">
       <div class="p-row"><span style="color:var(--t5);font-size:10.5px;">الاسم</span><span style="color:var(--t1);font-size:12px;font-weight:700;">${sanitize(U?.name||"—")}</span></div>
       <div class="p-row"><span style="color:var(--t5);font-size:10.5px;">الجوال</span><span style="color:var(--t2);font-size:12px;font-family:var(--mono);">${sanitize(U?.phone||"—")}</span></div>
-      <div class="p-row" style="border:none;"><span style="color:var(--t5);font-size:10.5px;">الخطة</span><span class="bdg bdg-vip">⭐ ${U?.plan==="admin"?"مدير (VIP)":U?.plan==="vip"?"VIP نشط":U?.plan||"—"}</span></div>
+      <div class="p-row" style="border:none;"><span style="color:var(--t5);font-size:10.5px;">الخطة</span><span class="bdg bdg-vip">⭐ ${U?.plan==="admin"?"مدير (VIP)":U?.plan==="vip"?"VIP نشط":sanitize(U?.plan||"—")}</span></div>
     </div>
 
     ${vSect("⭐","الأسهم التي أتابعها")}
@@ -3238,7 +3387,7 @@ function vBuildSet(b){
         <button class="add-btn" onclick="vAddWl()">+</button>
       </div>
       ${wl.length?`<div class="row" style="gap:6px;flex-wrap:wrap;">${wl.map(n=>`
-        <span class="vchip" style="padding:5px 9px;font-size:11px;">⭐ ${sanitize(n)} <span style="cursor:pointer;color:var(--dn);margin-right:3px;" onclick="vRmWl('${sanitize(n).replace(/'/g,"")}')">✕</span></span>`).join("")}</div>`
+        <span class="vchip" style="padding:5px 9px;font-size:11px;">⭐ ${sanitize(n)} <span style="cursor:pointer;color:var(--dn);margin-right:3px;" onclick='vRmWl(${safeJsArg(n)})' >✕</span></span>`).join("")}</div>`
       :`<div style="color:var(--t5);font-size:10.5px;text-align:center;padding:6px;">لا أسهم متابعة — أضف من هنا أو من ⭐ في الأسواق</div>`}
       <div style="color:var(--t5);font-size:9px;margin-top:8px;">الأسهم المتابعة تظهر أولاً في صفحة البورصة وتؤثر على تنبيهاتك.</div>
     </div>
@@ -3463,7 +3612,7 @@ function renderScrResults(){
     const up=s.chgPct>=0;
     const inWL=wl.includes(s.sym);
     const chgClr=up?"var(--up)":"var(--dn)";
-    return`<tr class="scr-tr" onclick="openStockDetail('${sanitize(s.sym)}')">
+    return`<tr class="scr-tr" onclick='openStockDetail(${safeJsArg(s.sym)})'>
       <td class="scr-td">
         <div class="scr-sym">${sanitize(s.sym)}</div>
         <div class="scr-sname">${sanitize(s.name.slice(0,18))}</div>
@@ -3476,7 +3625,7 @@ function renderScrResults(){
       <td class="scr-td" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${s.divYield&&s.divYield>0?s.divYield.toFixed(2)+"%":"—"}</td>
       <td class="scr-td" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${s.high52w?s.high52w.toFixed(2):"—"}</td>
       <td class="scr-td" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${s.low52w?s.low52w.toFixed(2):"—"}</td>
-      <td class="scr-td" style="text-align:center;"><button onclick="event.stopPropagation();toggleWL('${sanitize(s.sym)}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;opacity:${inWL?1:.35};">${inWL?"⭐":"☆"}</button></td>
+      <td class="scr-td" style="text-align:center;"><button onclick='event.stopPropagation();toggleWL(${safeJsArg(s.sym)})'  style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;opacity:${inWL?1:.35};">${inWL?"⭐":"☆"}</button></td>
     </tr>`;
   }).join("");
 }
@@ -3762,17 +3911,39 @@ function closeSub(){document.getElementById("sub-ov").classList.remove("open");i
  * the next open re-fetches fresh state via loadPayStatus(). */
 function clearPayStatus(){const el=document.getElementById("pay-status-card");if(el)el.innerHTML="";}
 function subPlans(){return SUB_PLANS||PLANS;}
+function normalizeSubscriptionPlans(raw){
+  if(!Array.isArray(raw))return {};
+  return raw.reduce((out,item)=>{
+    const p=item&&typeof item==="object"?item:{};
+    const key=String(p.key||"").trim();
+    const price=Number(p.price),months=Number(p.durationMonths);
+    if(!/^[a-z0-9_-]{1,40}$/i.test(key)||!Number.isFinite(price)||price<0||price>1e7||!Number.isInteger(months)||months<1||months>120)return out;
+    out[key]={l:String(p.nameAr||key).slice(0,100),p:price,per:months===1?"شهر":months===3?"٣ شهور":months===12?"سنة":`${months} شهر`,m:months,badge:String(p.badge||"").slice(0,50)};
+    return out;
+  },{});
+}
+function normalizeSubscriptionMethods(raw){
+  if(!Array.isArray(raw))return [];
+  return raw.flatMap(item=>{
+    const m=item&&typeof item==="object"?item:{};
+    const id=String(m.id||"");
+    if(!Object.prototype.hasOwnProperty.call(SUB_METHOD_META,id))return [];
+    const number=String(m.number||"").trim().slice(0,100);
+    if(!number)return [];
+    return [{id,label:String(m.label||SUB_METHOD_META[id].label).slice(0,80),number,instructions:String(m.instructions||"").slice(0,500)}];
+  });
+}
 async function loadSubConfig(){
   try{
     const r=await fetch("/api/payments/config");
     const j=await r.json().catch(()=>null);
     if(j&&j.status==="ok"){
-      const map={};
-      (j.plans||[]).forEach(p=>{map[p.key]={l:p.nameAr||p.key,p:p.price,per:p.durationMonths===1?"شهر":(p.durationMonths===3?"٣ شهور":(p.durationMonths===12?"سنة":(p.durationMonths+" شهر"))),m:p.durationMonths,badge:p.badge||""};});
+      const map=normalizeSubscriptionPlans(j.plans);
       if(Object.keys(map).length){SUB_PLANS=map;if(!map[selPlan])selPlan=Object.keys(map)[0];}
-      if(Array.isArray(j.methods)&&j.methods.length){
-        SUB_METHODS=j.methods;
-        if(!j.methods.some(m=>m.id===SUB_METHOD))SUB_METHOD=j.methods[0].id;
+      const methods=normalizeSubscriptionMethods(j.methods);
+      if(methods.length){
+        SUB_METHODS=methods;
+        if(!methods.some(m=>m.id===SUB_METHOD))SUB_METHOD=methods[0].id;
       }
       if((subStep===1||subStep===2)&&document.getElementById("sub-ov").classList.contains("open"))renderSub();
     }
@@ -3784,23 +3955,23 @@ function renderSub(){
   if(subStep===1){
     el.innerHTML=`
       <div style="text-align:center;margin-bottom:18px;"><div style="font-size:32px;margin-bottom:4px;">⭐</div><div style="color:var(--au);font-weight:900;font-size:18px;">اشتراك VIP</div><div style="color:var(--t4);font-size:11.5px;margin-top:2px;">AI Advisor + إشارات + Screener + 16+ مصدر</div></div>
-      <div class="plan-grid">${Object.entries(P).map(([k,p])=>`<div class="plan-c${selPlan===k?" active":""}" onclick="sPlan('${k}')">${p.badge?`<span class="plan-badge">${p.badge}</span>`:""}<div class="plan-label">${p.l}</div><div class="plan-price">${p.p}</div><div class="plan-period">ج / ${p.per}</div></div>`).join("")}</div>
+      <div class="plan-grid">${Object.entries(P).map(([k,p])=>`<div class="plan-c${selPlan===k?" active":""}" onclick='sPlan(${safeJsArg(k)})'>${p.badge?`<span class="plan-badge">${sanitize(p.badge)}</span>`:""}<div class="plan-label">${sanitize(p.l)}</div><div class="plan-price">${finiteNumber(p.p,0)}</div><div class="plan-period">ج / ${sanitize(p.per)}</div></div>`).join("")}</div>
       <div class="feat-list">${["AI Advisor مستشار مالي ذكي","16+ مصدر أخبار موثوق","إشارات تداول يومية","Stock Screener (Investing-style)","مستهدفات الأسعار","Morning & Closing Reports","تنبيهات مبكرة","دعم واتساب مباشر"].map(f=>`<div class="feat-it"><span style="color:var(--g);font-size:11px;">✓</span>${f}</div>`).join("")}</div>
-      <button class="btn btn-au btn-full" style="padding:13px;font-size:14px;" onclick="subStep=2;renderSub()">اشترك — ${P[selPlan]?P[selPlan].p:""} جنيه</button>`;
+      <button class="btn btn-au btn-full" style="padding:13px;font-size:14px;" onclick="subStep=2;renderSub()">اشترك — ${P[selPlan]?finiteNumber(P[selPlan].p,0):""} جنيه</button>`;
   } else if(subStep===2){
     const price=P[selPlan]?P[selPlan].p:"";
     el.innerHTML=`
       <div style="color:var(--t2);font-weight:800;font-size:13.5px;margin-bottom:10px;text-align:center;">💳 اختر وسيلة الدفع</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-        ${(SUB_METHODS&&SUB_METHODS.length?SUB_METHODS:[SUB_M()]).map(m=>{const meta=SUB_METHOD_META[m.id]||{emoji:"💳"};return `<button class="cp${SUB_METHOD===m.id?" active":""}" onclick="sPayMethod('${m.id}')" style="padding:7px 12px;">${meta.emoji} ${m.label}</button>`;}).join("")}
+        ${(SUB_METHODS&&SUB_METHODS.length?SUB_METHODS:[SUB_M()]).map(m=>{const meta=SUB_METHOD_META[m.id]||{emoji:"💳"};return `<button class="cp${SUB_METHOD===m.id?" active":""}" onclick='sPayMethod(${safeJsArg(m.id)})' style="padding:7px 12px;">${sanitize(meta.emoji)} ${sanitize(m.label)}</button>`;}).join("")}
       </div>
       <div style="background:var(--aud);border:1px solid rgba(245,158,11,.25);border-radius:13px;padding:13px;margin-bottom:10px;text-align:center;">
         <div style="color:var(--au);font-weight:700;font-size:12.5px;margin-bottom:5px;">حوّل ${price} جنيه إلى رقم المحفظة:</div>
-        <div id="pay-num" style="color:var(--t1);font-size:22px;font-weight:900;font-family:var(--mono);letter-spacing:1.5px;direction:ltr;">${SUB_M().number}</div>
+        <div id="pay-num" style="color:var(--t1);font-size:22px;font-weight:900;font-family:var(--mono);letter-spacing:1.5px;direction:ltr;">${sanitize(SUB_M().number)}</div>
         <button class="btn btn-g" style="padding:8px 24px;font-size:12px;margin-top:9px;" onclick="copyWallet()">📋 نسخ الرقم</button>
       </div>
       <div style="color:var(--t4);font-size:10.5px;line-height:1.8;margin-bottom:11px;background:var(--s1);border-radius:9px;padding:8px 10px;">
-        1. افتح تطبيق ${SUB_M().label} وحوّل ${price} جنيه للرقم أعلاه<br/>
+        1. افتح تطبيق ${sanitize(SUB_M().label)} وحوّل ${finiteNumber(price,0)} جنيه للرقم أعلاه<br/>
         2. خذ Screenshot لرسالة تأكيد التحويل<br/>
         3. أدخل رقم العملية وارفع الصورة هنا
       </div>
@@ -3814,8 +3985,8 @@ function renderSub(){
     el.innerHTML=`<div style="text-align:center;padding:14px 0;"><div style="font-size:50px;margin-bottom:9px;">⏳</div><div style="color:var(--au);font-weight:900;font-size:18px;margin-bottom:7px;">جاري مراجعة الدفع</div><div style="color:var(--t3);font-size:13px;line-height:1.88;">وصلنا طلبك وسيتم تفعيل VIP فور تأكيد التحويل.<br/>تقدر تتابع حالة طلبك من صفحة VIP في أي وقت.<br/>للاستفسار: <a href="https://wa.me/${WA}" target="_blank" rel="noopener" style="color:var(--g);text-decoration:none;">واتساب 01008605139</a></div><button class="btn btn-ghost" style="margin:15px auto 0;padding:10px 24px;" onclick="closeSub();loadPayStatus();">متابعة حالة الطلب</button></div>`;
   }
 }
-function sPlan(k){selPlan=k;renderSub();}
-function sPayMethod(m){SUB_METHOD=m;renderSub();}
+function sPlan(k){const plans=subPlans();if(Object.prototype.hasOwnProperty.call(plans,k)){selPlan=k;renderSub();}}
+function sPayMethod(m){if((SUB_METHODS||[]).some(method=>method.id===m)){SUB_METHOD=m;renderSub();}}
 function copyWallet(){
   const num=SUB_M().number;
   const done=()=>showToast("✅ تم نسخ رقم المحفظة: "+num);
@@ -3864,9 +4035,7 @@ async function submitPay(){
   if(btn){btn.disabled=true;btn.textContent="⏳ جارٍ الإرسال...";}
   try{
     const headers={"Content-Type":"application/json"};
-    const userTok=DB.g("userTok","");
-    if(userTok)headers.Authorization="Bearer "+userTok;
-    const response=await fetch("/api/payments",{method:"POST",headers,body:JSON.stringify({planKey:selPlan,method:SUB_METHOD,tx,proofImage:payProofData,proofName:payProofName})});
+    const response=await fetch("/api/payments",{method:"POST",headers,credentials:"same-origin",body:JSON.stringify({planKey:selPlan,method:SUB_METHOD,tx,proofImage:payProofData,proofName:payProofName})});
     const result=await response.json().catch(()=>null);
     if(!response.ok||!result||result.status!=="ok") throw new Error((result&&result.message)||"تعذر إرسال الطلب");
     payProofData=null;payProofName="";
@@ -3880,11 +4049,10 @@ async function submitPay(){
 /* ─── حالة طلب الدفع (تظهر في صفحة VIP) ─── */
 async function loadPayStatus(){
   const el=document.getElementById("pay-status-card");if(!el)return;
-  const userTok=DB.g("userTok","");
-  if(!userTok){el.innerHTML="";return;}
+  if(!U||U.plan==="admin"){el.innerHTML="";return;}
   el.innerHTML=`<div class="empty" style="padding:13px;"><div style="font-size:18px;">⏳</div><div style="font-size:11px;">جارٍ تحميل حالة الطلب...</div></div>`;
   try{
-    const r=await fetch("/api/payments/my",{headers:{Authorization:"Bearer "+userTok}});
+    const r=await fetch("/api/payments/my",{credentials:"same-origin"});
     const j=await r.json().catch(()=>null);
     if(!j||j.status!=="ok"){el.innerHTML="";return;}
     const reqs=j.requests||[];
@@ -3908,7 +4076,7 @@ function viewProof(src){
   const ov=document.createElement("div");
   ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:2000;display:flex;align-items:center;justify-content:center;padding:18px;cursor:zoom-out;";
   ov.onclick=()=>ov.remove();
-  ov.innerHTML=`<img src="${src}" alt="إثبات الدفع" style="max-width:100%;max-height:100%;border-radius:12px;"/>`;
+  ov.innerHTML=`<img src="${sanitize(sanitizeImageURL(src))}" alt="إثبات الدفع" style="max-width:100%;max-height:100%;border-radius:12px;"/>`;
   document.body.appendChild(ov);
 }
 
@@ -4007,8 +4175,7 @@ async function doChangePass(){
    if(nw.length<8){showErr("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل");return;}
   if(nw!==con){showErr("كلمات المرور غير متطابقة");return;}
    try{
-     const token=DB.g("userTok","");
-     const r=await fetch("/api/user/password",{method:"PUT",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({currentPassword:cur,newPassword:nw})});
+     const r=await fetch("/api/user/password",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({currentPassword:cur,newPassword:nw})});
      const d=await r.json().catch(()=>({}));
      if(!r.ok||d.status!=="ok"){showErr(d.message==="current password is incorrect"?"كلمة المرور الحالية غير صحيحة":d.message||"تعذر تغيير كلمة المرور");return;}
    }catch{showErr("تعذر الاتصال بالخادم");return;}
@@ -4141,8 +4308,8 @@ async function renderAdmUsers(el){
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
-            ${u.plan!=="vip"&&u.plan!=="admin"?`<button class="r-btn app" style="font-size:10px;" onclick="admUserAction('upgrade_vip','${sanitize(u.phone)}','${sanitize(u.name||"")}')">⭐ ترقية VIP</button>`:`<button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick="admUserAction('downgrade_vip','${sanitize(u.phone)}','${sanitize(u.name||"")}')">↓ إلغاء VIP</button>`}
-             ${u.status==="banned"?`<button class="r-btn app" style="font-size:10px;" onclick="admUserAction('unban_user','${sanitize(u.phone)}','${sanitize(u.name||"")}')">✓ فك الحظر</button>`:`<button class="r-btn rej" style="font-size:10px;" onclick="admUserAction('ban_user','${sanitize(u.phone)}','${sanitize(u.name||"")}')">🚫 حظر</button>`}
+            ${u.plan!=="vip"&&u.plan!=="admin"?`<button class="r-btn app" style="font-size:10px;" onclick='admUserAction("upgrade_vip",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})' >⭐ ترقية VIP</button>`:`<button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick='admUserAction("downgrade_vip",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})' >↓ إلغاء VIP</button>`}
+             ${u.status==="banned"?`<button class="r-btn app" style="font-size:10px;" onclick='admUserAction("unban_user",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})' >✓ فك الحظر</button>`:`<button class="r-btn rej" style="font-size:10px;" onclick='admUserAction("ban_user",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})' >🚫 حظر</button>`}
           </div>
         </div>
       </div>`).join(""):
@@ -4177,14 +4344,12 @@ async function renderAdmReqs(el){
     const j=await r.json();
     if(r.ok&&j.status==="ok") reqs=j.requests||[];
     else throw new Error(j.message||"failed");
-    // Merge local requests not yet synced to server
-    const localReqs=DB.g("reqs",[]);
-    localReqs.forEach(lr=>{if(!reqs.find(sr=>sr.id===lr.id))reqs.push({...lr,createdAt:lr.at});});
-    reqs.sort((a,b)=>new Date(b.createdAt||b.at)-new Date(a.createdAt||a.at));
+    reqs.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   }catch{
-    reqs=DB.g("reqs",[]).map(r=>({...r,createdAt:r.at}));
+    reqs=[];
   }
   if(!reqs.length){el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">📋</div><div>لا توجد طلبات</div></div>`;return;}
+  reqs=reqs.filter(r=>r&&typeof r==="object");
   const pend=reqs.filter(r=>r.status==="pending");
   const oldPend=pend.filter(r=>(Date.now()-new Date(r.createdAt||r.at).getTime())>3600000);
   let banner="";
@@ -4198,25 +4363,25 @@ async function renderAdmReqs(el){
     const waitTxt=req.status==="pending"?(mm<1?"أقل من دقيقة":mm<60?`منذ ${mm} دقيقة`:`منذ ${Math.floor(mm/60)} س${mm%60?` و${mm%60} د`:""}`):"";
     const methodBadges={vodafone:"🔴 فودافون كاش",orange:"🟠 أورنج كاش",etisalat:"🟢 اتصالات كاش",instapay:"💳 إنستاباي"};
     return `
-    <div class="req-c ${req.status}${isOld?" adm-old":""}">
+    <div class="req-c ${["pending","approved","rejected"].includes(req.status)?req.status:"rejected"}${isOld?" adm-old":""}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
         <div>
           <div style="color:var(--t2);font-weight:700;font-size:13px;">${sanitize(req.name)}</div>
           <div style="color:var(--t4);font-size:10.5px;font-family:var(--mono);">${sanitize(req.phone)}</div>
           <div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;">
-            <span class="bdg" style="background:var(--aud);color:var(--au);">${PLANS[req.planKey]?.l||sanitize(req.planKey)} — ${req.price||""} ج</span>
+            <span class="bdg" style="background:var(--aud);color:var(--au);">${PLANS[req.planKey]?.l||sanitize(req.planKey)} — ${Number.isFinite(Number(req.price))?Number(req.price):"—"} ج</span>
             <span class="bdg" style="background:var(--bld);color:#93c5fd;">${methodBadges[req.payMethod]||sanitize(req.payMethod||"")}</span>
             <span class="bdg" style="background:var(--s1);color:var(--t4);font-family:var(--mono);font-size:9px;">TX:${sanitize(req.tx)}</span>
             ${req.status==="pending"?`<span class="bdg ${isOld?"pay-pulse":""}" style="background:${isOld?"rgba(239,68,68,.12)":"rgba(245,158,11,.1)"};color:${isOld?"var(--dn)":"var(--au)"};">⏱ ${waitTxt}</span>`:""}
           </div>
           <div style="color:var(--t5);font-size:9.5px;margin-top:3px;">${new Date(req.createdAt||req.at).toLocaleString("ar-EG")}</div>
           ${req.proofImage
-            ?`<div style="margin-top:7px;"><img src="${req.proofImage}" alt="إثبات الدفع" style="max-height:130px;max-width:100%;border-radius:9px;cursor:zoom-in;border:1px solid var(--b1);" onclick="viewProof(this.src)"/>${req.proofName?`<div style="color:var(--t5);font-size:9.5px;margin-top:3px;">📎 ${sanitize(req.proofName)}</div>`:""}</div>`
+            ?`<div style="margin-top:7px;"><img src="${sanitize(sanitizeImageURL(req.proofImage))}" alt="إثبات الدفع" style="max-height:130px;max-width:100%;border-radius:9px;cursor:zoom-in;border:1px solid var(--b1);" onclick="viewProof(this.src)"/>${req.proofName?`<div style="color:var(--t5);font-size:9.5px;margin-top:3px;">📎 ${sanitize(req.proofName)}</div>`:""}</div>`
             :`<div style="margin-top:7px;color:var(--dn);font-size:10px;">⚠️ لا يوجد إثبات مرفق بهذا الطلب</div>`}
         </div>
         <div style="display:flex;gap:4px;">
           ${req.status==="pending"
-            ?`<button class="r-btn app" onclick="admApp('${sanitize(req.id)}')">✓ قبول</button><button class="r-btn rej" onclick="admRej('${sanitize(req.id)}')">✕ رفض</button>`
+            ?`<button class="r-btn app" onclick='admApp(${safeJsArg(req.id)})' >✓ قبول</button><button class="r-btn rej" onclick='admRej(${safeJsArg(req.id)})' >✕ رفض</button>`
             :`<span class="bdg" style="background:${req.status==="approved"?"var(--gd)":"var(--dnd)"};color:${req.status==="approved"?"var(--g)":"var(--dn)"};">${req.status==="approved"?"✓ مقبول":"✕ مرفوض"}</span>`}
         </div>
       </div>
@@ -4260,11 +4425,11 @@ async function renderAdmArticles(el){
     <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:11px 13px;margin-bottom:7px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
         <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:5px;"><span style="font-size:13px;">${a.srcIcon||"✍️"}</span><div style="color:var(--t2);font-weight:700;font-size:13px;line-height:1.5;">${sanitize(a.title)}</div></div>
+          <div style="display:flex;align-items:center;gap:5px;"><span style="font-size:13px;">${sanitize(a.srcIcon||"✍️")}</span><div style="color:var(--t2);font-weight:700;font-size:13px;line-height:1.5;">${sanitize(a.title)}</div></div>
           <div style="color:var(--t4);font-size:11px;margin-top:4px;line-height:1.7;">${sanitize((a.description||"").slice(0,140))}</div>
           <div style="color:var(--t5);font-size:9.5px;margin-top:5px;font-family:var(--mono);">${new Date(a.pubDate).toLocaleString("ar-EG")} · ${sanitize(a.cat)}</div>
         </div>
-        <button class="r-btn rej" onclick="delAdmArticle('${sanitize(a.id)}')">حذف</button>
+        <button class="r-btn rej" onclick='delAdmArticle(${safeJsArg(a.id)})' >حذف</button>
       </div>
     </div>`).join("");
 }
@@ -4334,13 +4499,13 @@ async function renderAdmSources(el){
           <div style="flex:1;min-width:0;">
             <div style="display:flex;align-items:center;gap:6px;">${sanitize(s.icon)}<div>
               <div style="color:var(--t2);font-size:12.5px;font-weight:700;">${sanitize(s.name)}</div>
-              <div style="color:var(--t4);font-size:9px;font-family:var(--mono);">${sanitize(s.id)} · ${s.lang==="ar"?"عربي":"English"} · ${s.cat}</div>
+              <div style="color:var(--t4);font-size:9px;font-family:var(--mono);">${sanitize(s.id)} · ${s.lang==="ar"?"عربي":"English"} · ${sanitize(s.cat)}</div>
               <div style="color:var(--t5);font-size:8.5px;font-family:var(--mono);overflow-wrap:break-word;margin-top:2px;">${sanitize(s.url)}</div>
             </div></div>
           </div>
           <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
             <span class="bdg" style="background:${bg};color:${fg};">${st==="ok"?"✓ نشط":st==="error"?"✕ خطأ":"⏳"}</span>
-            <button class="r-btn rej" onclick="delAdmSource('${sanitize(s.id)}')">حذف</button>
+            <button class="r-btn rej" onclick='delAdmSource(${safeJsArg(s.id)})' >حذف</button>
           </div>
         </div>
       </div>`;}).join("");
@@ -4448,13 +4613,13 @@ async function loadAdmPlans(){
               ${p.badge?aBadge(sanitize(p.badge),"var(--aud)","var(--au)"):""}
               ${p.isActive?aBadge("نشطة","var(--gd)","var(--g)"):aBadge("معطّلة","var(--dnd)","var(--dn)")}
             </div>
-            <div style="color:var(--t3);font-size:11px;font-family:var(--mono);">${sanitize(p.key)} · ${p.price} ج / ${p.durationMonths} شهر</div>
+            <div style="color:var(--t3);font-size:11px;font-family:var(--mono);">${sanitize(p.key)} · ${finiteNumber(p.price,0)} ج / ${Math.max(0,Math.round(finiteNumber(p.durationMonths,0)))} شهر</div>
             ${p.features&&p.features.length?`<div style="color:var(--t4);font-size:10px;margin-top:4px;">${p.features.map(f=>`✓ ${sanitize(f)}`).join(" · ")}</div>`:""}
           </div>
           <div style="display:flex;flex-direction:column;gap:5px;">
-            <button class="r-btn" style="font-size:10px;background:var(--s1);color:var(--t2);" onclick="editAdmPlanPrice(${p.id},${p.price},'${sanitize(p.key)}')">✏️ السعر</button>
-            <button class="r-btn" style="font-size:10px;background:${p.isActive?"var(--dnd)":"var(--gd)"};color:${p.isActive?"var(--dn)":"var(--g)"};" onclick="toggleAdmPlan(${p.id},${!p.isActive})">${p.isActive?"تعطيل":"تفعيل"}</button>
-            <button class="r-btn rej" style="font-size:10px;" onclick="delAdmPlan(${p.id},'${sanitize(p.nameAr)}')">حذف</button>
+            <button class="r-btn" style="font-size:10px;background:var(--s1);color:var(--t2);" onclick='editAdmPlanPrice(${safeJsArg(p.id)},${safeJsArg(p.price)},${safeJsArg(p.key)})' >✏️ السعر</button>
+            <button class="r-btn" style="font-size:10px;background:${p.isActive?"var(--dnd)":"var(--gd)"};color:${p.isActive?"var(--dn)":"var(--g)"};" onclick='toggleAdmPlan(${safeJsArg(p.id)},${safeJsBool(!p.isActive)})' >${p.isActive?"تعطيل":"تفعيل"}</button>
+            <button class="r-btn rej" style="font-size:10px;" onclick='delAdmPlan(${safeJsArg(p.id)},${safeJsArg(p.nameAr)})' >حذف</button>
           </div>
         </div>
       </div>`).join(""):`<div class="empty" style="padding:20px;"><div style="font-size:26px;">💎</div><div>لا توجد خطط بعد</div></div>`;
@@ -4547,12 +4712,12 @@ async function loadAdmCoupons(){
               <code style="color:var(--g);font-size:13px;font-weight:800;font-family:var(--mono);">${sanitize(c.code)}</code>
               ${aBadge(statusLabel,statusBg,statusFg)}
             </div>
-            <div style="color:var(--t3);font-size:11px;">خصم: <strong>${c.discountValue}${c.discountType==="percent"?"%":" ج"}</strong> · استُخدم: ${c.usedCount||0}${c.maxUses?"/"+c.maxUses:""}</div>
+            <div style="color:var(--t3);font-size:11px;">خصم: <strong>${finiteNumber(c.discountValue,0)}${c.discountType==="percent"?"%":" ج"}</strong> · استُخدم: ${Math.max(0,Math.round(finiteNumber(c.usedCount,0)))}${Number.isFinite(Number(c.maxUses))?"/"+Math.max(0,Math.round(Number(c.maxUses))):""}</div>
             ${c.expiresAt?`<div style="color:var(--t5);font-size:9.5px;margin-top:3px;font-family:var(--mono);">ينتهي: ${new Date(c.expiresAt).toLocaleDateString("ar-EG")}</div>`:""}
           </div>
           <div style="display:flex;flex-direction:column;gap:5px;">
-            <button class="r-btn" style="font-size:10px;background:${c.isActive?"var(--dnd)":"var(--gd)"};color:${c.isActive?"var(--dn)":"var(--g)"};" onclick="toggleAdmCoupon(${c.id},${!c.isActive})">${c.isActive?"تعطيل":"تفعيل"}</button>
-            <button class="r-btn rej" style="font-size:10px;" onclick="delAdmCoupon(${c.id},'${sanitize(c.code)}')">حذف</button>
+            <button class="r-btn" style="font-size:10px;background:${c.isActive?"var(--dnd)":"var(--gd)"};color:${c.isActive?"var(--dn)":"var(--g)"};" onclick='toggleAdmCoupon(${safeJsArg(c.id)},${safeJsBool(!c.isActive)})' >${c.isActive?"تعطيل":"تفعيل"}</button>
+            <button class="r-btn rej" style="font-size:10px;" onclick='delAdmCoupon(${safeJsArg(c.id)},${safeJsArg(c.code)})' >حذف</button>
           </div>
         </div>
       </div>`;}).join(""):`<div class="empty" style="padding:20px;"><div style="font-size:26px;">🎟️</div><div>لا توجد كوبونات بعد</div></div>`;
@@ -4637,14 +4802,14 @@ async function loadAdmEmployees(){
               </div>
             </div>
             <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px;">
-              ${aBadge(ROLE_LABELS[emp.role]||emp.role,ROLE_COLORS[emp.role]+"22",ROLE_COLORS[emp.role]||"#fff")}
+              ${aBadge(sanitize(ROLE_LABELS[emp.role]||String(emp.role||"")),ROLE_COLORS[emp.role]?ROLE_COLORS[emp.role]+"22":"var(--s2)",ROLE_COLORS[emp.role]||"#fff")}
               ${emp.status==="active"?aBadge("نشط","var(--gd)","var(--g)"):aBadge("معطّل","var(--dnd)","var(--dn)")}
             </div>
             ${emp.lastLogin?`<div style="color:var(--t5);font-size:9px;margin-top:5px;font-family:var(--mono);">آخر دخول: ${new Date(emp.lastLogin).toLocaleString("ar-EG")}</div>`:""}
           </div>
           <div style="display:flex;flex-direction:column;gap:5px;">
-            <button class="r-btn" style="font-size:10px;background:${emp.status==="active"?"var(--dnd)":"var(--gd)"};color:${emp.status==="active"?"var(--dn)":"var(--g)"};" onclick="toggleAdmEmployee(${emp.id},'${emp.status==="active"?"inactive":"active"}')">${emp.status==="active"?"تعطيل":"تفعيل"}</button>
-            <button class="r-btn rej" style="font-size:10px;" onclick="delAdmEmployee(${emp.id},'${sanitize(emp.name)}')">حذف</button>
+            <button class="r-btn" style="font-size:10px;background:${emp.status==="active"?"var(--dnd)":"var(--gd)"};color:${emp.status==="active"?"var(--dn)":"var(--g)"};" onclick='toggleAdmEmployee(${safeJsArg(emp.id)},${safeJsArg(emp.status==="active"?"inactive":"active")})' >${emp.status==="active"?"تعطيل":"تفعيل"}</button>
+            <button class="r-btn rej" style="font-size:10px;" onclick='delAdmEmployee(${safeJsArg(emp.id)},${safeJsArg(emp.name)})' >حذف</button>
           </div>
         </div>
       </div>`).join(""):`<div class="empty" style="padding:20px;"><div style="font-size:26px;">👨‍💼</div><div>لا يوجد موظفون بعد</div></div>`;
@@ -4822,7 +4987,7 @@ async function loadAdmAudit(){
             </div>
             <div style="color:var(--t4);font-size:10px;margin-top:4px;">
               <span style="color:${ROLE_COLORS[l.actorRole]||"var(--t4)"};">${sanitize(String(l.actorName||""))}</span>
-              ${l.actorRole?` · <span style="color:var(--t5);">${ROLE_LABELS[l.actorRole]||l.actorRole}</span>`:""}
+              ${l.actorRole?` · <span style="color:var(--t5);">${sanitize(ROLE_LABELS[l.actorRole]||String(l.actorRole))}</span>`:""}
               ${l.ip?` · <span style="font-family:var(--mono);color:var(--t5);">${sanitize(String(l.ip))}</span>`:""}
             </div>
           </div>
@@ -4856,8 +5021,6 @@ async function admRej(id){
     const j=await r.json();
     if(!r.ok){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
   }catch(e){showToast("❌ "+String(e.message||e));return;}
-  const reqs=DB.g("reqs",[]);const req=reqs.find(r=>r.id===id);
-  if(req){req.status="rejected";DB.s("reqs",reqs);}
   admTab("reqs");showToast("❌ تم رفض الطلب");
 }
 
@@ -4879,20 +5042,51 @@ function goNav(id){
 const NOTIF_KEY="notifs_v1";
 let notifOpen=false;
 
-function getNotifsStore(){return DB.g(NOTIF_KEY,{items:[],unread:0,prefs:{news:true,opps:true,calendar:true,sub:true,price:true}});}
-function saveNotifsStore(s){DB.s(NOTIF_KEY,s);}
+const NOTIF_TYPES=new Set(["news","opps","calendar","sub","price"]);
+const NOTIF_NAVS=new Set(["home","markets","vip","opps","profile"]);
+function normalizeNotifItem(raw){
+  if(!raw||typeof raw!=="object")return null;
+  const n=raw;
+  const id=String(n.id||"").trim();
+  if(!/^[a-z0-9_-]{1,80}$/i.test(id))return null;
+  const type=NOTIF_TYPES.has(String(n.type))?String(n.type):"news";
+  const nav=String(n.link||"");
+  const link=nav.startsWith("nav:")&&NOTIF_NAVS.has(nav.slice(4))?nav:"";
+  const ts=Number(n.ts);
+  return {
+    id,type,link,
+    title:String(n.title||"").slice(0,300),body:String(n.body||"").slice(0,1000),
+    icon:String(n.icon||"🔔").slice(0,16),read:n.read===true,
+    ts:Number.isFinite(ts)&&ts>0?ts:Date.now(),
+  };
+}
+function getNotifsStore(){
+  const raw=DB.g(NOTIF_KEY,{});
+  const prefsRaw=raw&&typeof raw==="object"&&raw.prefs&&typeof raw.prefs==="object"?raw.prefs:{};
+  const prefs=Object.fromEntries([...NOTIF_TYPES].map(type=>[type,prefsRaw[type]!==false]));
+  const items=Array.isArray(raw?.items)?raw.items.map(normalizeNotifItem).filter(Boolean).slice(0,50):[];
+  return {items,unread:items.filter(n=>!n.read).length,prefs};
+}
+function saveNotifsStore(s){
+  const normalized={items:Array.isArray(s?.items)?s.items.map(normalizeNotifItem).filter(Boolean).slice(0,50):[],prefs:s?.prefs||{}};
+  normalized.unread=normalized.items.filter(n=>!n.read).length;
+  DB.s(NOTIF_KEY,normalized);
+}
 
 function addNotif(type,title,body,link="",icon="🔔"){
   const store=getNotifsStore();
-  if(!store.prefs[type]&&type!=="sub")return;
+  const safeType=NOTIF_TYPES.has(String(type))?String(type):"news";
+  if(!store.prefs[safeType]&&safeType!=="sub")return;
   const id=Date.now()+"_"+Math.random().toString(36).slice(2,6);
-  store.items.unshift({id,type,title,body,link,icon,read:false,ts:Date.now()});
+  const item=normalizeNotifItem({id,type:safeType,title,body,link,icon,read:false,ts:Date.now()});
+  if(!item)return;
+  store.items.unshift(item);
   if(store.items.length>50)store.items=store.items.slice(0,50);
-  store.unread=(store.items.filter(n=>!n.read)).length;
+  store.unread=store.items.filter(n=>!n.read).length;
   saveNotifsStore(store);
   updateBellBadge();
   if(notifOpen)renderNotifList();
-  if(store.prefs[type]!==false)tryBrowserNotif(title,body);
+  if(store.prefs[safeType]!==false)tryBrowserNotif(item.title,item.body);
 }
 
 function updateBellBadge(){
@@ -4919,12 +5113,12 @@ function renderNotifList(){
   if(!store.items.length){el.innerHTML=`<div class="notif-empty">📭<br/>لا توجد إشعارات بعد</div>`;return;}
   el.innerHTML=store.items.map(n=>{
     const ago=timeAgoNotif(n.ts);
-    return`<div class="notif-item${n.read?"":" unread"}" onclick="clickNotif('${n.id}','${n.link}')">
-      <div class="notif-icon">${n.icon}</div>
+    return`<div class="notif-item${n.read?"":" unread"}" onclick='clickNotif(${safeJsArg(n.id)},${safeJsArg(n.link)})'>
+      <div class="notif-icon">${sanitize(n.icon)}</div>
       <div class="notif-body">
-        <div class="notif-ntitle">${n.title}</div>
-        <div class="notif-ntext">${n.body}</div>
-        <div class="notif-time">${ago}</div>
+        <div class="notif-ntitle">${sanitize(n.title)}</div>
+        <div class="notif-ntext">${sanitize(n.body)}</div>
+        <div class="notif-time">${sanitize(ago)}</div>
       </div>
       ${n.read?"":"<div class='notif-dot'></div>"}
     </div>`;
@@ -4970,8 +5164,8 @@ function payNotifsSeen(){return DB.g(PAY_NOTIF_SEEN_KEY,[]);}
 function markPayNotifsSeen(ids){DB.s(PAY_NOTIF_SEEN_KEY,ids);}
 async function pollPayNotifs(){
   try{
-    const tok=DB.g("userTok","");if(!tok)return;
-    const r=await fetch("/api/payments/notifications",{headers:{Authorization:"Bearer "+tok}});
+    if(!U||U.plan==="admin")return;
+    const r=await fetch("/api/payments/notifications",{credentials:"same-origin"});
     const j=await r.json().catch(()=>null);
     if(!j||j.status!=="ok"||!Array.isArray(j.notifications))return;
     if(j.notifications.length){
@@ -5109,19 +5303,43 @@ const OPP_MARKETS={egypt:"🇪🇬",us:"🇺🇸",gulf:"🌙",crypto:"₿",globa
 const RISK_LABELS={1:"منخفضة جداً",2:"منخفضة",3:"متوسطة",4:"عالية",5:"عالية جداً"};
 const RISK_COLORS=["#22c55e","#84cc16","#f59e0b","#f97316","#ef4444"];
 
+/* Normalize API data before any opportunity renderer sees it. Rendering still
+ * encodes text at the sink, but bounded/whitelisted fields also prevent a
+ * malformed response from becoming a CSS class, an inline handler argument or
+ * a misleading UI state. */
+function normalizeOpportunity(raw){
+  if(!raw||typeof raw!=="object")return null;
+  const o=raw;
+  const id=String(o.id||"").trim();
+  const title=String(o.title||"").trim().slice(0,300);
+  const summary=String(o.summary||"").trim().slice(0,1500);
+  if(!/^[a-z0-9_-]{1,50}$/i.test(id)||!title||!summary)return null;
+  const type=Object.prototype.hasOwnProperty.call(OPP_TYPES,String(o.type))?String(o.type):"stock";
+  const market=Object.prototype.hasOwnProperty.call(OPP_MARKETS,String(o.market))?String(o.market):"egypt";
+  const status=["active","coming","closed"].includes(String(o.status))?String(o.status):"active";
+  const risk=Math.min(5,Math.max(1,Math.round(Number(o.riskLevel)||3)));
+  const text=(v,max)=>v==null?null:String(v).trim().slice(0,max)||null;
+  return {
+    id,title,summary,type,market,status,riskLevel:risk,
+    details:text(o.details,8000),expectedReturn:text(o.expectedReturn,100),
+    sector:text(o.sector,100),duration:text(o.duration,100),deadline:text(o.deadline,100),
+    featured:o.featured===true,vipOnly:o.vipOnly===true,
+    createdAt:text(o.createdAt,64),updatedAt:text(o.updatedAt,64),source:text(o.source,32),
+  };
+}
+
 async function loadOpps(force=false){
   const isVip=U?.plan==="vip"||U?.plan==="admin";
 
-  // The local snapshot (U.plan) may be stale — e.g. VIP was activated
-  // after this login. Re-check with the server once before gating.
+  // The server cookie is the authority for subscription state. Re-check once
+  // because an approval can happen after the current page loaded.
   if(!isVip){
-    const tok2=DB.g("userTok","");
-    if(tok2){
+    if(U){
       try{
-        const mr=await fetch("/api/user/me",{headers:{Authorization:"Bearer "+tok2}});
-        const md=await mr.json();
+        const mr=await fetch("/api/user/me",{credentials:"same-origin"});
+        const md=await mr.json().catch(()=>({}));
         if(mr.ok&&md.status==="ok"&&md.user){
-          U=md.user;DB.s("s",U);
+          U=md.user;
           if(U.plan==="vip"||U.plan==="admin"){renderHdrVip();return loadOpps(force);}
         }
       }catch{}
@@ -5148,13 +5366,13 @@ async function loadOpps(force=false){
   const el=document.getElementById("opps-list");if(!el)return;
   if(force||oppsData.length===0)el.innerHTML=`<div style="padding:20px;text-align:center;"><div class="sp sp-g"></div></div>`;
   try{
-    const oppHeaders={};
-    const userTok=DB.g("userTok","");
-    if(userTok)oppHeaders.Authorization="Bearer "+userTok;
-    const r=await fetch("/api/opportunities",{headers:oppHeaders});
+    const r=await fetch("/api/opportunities",{credentials:"same-origin"});
     if(!r.ok)throw new Error("server");
     const d=await r.json();
-    oppsData=(d.opportunities||[]).filter(o=>o.status!=="deleted"&&o.status!=="closed");
+    oppsData=(Array.isArray(d.opportunities)?d.opportunities:[])
+      .map(normalizeOpportunity)
+      .filter(Boolean)
+      .filter(o=>o.status!=="closed");
     const newCount=DB.g("opps_seen_count",0);
     if(oppsData.length>newCount){
       const diff=oppsData.length-newCount;
@@ -5202,45 +5420,46 @@ function renderOpps(){
     return;
   }
   const saved=DB.g("saved_opps",[]);
+  const marketNames={egypt:"🇪🇬 مصر",us:"🇺🇸 أمريكا",gulf:"🌙 الخليج",crypto:"₿ كريبتو",global:"🌐 عالمي"};
   el.innerHTML=list.map(o=>{
-    const t=OPP_TYPES[o.type]||{l:o.type,c:"#64748b",bg:"rgba(100,116,139,.12)"};
-    const mName={egypt:"🇪🇬 مصر",us:"🇺🇸 أمريكا",gulf:"🌙 الخليج",crypto:"₿ كريبتو",global:"🌐 عالمي"};
+    const t=OPP_TYPES[o.type]||OPP_TYPES.stock;
     const locked=o.vipOnly&&!isVip;
-    const rColor=RISK_COLORS[(o.riskLevel||3)-1];
-    const rLabel=RISK_LABELS[o.riskLevel||3]||"متوسطة";
+    const rColor=RISK_COLORS[(o.riskLevel||3)-1]||RISK_COLORS[2];
+    const rLabel=RISK_LABELS[o.riskLevel||3]||RISK_LABELS[3];
     const isSaved=saved.includes(o.id);
     const daysLeft=o.deadline?Math.ceil((new Date(o.deadline)-new Date())/(1000*60*60*24)):null;
     const ageHrs=o.createdAt?Math.floor((Date.now()-new Date(o.createdAt))/(1000*3600)):999;
-    const isNew=ageHrs<48;
-    const sectorClean=(o.sector||"").replace(/^\[AI\]\s*/,"");
-    return`<div class="opp-card${o.featured?" featured":""}${locked?" vip-locked":""}" onclick="openOppDetail('${o.id}')">
+    const isNew=Number.isFinite(ageHrs)&&ageHrs>=0&&ageHrs<48;
+    const sectorClean=String(o.sector||"").replace(/^\[AI\]\s*/,"");
+    const id=safeJsArg(o.id);
+    return`<div class="opp-card${o.featured?" featured":""}${locked?" vip-locked":""}" onclick='openOppDetail(${id})'>
       <div class="opp-top">
         <div class="opp-badges">
-          <span class="opp-type-badge" style="color:${t.c};background:${t.bg};">${t.l}</span>
-          <span class="opp-market-badge" style="background:var(--s2);color:var(--t3);">${mName[o.market]||o.market}</span>
+          <span class="opp-type-badge" style="color:${t.c};background:${t.bg};">${sanitize(t.l)}</span>
+          <span class="opp-market-badge" style="background:var(--s2);color:var(--t3);">${sanitize(marketNames[o.market]||"غير محدد")}</span>
           ${isNew?`<span class="opp-type-badge" style="color:#22c55e;background:rgba(34,197,94,.12);">🟢 جديدة</span>`:""}
           ${o.featured?`<span class="opp-type-badge" style="color:#f59e0b;background:rgba(245,158,11,.12);">⭐ مميزة</span>`:""}
           ${o.vipOnly?`<span class="opp-type-badge" style="color:#a78bfa;background:rgba(139,92,246,.12);">VIP</span>`:""}
         </div>
         ${locked?`<span style="font-size:18px;">🔒</span>`:""}
       </div>
-      <div class="opp-title">${o.title}</div>
+      <div class="opp-title">${sanitize(o.title)}</div>
       ${locked?`<div class="opp-vip-lock" onclick="event.stopPropagation();goNav('vip')"><span style="color:var(--au);font-weight:800;font-size:12px;">⭐ اشترك في VIP لرؤية تفاصيل هذه الفرصة</span></div>`:
-      `<div class="opp-summary">${o.summary}</div>
+      `<div class="opp-summary">${sanitize(o.summary)}</div>
       <div class="opp-meta">
-        ${o.expectedReturn?`<div class="opp-meta-item"><div class="opp-meta-label">العائد المتوقع</div><div class="opp-meta-val" style="color:var(--g);">${o.expectedReturn}</div></div>`:""}
-        ${sectorClean?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${sectorClean}</div></div>`:""}
-        ${o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">مدة الاستثمار</div><div class="opp-meta-val">${o.duration}</div></div>`:""}
+        ${o.expectedReturn?`<div class="opp-meta-item"><div class="opp-meta-label">العائد المحتمل</div><div class="opp-meta-val" style="color:var(--g);">${sanitize(o.expectedReturn)}</div></div>`:""}
+        ${sectorClean?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${sanitize(sectorClean)}</div></div>`:""}
+        ${o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">مدة الاستثمار</div><div class="opp-meta-val">${sanitize(o.duration)}</div></div>`:""}
         <div class="opp-meta-item">
           <div class="opp-meta-label">درجة المخاطرة</div>
           <div><div class="opp-risk">${[1,2,3,4,5].map(i=>`<div class="opp-risk-dot" style="background:${i<=(o.riskLevel||3)?rColor:"var(--b2)"};"></div>`).join("")}</div>
           <div style="color:${rColor};font-size:9px;margin-top:2px;">${rLabel}</div></div>
         </div>
       </div>
-      ${daysLeft!==null?`<div class="opp-deadline">⏰ ${daysLeft<=0?"آخر يوم":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>`:""}`}
+      ${daysLeft!==null&&Number.isFinite(daysLeft)?`<div class="opp-deadline">⏰ ${daysLeft<=0?"آخر يوم":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>`:""}`}
       <div class="opp-actions">
-        <button class="btn btn-sm" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);" onclick="event.stopPropagation();toggleSaveOpp('${o.id}',this)">${isSaved?"🔖 محفوظة":"📌 حفظ"}</button>
-        ${!locked?`<button class="btn btn-g btn-sm" onclick="event.stopPropagation();openOppDetail('${o.id}')">التفاصيل ←</button>`:""}
+        <button class="btn btn-sm" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);" onclick='event.stopPropagation();toggleSaveOpp(${id},this)'>${isSaved?"🔖 محفوظة":"📌 حفظ"}</button>
+        ${!locked?`<button class="btn btn-g btn-sm" onclick='event.stopPropagation();openOppDetail(${id})'>التفاصيل ←</button>`:""}
       </div>
     </div>`;
   }).join("");
@@ -5258,37 +5477,39 @@ function openOppDetail(id){
   const o=oppsData.find(x=>x.id===id);if(!o)return;
   const isVip=U?.plan==="vip"||U?.plan==="admin";
   const locked=o.vipOnly&&!isVip;
-  const t=OPP_TYPES[o.type]||{l:o.type,c:"#64748b",bg:"rgba(100,116,139,.12)"};
-  const rColor=RISK_COLORS[(o.riskLevel||3)-1];
-  const rLabel=RISK_LABELS[o.riskLevel||3]||"متوسطة";
+  const t=OPP_TYPES[o.type]||OPP_TYPES.stock;
+  const rColor=RISK_COLORS[(o.riskLevel||3)-1]||RISK_COLORS[2];
+  const rLabel=RISK_LABELS[o.riskLevel||3]||RISK_LABELS[3];
   const daysLeft=o.deadline?Math.ceil((new Date(o.deadline)-new Date())/(1000*60*60*24)):null;
+  const idArg=safeJsArg(o.id);
+  const whatsappTitle=encodeURIComponent(String(o.title||"").slice(0,300));
   const ov=document.createElement("div");ov.id="opp-detail-ov";
   ov.style.cssText="position:fixed;inset:0;z-index:650;background:rgba(3,7,18,.95);overflow-y:auto;";
   ov.innerHTML=`<div style="max-width:430px;margin:0 auto;padding:20px 16px 60px;">
     <button onclick="document.getElementById('opp-detail-ov').remove()" style="background:none;border:none;color:var(--t3);font-size:14px;cursor:pointer;margin-bottom:16px;display:flex;align-items:center;gap:5px;font-family:var(--sans);">← رجوع</button>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-      <span class="opp-type-badge" style="color:${t.c};background:${t.bg};font-size:11px;padding:3px 10px;">${t.l}</span>
+      <span class="opp-type-badge" style="color:${t.c};background:${t.bg};font-size:11px;padding:3px 10px;">${sanitize(t.l)}</span>
       ${o.vipOnly?`<span class="opp-type-badge" style="color:#a78bfa;background:rgba(139,92,246,.12);font-size:11px;padding:3px 10px;">VIP فقط</span>`:""}
       ${o.featured?`<span class="opp-type-badge" style="color:#f59e0b;background:rgba(245,158,11,.12);font-size:11px;padding:3px 10px;">⭐ مميزة</span>`:""}
     </div>
-    <h2 style="color:var(--t1);font-size:20px;font-weight:900;line-height:1.4;margin-bottom:12px;">${o.title}</h2>
+    <h2 style="color:var(--t1);font-size:20px;font-weight:900;line-height:1.4;margin-bottom:12px;">${sanitize(o.title)}</h2>
     ${locked?`<div style="text-align:center;padding:30px;background:var(--aud);border-radius:16px;cursor:pointer;" onclick="document.getElementById('opp-detail-ov').remove();goNav('vip')"><div style="font-size:40px;margin-bottom:8px;">⭐</div><div style="color:var(--au);font-weight:800;font-size:15px;">هذه الفرصة لأعضاء VIP فقط</div><div style="color:var(--t4);font-size:12px;margin-top:5px;">اشترك الآن للوصول الكامل</div></div>`
-    :`<p style="color:var(--t2);font-size:13.5px;line-height:1.8;margin-bottom:18px;direction:rtl;">${o.summary}</p>
+    :`<p style="color:var(--t2);font-size:13.5px;line-height:1.8;margin-bottom:18px;direction:rtl;">${sanitize(o.summary)}</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px;">
-      ${o.expectedReturn?`<div class="opp-meta-item"><div class="opp-meta-label">العائد المتوقع</div><div class="opp-meta-val" style="color:var(--g);font-size:14px;">${o.expectedReturn}</div></div>`:""}
-      ${o.sector?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${o.sector}</div></div>`:""}
-      ${o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">مدة الاستثمار</div><div class="opp-meta-val">${o.duration}</div></div>`:""}
+      ${o.expectedReturn?`<div class="opp-meta-item"><div class="opp-meta-label">العائد المحتمل</div><div class="opp-meta-val" style="color:var(--g);font-size:14px;">${sanitize(o.expectedReturn)}</div></div>`:""}
+      ${o.sector?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${sanitize(o.sector.replace(/^\[AI\]\s*/,""))}</div></div>`:""}
+      ${o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">مدة الاستثمار</div><div class="opp-meta-val">${sanitize(o.duration)}</div></div>`:""}
       <div class="opp-meta-item">
         <div class="opp-meta-label">درجة المخاطرة</div>
         <div><div class="opp-risk">${[1,2,3,4,5].map(i=>`<div class="opp-risk-dot" style="background:${i<=(o.riskLevel||3)?rColor:"var(--b2)"};width:10px;height:10px;"></div>`).join("")}</div>
         <div style="color:${rColor};font-size:10px;margin-top:3px;">${rLabel}</div></div>
       </div>
     </div>
-    ${daysLeft!==null?`<div style="background:var(--dnd);border:1px solid rgba(239,68,68,.2);border-radius:11px;padding:11px;margin-bottom:14px;display:flex;align-items:center;gap:8px;"><span style="font-size:18px;">⏰</span><div><div style="color:var(--dn);font-weight:700;font-size:12.5px;">${daysLeft<=0?"آخر يوم للاكتتاب":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>${o.deadline?`<div style="color:var(--t4);font-size:10.5px;">الموعد النهائي: ${o.deadline}</div>`:""}</div></div>`:""}
-    ${o.details?`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:15px;margin-bottom:16px;"><div style="color:var(--g);font-size:11px;font-weight:700;margin-bottom:8px;">📋 تفاصيل إضافية</div><div style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;">${o.details}</div></div>`:""}
+    ${daysLeft!==null&&Number.isFinite(daysLeft)?`<div style="background:var(--dnd);border:1px solid rgba(239,68,68,.2);border-radius:11px;padding:11px;margin-bottom:14px;display:flex;align-items:center;gap:8px;"><span style="font-size:18px;">⏰</span><div><div style="color:var(--dn);font-weight:700;font-size:12.5px;">${daysLeft<=0?"آخر يوم للاكتتاب":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>${o.deadline?`<div style="color:var(--t4);font-size:10.5px;">الموعد النهائي: ${sanitize(o.deadline)}</div>`:""}</div></div>`:""}
+    ${o.details?`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:15px;margin-bottom:16px;"><div style="color:var(--g);font-size:11px;font-weight:700;margin-bottom:8px;">📋 تفاصيل إضافية</div><div style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;">${sanitize(o.details)}</div></div>`:""}
     <div style="display:flex;gap:8px;margin-top:6px;">
-      <button class="btn btn-g btn-full" style="padding:13px;" onclick="toggleSaveOppFromDetail('${o.id}',this)">📌 حفظ الفرصة</button>
-      <a href="https://wa.me/201008605139?text=أريد معرفة المزيد عن: ${encodeURIComponent(o.title)}" target="_blank" class="btn btn-full" style="padding:13px;background:rgba(37,211,102,.12);border:1px solid rgba(37,211,102,.2);color:#25d366;text-decoration:none;text-align:center;">💬 استفسار</a>
+      <button class="btn btn-g btn-full" style="padding:13px;" onclick='toggleSaveOppFromDetail(${idArg},this)'>📌 حفظ الفرصة</button>
+      <a href="https://wa.me/201008605139?text=أريد معرفة المزيد عن: ${whatsappTitle}" target="_blank" rel="noopener noreferrer" class="btn btn-full" style="padding:13px;background:rgba(37,211,102,.12);border:1px solid rgba(37,211,102,.2);color:#25d366;text-decoration:none;text-align:center;">💬 استفسار</a>
     </div>`}
   </div>`;
   document.body.appendChild(ov);
@@ -5350,24 +5571,28 @@ async function loadAdmOpps(){
   const el=document.getElementById("adm-opps-list");if(!el)return;
   try{
     const r=await admFetch("/api/opportunities");
+    if(!r.ok)throw new Error("server");
     const d=await r.json();
-    const all=(d.opportunities||[]);
+    const all=(Array.isArray(d.opportunities)?d.opportunities:[]).map(normalizeOpportunity).filter(Boolean);
     if(!all.length){el.innerHTML=`<div style="text-align:center;padding:20px;color:var(--t4);font-size:12px;">لا توجد فرص بعد</div>`;return;}
     el.innerHTML=all.map(o=>{
-      const t=OPP_TYPES[o.type]||{l:o.type,c:"#64748b"};
+      const t=OPP_TYPES[o.type]||OPP_TYPES.stock;
+      const statusLabel=o.status==="active"?"نشطة":o.status==="coming"?"قادمة":"مغلقة";
+      const statusColor=o.status==="active"?"var(--g)":o.status==="coming"?"var(--au)":"var(--dn)";
+      const id=safeJsArg(o.id);
       return`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px;margin-bottom:9px;">
         <div class="row between">
-          <div><span style="color:${t.c};font-size:10px;font-weight:700;">${t.l}</span> · <span style="color:var(--t4);font-size:10px;">${o.market}</span>
+          <div><span style="color:${t.c};font-size:10px;font-weight:700;">${sanitize(t.l)}</span> · <span style="color:var(--t4);font-size:10px;">${sanitize(o.market)}</span>
           ${o.featured?` · <span style="color:var(--au);font-size:10px;">⭐ مميزة</span>`:""}
           ${o.vipOnly?` · <span style="color:#a78bfa;font-size:10px;">VIP</span>`:""}
-          <span style="color:${o.status==="active"?"var(--g)":o.status==="coming"?"var(--au)":"var(--dn)"};font-size:10px;margin-right:6px;">● ${o.status==="active"?"نشطة":o.status==="coming"?"قادمة":"مغلقة"}</span></div>
+          <span style="color:${statusColor};font-size:10px;margin-right:6px;">● ${statusLabel}</span></div>
           <div style="display:flex;gap:6px;">
-            <button class="btn btn-sm" style="background:rgba(59,130,246,.1);color:#93c5fd;font-size:10px;padding:3px 8px;" onclick="openEditOppForm('${o.id}')">تعديل</button>
-            <button class="btn btn-sm rej" style="font-size:10px;padding:3px 8px;" onclick="deleteOpp('${o.id}')">حذف</button>
+            <button class="btn btn-sm" style="background:rgba(59,130,246,.1);color:#93c5fd;font-size:10px;padding:3px 8px;" onclick='openEditOppForm(${id})'>تعديل</button>
+            <button class="btn btn-sm rej" style="font-size:10px;padding:3px 8px;" onclick='deleteOpp(${id})'>حذف</button>
           </div>
         </div>
-        <div style="color:var(--t2);font-size:12px;font-weight:700;margin-top:5px;">${o.title}</div>
-        <div style="color:var(--t4);font-size:11px;margin-top:3px;">${(o.summary||"").slice(0,80)}${o.summary?.length>80?"...":""}</div>
+        <div style="color:var(--t2);font-size:12px;font-weight:700;margin-top:5px;">${sanitize(o.title)}</div>
+        <div style="color:var(--t4);font-size:11px;margin-top:3px;">${sanitize(o.summary.slice(0,80))}${o.summary.length>80?"...":""}</div>
       </div>`;
     }).join("");
   }catch(e){el.innerHTML=`<div style="color:var(--dn);font-size:12px;padding:14px;">خطأ في تحميل الفرص</div>`;}
@@ -5375,23 +5600,25 @@ async function loadAdmOpps(){
 
 function openAddOppForm(existing=null){
   const el=document.getElementById("adm-opps-form");if(!el)return;
-  const o=existing||{};
+  const o=existing?(normalizeOpportunity(existing)||{}):{};
+  const inputValue=(value)=>sanitize(value||"");
+  const selected=(value,expected)=>value===expected?"selected":"";
   el.innerHTML=`<div class="adm-opp-form">
     <div style="color:var(--g);font-weight:700;font-size:13px;margin-bottom:12px;">${existing?"✏️ تعديل فرصة":"➕ إضافة فرصة جديدة"}</div>
-    <input class="a-in" id="of-title" placeholder="عنوان الفرصة *" value="${o.title||""}" style="margin-bottom:7px;"/>
-    <textarea class="a-in" id="of-summary" placeholder="ملخص سريع *" style="margin-bottom:7px;height:70px;resize:none;">${o.summary||""}</textarea>
-    <textarea class="a-in" id="of-details" placeholder="تفاصيل إضافية (اختياري)" style="margin-bottom:7px;height:80px;resize:none;">${o.details||""}</textarea>
+    <input class="a-in" id="of-title" placeholder="عنوان الفرصة *" value="${inputValue(o.title)}" style="margin-bottom:7px;"/>
+    <textarea class="a-in" id="of-summary" placeholder="ملخص سريع *" style="margin-bottom:7px;height:70px;resize:none;">${inputValue(o.summary)}</textarea>
+    <textarea class="a-in" id="of-details" placeholder="تفاصيل إضافية (اختياري)" style="margin-bottom:7px;height:80px;resize:none;">${inputValue(o.details)}</textarea>
     <div class="adm-opp-grid">
       <select class="a-in" id="of-type" style="margin-bottom:7px;">
-        ${Object.entries(OPP_TYPES).map(([k,v])=>`<option value="${k}" ${o.type===k?"selected":""}>${v.l}</option>`).join("")}
+        ${Object.entries(OPP_TYPES).map(([k,v])=>`<option value="${k}" ${selected(o.type,k)}>${sanitize(v.l)}</option>`).join("")}
       </select>
       <select class="a-in" id="of-market" style="margin-bottom:7px;">
-        ${Object.entries(OPP_MARKETS).map(([k,v])=>`<option value="${k}" ${o.market===k?"selected":""}>${v} ${k}</option>`).join("")}
+        ${Object.entries(OPP_MARKETS).map(([k,v])=>`<option value="${k}" ${selected(o.market,k)}>${sanitize(v)} ${sanitize(k)}</option>`).join("")}
       </select>
-      <input class="a-in" id="of-ret" placeholder="العائد المتوقع" value="${o.expectedReturn||""}" style="margin-bottom:7px;"/>
-      <input class="a-in" id="of-sector" placeholder="القطاع" value="${o.sector||""}" style="margin-bottom:7px;"/>
-      <input class="a-in" id="of-dur" placeholder="مدة الاستثمار" value="${o.duration||""}" style="margin-bottom:7px;"/>
-      <input class="a-in" id="of-deadline" placeholder="الموعد النهائي (مثال: 30 يونيو 2026)" value="${o.deadline||""}" style="margin-bottom:7px;"/>
+      <input class="a-in" id="of-ret" placeholder="العائد المتوقع" value="${inputValue(o.expectedReturn)}" style="margin-bottom:7px;"/>
+      <input class="a-in" id="of-sector" placeholder="القطاع" value="${inputValue(o.sector)}" style="margin-bottom:7px;"/>
+      <input class="a-in" id="of-dur" placeholder="مدة الاستثمار" value="${inputValue(o.duration)}" style="margin-bottom:7px;"/>
+      <input class="a-in" id="of-deadline" placeholder="الموعد النهائي (مثال: 30 يونيو 2026)" value="${inputValue(o.deadline)}" style="margin-bottom:7px;"/>
     </div>
     <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
       <div style="font-size:11px;color:var(--t3);">درجة المخاطرة:</div>
@@ -5402,12 +5629,12 @@ function openAddOppForm(existing=null){
       <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--t3);cursor:pointer;"><input type="checkbox" id="of-vip" ${o.vipOnly?"checked":""}> 🔒 VIP فقط</label>
     </div>
     <select class="a-in" id="of-status" style="margin-bottom:10px;">
-      <option value="active" ${(o.status||"active")==="active"?"selected":""}>نشطة</option>
-      <option value="coming" ${o.status==="coming"?"selected":""}>قادمة</option>
-      <option value="closed" ${o.status==="closed"?"selected":""}>مغلقة</option>
+      <option value="active" ${selected(o.status||"active","active")}>نشطة</option>
+      <option value="coming" ${selected(o.status,"coming")}>قادمة</option>
+      <option value="closed" ${selected(o.status,"closed")}>مغلقة</option>
     </select>
     <div style="display:flex;gap:7px;">
-      <button class="btn btn-g btn-full" style="padding:10px;" onclick="submitOppForm('${o.id||""}')">${existing?"💾 حفظ التعديلات":"✅ إضافة الفرصة"}</button>
+      <button class="btn btn-g btn-full" style="padding:10px;" onclick='submitOppForm(${safeJsArg(o.id||"")})'>${existing?"💾 حفظ التعديلات":"✅ إضافة الفرصة"}</button>
       <button class="btn btn-sm" style="background:var(--s1);color:var(--t4);" onclick="document.getElementById('adm-opps-form').innerHTML=''">إلغاء</button>
     </div>
   </div>`;
