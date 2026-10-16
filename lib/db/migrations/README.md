@@ -1,6 +1,6 @@
 # Database migrations
 
-`0001_market_daily_ohlc` and `0002_user_subscriptions` are **pending, unexecuted** migrations.
+`0001_market_daily_ohlc` through `0005_subscription_plan_pricing` are **pending, unexecuted** migrations.
 
 They are intentionally SQL files rather than a `drizzle-kit push`: no verified isolated database connection exists in this workspace, and an agent must never change a shared or production database without an approved backup and deployment window.
 
@@ -8,6 +8,7 @@ They are intentionally SQL files rather than a `drizzle-kit push`: no verified i
 - `0002_user_subscriptions` introduces the server-side VIP entitlement record. It backfills only existing VIP accounts with a recorded future expiry. Records with a missing legacy expiry are left untouched and use the temporary compatibility path until an operator verifies them; the migration never invents an expiry date.
 - `0003_portfolio_positions` stores user-entered positions server-side. It never stores a market quote: all displayed market values remain runtime source/as-of data, and rollback archives the personal records.
 - `0004_user_price_alerts` stores server-evaluated price/daily-change rules and their trigger provenance. Evaluation is inert until an approved server-to-server scheduler supplies `CRON_SECRET`; it ignores end-of-day, unknown, or stale quotes and sends email only to the alert owner's recorded address.
+- `0005_subscription_plan_pricing` adds server-evaluated base/offer pricing, audience targeting, immutable payment-price snapshots and reversible pricing history. It never rewrites an existing payment request, subscription, or plan price; the rollback archives new offer/history tables and retains financial snapshot columns.
 
 ## Safe execution sequence
 

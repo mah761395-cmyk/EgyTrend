@@ -11,7 +11,7 @@
  * the server's 300kb JSON body limit) — no filesystem, survives DB backups.
  * ═══════════════════════════════════════════════════════════════════════ */
 import { Router, type Request, type Response } from "express";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   appSettingsTable,
@@ -20,6 +20,14 @@ import {
   userNotificationsTable,
 } from "@workspace/db/schema";
 import { currentUser, getVipEntitlement } from "../lib/userAuth";
+import {
+  buildPaymentPriceSnapshot,
+  effectivePriceTemplateVariables,
+  effectivePriceToken,
+  getEffectivePrice,
+  getPaymentPriceLockHours,
+  pricingCacheVersion,
+} from "../lib/pricing";
 import { logger } from "../lib/logger";
 import { checkPayRateLimit } from "./admin";
 
@@ -54,23 +62,44 @@ async function readMethodSettings() {
   return methods;
 }
 
-/* ── Public config: what the subscribe flow needs (no auth) ── */
-router.get("/payments/config", async (_req: Request, res: Response) => {
+/* ── Public config: every displayed amount comes from getEffectivePrice(). ── */
+router.get("/payments/config", async (req: Request, res: Response) => {
   try {
     const methods = await readMethodSettings();
-    const plans = await db
-      .select({
-        key: subscriptionPlansTable.key,
-        nameAr: subscriptionPlansTable.nameAr,
-        price: subscriptionPlansTable.price,
-        durationMonths: subscriptionPlansTable.durationMonths,
-        features: subscriptionPlansTable.features,
-        badge: subscriptionPlansTable.badge,
-      })
+    const user = currentUser(req);
+    const rawPlans = await db
+      .select()
       .from(subscriptionPlansTable)
-      .where(eq(subscriptionPlansTable.isActive, true))
-      .orderBy(asc(subscriptionPlansTable.price));
-    res.json({ status: "ok", methods, plans });
+      .where(eq(subscriptionPlansTable.isActive, true));
+    const now = new Date();
+    /* Legacy zero-priced rows are not valid paid plans. Do not fabricate a
+     * free amount; hide them until a pricing-authorized operator fixes them. */
+    const pricedPlans = rawPlans.filter((plan) => Number.isSafeInteger(plan.price) && plan.price > 0);
+    const plans = await Promise.all(pricedPlans.map(async (plan) => {
+      const effective = await getEffectivePrice(user, plan, now);
+      return {
+        key: plan.key,
+        nameAr: plan.nameAr,
+        /* `price` remains the client contract but is always effective, never base. */
+        price: effective.price,
+        oldPrice: effective.oldPrice,
+        discountPercent: effective.discountPercent,
+        priceBadge: effective.badge,
+        durationMonths: plan.durationMonths,
+        features: plan.features,
+        /* Preserve the existing descriptive plan label separately. */
+        badge: plan.badge,
+        showCountdown: effective.showCountdown,
+        endsAt: effective.endsAt?.toISOString() || null,
+        priceSource: effective.source,
+        pricingToken: effectivePriceToken(plan, effective),
+        templateVariables: effectivePriceTemplateVariables(effective),
+      };
+    }));
+    plans.sort((left, right) => left.price - right.price || left.key.localeCompare(right.key));
+    /* Public price config must never be served stale after a pricing change. */
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({ status: "ok", methods, plans, pricingVersion: pricingCacheVersion(), generatedAt: now.toISOString() });
   } catch (e) {
     logger.error({ err: e }, "payments config error");
     res.status(500).json({ status: "error", message: "server error" });
@@ -91,6 +120,8 @@ router.get("/payments/my", async (req: Request, res: Response) => {
         planKey: paymentRequestsTable.planKey,
         method: paymentRequestsTable.payMethod,
         price: paymentRequestsTable.price,
+        priceSnapshot: paymentRequestsTable.priceSnapshot,
+        priceLockedUntil: paymentRequestsTable.priceLockedUntil,
         tx: paymentRequestsTable.tx,
         status: paymentRequestsTable.status,
         notes: paymentRequestsTable.notes,
@@ -140,6 +171,9 @@ router.post("/payments", async (req: Request, res: Response) => {
   const planKey = String(b.planKey || "").trim().replace(/[^a-z0-9_\-]/gi, "").slice(0, 30);
   const method = String(b.method || "vodafone").trim().toLowerCase().replace(/[^a-z]/g, "").slice(0, 20);
   const tx = String(b.tx || "").trim().slice(0, 100);
+  /* Freshness marker from the exact server-rendered plan response. It is not
+   * an amount and can never authorize a price; it only prevents stale UI. */
+  const pricingToken = typeof b.pricingToken === "string" ? b.pricingToken.trim().slice(0, 1000) : "";
   const proofImage = typeof b.proofImage === "string" ? b.proofImage : "";
   const proofName = String(b.proofName || "").trim().slice(0, 120);
 
@@ -186,12 +220,10 @@ router.post("/payments", async (req: Request, res: Response) => {
 
   const id = `req-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
   try {
-    /* Plan + price come from the server (admin-editable) — never the client. */
+    /* The full plan and the price are fetched server-side. The body has no
+     * amount field that is trusted or even read. */
     const [plan] = await db
-      .select({
-        key: subscriptionPlansTable.key,
-        price: subscriptionPlansTable.price,
-      })
+      .select()
       .from(subscriptionPlansTable)
       .where(and(eq(subscriptionPlansTable.key, planKey), eq(subscriptionPlansTable.isActive, true)))
       .limit(1);
@@ -199,6 +231,19 @@ router.post("/payments", async (req: Request, res: Response) => {
       res.status(400).json({ status: "error", message: "خطة غير متاحة — اختر خطة صحيحة" });
       return;
     }
+    const now = new Date();
+    const effective = await getEffectivePrice(user, plan, now);
+    if (!Number.isSafeInteger(effective.price) || effective.price <= 0) {
+      res.status(503).json({ status: "error", message: "سعر الباقة غير متاح حاليًا — تواصل مع الإدارة" });
+      return;
+    }
+    if (!pricingToken || pricingToken !== effectivePriceToken(plan, effective)) {
+      res.status(409).json({ status: "error", message: "تغيّر سعر أو عرض الباقة — أعد تحميل الباقات قبل إنشاء الطلب" });
+      return;
+    }
+    const lockHours = await getPaymentPriceLockHours();
+    const priceLockedUntil = new Date(now.getTime() + lockHours * 60 * 60 * 1000);
+    const priceSnapshot = buildPaymentPriceSnapshot(plan, effective, lockHours, now);
 
     /* Method must be one the admin enabled (wallet number configured). */
     const methods = await readMethodSettings();
@@ -220,13 +265,27 @@ router.post("/payments", async (req: Request, res: Response) => {
       return;
     }
 
-    const [pending] = await db.select({ id: paymentRequestsTable.id })
+    const [pending] = await db.select({
+      id: paymentRequestsTable.id,
+      priceLockedUntil: paymentRequestsTable.priceLockedUntil,
+    })
       .from(paymentRequestsTable)
       .where(and(eq(paymentRequestsTable.phone, user.phone), eq(paymentRequestsTable.status, "pending")))
       .limit(1);
     if (pending) {
-      res.status(409).json({ status: "error", message: "لديك طلب دفع قيد المراجعة بالفعل — تابع حالته من صفحة اشتراكي" });
-      return;
+      /* A new-format expired price hold stops blocking a fresh request. Legacy
+       * rows with no lock remain reviewable and retain their historic price. */
+      if (pending.priceLockedUntil && pending.priceLockedUntil.getTime() <= now.getTime()) {
+        await db.update(paymentRequestsTable).set({
+          status: "expired",
+          notes: "انتهت مدة تثبيت السعر؛ أنشئ طلبًا جديدًا بالسعر الحالي.",
+          updatedAt: now,
+          decidedAt: now,
+        }).where(eq(paymentRequestsTable.id, pending.id));
+      } else {
+        res.status(409).json({ status: "error", message: "لديك طلب دفع قيد المراجعة بالفعل — تابع حالته من صفحة اشتراكي" });
+        return;
+      }
     }
 
     await db.insert(paymentRequestsTable).values({
@@ -235,14 +294,23 @@ router.post("/payments", async (req: Request, res: Response) => {
       name: user.name || user.phone,
       planKey: plan.key,
       payMethod: chosen.id,
-      price: plan.price,
+      /* Exact `getEffectivePrice()` amount, never a browser-supplied amount. */
+      price: effective.price,
+      priceSnapshot,
+      priceLockedUntil,
       tx,
       status: "pending",
       proofImage,
       proofName: proofName || null,
     });
-    logger.info({ planKey: plan.key, price: plan.price, method: chosen.id }, "payment request submitted");
-    res.json({ status: "ok", id, message: "تم إرسال طلبك — جاري مراجعة الدفع" });
+    logger.info({ planKey: plan.key, price: effective.price, method: chosen.id }, "payment request submitted");
+    res.json({
+      status: "ok",
+      id,
+      amount: effective.price,
+      priceLockedUntil: priceLockedUntil.toISOString(),
+      message: "تم إرسال طلبك — السعر محفوظ لمدة محدودة وجارٍ مراجعة الدفع",
+    });
   } catch (e: unknown) {
     const msg = String(e);
     if (msg.includes("payment_requests_tx_method_uidx") || msg.includes("unique")) {

@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -8,7 +8,12 @@ export const paymentRequestsTable = pgTable("payment_requests", {
   name: text("name").notNull(),
   planKey: text("plan_key").notNull(),
   payMethod: text("pay_method").notNull().default(""),
+  /** The server-calculated amount charged for this request; never client input. */
   price: integer("price").notNull().default(0),
+  /** Immutable server-side calculation and plan details at request creation. */
+  priceSnapshot: jsonb("price_snapshot").$type<Record<string, unknown>>(),
+  /** The snapshot is valid for a configurable limited window (24h by default). */
+  priceLockedUntil: timestamp("price_locked_until", { withTimezone: true }),
   tx: text("tx").notNull(),
   status: text("status").notNull().default("pending"),
   notes: text("notes"),

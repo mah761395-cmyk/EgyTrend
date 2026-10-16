@@ -1,5 +1,7 @@
 export * from "./employees";
 export * from "./plans";
+export * from "./plan_price_offers";
+export * from "./plan_price_change_logs";
 export * from "./coupons";
 export * from "./audit_logs";
 export * from "./ai_config";

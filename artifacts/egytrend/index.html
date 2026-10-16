@@ -340,6 +340,14 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .plan-label{color:var(--t3);font-size:10.5px;font-weight:700;}
 .plan-c.active .plan-label{color:var(--au);}
 .plan-price{color:var(--t1);font-size:18px;font-weight:900;font-family:var(--mono);}
+/* Shared server-priced display: current amount is visually primary; the old
+ * comparison amount is muted + struck through and fully described to AT. */
+.price-stack{display:flex;align-items:baseline;justify-content:center;gap:5px;flex-wrap:wrap;line-height:1.2;}
+.price-current{color:var(--t1);font-family:var(--mono);font-weight:900;font-size:1.18em;}
+.price-old{color:var(--t5);font-family:var(--mono);font-size:.72em;text-decoration:line-through;text-decoration-thickness:1.5px;}
+.price-badge{display:inline-flex;align-items:center;background:var(--aud);border:1px solid rgba(245,158,11,.28);border-radius:999px;color:var(--au);font-size:.58em;font-family:var(--sans);font-weight:900;padding:2px 5px;white-space:nowrap;}
+.price-countdown{color:var(--au);font-size:9px;font-weight:800;margin-top:4px;min-height:14px;}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 .plan-period{color:var(--t4);font-size:9.5px;}
 .feat-list{background:var(--s1);border-radius:11px;padding:12px;margin-bottom:13px;}
 .feat-it{display:flex;align-items:center;gap:7px;padding:4px 0;color:var(--t2);font-size:12.5px;}
@@ -2200,7 +2208,7 @@ function openArt(id){
   document.getElementById("det-tldr").innerHTML=`<div class="det-tldr"><div style="color:var(--g);font-size:9.5px;font-weight:800;letter-spacing:.8px;margin-bottom:4px;">⚡ TL;DR — الخلاصة</div><div style="color:var(--t2);font-size:13.5px;line-height:1.7;">${summary}</div></div>`;
   const bw=document.getElementById("det-body");
   if(a.isVip&&!isVip){
-    bw.innerHTML=`<div class="vip-lock-big"><div style="font-size:42px;margin-bottom:10px;">🔒</div><div style="color:var(--au);font-weight:900;font-size:18px;margin-bottom:8px;">محتوى VIP حصري</div><div style="color:var(--t3);font-size:13px;line-height:1.8;margin-bottom:20px;">اشترك للوصول الفوري.</div><button class="btn btn-au" onclick="closeDet();openSub();" style="padding:12px 28px;">اشترك من 99 جنيه / شهر</button></div>`;
+    bw.innerHTML=`<div class="vip-lock-big"><div style="font-size:42px;margin-bottom:10px;">🔒</div><div style="color:var(--au);font-weight:900;font-size:18px;margin-bottom:8px;">محتوى VIP حصري</div><div style="color:var(--t3);font-size:13px;line-height:1.8;margin-bottom:20px;">اشترك للوصول الفوري.</div><button class="btn btn-au" onclick="closeDet();openSub();" style="padding:12px 28px;">عرض باقات VIP</button></div>`;
   }else{
     bw.innerHTML=`<div class="det-body">${summary}\n\n${a.srcLang==="en"?"📌 لقراءة الخبر الكامل اضغط على رابط المصدر أدناه.":"📌 للتفاصيل الكاملة، انقر على رابط المصدر الأصلي أدناه."}</div>`;
   }
@@ -4373,15 +4381,62 @@ function closeSub(){document.getElementById("sub-ov").classList.remove("open");i
  * the next open re-fetches fresh state via loadPayStatus(). */
 function clearPayStatus(){const el=document.getElementById("pay-status-card");if(el)el.innerHTML="";}
 function subPlans(){return SUB_PLANS||{};}
+let SUB_COUNTDOWN_TIMER=null;
+let SUB_COUNTDOWN_REFRESHING=false;
+function subscriptionPriceAria(p){
+  const current=finiteNumber(p&&p.p,0),old=Number(p&&p.oldPrice);
+  return Number.isFinite(old)&&old>current?`السعر الأصلي ${old} جنيه، السعر الآن ${current} جنيه`:`السعر الآن ${current} جنيه`;
+}
+function subscriptionPriceMarkup(p,{className="",showPeriod=false}={}){
+  const current=finiteNumber(p&&p.p,0),old=Number(p&&p.oldPrice);
+  const validOld=Number.isFinite(old)&&old>current?old:null;
+  const badge=String(p&&p.priceBadge||"").trim().slice(0,50);
+  const period=showPeriod&&p&&p.per?`<span style="color:var(--t4);font-size:.55em;font-family:var(--sans);">ج / ${sanitize(p.per)}</span>`:"";
+  return `<span class="price-stack ${className}" role="group" aria-label="${sanitize(subscriptionPriceAria(p))}">
+    <span class="price-current">${current} ج</span>${validOld!==null?`<span class="price-old" aria-hidden="true">${validOld} ج</span>`:""}${badge?`<span class="price-badge">${sanitize(badge)}</span>`:""}${period}
+    <span class="sr-only">${sanitize(subscriptionPriceAria(p))}</span>
+  </span>`;
+}
+function subscriptionCountdownMarkup(p){
+  if(!p||!p.showCountdown||!p.endsAt)return "";
+  const end=Date.parse(p.endsAt);if(!Number.isFinite(end))return "";
+  return `<div class="price-countdown" data-price-countdown="1" data-price-ends="${end}" aria-live="polite"></div>`;
+}
+function updateSubscriptionCountdowns(){
+  let active=false,expired=false;
+  document.querySelectorAll("[data-price-countdown]").forEach(el=>{
+    const ends=Number(el.dataset.priceEnds),left=ends-Date.now();
+    if(!Number.isFinite(ends)){el.textContent="";return;}
+    if(left<=0){el.textContent="انتهى العرض — جارٍ تحديث السعر…";expired=true;return;}
+    active=true;
+    const sec=Math.ceil(left/1000),d=Math.floor(sec/86400),h=Math.floor(sec%86400/3600),m=Math.floor(sec%3600/60),s=sec%60;
+    el.textContent=`ينتهي العرض خلال ${d?d+" يوم ":""}${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+  });
+  if((!active||expired)&&SUB_COUNTDOWN_TIMER){clearInterval(SUB_COUNTDOWN_TIMER);SUB_COUNTDOWN_TIMER=null;}
+  if(active&&!SUB_COUNTDOWN_TIMER)SUB_COUNTDOWN_TIMER=setInterval(updateSubscriptionCountdowns,1000);
+  /* At the exact server-defined end instant fetch fresh no-store config once.
+   * The server then returns the base price; no browser state restarts an offer. */
+  if(expired&&!SUB_COUNTDOWN_REFRESHING){
+    SUB_COUNTDOWN_REFRESHING=true;
+    setTimeout(async()=>{try{await Promise.all([loadVipPlanComparison(),document.getElementById("sub-ov")?.classList.contains("open")?loadSubConfig():Promise.resolve()]);}finally{SUB_COUNTDOWN_REFRESHING=false;}},350);
+  }
+}
 function normalizeSubscriptionPlans(raw){
   if(!Array.isArray(raw))return {};
   return raw.reduce((out,item)=>{
     const p=item&&typeof item==="object"?item:{};
     const key=String(p.key||"").trim();
-    const price=Number(p.price),months=Number(p.durationMonths);
-    if(!/^[a-z0-9_-]{1,40}$/i.test(key)||!Number.isFinite(price)||price<0||price>1e7||!Number.isInteger(months)||months<1||months>120)return out;
+    const price=Number(p.price),months=Number(p.durationMonths),oldPrice=Number(p.oldPrice);
+    if(!/^[a-z0-9_-]{1,40}$/i.test(key)||!Number.isFinite(price)||price<=0||price>1e7||!Number.isInteger(months)||months<1||months>120)return out;
     const features=Array.isArray(p.features)?p.features.map(x=>String(x||"").trim().slice(0,160)).filter(Boolean).slice(0,12):[];
-    out[key]={l:String(p.nameAr||key).slice(0,100),p:price,per:months===1?"شهر":months===3?"٣ شهور":months===12?"سنة":`${months} شهر`,m:months,badge:String(p.badge||"").slice(0,50),features};
+    const endsAt=typeof p.endsAt==="string"&&Number.isFinite(Date.parse(p.endsAt))?p.endsAt:null;
+    out[key]={
+      l:String(p.nameAr||key).slice(0,100),p:price,per:months===1?"شهر":months===3?"٣ شهور":months===12?"سنة":`${months} شهر`,m:months,
+      badge:String(p.badge||"").slice(0,50),priceBadge:String(p.priceBadge||"").slice(0,50),
+      oldPrice:Number.isFinite(oldPrice)&&oldPrice>price?oldPrice:null,
+      discountPercent:Number.isFinite(Number(p.discountPercent))?Number(p.discountPercent):null,
+      showCountdown:Boolean(p.showCountdown)&&Boolean(endsAt),endsAt,pricingToken:String(p.pricingToken||"").slice(0,1000),features
+    };
     return out;
   },{});
 }
@@ -4404,8 +4459,9 @@ function planComparisonHtml(plans){
       </div>
       ${entries.map(([key,p])=>`<div style="min-width:120px;background:var(--aud);border:1px solid rgba(245,158,11,.22);border-radius:11px;padding:9px;">
         <div style="color:var(--au);font-weight:800;font-size:11px;">${sanitize(p.l)}</div>
-        <div style="color:var(--t1);font-family:var(--mono);font-weight:900;font-size:15px;margin-top:3px;">${finiteNumber(p.p,0)} ج</div>
+        <div style="margin-top:4px;font-size:14px;">${subscriptionPriceMarkup(p,{showPeriod:false})}</div>
         <div style="color:var(--t4);font-size:9px;">${sanitize(p.per)}</div>
+        ${subscriptionCountdownMarkup(p)}
         <div style="color:var(--t3);font-size:9.5px;line-height:1.55;margin-top:5px;">${p.features.length?p.features.map(f=>`✓ ${sanitize(f)}`).join("<br/>"):"تفاصيل المزايا تُدار من إعدادات الباقة."}</div>
       </div>`).join("")}
     </div>
@@ -4426,6 +4482,7 @@ async function loadVipPlanComparison(){
   try{
     const cfg=await fetchSubscriptionConfig(ctrl.signal);
     el.innerHTML=planComparisonHtml(cfg.plans)+subscriptionPolicyHtml();
+    updateSubscriptionCountdowns();
   }catch{
     el.innerHTML=`<div class="empty" style="padding:15px;"><div style="color:var(--dn);font-weight:800;">تعذر تحميل الباقات الآن</div><div style="font-size:10.5px;margin-top:4px;">لن نعرض أسعارًا أو مزايا بديلة. حاول مرة أخرى.</div><button class="btn btn-ghost" style="margin-top:9px;padding:7px 12px;" onclick="loadVipPlanComparison()">↻ إعادة المحاولة</button></div>`;
   }finally{clearTimeout(timer);}
@@ -4484,21 +4541,23 @@ function renderSub(){
   if(subStep===1){
     el.innerHTML=`
       <div style="text-align:center;margin-bottom:18px;"><div style="font-size:32px;margin-bottom:4px;">⭐</div><div style="color:var(--au);font-weight:900;font-size:18px;">اشتراك VIP</div><div style="color:var(--t4);font-size:11.5px;margin-top:2px;">الأسعار وطرق الدفع أدناه من إعدادات الخادم الحالية</div></div>
-      <div class="plan-grid">${Object.entries(P).map(([k,p])=>`<div class="plan-c${selPlan===k?" active":""}" onclick='sPlan(${safeJsArg(k)})'>${p.badge?`<span class="plan-badge">${sanitize(p.badge)}</span>`:""}<div class="plan-label">${sanitize(p.l)}</div><div class="plan-price">${finiteNumber(p.p,0)}</div><div class="plan-period">ج / ${sanitize(p.per)}</div></div>`).join("")}</div>
+      <div class="plan-grid">${Object.entries(P).map(([k,p])=>`<div class="plan-c${selPlan===k?" active":""}" onclick='sPlan(${safeJsArg(k)})'>${(p.priceBadge||p.badge)?`<span class="plan-badge">${sanitize(p.priceBadge||p.badge)}</span>`:""}<div class="plan-label">${sanitize(p.l)}</div><div class="plan-price">${subscriptionPriceMarkup(p,{showPeriod:false})}</div><div class="plan-period">${sanitize(p.per)}</div>${subscriptionCountdownMarkup(p)}</div>`).join("")}</div>
       <div style="color:var(--t4);font-size:10.5px;line-height:1.75;background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:9px 10px;margin:11px 0;">بعد اختيار الباقة، تظهر وسائل الدفع المفعّلة من الخادم. لا يُفعّل الاشتراك إلا بعد مراجعة إثبات الدفع.</div>
       ${planComparisonHtml(P)}
       ${subscriptionPolicyHtml(true)}
       <div style="margin-top:10px;"><details class="faq-item"><summary class="faq-q">متى يتفعّل الاشتراك؟<span style="color:var(--g);">+</span></summary><div class="faq-a">بعد اعتماد الإدارة لطلب الدفع فقط؛ إرسال الصورة أو رقم العملية لا يفعّل الاشتراك تلقائيًا.</div></details></div>
       <button class="btn btn-au btn-full" style="padding:13px;font-size:14px;margin-top:11px;" onclick="subToPayment()">متابعة إلى وسيلة الدفع</button>`;
   } else if(subStep===2){
-    const price=P[selPlan].p;
+    const selectedPlan=P[selPlan];
     el.innerHTML=`
       <div style="color:var(--t2);font-weight:800;font-size:13.5px;margin-bottom:10px;text-align:center;">💳 اختر وسيلة الدفع</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
         ${SUB_METHODS.map(m=>{const meta=SUB_METHOD_META[m.id]||{emoji:"💳"};return `<button class="cp${SUB_METHOD===m.id?" active":""}" onclick='sPayMethod(${safeJsArg(m.id)})' style="padding:7px 12px;">${sanitize(meta.emoji)} ${sanitize(m.label)}</button>`;}).join("")}
       </div>
       <div style="background:var(--aud);border:1px solid rgba(245,158,11,.25);border-radius:13px;padding:13px;margin-bottom:10px;text-align:center;">
-        <div style="color:var(--au);font-weight:700;font-size:12.5px;margin-bottom:5px;">حوّل ${finiteNumber(price,0)} جنيه إلى رقم المحفظة:</div>
+        <div style="color:var(--au);font-weight:700;font-size:12.5px;margin-bottom:5px;">حوّل المبلغ التالي إلى رقم المحفظة:</div>
+        <div style="font-size:22px;margin-bottom:6px;">${subscriptionPriceMarkup(selectedPlan,{showPeriod:false})}</div>
+        <div style="color:var(--t4);font-size:10px;margin-bottom:5px;">المبلغ يحسبه الخادم ويُثبّت عند إنشاء الطلب.</div>
         <div id="pay-num" style="color:var(--t1);font-size:22px;font-weight:900;font-family:var(--mono);letter-spacing:1.5px;direction:ltr;">${sanitize(method.number)}</div>
         <button class="btn btn-g" style="padding:8px 24px;font-size:12px;margin-top:9px;" onclick="copyWallet()">📋 نسخ الرقم</button>
       </div>
@@ -4513,6 +4572,7 @@ function renderSub(){
   } else {
     el.innerHTML=`<div style="text-align:center;padding:14px 0;"><div style="font-size:50px;margin-bottom:9px;">⏳</div><div style="color:var(--au);font-weight:900;font-size:18px;margin-bottom:7px;">طلب الدفع قيد المراجعة</div><div style="color:var(--t3);font-size:13px;line-height:1.88;">تم تسجيل الطلب. لن يتفعّل اشتراك VIP إلا بعد اعتماد الدفع من الخادم.<br/>يمكنك متابعة حالته من صفحة VIP.</div><button class="btn btn-ghost" style="margin:15px auto 0;padding:10px 24px;" onclick="closeSub();loadPayStatus();">متابعة حالة الطلب</button></div>`;
   }
+  updateSubscriptionCountdowns();
 }
 function subToPayment(){if(SUB_CONFIG_STATE!=="ready"||!subPlans()[selPlan]){SUB_CONFIG_STATE="error";SUB_CONFIG_ERROR="بيانات الباقة غير متاحة حاليًا.";renderSub();return;}subStep=2;renderSub();}
 function sPlan(k){const plans=subPlans();if(Object.prototype.hasOwnProperty.call(plans,k)){selPlan=k;renderSub();}}
@@ -4560,7 +4620,7 @@ async function onProofPick(inp){
 async function submitPay(){
   if(!U){showToast("⚠️ سجّل الدخول أولًا");return;}
   const method=SUB_M();
-  if(SUB_CONFIG_STATE!=="ready"||!subPlans()[selPlan]||!method){showToast("⚠️ إعدادات الدفع غير متاحة حاليًا — أعد تحميل الخيارات");return;}
+  if(SUB_CONFIG_STATE!=="ready"||!subPlans()[selPlan]||!subPlans()[selPlan].pricingToken||!method){showToast("⚠️ إعدادات الدفع غير متاحة حاليًا — أعد تحميل الخيارات");return;}
   const tx=(document.getElementById("tx-in")&&document.getElementById("tx-in").value||"").trim().slice(0,100);
   if(!tx){showToast("⚠️ أدخل رقم عملية التحويل");return;}
   if(!payProofData){showToast("⚠️ ارفع صورة إثبات الدفع");return;}
@@ -4568,9 +4628,13 @@ async function submitPay(){
   if(btn){btn.disabled=true;btn.textContent="⏳ جارٍ الإرسال...";}
   try{
     const headers={"Content-Type":"application/json"};
-    const response=await fetch("/api/payments",{method:"POST",headers,credentials:"same-origin",body:JSON.stringify({planKey:selPlan,method:method.id,tx,proofImage:payProofData,proofName:payProofName})});
+    const response=await fetch("/api/payments",{method:"POST",headers,credentials:"same-origin",body:JSON.stringify({planKey:selPlan,pricingToken:subPlans()[selPlan].pricingToken,method:method.id,tx,proofImage:payProofData,proofName:payProofName})});
     const result=await response.json().catch(()=>null);
-    if(!response.ok||!result||result.status!=="ok")throw new Error((result&&result.message)||"تعذر إرسال الطلب");
+    if(!response.ok||!result||result.status!=="ok"){
+      const msg=(result&&result.message)||"تعذر إرسال الطلب";
+      if(response.status===409&&String(msg).includes("تغيّر سعر")){subStep=1;await loadSubConfig();showToast("⚠️ تغيّر السعر — عُرضت لك الباقات الحالية قبل إنشاء أي طلب.");}
+      throw new Error(msg);
+    }
     payProofData=null;payProofName="";
     subStep=3;renderSub();
   }catch(e){
@@ -4595,13 +4659,15 @@ async function loadPayStatus(){
       const meta=SUB_METHOD_META[pen.method]||{emoji:"💳",label:pen.method||""};
       el.innerHTML=`<div style="background:var(--aud);border:1px solid rgba(245,158,11,.3);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
         <div><div class="pay-pulse" style="color:var(--au);font-weight:800;font-size:12.5px;">⏳ جاري مراجعة الدفع</div>
-        <div style="color:var(--t4);font-size:10.5px;margin-top:3px;font-family:var(--mono);">عملية ${sanitize(String(pen.tx))} · ${pen.price} ج</div></div>
+        <div style="color:var(--t4);font-size:10.5px;margin-top:3px;font-family:var(--mono);">عملية ${sanitize(String(pen.tx))} · ${pen.price} ج</div>${pen.priceLockedUntil?`<div style="color:var(--t5);font-size:9px;margin-top:3px;">السعر المثبّت صالح حتى ${sanitize(new Date(pen.priceLockedUntil).toLocaleString("ar-EG",{timeZone:"Africa/Cairo",dateStyle:"medium",timeStyle:"short"}))}</div>`:""}</div>
         <span class="bdg" style="background:rgba(245,158,11,.12);color:var(--au);">قيد المراجعة</span></div>`;
     }else if(last&&last.status==="rejected"){
       el.innerHTML=`<div style="background:var(--dnd);border:1px solid rgba(239,68,68,.3);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
         <div><div style="color:var(--dn);font-weight:800;font-size:12.5px;">✕ تم رفض طلب الدفع</div>
         ${last.notes?`<div style="color:var(--t4);font-size:10.5px;margin-top:3px;">السبب: ${sanitize(String(last.notes))}</div>`:""}</div>
         <button class="btn btn-au" style="padding:7px 14px;font-size:11px;" onclick="openSub()">إعادة الطلب</button></div>`;
+    }else if(last&&last.status==="expired"){
+      el.innerHTML=`<div style="background:#2e1f47;border:1px solid rgba(192,132,252,.35);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><div><div style="color:#c4b5fd;font-weight:800;font-size:12.5px;">⌛ انتهت مدة تثبيت سعر الطلب</div><div style="color:var(--t4);font-size:10.5px;margin-top:3px;">أنشئ طلباً جديداً بالسعر الحالي قبل التحويل.</div></div><button class="btn btn-au" style="padding:7px 14px;font-size:11px;" onclick="openSub()">عرض السعر الحالي</button></div>`;
     }else el.innerHTML="";
   }catch(e){el.innerHTML="";}
 }
@@ -4624,7 +4690,7 @@ function syncSubscriptionView(subscription){
   if(document.getElementById("profile")?.classList.contains("open"))renderProfile();
 }
 function subscriptionRequestState(status){
-  return status==="approved"?{label:"مقبول",c:"var(--g)",b:"var(--gd)"}:status==="rejected"?{label:"مرفوض",c:"var(--dn)",b:"var(--dnd)"}:{label:"قيد المراجعة",c:"var(--au)",b:"var(--aud)"};
+  return status==="approved"?{label:"مقبول",c:"var(--g)",b:"var(--gd)"}:status==="rejected"?{label:"مرفوض",c:"var(--dn)",b:"var(--dnd)"}:status==="expired"?{label:"انتهت مهلة السعر",c:"#c084fc",b:"#2e1f47"}:{label:"قيد المراجعة",c:"var(--au)",b:"var(--aud)"};
 }
 async function loadMySubscription(){
   const body=document.getElementById("my-sub-body");if(!body)return;
@@ -4999,7 +5065,7 @@ async function renderAdmReqs(el){
         <div style="display:flex;gap:4px;">
           ${req.status==="pending"
             ?`<button class="r-btn app" onclick='admApp(${safeJsArg(req.id)})' >✓ قبول</button><button class="r-btn rej" onclick='admRej(${safeJsArg(req.id)})' >✕ رفض</button>`
-            :`<span class="bdg" style="background:${req.status==="approved"?"var(--gd)":"var(--dnd)"};color:${req.status==="approved"?"var(--g)":"var(--dn)"};">${req.status==="approved"?"✓ مقبول":"✕ مرفوض"}</span>`}
+            :`<span class="bdg" style="background:${req.status==="approved"?"var(--gd)":req.status==="expired"?"#2e1f47":"var(--dnd)"};color:${req.status==="approved"?"var(--g)":req.status==="expired"?"#c4b5fd":"var(--dn)"};">${req.status==="approved"?"✓ مقبول":req.status==="expired"?"⌛ انتهت المهلة":"✕ مرفوض"}</span>`}
         </div>
       </div>
     </div>`;}).join("");
@@ -5151,7 +5217,9 @@ async function delAdmSource(id){
   }catch(e){showToast("❌ "+String(e.message||e));}
 }
 
-/* ─── Subscription Plans ─── */
+/* ─── Subscription Plans + server-evaluated pricing ─── */
+let ADM_PLANS_CACHE=[];
+let ADM_PRICE_LOCK_HOURS=24;
 async function renderAdmPlans(el){
   el.innerHTML=`
     <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:13px;margin-bottom:14px;">
@@ -5159,19 +5227,25 @@ async function renderAdmPlans(el){
       <div style="color:var(--t4);font-size:10.5px;margin-bottom:10px;">فعّل كل وسيلة واضبط رقمها — تظهر فورًا للمستخدمين في صفحة الاشتراك. للإنستاباي يمكن كتابة IBAN أو عنوان محفظة.</div>
       <div id="aps-methods"></div>
       ${aBtn("حفظ إعدادات الوسائل ✓","savePaySettings()")}
-      <div id="aps-msg" style="color:var(--t5);font-size:10px;margin-top:6px;"></div>
     </div>
     <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:13px;margin-bottom:14px;">
-      <div style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:10px;">💎 إضافة خطة اشتراك</div>
+      <div style="color:#c084fc;font-weight:800;font-size:12.5px;margin-bottom:7px;">🔒 تثبيت سعر طلب الدفع</div>
+      <div style="color:var(--t4);font-size:10.5px;line-height:1.65;margin-bottom:9px;">أي طلب جديد يحتفظ بالسعر الذي رآه المستخدم لهذه المدة. تغيير الباقة لا يغيّر طلباً معلّقاً.</div>
+      ${aFormRow(aIn("apl-lock-hours","مدة التثبيت بالساعات (1–168)","type='number' min='1' max='168'"))}
+      ${aBtn("حفظ مدة التثبيت ✓","saveAdmPricingSettings()","#a78bfa")}
+    </div>
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:13px;margin-bottom:14px;">
+      <div style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:5px;">💎 إضافة خطة اشتراك</div>
+      <div style="color:var(--t4);font-size:10px;line-height:1.65;margin-bottom:10px;">السعر الحالي هو المبلغ الفعلي. السعر القديم اختياري ويجب أن يكون أكبر، ولا تضعه إلا كسعر بيعت به الباقة فعلاً.</div>
       ${aFormRow(aIn("apl-key","مفتاح (monthly, yearly...)","maxlength='40'"),aIn("apl-name","الاسم بالعربية","maxlength='100'"))}
-      ${aFormRow(aIn("apl-price","السعر (جنيه)","type='number' min='0'"),aIn("apl-dur","المدة (شهور)","type='number' min='1'"))}
-      ${aFormRow(aIn("apl-badge","شارة (مثل: الأشهر)","maxlength='50'"))}
+      ${aFormRow(aIn("apl-price","السعر الحالي (جنيه)","type='number' min='1' step='1'"),aIn("apl-old-price","السعر القديم اختياري","type='number' min='1' step='1'"))}
+      ${aFormRow(aIn("apl-dur","المدة (شهور)","type='number' min='1' max='120'"),aIn("apl-badge","شارة الخطة العامة (اختياري)","maxlength='50'"))}
+      ${aFormRow(aSel("apl-price-badge-mode",[{v:"none",l:"بدون شارة سعر"},{v:"auto",l:"خصم محسوب تلقائياً"},{v:"custom",l:"شارة سعر نصية"}]),aIn("apl-price-badge","نص الشارة (مثل عرض العيد)","maxlength='50'"))}
       <textarea id="apl-features" placeholder="المزايا (سطر لكل ميزة)" class="a-in" style="width:100%;box-sizing:border-box;margin-bottom:7px;min-height:60px;font-family:inherit;"></textarea>
       ${aBtn("حفظ الخطة ✓","saveAdmPlan()")}
     </div>
     <div id="apl-list"><div class="empty"><div style="font-size:24px;">⏳</div></div></div>`;
-  await loadPaySettings();
-  await loadAdmPlans();
+  await Promise.all([loadPaySettings(),loadAdmPricingSettings(),loadAdmPlans()]);
 }
 const APS_METHODS=[
   {id:"vodafone",label:"🔴 فودافون كاش",key:"payment_vodafone_number",wallet:true},
@@ -5213,80 +5287,180 @@ async function savePaySettings(){
     showToast("✅ تم الحفظ — الوسائل تظهر للمستخدمين فورًا");
   }catch(e){showToast("❌ "+String(e.message||e));}
 }
-
+async function loadAdmPricingSettings(){
+  try{
+    const r=await admFetch("/api/admin/settings/pricing"),j=await r.json();
+    if(!r.ok||j.status!=="ok")throw new Error(j.message||"failed");
+    ADM_PRICE_LOCK_HOURS=Number(j.priceLockHours)||24;
+    const input=document.getElementById("apl-lock-hours");if(input)input.value=ADM_PRICE_LOCK_HOURS;
+  }catch(e){const input=document.getElementById("apl-lock-hours");if(input)input.placeholder="لا تملك صلاحية إدارة الأسعار";}
+}
+async function saveAdmPricingSettings(){
+  const priceLockHours=Number(vG("apl-lock-hours"));
+  if(!Number.isInteger(priceLockHours)||priceLockHours<1||priceLockHours>168){showToast("⚠️ أدخل مدة من ساعة إلى 168 ساعة");return;}
+  try{
+    const r=await admFetch("/api/admin/settings/pricing",{method:"PUT",body:JSON.stringify({priceLockHours})}),j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحفظ"));return;}
+    ADM_PRICE_LOCK_HOURS=priceLockHours;showToast("✅ مدة تثبيت سعر الطلب اتحدثت");
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+function adminEffectivePriceMarkup(effective){
+  const p={p:Number(effective?.price)||0,oldPrice:effective?.oldPrice??null,priceBadge:String(effective?.badge||"")};
+  return subscriptionPriceMarkup(p,{showPeriod:false});
+}
+function pricingHistoryText(change){
+  const before=change&&change.beforeState||{},after=change&&change.afterState||{};
+  const from=Number(before.price),to=Number(after.price);
+  return Number.isFinite(from)&&Number.isFinite(to)?`${from} ج ← ${to} ج`:"إنشاء إعداد سعر";
+}
+function cairoDateTimeInput(value){
+  const d=new Date(value);if(!value||Number.isNaN(d.getTime()))return "";
+  try{
+    const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Africa/Cairo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(d);
+    const get=t=>parts.find(p=>p.type===t)?.value||"00";
+    return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+  }catch{return "";}
+}
+function cairoInputInstant(value){
+  const m=String(value||"").match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);if(!m)return null;
+  const wanted=Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5]);let d=new Date(wanted);
+  try{for(let i=0;i<3;i++){const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Africa/Cairo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).formatToParts(d);const get=t=>+(parts.find(p=>p.type===t)?.value||0);const shown=Date.UTC(get("year"),get("month")-1,get("day"),get("hour"),get("minute"),get("second"));d=new Date(wanted-(shown-d.getTime()));}return d;}catch{return null;}
+}
 async function loadAdmPlans(){
   try{
     const r=await admFetch("/api/admin/plans");
     const j=await r.json();
     if(!r.ok||j.status!=="ok") throw new Error(j.message||"failed");
-    const el=document.getElementById("apl-list");
-    if(!el) return;
-    el.innerHTML=j.plans.length?j.plans.map(p=>`
-      <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px 14px;margin-bottom:8px;">
+    ADM_PLANS_CACHE=Array.isArray(j.plans)?j.plans:[];
+    const el=document.getElementById("apl-list");if(!el)return;
+    el.innerHTML=ADM_PLANS_CACHE.length?ADM_PLANS_CACHE.map(p=>{
+      const history=Array.isArray(p.pricingHistory)?p.pricingHistory:[];
+      const latest=history.find(h=>h.changeType==="pricing_update"&&!h.revertedAt);
+      return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px 14px;margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-          <div style="flex:1;">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
               <div style="color:var(--t2);font-weight:800;font-size:13px;">${sanitize(p.nameAr)}</div>
               ${p.badge?aBadge(sanitize(p.badge),"var(--aud)","var(--au)"):""}
-              ${p.isActive?aBadge("نشطة","var(--gd)","var(--g)"):aBadge("معطّلة","var(--dnd)","var(--dn)")}
+              ${p.isActive?aBadge("نشطة","var(--gd)","var(--g)"):aBadge("مؤرشفة","var(--dnd)","var(--dn)")}
             </div>
-            <div style="color:var(--t3);font-size:11px;font-family:var(--mono);">${sanitize(p.key)} · ${finiteNumber(p.price,0)} ج / ${Math.max(0,Math.round(finiteNumber(p.durationMonths,0)))} شهر</div>
+            <div style="font-size:17px;margin:4px 0;">${adminEffectivePriceMarkup(p.effective)}</div>
+            <div style="color:var(--t4);font-size:10px;font-family:var(--mono);">${sanitize(p.key)} · السعر الأساسي ${finiteNumber(p.price,0)} ج · ${Math.max(0,Math.round(finiteNumber(p.durationMonths,0)))} شهر</div>
+            ${(p.offers||[]).filter(o=>o.status==="active").length?`<div style="color:#c084fc;font-size:10px;margin-top:4px;">${(p.offers||[]).filter(o=>o.status==="active").length} عرض/عروض محفوظة · تُحسب الفئة والموعد في الخادم</div>`:""}
             ${p.features&&p.features.length?`<div style="color:var(--t4);font-size:10px;margin-top:4px;">${p.features.map(f=>`✓ ${sanitize(f)}`).join(" · ")}</div>`:""}
+            ${history.length?`<details style="margin-top:7px;"><summary style="cursor:pointer;color:var(--t4);font-size:10px;">سجل تغييرات الأسعار (${history.length})</summary><div style="margin-top:5px;display:grid;gap:4px;">${history.map(h=>`<div style="color:var(--t5);font-size:9.5px;">${sanitize(pricingHistoryText(h))} · ${sanitize(String(h.changedByName||`موظف #${h.changedBy||"—"}`))} · ${h.createdAt?new Date(h.createdAt).toLocaleString("ar-EG",{timeZone:"Africa/Cairo"}):""}${h.revertedAt?` · تراجع: ${sanitize(String(h.revertedByName||"موظف"))}`:""}</div>`).join("")}</div></details>`:""}
           </div>
-          <div style="display:flex;flex-direction:column;gap:5px;">
-            <button class="r-btn" style="font-size:10px;background:var(--s1);color:var(--t2);" onclick='editAdmPlan(${safeJsArg(p.id)},${safeJsArg(p.key)},${safeJsArg(p.price)},${safeJsArg(p.durationMonths)},${safeJsArg(Array.isArray(p.features)?p.features.join("\n"):"")},${safeJsArg(p.badge||"")})' >✏️ تعديل</button>
+          <div style="display:flex;flex-direction:column;gap:5px;min-width:100px;">
+            <button class="r-btn" style="font-size:10px;" onclick='editAdmPlanDetails(${safeJsArg(p.id)})'>✏️ تفاصيل الباقة</button>
+            <button class="r-btn" style="font-size:10px;background:var(--aud);color:var(--au);" onclick='openAdmPlanPricingEditor(${safeJsArg(p.id)})'>💳 السعر والعروض</button>
+            ${latest?`<button class="r-btn" style="font-size:10px;background:#ede9fe;color:#6d28d9;" onclick='revertAdmPlanPricing(${safeJsArg(p.id)})'>↶ تراجع آخر سعر</button>`:""}
             <button class="r-btn" style="font-size:10px;background:${p.isActive?"var(--dnd)":"var(--gd)"};color:${p.isActive?"var(--dn)":"var(--g)"};" onclick='toggleAdmPlan(${safeJsArg(p.id)},${safeJsBool(!p.isActive)})' >${p.isActive?"تعطيل":"تفعيل"}</button>
             ${p.isActive?`<button class="r-btn rej" style="font-size:10px;" onclick='archiveAdmPlan(${safeJsArg(p.id)},${safeJsArg(p.nameAr)})' >أرشفة</button>`:""}
           </div>
         </div>
-      </div>`).join(""):`<div class="empty" style="padding:20px;"><div style="font-size:26px;">💎</div><div>لا توجد خطط بعد</div></div>`;
+      </div>`;
+    }).join(""):`<div class="empty" style="padding:20px;"><div style="font-size:26px;">💎</div><div>لا توجد خطط بعد</div></div>`;
   }catch(e){const el=document.getElementById("apl-list");if(el)el.innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;}
 }
-
-async function editAdmPlan(id,key,curPrice,curDuration,curFeatures,curBadge){
-  const p=prompt(`سعر الخطة «${key}» (جنيه):`,curPrice);if(p===null)return;
-  const price=Number(p);if(!Number.isFinite(price)||price<0){showToast("⚠️ سعر غير صحيح");return;}
-  const durationText=prompt(`مدة الخطة «${key}» بالشهور:`,curDuration);if(durationText===null)return;
-  const durationMonths=Number(durationText);if(!Number.isInteger(durationMonths)||durationMonths<1||durationMonths>120){showToast("⚠️ أدخل مدة صحيحة من 1 إلى 120 شهرًا");return;}
-  const featuresText=prompt("المزايا (سطر لكل ميزة):",curFeatures||"");if(featuresText===null)return;
-  const badge=prompt("الشارة (اختياري):",curBadge||"");if(badge===null)return;
-  const features=featuresText.split("\n").map(f=>f.trim()).filter(Boolean).slice(0,12);
-  try{
-    const r=await admFetch(`/api/admin/plans/${id}`,{method:"PUT",body:JSON.stringify({price,durationMonths,features,badge:badge.trim()||null})});
-    const j=await r.json();
-    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
-    showToast("✅ تم تحديث الباقة. الاشتراكات القائمة تحتفظ بمدتها ولقطتها الأصلية.");
-    await loadAdmPlans();
-  }catch(e){showToast("❌ "+String(e.message||e));}
+function pricingOfferEditorHtml(offer={},index=0){
+  const o=offer||{};
+  return `<fieldset data-price-offer style="border:1px solid rgba(139,92,246,.3);border-radius:12px;padding:10px;margin:9px 0;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;"><legend style="color:#c4b5fd;font-size:11px;font-weight:800;">عرض ${index+1}</legend><button type="button" class="r-btn rej" style="font-size:9px;" onclick="this.closest('[data-price-offer]').remove();renderAdmPricingPreview()">حذف العرض</button></div>
+    <input type="hidden" data-offer-field="id" value="${sanitize(String(o.id||""))}"/>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px;"><select class="a-in" data-offer-field="audience" onchange="renderAdmPricingPreview()"><option value="all" ${o.audience==="all"?"selected":""}>الجميع</option><option value="new_users" ${o.audience==="new_users"?"selected":""}>المستخدمون الجدد</option><option value="expired_subscribers" ${o.audience==="expired_subscribers"?"selected":""}>من انتهى اشتراكهم</option></select><input class="a-in" data-offer-field="price" type="number" min="1" step="1" placeholder="السعر الحالي" value="${o.price??""}" oninput="renderAdmPricingPreview()"/></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px;"><input class="a-in" data-offer-field="oldPrice" type="number" min="1" step="1" placeholder="السعر القديم اختياري" value="${o.oldPrice??""}" oninput="renderAdmPricingPreview()"/><select class="a-in" data-offer-field="badgeMode" onchange="renderAdmPricingPreview()"><option value="none" ${o.badgeMode==="none"?"selected":""}>بدون شارة</option><option value="auto" ${o.badgeMode==="auto"?"selected":""}>خصم تلقائي</option><option value="custom" ${o.badgeMode==="custom"?"selected":""}>شارة نصية</option></select></div>
+    <input class="a-in" data-offer-field="badgeText" maxlength="50" placeholder="شارة مخصصة: عرض العيد" value="${sanitize(String(o.badgeText||""))}" oninput="renderAdmPricingPreview()" style="margin-bottom:7px;"/>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px;"><div><label style="font-size:9px;color:var(--t5);display:block;margin-bottom:3px;">البداية (القاهرة)</label><input class="a-in" data-offer-field="startsAt" type="datetime-local" value="${cairoDateTimeInput(o.startsAt)}" onchange="renderAdmPricingPreview()"/></div><div><label style="font-size:9px;color:var(--t5);display:block;margin-bottom:3px;">النهاية (القاهرة)</label><input class="a-in" data-offer-field="endsAt" type="datetime-local" value="${cairoDateTimeInput(o.endsAt)}" onchange="renderAdmPricingPreview()"/></div></div>
+    <label style="display:flex;gap:6px;align-items:center;color:var(--t3);font-size:10px;cursor:pointer;"><input data-offer-field="showCountdown" type="checkbox" ${o.showCountdown?"checked":""} onchange="renderAdmPricingPreview()"/> إظهار عدّاد تنازلي حقيقي حتى النهاية</label>
+  </fieldset>`;
 }
-
+function openAdmPlanPricingEditor(id){
+  const plan=ADM_PLANS_CACHE.find(p=>Number(p.id)===Number(id));if(!plan){showToast("⚠️ لم تُحمّل الباقة بعد");return;}
+  document.getElementById("adm-plan-pricing-editor")?.remove();
+  const offers=(plan.offers||[]).filter(o=>o.status==="active");
+  const ov=document.createElement("div");ov.id="adm-plan-pricing-editor";ov.style.cssText="position:fixed;inset:0;z-index:1200;background:rgba(3,7,18,.94);overflow:auto;padding:14px;";
+  ov.innerHTML=`<div style="max-width:980px;margin:0 auto;background:var(--ink2);border:1px solid var(--b1);border-radius:18px;padding:16px;display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.7fr);gap:15px;">
+    <section><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;margin-bottom:12px;"><div><div style="color:var(--au);font-weight:900;font-size:15px;">💳 السعر والعروض: ${sanitize(plan.nameAr)}</div><div style="color:var(--t4);font-size:10px;margin-top:3px;">كل الأوقات بتوقيت القاهرة. عند نهاية العرض يحسب الخادم السعر الأساسي تلقائياً.</div></div><button class="r-btn rej" onclick="document.getElementById('adm-plan-pricing-editor').remove()">✕</button></div>
+      <input id="ape-plan-id" type="hidden" value="${plan.id}"/>
+      <div style="border:1px solid var(--b1);border-radius:12px;padding:11px;"><div style="color:var(--t2);font-size:12px;font-weight:800;margin-bottom:8px;">السعر الأساسي</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px;"><input id="ape-price" class="a-in" type="number" min="1" step="1" value="${plan.price}" placeholder="السعر الحالي" oninput="renderAdmPricingPreview()"/><input id="ape-old-price" class="a-in" type="number" min="1" step="1" value="${plan.oldPrice??""}" placeholder="السعر القديم اختياري" oninput="renderAdmPricingPreview()"/></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;"><select id="ape-badge-mode" class="a-in" onchange="renderAdmPricingPreview()"><option value="none" ${plan.priceBadgeMode==="none"?"selected":""}>بدون شارة سعر</option><option value="auto" ${plan.priceBadgeMode==="auto"?"selected":""}>خصم محسوب تلقائياً</option><option value="custom" ${plan.priceBadgeMode==="custom"?"selected":""}>شارة نصية</option></select><input id="ape-badge-text" class="a-in" maxlength="50" value="${sanitize(String(plan.priceBadgeText||""))}" placeholder="مثال: عرض العيد" oninput="renderAdmPricingPreview()"/></div>
+        <div style="color:var(--au);font-size:9.5px;line-height:1.6;margin-top:7px;">⚠️ السعر القديم يجب أن يكون سعراً بيعت به الباقة فعلاً.</div></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:7px;margin:13px 0 5px;"><div style="color:#c4b5fd;font-size:12px;font-weight:800;">العروض المجدولة والمستهدفة</div><button class="r-btn" type="button" onclick="addAdmPricingOffer()">＋ إضافة عرض</button></div>
+      <div id="ape-offers">${offers.map((o,i)=>pricingOfferEditorHtml(o,i)).join("")}</div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:13px;"><button class="btn btn-g" style="padding:10px 14px;" onclick="saveAdmPlanPricing()">نشر التعديل ✓</button><button class="btn btn-ghost" style="padding:10px 14px;" onclick="renderAdmPricingPreview()">معاينة التعديل</button></div>
+      <div id="ape-error" style="display:none;color:var(--dn);font-size:11px;margin-top:9px;"></div>
+    </section>
+    <aside><div style="color:var(--t2);font-size:12px;font-weight:800;margin-bottom:7px;">معاينة قبل النشر</div><div style="color:var(--t4);font-size:9.5px;line-height:1.6;margin-bottom:8px;">نفس ترتيب السعر في المنصة على موبايل وديسكتوب. الحفظ يمر بتحقق الخادم ولا ينشر المعاينة وحدها.</div><div id="ape-preview"></div></aside>
+  </div>`;
+  document.body.appendChild(ov);renderAdmPricingPreview();
+}
+function readEditorOffer(el){
+  const get=name=>el.querySelector(`[data-offer-field="${name}"]`);
+  const val=name=>(get(name)?.value||"").trim();
+  return {id:val("id")||undefined,audience:val("audience")||"all",price:Number(val("price")),oldPrice:val("oldPrice")===""?null:Number(val("oldPrice")),badgeMode:val("badgeMode")||"none",badgeText:val("badgeText")||null,startsAt:val("startsAt")||null,endsAt:val("endsAt")||null,showCountdown:Boolean(get("showCountdown")?.checked)};
+}
+function admPricingEditorDraft(){
+  const offers=[...document.querySelectorAll("#ape-offers [data-price-offer]")].map(readEditorOffer);
+  return {price:Number(vG("ape-price")),oldPrice:vG("ape-old-price")===""?null:Number(vG("ape-old-price")),priceBadgeMode:vG("ape-badge-mode")||"none",priceBadgeText:vG("ape-badge-text")||null,offers};
+}
+function renderAdmPricingPreview(){
+  const target=document.getElementById("ape-preview");if(!target)return;
+  const draft=admPricingEditorDraft();
+  const pick=draft.offers.find(o=>o.audience==="all")||null;
+  const data=pick?{p:pick.price,oldPrice:pick.oldPrice,priceBadge:pick.badgeMode==="custom"?pick.badgeText:pick.badgeMode==="auto"&&pick.oldPrice>pick.price?`خصم ${Math.round((pick.oldPrice-pick.price)*100/pick.oldPrice)}%`:"",showCountdown:pick.showCountdown,endsAt:pick.endsAt?cairoInputInstant(pick.endsAt)?.toISOString()||null:null,per:"شهر"}:{p:draft.price,oldPrice:draft.oldPrice,priceBadge:draft.priceBadgeMode==="custom"?draft.priceBadgeText:draft.priceBadgeMode==="auto"&&draft.oldPrice>draft.price?`خصم ${Math.round((draft.oldPrice-draft.price)*100/draft.oldPrice)}%`:"",per:"شهر"};
+  const valid=Number.isFinite(data.p)&&data.p>0;
+  target.innerHTML=`<div style="display:grid;gap:10px;"><div style="max-width:360px;background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:14px;text-align:center;"><div style="color:var(--t3);font-size:10px;margin-bottom:6px;">موبايل</div>${valid?subscriptionPriceMarkup(data,{showPeriod:true}):`<div style="color:var(--dn);font-size:11px;">أدخل سعراً حالياً موجباً للمعاينة</div>`}${valid?subscriptionCountdownMarkup(data):""}</div><div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:14px;text-align:center;"><div style="color:var(--t3);font-size:10px;margin-bottom:6px;">ديسكتوب</div>${valid?subscriptionPriceMarkup(data,{showPeriod:true}):""}</div></div>`;
+  updateSubscriptionCountdowns();
+}
+function addAdmPricingOffer(){const host=document.getElementById("ape-offers");if(!host)return;host.insertAdjacentHTML("beforeend",pricingOfferEditorHtml({},host.querySelectorAll("[data-price-offer]").length));renderAdmPricingPreview();}
+async function saveAdmPlanPricing(){
+  const id=Number(vG("ape-plan-id")),body=admPricingEditorDraft(),err=document.getElementById("ape-error");
+  if(err)err.style.display="none";
+  try{
+    const r=await admFetch(`/api/admin/plans/${id}/pricing`,{method:"PUT",body:JSON.stringify(body)}),j=await r.json();
+    if(!r.ok||j.status!=="ok"){throw new Error(j.message||"تعذر النشر");}
+    if(j.warnings&&j.warnings.length)showToast("⚠️ "+j.warnings.join(" · "));else showToast("✅ تم نشر السعر والعروض فوراً");
+    document.getElementById("adm-plan-pricing-editor")?.remove();await loadAdmPlans();
+  }catch(e){if(err){err.textContent="⚠️ "+String(e.message||e);err.style.display="block";}else showToast("❌ "+String(e.message||e));}
+}
+async function revertAdmPlanPricing(id){
+  if(!confirm("تراجع عن آخر تعديل سعر غير متراجع؟ سيعود السعر والعروض للحالة السابقة."))return;
+  try{const r=await admFetch(`/api/admin/plans/${id}/pricing/revert`,{method:"POST",body:"{}"}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر التراجع");showToast("✅ تم التراجع عن آخر تعديل سعر");await loadAdmPlans();}catch(e){showToast("❌ "+String(e.message||e));}
+}
+async function editAdmPlan(id){openAdmPlanPricingEditor(id);}
+async function editAdmPlanDetails(id){
+  const plan=ADM_PLANS_CACHE.find(p=>Number(p.id)===Number(id));if(!plan){showToast("⚠️ الباقة غير متاحة");return;}
+  const nameAr=prompt("اسم الباقة بالعربية:",plan.nameAr);if(nameAr===null)return;
+  const durationText=prompt("مدة الباقة بالشهور:",plan.durationMonths);if(durationText===null)return;
+  const durationMonths=Number(durationText);if(!Number.isInteger(durationMonths)||durationMonths<1||durationMonths>120){showToast("⚠️ أدخل مدة صحيحة من 1 إلى 120 شهراً");return;}
+  const featuresText=prompt("المزايا (سطر لكل ميزة):",Array.isArray(plan.features)?plan.features.join("\n"):"");if(featuresText===null)return;
+  const badge=prompt("شارة الخطة العامة (اختياري):",plan.badge||"");if(badge===null)return;
+  const features=featuresText.split("\n").map(f=>f.trim()).filter(Boolean).slice(0,12);
+  try{const r=await admFetch(`/api/admin/plans/${id}`,{method:"PUT",body:JSON.stringify({nameAr:nameAr.trim(),durationMonths,features,badge:badge.trim()||null})}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر التحديث");showToast("✅ تم تحديث تفاصيل الباقة");await loadAdmPlans();}catch(e){showToast("❌ "+String(e.message||e));}
+}
 async function saveAdmPlan(){
   const feats=vG("apl-features").split("\n").map(f=>f.trim()).filter(Boolean);
-  const body={key:vG("apl-key"),nameAr:vG("apl-name"),price:Number(vG("apl-price")),durationMonths:Number(vG("apl-dur")),badge:vG("apl-badge")||undefined,features:feats};
+  const body={key:vG("apl-key"),nameAr:vG("apl-name"),price:Number(vG("apl-price")),oldPrice:vG("apl-old-price")===""?null:Number(vG("apl-old-price")),durationMonths:Number(vG("apl-dur")),badge:vG("apl-badge")||undefined,priceBadgeMode:vG("apl-price-badge-mode"),priceBadgeText:vG("apl-price-badge")||null,features:feats};
   try{
-    const r=await admFetch("/api/admin/plans",{method:"POST",body:JSON.stringify(body)});
-    const j=await r.json();
+    const r=await admFetch("/api/admin/plans",{method:"POST",body:JSON.stringify(body)}),j=await r.json();
     if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحفظ"));return;}
-    showToast("✅ تم إضافة الخطة");
-    ["apl-key","apl-name","apl-price","apl-dur","apl-badge","apl-features"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+    if(j.warnings&&j.warnings.length)showToast("⚠️ "+j.warnings.join(" · "));else showToast("✅ تم إضافة الخطة");
+    ["apl-key","apl-name","apl-price","apl-old-price","apl-dur","apl-badge","apl-price-badge","apl-features"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
     await loadAdmPlans();
   }catch(e){showToast("❌ "+String(e.message||e));}
 }
-
 async function toggleAdmPlan(id,isActive){
   try{
-    const r=await admFetch(`/api/admin/plans/${id}`,{method:"PUT",body:JSON.stringify({isActive})});
-    const j=await r.json();
+    const r=await admFetch(`/api/admin/plans/${id}`,{method:"PUT",body:JSON.stringify({isActive})}),j=await r.json();
     if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
     showToast("✅ تم التحديث");await loadAdmPlans();
   }catch(e){showToast("❌ "+String(e.message||e));}
 }
-
 async function archiveAdmPlan(id,name){
-  if(!confirm(`أرشفة خطة "${name}"؟ لن تظهر لطلبات جديدة، ولا تتأثر اشتراكات المشتركين الحاليين.`)) return;
+  if(!confirm(`أرشفة خطة "${name}"؟ لن تظهر لطلبات جديدة، ولا تتأثر اشتراكات المشتركين أو طلبات الدفع المثبتة.`))return;
   try{
-    const r=await admFetch(`/api/admin/plans/${id}`,{method:"DELETE"});
-    const j=await r.json();
+    const r=await admFetch(`/api/admin/plans/${id}`,{method:"DELETE"}),j=await r.json();
     if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الأرشفة"));return;}
     showToast("✅ تم أرشفة الخطة");await loadAdmPlans();
   }catch(e){showToast("❌ "+String(e.message||e));}
@@ -5395,6 +5569,7 @@ async function renderAdmEmployees(el){
         ]),
         aIn("aemp-pass","كلمة المرور (8+ أحرف)","type='password' minlength='8'")
       )}
+      <label style="display:flex;gap:7px;align-items:center;color:var(--t3);font-size:11px;cursor:pointer;margin:4px 0 8px;"><input id="aemp-pricing" type="checkbox"/> يسمح له بإدارة أسعار الباقات والعروض (صلاحية pricing.manage)</label>
       ${aBtn("إضافة الموظف ✓","saveAdmEmployee()")}
     </div>
     <div id="aemp-list"><div class="empty"><div style="font-size:24px;">⏳</div></div></div>`;
@@ -5424,11 +5599,13 @@ async function loadAdmEmployees(){
             <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px;">
               ${aBadge(sanitize(ROLE_LABELS[emp.role]||String(emp.role||"")),ROLE_COLORS[emp.role]?ROLE_COLORS[emp.role]+"22":"var(--s2)",ROLE_COLORS[emp.role]||"#fff")}
               ${emp.status==="active"?aBadge("نشط","var(--gd)","var(--g)"):aBadge("معطّل","var(--dnd)","var(--dn)")}
+              ${Array.isArray(emp.permissions)&&emp.permissions.includes("pricing.manage")?aBadge("إدارة الأسعار","#ede9fe","#6d28d9"):""}
             </div>
             ${emp.lastLogin?`<div style="color:var(--t5);font-size:9px;margin-top:5px;font-family:var(--mono);">آخر دخول: ${new Date(emp.lastLogin).toLocaleString("ar-EG")}</div>`:""}
           </div>
           <div style="display:flex;flex-direction:column;gap:5px;">
             <button class="r-btn" style="font-size:10px;background:${emp.status==="active"?"var(--dnd)":"var(--gd)"};color:${emp.status==="active"?"var(--dn)":"var(--g)"};" onclick='toggleAdmEmployee(${safeJsArg(emp.id)},${safeJsArg(emp.status==="active"?"inactive":"active")})' >${emp.status==="active"?"تعطيل":"تفعيل"}</button>
+            <button class="r-btn" style="font-size:10px;background:#ede9fe;color:#6d28d9;" onclick='toggleAdmPricingPermission(${safeJsArg(emp.id)},${safeJsBool(!(Array.isArray(emp.permissions)&&emp.permissions.includes("pricing.manage")))})'>${Array.isArray(emp.permissions)&&emp.permissions.includes("pricing.manage")?"سحب إدارة الأسعار":"منح إدارة الأسعار"}</button>
             <button class="r-btn rej" style="font-size:10px;" onclick='delAdmEmployee(${safeJsArg(emp.id)},${safeJsArg(emp.name)})' >حذف</button>
           </div>
         </div>
@@ -5437,7 +5614,7 @@ async function loadAdmEmployees(){
 }
 
 async function saveAdmEmployee(){
-  const body={name:vG("aemp-name"),email:vG("aemp-email"),role:vG("aemp-role"),password:vG("aemp-pass")};
+  const body={name:vG("aemp-name"),email:vG("aemp-email"),role:vG("aemp-role"),password:vG("aemp-pass"),permissions:document.getElementById("aemp-pricing")?.checked?["pricing.manage"]:[]};
   if(!body.name||!body.email||!body.password){showToast("❌ يرجى ملء جميع الحقول");return;}
   try{
     const r=await admFetch("/api/admin/employees",{method:"POST",body:JSON.stringify(body)});
@@ -5455,6 +5632,14 @@ async function toggleAdmEmployee(id,status){
     const j=await r.json();
     if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر"));return;}
     showToast("✅ تم");await loadAdmEmployees();
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+async function toggleAdmPricingPermission(id,grant){
+  if(!confirm(grant?"منح هذا الموظف صلاحية تغيير أسعار الباقات؟":"سحب صلاحية إدارة الأسعار من هذا الموظف؟"))return;
+  try{
+    const r=await admFetch(`/api/admin/employees/${id}`,{method:"PUT",body:JSON.stringify({permissions:grant?["pricing.manage"]:[]})}),j=await r.json();
+    if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر تعديل الصلاحية");
+    showToast("✅ تم تحديث صلاحية الأسعار");await loadAdmEmployees();
   }catch(e){showToast("❌ "+String(e.message||e));}
 }
 

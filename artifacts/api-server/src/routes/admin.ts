@@ -15,10 +15,22 @@ import {
 } from "../lib/dataStore";
 import { db } from "@workspace/db";
 import {
-  employeesTable, subscriptionPlansTable, couponsTable,   auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable, appUsersTable, userNotificationsTable,
-  userSubscriptionsTable, appSettingsTable,
+  employeesTable, subscriptionPlansTable, couponsTable, auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable, appUsersTable, userNotificationsTable,
+  userSubscriptionsTable, appSettingsTable, planPriceOffersTable, planPriceChangeLogsTable,
 } from "@workspace/db";
-import { eq, desc, and, gte, lte, like, or, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lte, like, or, sql, isNull } from "drizzle-orm";
+import {
+  getEffectivePrice,
+  getPaymentPriceLockHours,
+  invalidatePricingCache,
+  PricingInputError,
+  pricingCacheVersion,
+  readPaymentPriceSnapshot,
+  validatePaymentPriceLockHours,
+  validatePriceOffer,
+  validatePricePresentation,
+  type ValidatedOfferInput,
+} from "../lib/pricing";
 
 const router: IRouter = Router();
 
@@ -202,6 +214,35 @@ function requireRole(...roles: string[]) {
     }
     next();
   };
+}
+
+/* Subscription pricing is intentionally narrower than generic dashboard
+ * access. A super admin is allowed; every other employee needs this explicit
+ * server-checked permission in their current staff row, not in a browser/JWT. */
+const PRICING_MANAGE_PERMISSION = "pricing.manage";
+async function requirePricingAccess(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  if (req.isLegacyAdmin) { next(); return; }
+  if (!req.actor || !Number.isInteger(req.actor.sub) || req.actor.sub <= 0) {
+    res.status(403).json({ status: "error", message: "insufficient permissions" });
+    return;
+  }
+  try {
+    const [staff] = await db.select({
+      role: employeesTable.role,
+      status: employeesTable.status,
+      permissions: employeesTable.permissions,
+    }).from(employeesTable).where(eq(employeesTable.id, req.actor.sub)).limit(1);
+    const allowed = staff?.status === "active"
+      && (staff.role === "super_admin" || (Array.isArray(staff.permissions) && staff.permissions.includes(PRICING_MANAGE_PERMISSION)));
+    if (!allowed) {
+      res.status(403).json({ status: "error", message: "لا تملك صلاحية إدارة أسعار الباقات" });
+      return;
+    }
+    next();
+  } catch (error) {
+    logger.error({ err: error }, "pricing permission check failed");
+    res.status(503).json({ status: "error", message: "تعذر التحقق من صلاحية إدارة الأسعار" });
+  }
 }
 
 /* ─── Audit log helper ─── */
@@ -543,9 +584,14 @@ router.post("/employees", requireAuth, requireWriteRate, requireRole("super_admi
     res.status(400).json({ status: "error", message: "password must be at least 8 characters" });
     return;
   }
-  // Only super_admin can create super_admin/admin
+  // Only super_admin can create super_admin/admin or grant business-critical
+  // price-management capability to a selected employee.
   if (["super_admin", "admin"].includes(role) && req.actor?.role !== "super_admin") {
     res.status(403).json({ status: "error", message: "only super_admin can create admin roles" });
+    return;
+  }
+  if (Array.isArray(permissions) && permissions.includes(PRICING_MANAGE_PERMISSION) && req.actor?.role !== "super_admin") {
+    res.status(403).json({ status: "error", message: "only super_admin can grant pricing permission" });
     return;
   }
   try {
@@ -579,6 +625,10 @@ router.put("/employees/:id", requireAuth, requireWriteRate, requireRole("super_a
     res.status(403).json({ status: "error", message: "only super_admin can set admin roles" });
     return;
   }
+  if (Array.isArray(permissions) && permissions.includes(PRICING_MANAGE_PERMISSION) && req.actor?.role !== "super_admin") {
+    res.status(403).json({ status: "error", message: "only super_admin can grant pricing permission" });
+    return;
+  }
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (name) updates["name"] = String(name).slice(0, 100);
   if (role) updates["role"] = String(role);
@@ -602,32 +652,272 @@ router.delete("/employees/:id", requireAuth, requireWriteRate, requireRole("supe
   res.json({ status: "ok" });
 });
 
-/* ─── Subscription Plans ─── */
-router.get("/plans", requireAuth, async (_req, res: Response) => {
-  const plans = await db.select().from(subscriptionPlansTable).orderBy(subscriptionPlansTable.price);
-  res.json({ status: "ok", plans });
+/* ─── Subscription Plans + server-evaluated pricing ─── */
+/* Price is business-critical. These helpers keep the editable snapshot small,
+ * deterministic and reversible without ever deleting a previous offer row. */
+type StoredPricingOffer = {
+  id: string;
+  audience: string;
+  price: number;
+  oldPrice: number | null;
+  badgeMode: string;
+  badgeText: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  showCountdown: boolean;
+  priority: number;
+};
+type StoredPricingState = {
+  price: number;
+  oldPrice: number | null;
+  badgeMode: string;
+  badgeText: string | null;
+  offers: StoredPricingOffer[];
+};
+
+function dateIso(value: unknown): string | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function pricingState(plan: any, offers: any[]): StoredPricingState {
+  return {
+    price: Number(plan.price),
+    oldPrice: plan.oldPrice === null || plan.oldPrice === undefined ? null : Number(plan.oldPrice),
+    badgeMode: String(plan.priceBadgeMode || "none"),
+    badgeText: plan.priceBadgeText ? String(plan.priceBadgeText) : null,
+    offers: offers
+      .filter((offer) => offer.status === "active")
+      .map((offer) => ({
+        id: String(offer.id),
+        audience: String(offer.audience),
+        price: Number(offer.price),
+        oldPrice: offer.oldPrice === null || offer.oldPrice === undefined ? null : Number(offer.oldPrice),
+        badgeMode: String(offer.badgeMode || "none"),
+        badgeText: offer.badgeText ? String(offer.badgeText) : null,
+        startsAt: dateIso(offer.startsAt),
+        endsAt: dateIso(offer.endsAt),
+        showCountdown: Boolean(offer.showCountdown),
+        priority: Number(offer.priority || 0),
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  };
+}
+
+function samePricingState(left: StoredPricingState, right: StoredPricingState): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function validatedPricingState(raw: Record<string, unknown>, previous?: StoredPricingState): { state: StoredPricingState; warnings: string[] } {
+  const has = (key: string) => Object.prototype.hasOwnProperty.call(raw, key);
+  const base = validatePricePresentation({
+    price: has("price") ? raw["price"] : previous?.price,
+    oldPrice: has("oldPrice") ? raw["oldPrice"] : previous?.oldPrice,
+    priceBadgeMode: has("priceBadgeMode") ? raw["priceBadgeMode"] : has("badgeMode") ? raw["badgeMode"] : previous?.badgeMode,
+    priceBadgeText: has("priceBadgeText") ? raw["priceBadgeText"] : has("badgeText") ? raw["badgeText"] : previous?.badgeText,
+  });
+  const rawOffers = raw["offers"] === undefined ? previous?.offers || [] : raw["offers"];
+  if (!Array.isArray(rawOffers) || rawOffers.length > 12) {
+    throw new PricingInputError("أدخل حتى 12 عرضاً لكل باقة");
+  }
+  const offers: StoredPricingOffer[] = [];
+  const ids = new Set<string>();
+  const warnings = [...base.warnings];
+  for (const candidate of rawOffers) {
+    if (!candidate || typeof candidate !== "object") throw new PricingInputError("بيانات العرض غير صحيحة");
+    const parsed: ValidatedOfferInput = validatePriceOffer(candidate as Record<string, unknown>);
+    const id = parsed.id || `offer-${crypto.randomUUID()}`;
+    if (ids.has(id)) throw new PricingInputError("لا يمكن تكرار العرض نفسه");
+    ids.add(id);
+    warnings.push(...parsed.warnings);
+    offers.push({
+      id,
+      audience: parsed.audience,
+      price: parsed.price,
+      oldPrice: parsed.oldPrice,
+      badgeMode: parsed.badgeMode,
+      badgeText: parsed.badgeText,
+      startsAt: parsed.startsAt?.toISOString() || null,
+      endsAt: parsed.endsAt?.toISOString() || null,
+      showCountdown: parsed.showCountdown,
+      priority: parsed.priority,
+    });
+  }
+  return {
+    state: {
+      price: base.price,
+      oldPrice: base.oldPrice,
+      badgeMode: base.badgeMode,
+      badgeText: base.badgeText,
+      offers: offers.sort((left, right) => left.id.localeCompare(right.id)),
+    },
+    warnings: [...new Set(warnings)],
+  };
+}
+
+/** Applies a full active pricing state without deleting an offer/history row. */
+async function applyPricingState(tx: any, planId: number, state: StoredPricingState, now: Date): Promise<void> {
+  await tx.update(subscriptionPlansTable).set({
+    price: state.price,
+    oldPrice: state.oldPrice,
+    priceBadgeMode: state.badgeMode,
+    priceBadgeText: state.badgeText,
+    updatedAt: now,
+  }).where(eq(subscriptionPlansTable.id, planId));
+
+  const existing = await tx.select().from(planPriceOffersTable)
+    .where(eq(planPriceOffersTable.planId, planId));
+  const existingById = new Map(existing.map((offer: any) => [String(offer.id), offer]));
+  const activeIds = new Set(state.offers.map((offer) => offer.id));
+  for (const offer of existing) {
+    if (offer.status === "active" && !activeIds.has(String(offer.id))) {
+      await tx.update(planPriceOffersTable).set({
+        status: "archived",
+        archivedAt: now,
+        updatedAt: now,
+      }).where(eq(planPriceOffersTable.id, offer.id));
+    }
+  }
+  for (const offer of state.offers) {
+    const values = {
+      planId,
+      audience: offer.audience,
+      price: offer.price,
+      oldPrice: offer.oldPrice,
+      badgeMode: offer.badgeMode,
+      badgeText: offer.badgeText,
+      startsAt: offer.startsAt ? new Date(offer.startsAt) : null,
+      endsAt: offer.endsAt ? new Date(offer.endsAt) : null,
+      showCountdown: offer.showCountdown,
+      priority: offer.priority,
+      status: "active",
+      archivedAt: null,
+      updatedAt: now,
+    };
+    if (existingById.has(offer.id)) {
+      await tx.update(planPriceOffersTable).set(values).where(eq(planPriceOffersTable.id, offer.id));
+    } else {
+      await tx.insert(planPriceOffersTable).values({ id: offer.id, ...values, createdAt: now });
+    }
+  }
+}
+
+function pricingLogDetail(before: StoredPricingState, after: StoredPricingState): Record<string, unknown> {
+  return {
+    fromPrice: before.price,
+    toPrice: after.price,
+    fromOfferCount: before.offers.length,
+    toOfferCount: after.offers.length,
+  };
+}
+
+/* A read is authorized as pricing access too, so detailed targeted-offer rules
+ * are never exposed to ordinary support/editor accounts. */
+router.get("/plans", requireAuth, requirePricingAccess, async (_req: AuthRequest, res: Response) => {
+  try {
+    const plans = await db.select().from(subscriptionPlansTable).orderBy(subscriptionPlansTable.price);
+    const allOffers = await db.select().from(planPriceOffersTable);
+    const now = new Date();
+    const decorated = await Promise.all(plans.map(async (plan) => {
+      const offers = allOffers.filter((offer) => offer.planId === plan.id);
+      const effective = await getEffectivePrice(null, plan, now);
+      const changes = await db.select({
+        id: planPriceChangeLogsTable.id,
+        changedBy: planPriceChangeLogsTable.changedBy,
+        changedByName: planPriceChangeLogsTable.changedByName,
+        changedByRole: planPriceChangeLogsTable.changedByRole,
+        changeType: planPriceChangeLogsTable.changeType,
+        beforeState: planPriceChangeLogsTable.beforeState,
+        afterState: planPriceChangeLogsTable.afterState,
+        revertedAt: planPriceChangeLogsTable.revertedAt,
+        revertedByName: planPriceChangeLogsTable.revertedByName,
+        createdAt: planPriceChangeLogsTable.createdAt,
+      }).from(planPriceChangeLogsTable)
+        .where(eq(planPriceChangeLogsTable.planId, plan.id))
+        .orderBy(desc(planPriceChangeLogsTable.createdAt)).limit(8);
+      return { ...plan, offers, effective, pricingHistory: changes };
+    }));
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({ status: "ok", plans: decorated, pricingVersion: pricingCacheVersion(), cairoTimeZone: "Africa/Cairo" });
+  } catch (e) {
+    logger.error({ err: e }, "plans read error");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
 });
 
-router.post("/plans", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
-  const { key, nameAr, price, durationMonths, features, badge } = req.body || {};
-  if (!key || !nameAr || price === undefined || !durationMonths) {
+router.get("/settings/pricing", requireAuth, requirePricingAccess, async (_req: AuthRequest, res: Response) => {
+  try {
+    res.json({ status: "ok", priceLockHours: await getPaymentPriceLockHours(), minHours: 1, maxHours: 168 });
+  } catch (e) {
+    logger.error({ err: e }, "pricing settings read error");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
+});
+
+router.put("/settings/pricing", requireAuth, requireWriteRate, requirePricingAccess, async (req: AuthRequest, res: Response) => {
+  try {
+    const hours = validatePaymentPriceLockHours(req.body?.priceLockHours);
+    await db.insert(appSettingsTable).values({ key: "payment_price_lock_hours", value: String(hours), updatedAt: new Date() })
+      .onConflictDoUpdate({ target: appSettingsTable.key, set: { value: String(hours), updatedAt: new Date() } });
+    await auditLog("update_payment_price_lock", req.actor, "pricing", { priceLockHours: hours }, req.ip);
+    res.json({ status: "ok", priceLockHours: hours });
+  } catch (e) {
+    if (e instanceof PricingInputError) { res.status(400).json({ status: "error", message: e.message }); return; }
+    logger.error({ err: e }, "pricing settings update error");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
+});
+
+router.post("/plans", requireAuth, requireWriteRate, requirePricingAccess, async (req: AuthRequest, res: Response) => {
+  const { key, nameAr, durationMonths, features, badge } = req.body || {};
+  if (!key || !nameAr || durationMonths === undefined) {
     res.status(400).json({ status: "error", message: "key, nameAr, price, durationMonths required" });
     return;
   }
   if (!ID_RX.test(String(key))) { res.status(400).json({ status: "error", message: "key must be alphanumeric" }); return; }
+  const duration = Number(durationMonths);
+  if (!Number.isSafeInteger(duration) || duration < 1 || duration > 120) {
+    res.status(400).json({ status: "error", message: "مدة الخطة غير صحيحة" });
+    return;
+  }
   try {
-    const [plan] = await db.insert(subscriptionPlansTable).values({
-      key: String(key).toLowerCase(),
-      nameAr: String(nameAr).slice(0, 100),
-      price: Math.max(0, Number(price)),
-      durationMonths: Math.max(1, Number(durationMonths)),
-      features: Array.isArray(features) ? features : [],
-      isActive: true,
-      badge: badge ? String(badge).slice(0, 50) : null,
-    }).returning();
-    await auditLog("create_plan", req.actor, String(key), { nameAr, price }, req.ip);
-    res.json({ status: "ok", plan });
+    const base = validatePricePresentation(req.body || {});
+    const { plan, after } = await db.transaction(async (tx) => {
+      const now = new Date();
+      const [plan] = await tx.insert(subscriptionPlansTable).values({
+        key: String(key).toLowerCase(),
+        nameAr: String(nameAr).slice(0, 100),
+        price: base.price,
+        oldPrice: base.oldPrice,
+        priceBadgeMode: base.badgeMode,
+        priceBadgeText: base.badgeText,
+        durationMonths: duration,
+        features: Array.isArray(features) ? features.map((feature) => String(feature).slice(0, 160)).slice(0, 12) : [],
+        isActive: true,
+        badge: badge ? String(badge).slice(0, 50) : null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning();
+      const after = pricingState(plan, []);
+      await tx.insert(planPriceChangeLogsTable).values({
+        id: `price-change-${crypto.randomUUID()}`,
+        planId: plan.id,
+        changedBy: req.actor?.sub ?? null,
+        changedByName: req.actor?.name ?? "legacy-admin",
+        changedByRole: req.actor?.role ?? "super_admin",
+        changeType: "pricing_create",
+        beforeState: {},
+        afterState: after,
+        createdAt: now,
+      });
+      return { plan, after };
+    });
+    invalidatePricingCache();
+    await auditLog("create_plan", req.actor, String(key), { ...pricingLogDetail({ ...after, price: 0, offers: [] }, after), hasOldPrice: base.oldPrice !== null }, req.ip);
+    res.json({ status: "ok", plan, warnings: base.warnings, pricingVersion: pricingCacheVersion() });
   } catch (e: unknown) {
+    if (e instanceof PricingInputError) { res.status(400).json({ status: "error", message: e.message }); return; }
     const msg = String(e);
     if (msg.includes("unique")) { res.status(409).json({ status: "error", message: "plan key already exists" }); return; }
     logger.error({ err: e }, "plan create error");
@@ -635,31 +925,133 @@ router.post("/plans", requireAuth, requireWriteRate, requireRole("super_admin", 
   }
 });
 
-router.put("/plans/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+/* Atomically replaces the current base display and active offer set. Every
+ * update receives one before/after history row, which powers a safe undo. */
+router.put("/plans/:id/pricing", requireAuth, requireWriteRate, requirePricingAccess, async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
-  const { nameAr, price, durationMonths, features, isActive, badge } = req.body || {};
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
-  if (nameAr !== undefined) updates["nameAr"] = String(nameAr).slice(0, 100);
-  if (price !== undefined) updates["price"] = Math.max(0, Number(price));
-  if (durationMonths !== undefined) updates["durationMonths"] = Math.max(1, Number(durationMonths));
-  if (features !== undefined) updates["features"] = Array.isArray(features) ? features : [];
-  if (isActive !== undefined) updates["isActive"] = Boolean(isActive);
-  if (badge !== undefined) updates["badge"] = badge ? String(badge).slice(0, 50) : null;
-  await db.update(subscriptionPlansTable).set(updates as any).where(eq(subscriptionPlansTable.id, id));
-  await auditLog("update_plan", req.actor, String(id), { nameAr, price, isActive }, req.ip);
-  res.json({ status: "ok" });
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [plan] = await tx.select().from(subscriptionPlansTable).where(eq(subscriptionPlansTable.id, id)).for("update");
+      if (!plan) throw new PricingInputError("الخطة غير موجودة");
+      const oldOffers = await tx.select().from(planPriceOffersTable).where(eq(planPriceOffersTable.planId, id));
+      const before = pricingState(plan, oldOffers);
+      const parsed = validatedPricingState((req.body || {}) as Record<string, unknown>, before);
+      const suppliedIds = new Set(parsed.state.offers.map((offer) => offer.id));
+      for (const offer of parsed.state.offers) {
+        const known = oldOffers.find((row) => row.id === offer.id);
+        if (offer.id.startsWith("offer-") && !known) continue;
+        if (!known) throw new PricingInputError("العرض لا يخص هذه الباقة");
+      }
+      if (suppliedIds.size !== parsed.state.offers.length) throw new PricingInputError("تكرار معرّف العرض غير مسموح");
+      if (samePricingState(before, parsed.state)) return { changed: false, before, after: before, warnings: parsed.warnings };
+      const now = new Date();
+      await applyPricingState(tx, id, parsed.state, now);
+      await tx.insert(planPriceChangeLogsTable).values({
+        id: `price-change-${crypto.randomUUID()}`,
+        planId: id,
+        changedBy: req.actor?.sub ?? null,
+        changedByName: req.actor?.name ?? "legacy-admin",
+        changedByRole: req.actor?.role ?? "super_admin",
+        changeType: "pricing_update",
+        beforeState: before,
+        afterState: parsed.state,
+        createdAt: now,
+      });
+      return { changed: true, before, after: parsed.state, warnings: parsed.warnings };
+    });
+    if (result.changed) {
+      invalidatePricingCache();
+      await auditLog("update_plan_pricing", req.actor, `plan:${id}`, pricingLogDetail(result.before, result.after), req.ip);
+    }
+    res.json({ status: "ok", changed: result.changed, warnings: result.warnings, pricingVersion: pricingCacheVersion() });
+  } catch (e) {
+    if (e instanceof PricingInputError) { res.status(400).json({ status: "error", message: e.message }); return; }
+    logger.error({ err: e }, "plan pricing update error");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
 });
 
-router.delete("/plans/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.post("/plans/:id/pricing/revert", requireAuth, requireWriteRate, requirePricingAccess, async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
-  /* Plans are archived, never deleted. Existing subscriptions have their own
-   * immutable snapshot, and this keeps plan/payment audit context intact. */
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
+  try {
+    const outcome = await db.transaction(async (tx) => {
+      const [plan] = await tx.select().from(subscriptionPlansTable).where(eq(subscriptionPlansTable.id, id)).for("update");
+      if (!plan) throw new PricingInputError("الخطة غير موجودة");
+      const history = await tx.select().from(planPriceChangeLogsTable)
+        .where(and(eq(planPriceChangeLogsTable.planId, id), isNull(planPriceChangeLogsTable.revertedAt)))
+        .orderBy(desc(planPriceChangeLogsTable.createdAt)).limit(20);
+      const latest = history.find((row) => row.changeType === "pricing_update");
+      if (!latest) throw new PricingInputError("لا يوجد تعديل أسعار قابل للتراجع");
+      const previous = latest.beforeState as StoredPricingState;
+      if (!previous || !Array.isArray(previous.offers) || !Number.isSafeInteger(previous.price) || previous.price <= 0) {
+        throw new PricingInputError("سجل السعر السابق غير صالح للتراجع");
+      }
+      const currentOffers = await tx.select().from(planPriceOffersTable).where(eq(planPriceOffersTable.planId, id));
+      const current = pricingState(plan, currentOffers);
+      const now = new Date();
+      await applyPricingState(tx, id, previous, now);
+      await tx.update(planPriceChangeLogsTable).set({ revertedAt: now, revertedBy: req.actor?.sub ?? null, revertedByName: req.actor?.name ?? "legacy-admin" })
+        .where(eq(planPriceChangeLogsTable.id, latest.id));
+      return { before: current, after: previous, logId: latest.id };
+    });
+    invalidatePricingCache();
+    await auditLog("revert_plan_pricing", req.actor, `plan:${id}`, { ...pricingLogDetail(outcome.before, outcome.after), revertedChangeId: outcome.logId }, req.ip);
+    res.json({ status: "ok", pricingVersion: pricingCacheVersion() });
+  } catch (e) {
+    if (e instanceof PricingInputError) { res.status(400).json({ status: "error", message: e.message }); return; }
+    logger.error({ err: e }, "plan pricing revert error");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
+});
+
+/* Existing plan metadata controls are retained. Price fields are deliberately
+ * refused on this generic route so every live price change has exactly one
+ * before/after history row via PUT /plans/:id/pricing. */
+router.put("/plans/:id", requireAuth, requireWriteRate, requirePricingAccess, async (req: AuthRequest, res: Response) => {
+  const id = Number(req.params["id"]);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
+  try {
+    const [existing] = await db.select().from(subscriptionPlansTable).where(eq(subscriptionPlansTable.id, id)).limit(1);
+    if (!existing) { res.status(404).json({ status: "error", message: "plan not found" }); return; }
+    const { nameAr, durationMonths, features, isActive, badge } = req.body || {};
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (nameAr !== undefined) updates["nameAr"] = String(nameAr).slice(0, 100);
+    if (durationMonths !== undefined) {
+      const duration = Number(durationMonths);
+      if (!Number.isSafeInteger(duration) || duration < 1 || duration > 120) { res.status(400).json({ status: "error", message: "مدة الخطة غير صحيحة" }); return; }
+      updates["durationMonths"] = duration;
+    }
+    if (features !== undefined) updates["features"] = Array.isArray(features) ? features.map((feature) => String(feature).slice(0, 160)).slice(0, 12) : [];
+    if (isActive !== undefined) updates["isActive"] = Boolean(isActive);
+    if (badge !== undefined) updates["badge"] = badge ? String(badge).slice(0, 50) : null;
+    const hasPricingField = ["price", "oldPrice", "priceBadgeMode", "priceBadgeText", "badgeMode", "badgeText", "offers"].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key));
+    if (hasPricingField) {
+      res.status(400).json({ status: "error", message: "استخدم محرر السعر والعروض لتسجيل التغيير وإتاحته للتراجع" });
+      return;
+    }
+    await db.update(subscriptionPlansTable).set(updates as any).where(eq(subscriptionPlansTable.id, id));
+    invalidatePricingCache();
+    await auditLog("update_plan", req.actor, String(id), { nameAr, isActive }, req.ip);
+    res.json({ status: "ok", pricingVersion: pricingCacheVersion() });
+  } catch (e) {
+    if (e instanceof PricingInputError) { res.status(400).json({ status: "error", message: e.message }); return; }
+    logger.error({ err: e }, "plan update error");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
+});
+
+router.delete("/plans/:id", requireAuth, requireWriteRate, requirePricingAccess, async (req: AuthRequest, res: Response) => {
+  const id = Number(req.params["id"]);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
+  /* Plans are archived, never deleted. Existing subscriptions and pending
+   * price snapshots remain intact. */
   await db.update(subscriptionPlansTable).set({ isActive: false, updatedAt: new Date() })
     .where(eq(subscriptionPlansTable.id, id));
+  invalidatePricingCache();
   await auditLog("archive_plan", req.actor, String(id), {}, req.ip);
-  res.json({ status: "ok", archived: true });
+  res.json({ status: "ok", archived: true, pricingVersion: pricingCacheVersion() });
 });
 
 /* ─── Coupons ─── */
@@ -922,11 +1314,12 @@ router.get("/requests", requireAuth, requireRole("super_admin", "admin", "suppor
   try {
     const statusFilter = String(req.query["status"] || "").trim();
     let rows;
-    if (statusFilter && ["pending", "approved", "rejected"].includes(statusFilter)) {
+    if (statusFilter && ["pending", "approved", "rejected", "expired"].includes(statusFilter)) {
       rows = await db.select({
         id: paymentRequestsTable.id, phone: paymentRequestsTable.phone, name: paymentRequestsTable.name,
         planKey: paymentRequestsTable.planKey, payMethod: paymentRequestsTable.payMethod,
-        price: paymentRequestsTable.price, tx: paymentRequestsTable.tx, status: paymentRequestsTable.status,
+        price: paymentRequestsTable.price, priceSnapshot: paymentRequestsTable.priceSnapshot, priceLockedUntil: paymentRequestsTable.priceLockedUntil,
+        tx: paymentRequestsTable.tx, status: paymentRequestsTable.status,
         notes: paymentRequestsTable.notes, proofImage: paymentRequestsTable.proofImage,
         proofName: paymentRequestsTable.proofName, createdAt: paymentRequestsTable.createdAt,
       }).from(paymentRequestsTable).where(eq(paymentRequestsTable.status, statusFilter)).orderBy(desc(paymentRequestsTable.createdAt)).limit(300);
@@ -934,7 +1327,8 @@ router.get("/requests", requireAuth, requireRole("super_admin", "admin", "suppor
       rows = await db.select({
         id: paymentRequestsTable.id, phone: paymentRequestsTable.phone, name: paymentRequestsTable.name,
         planKey: paymentRequestsTable.planKey, payMethod: paymentRequestsTable.payMethod,
-        price: paymentRequestsTable.price, tx: paymentRequestsTable.tx, status: paymentRequestsTable.status,
+        price: paymentRequestsTable.price, priceSnapshot: paymentRequestsTable.priceSnapshot, priceLockedUntil: paymentRequestsTable.priceLockedUntil,
+        tx: paymentRequestsTable.tx, status: paymentRequestsTable.status,
         notes: paymentRequestsTable.notes, proofImage: paymentRequestsTable.proofImage,
         proofName: paymentRequestsTable.proofName, createdAt: paymentRequestsTable.createdAt,
       }).from(paymentRequestsTable).orderBy(desc(paymentRequestsTable.createdAt)).limit(300);
@@ -993,14 +1387,42 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
 
       let planNameAr = existing.planKey;
       if (requestedStatus === "approved") {
-        const [plan] = await tx.select({
-          key: subscriptionPlansTable.key,
-          durationMonths: subscriptionPlansTable.durationMonths,
-          nameAr: subscriptionPlansTable.nameAr,
-          features: subscriptionPlansTable.features,
-        }).from(subscriptionPlansTable)
-          .where(and(eq(subscriptionPlansTable.key, existing.planKey), eq(subscriptionPlansTable.isActive, true)))
-          .limit(1);
+        const now = new Date();
+        /* New-format requests reserve their immutable server price only for
+         * the configured window. Mark an overdue pending request expired in
+         * the same transaction; its snapshot remains auditable. */
+        if (existing.priceLockedUntil && existing.priceLockedUntil.getTime() <= now.getTime()) {
+          await tx.update(paymentRequestsTable).set({
+            status: "expired",
+            notes: "انتهت مدة تثبيت السعر؛ يلزم إنشاء طلب جديد بالسعر الحالي.",
+            updatedAt: now,
+            decidedAt: now,
+          }).where(eq(paymentRequestsTable.id, id));
+          return { expired: true as const, existing, planNameAr };
+        }
+
+        /* A payment request created by the current flow owns a complete,
+         * server-authored plan snapshot. Therefore an ordinary later price,
+         * name, duration or archive edit cannot change what the user bought.
+         * Legacy records fall back to the historical plan lookup. */
+        const snapshot = readPaymentPriceSnapshot(existing.priceSnapshot);
+        let activationPlan: { key: string; nameAr: string; durationMonths: number; features: string[] } | null = null;
+        if (snapshot && snapshot.plan.key === existing.planKey && snapshot.effective.price === existing.price) {
+          activationPlan = snapshot.plan;
+        } else {
+          const [plan] = await tx.select({
+            key: subscriptionPlansTable.key,
+            durationMonths: subscriptionPlansTable.durationMonths,
+            nameAr: subscriptionPlansTable.nameAr,
+            features: subscriptionPlansTable.features,
+          }).from(subscriptionPlansTable)
+            .where(and(eq(subscriptionPlansTable.key, existing.planKey), eq(subscriptionPlansTable.isActive, true)))
+            .limit(1);
+          activationPlan = plan
+            ? { key: plan.key, nameAr: plan.nameAr, durationMonths: plan.durationMonths, features: Array.isArray(plan.features) ? plan.features : [] }
+            : null;
+        }
+
         /* Lock the user row as well as the request: separate approved renewal
          * requests for the same user must stack rather than race. */
         const [user] = await tx.select({
@@ -1011,7 +1433,7 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
         }).from(appUsersTable).where(eq(appUsersTable.phone, existing.phone)).for("update").limit(1);
 
         /* Never report a successful approval when activation cannot happen. */
-        if (!plan || !user || user.status !== "active") {
+        if (!activationPlan || !user || user.status !== "active") {
           throw new PaymentDecisionError(409, "تعذر تفعيل الاشتراك؛ راجع الخطة وحالة الحساب قبل الموافقة");
         }
         const [currentSubscription] = await tx.select({
@@ -1020,8 +1442,7 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
           status: userSubscriptionsTable.status,
         }).from(userSubscriptionsTable).where(eq(userSubscriptionsTable.userId, user.id)).limit(1);
 
-        planNameAr = plan.nameAr;
-        const now = new Date();
+        planNameAr = activationPlan.nameAr;
         /* The subscription table is the entitlement source. The legacy fields
          * are considered only when extending a user that predates the backfill.
          * They are then kept as a compatibility projection for rollback. */
@@ -1031,16 +1452,16 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
             ? user.vipExpiresAt
             : now;
         const expires = new Date(existingExpiry);
-        expires.setMonth(expires.getMonth() + plan.durationMonths);
+        expires.setMonth(expires.getMonth() + activationPlan.durationMonths);
         const startsAt = currentSubscription?.startsAt || now;
 
         await tx.insert(userSubscriptionsTable).values({
           id: `sub-${user.id}`,
           userId: user.id,
-          planKey: plan.key,
-          planNameAr: plan.nameAr,
-          planDurationMonths: plan.durationMonths,
-          planFeatures: Array.isArray(plan.features) ? plan.features : [],
+          planKey: activationPlan.key,
+          planNameAr: activationPlan.nameAr,
+          planDurationMonths: activationPlan.durationMonths,
+          planFeatures: activationPlan.features,
           status: "active",
           startsAt,
           expiresAt: expires,
@@ -1052,10 +1473,10 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
         }).onConflictDoUpdate({
           target: userSubscriptionsTable.userId,
           set: {
-            planKey: plan.key,
-            planNameAr: plan.nameAr,
-            planDurationMonths: plan.durationMonths,
-            planFeatures: Array.isArray(plan.features) ? plan.features : [],
+            planKey: activationPlan.key,
+            planNameAr: activationPlan.nameAr,
+            planDurationMonths: activationPlan.durationMonths,
+            planFeatures: activationPlan.features,
             status: "active",
             startsAt,
             expiresAt: expires,
@@ -1083,7 +1504,12 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
       return { already: false as const, existing, planNameAr };
     });
 
-    if (outcome.already) {
+    if ("expired" in outcome && outcome.expired) {
+      await auditLog("expire_payment_price_lock", req.actor, `payment-request:${id}`, { planKey: outcome.existing.planKey }, req.ip);
+      res.status(409).json({ status: "error", message: "انتهت مدة تثبيت سعر هذا الطلب؛ أنشئ طلب دفع جديدًا بالسعر الحالي" });
+      return;
+    }
+    if ("already" in outcome && outcome.already) {
       res.json({ status: "ok", already: true });
       return;
     }
@@ -1099,7 +1525,7 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
         title: requestedStatus === "approved" ? "🎉 تم تفعيل اشتراك VIP" : "تحديث بخصوص طلب الدفع",
         body:
           requestedStatus === "approved"
-            ? `تم تأكيد دفعتك (${outcome.planNameAr}) وتفعيل اشتراك VIP بنجاح.`
+            ? `تم تأكيد دفعتك (${outcome.planNameAr}) بالقيمة المثبتة ${outcome.existing.price} جنيه وتفعيل اشتراك VIP بنجاح.`
             : decisionNotes
               ? `تم رفض طلب الدفع. السبب: ${decisionNotes}`
               : "تم رفض طلب الدفع. يمكنك إعادة الطلب بعد تصحيح بيانات التحويل.",

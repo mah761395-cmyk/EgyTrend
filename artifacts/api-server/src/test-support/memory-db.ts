@@ -96,12 +96,46 @@ export async function createMemoryDatabase(): Promise<{
       key text NOT NULL UNIQUE,
       name_ar text NOT NULL,
       price integer NOT NULL,
+      old_price integer,
+      price_badge_mode text NOT NULL DEFAULT 'none',
+      price_badge_text text,
       duration_months integer NOT NULL,
       features jsonb DEFAULT '[]'::jsonb,
       is_active boolean DEFAULT true,
       badge text,
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE plan_price_offers (
+      id text PRIMARY KEY,
+      plan_id integer NOT NULL REFERENCES subscription_plans(id),
+      audience text NOT NULL DEFAULT 'all',
+      price integer NOT NULL,
+      old_price integer,
+      badge_mode text NOT NULL DEFAULT 'none',
+      badge_text text,
+      starts_at timestamp,
+      ends_at timestamp,
+      show_countdown boolean NOT NULL DEFAULT false,
+      priority integer NOT NULL DEFAULT 0,
+      status text NOT NULL DEFAULT 'active',
+      archived_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE plan_price_change_logs (
+      id text PRIMARY KEY,
+      plan_id integer NOT NULL REFERENCES subscription_plans(id),
+      changed_by integer,
+      changed_by_name text,
+      changed_by_role text,
+      change_type text NOT NULL DEFAULT 'pricing_update',
+      before_state jsonb NOT NULL,
+      after_state jsonb NOT NULL,
+      reverted_at timestamp,
+      reverted_by integer,
+      reverted_by_name text,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE user_subscriptions (
       id text PRIMARY KEY,
@@ -165,6 +199,8 @@ export async function createMemoryDatabase(): Promise<{
       plan_key text NOT NULL,
       pay_method text NOT NULL DEFAULT '',
       price integer NOT NULL DEFAULT 0,
+      price_snapshot jsonb,
+      price_locked_until timestamp,
       tx text NOT NULL,
       status text NOT NULL DEFAULT 'pending',
       notes text,

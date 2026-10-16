@@ -12,6 +12,7 @@ import {
   portfolioPositionsTable,
   userPriceAlertsTable,
   opportunities,
+  planPriceOffersTable,
   subscriptionPlansTable,
   userSubscriptionsTable,
 } from "@workspace/db/schema";
@@ -51,6 +52,15 @@ async function api(path: string, jar: CookieJar, init: RequestInit = {}) {
   return { response, body, raw };
 }
 
+async function paymentPricingToken(jar: CookieJar, planKey: string): Promise<string> {
+  const config = await api("/api/payments/config", jar);
+  assert.equal(config.response.status, 200);
+  const plans = (config.body?.plans as Array<{ key?: string; pricingToken?: string }>) || [];
+  const token = plans.find((plan) => plan.key === planKey)?.pricingToken || "";
+  assert.ok(token, "a payment submission must use the fresh server-rendered pricing token");
+  return token;
+}
+
 before(async () => {
   memory = await createMemoryDatabase();
   (globalThis as typeof globalThis & { __egytrendTestDatabase?: typeof memory.db }).__egytrendTestDatabase = memory.db;
@@ -73,7 +83,7 @@ before(async () => {
     role: "admin",
     status: "active",
     passwordHash: employeePasswordHash("SyntheticAdminPass1!"),
-    permissions: [],
+    permissions: ["pricing.manage"],
   });
 
   const { default: app } = await import("../app");
@@ -132,6 +142,7 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
     method: "POST",
     body: JSON.stringify({
       planKey: "synthetic-vip",
+      pricingToken: await paymentPricingToken(userJar, "synthetic-vip"),
       method: "vodafone",
       tx: "synthetic-transfer-001",
       proofImage: "data:image/png;base64,iVBORw0KGgo=",
@@ -256,6 +267,7 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
     method: "POST",
     body: JSON.stringify({
       planKey: "synthetic-vip",
+      pricingToken: await paymentPricingToken(userJar, "synthetic-vip"),
       method: "vodafone",
       tx: "synthetic-transfer-002",
       proofImage: "data:image/png;base64,iVBORw0KGgo=",
@@ -348,6 +360,182 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
   assert.equal(logout.response.status, 204);
   const profileAfterLogout = await api("/api/user/me", userJar);
   assert.equal(profileAfterLogout.response.status, 401);
+});
+
+test("subscription price policy schedules, targets, snapshots and authorizes edits on the server", async () => {
+  const { getEffectivePrice, invalidatePricingCache, parseCairoDateTime } = await import("../lib/pricing");
+  const cairoScheduledAt = parseCairoDateTime("2030-01-01T10:00", "بداية العرض");
+  assert.ok(cairoScheduledAt);
+  const cairoHour = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Cairo", hour: "2-digit", hourCycle: "h23" }).format(cairoScheduledAt);
+  assert.equal(cairoHour, "10", "a bare admin datetime must be interpreted as Cairo wall time");
+  const [plan] = await memory.db.select().from(subscriptionPlansTable)
+    .where(eq(subscriptionPlansTable.key, "synthetic-vip"));
+  assert.ok(plan);
+
+  const newUserJar: CookieJar = {};
+  const newRegistration = await api("/api/user/register", newUserJar, {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Pricing New User",
+      phone: "01055550001",
+      password: "PricingNewUserPass1!",
+      email: "pricing.new@example.test",
+    }),
+  });
+  assert.equal(newRegistration.response.status, 201);
+  const [newUser] = await memory.db.select().from(appUsersTable).where(eq(appUsersTable.phone, "01055550001"));
+  assert.ok(newUser);
+
+  /* Time-aware calculation never needs a cron: before the offer it returns
+   * base, during it returns the old/current display, and at end it returns
+   * base immediately. The special price is visible only to its audience. */
+  const start = new Date("2030-01-01T08:00:00.000Z");
+  const end = new Date("2030-01-01T10:00:00.000Z");
+  await memory.db.insert(planPriceOffersTable).values({
+    id: "offer-pricing-schedule-new-user",
+    planId: plan.id,
+    audience: "new_users",
+    price: 99,
+    oldPrice: 137,
+    badgeMode: "auto",
+    startsAt: start,
+    endsAt: end,
+    showCountdown: true,
+    priority: 10,
+    status: "active",
+  });
+  invalidatePricingCache();
+  const before = await getEffectivePrice({ sub: newUser.id, phone: newUser.phone }, plan, new Date("2030-01-01T07:59:59.000Z"));
+  assert.equal(before.price, 137, "scheduled price must not start early");
+  const during = await getEffectivePrice({ sub: newUser.id, phone: newUser.phone }, plan, new Date("2030-01-01T09:00:00.000Z"));
+  assert.equal(during.price, 99);
+  assert.equal(during.oldPrice, 137);
+  assert.equal(during.discountPercent, 28);
+  assert.equal(during.showCountdown, true);
+  const anonymous = await getEffectivePrice(null, plan, new Date("2030-01-01T09:00:00.000Z"));
+  assert.equal(anonymous.price, 137, "targeted offer must not leak to a different audience");
+  const after = await getEffectivePrice({ sub: newUser.id, phone: newUser.phone }, plan, end);
+  assert.equal(after.price, 137, "price must return at the exact offer end");
+
+  const adminJar: CookieJar = {};
+  const adminLogin = await api("/api/admin/login", adminJar, {
+    method: "POST",
+    body: JSON.stringify({ email: "admin.synthetic@example.test", password: "SyntheticAdminPass1!" }),
+  });
+  assert.equal(adminLogin.response.status, 200);
+
+  /* The server rejects a fabricated strikethrough price rather than silently
+   * accepting an old price below the current amount. */
+  const invalidOldPrice = await api(`/api/admin/plans/${plan.id}/pricing`, adminJar, {
+    method: "PUT",
+    body: JSON.stringify({
+      price: 137,
+      oldPrice: 136,
+      priceBadgeMode: "auto",
+      offers: [],
+    }),
+  });
+  assert.equal(invalidOldPrice.response.status, 400);
+  const invalidSchedule = await api(`/api/admin/plans/${plan.id}/pricing`, adminJar, {
+    method: "PUT",
+    body: JSON.stringify({
+      price: 137,
+      oldPrice: null,
+      priceBadgeMode: "none",
+      offers: [{
+        audience: "all",
+        price: 99,
+        oldPrice: 137,
+        badgeMode: "auto",
+        startsAt: "2030-01-01T11:00",
+        endsAt: "2030-01-01T10:00",
+        showCountdown: true,
+      }],
+    }),
+  });
+  assert.equal(invalidSchedule.response.status, 400, "end must be strictly after start in Cairo time");
+
+  /* A staff account without pricing.manage cannot alter a paid amount even
+   * with a valid server-side session. */
+  await memory.db.insert(employeesTable).values({
+    name: "No Pricing Permission",
+    email: "no-pricing@example.test",
+    role: "support",
+    status: "active",
+    passwordHash: employeePasswordHash("NoPricingPass1!"),
+    permissions: [],
+  });
+  const noPricingJar: CookieJar = {};
+  const noPricingLogin = await api("/api/admin/login", noPricingJar, {
+    method: "POST",
+    body: JSON.stringify({ email: "no-pricing@example.test", password: "NoPricingPass1!" }),
+  });
+  assert.equal(noPricingLogin.response.status, 200);
+  const forbiddenPriceEdit = await api(`/api/admin/plans/${plan.id}/pricing`, noPricingJar, {
+    method: "PUT",
+    body: JSON.stringify({ price: 1, offers: [] }),
+  });
+  assert.equal(forbiddenPriceEdit.response.status, 403);
+
+  /* A browser-supplied price is ignored. The effective result is stored as an
+   * immutable snapshot and remains the same after an admin changes base price. */
+  const initialPricingToken = await paymentPricingToken(newUserJar, "synthetic-vip");
+  const submitted = await api("/api/payments", newUserJar, {
+    method: "POST",
+    body: JSON.stringify({
+      planKey: "synthetic-vip",
+      pricingToken: initialPricingToken,
+      method: "vodafone",
+      price: 1,
+      tx: "pricing-snapshot-transfer-001",
+      proofImage: "data:image/png;base64,iVBORw0KGgo=",
+      proofName: "pricing-proof.png",
+    }),
+  });
+  assert.equal(submitted.response.status, 200);
+  const requestId = String(submitted.body?.id || "");
+  const [initialRequest] = await memory.db.select().from(paymentRequestsTable)
+    .where(eq(paymentRequestsTable.id, requestId));
+  assert.equal(initialRequest?.price, 137, "the requested amount must come from the server, not price: 1");
+  assert.ok(initialRequest?.priceLockedUntil && initialRequest.priceLockedUntil > new Date());
+  assert.equal((initialRequest?.priceSnapshot as { effective?: { price?: number } } | null)?.effective?.price, 137);
+
+  const basePriceEdit = await api(`/api/admin/plans/${plan.id}/pricing`, adminJar, {
+    method: "PUT",
+    body: JSON.stringify({
+      price: 199,
+      oldPrice: null,
+      priceBadgeMode: "none",
+      offers: [],
+    }),
+  });
+  assert.equal(basePriceEdit.response.status, 200);
+  const [afterPlanEdit] = await memory.db.select().from(paymentRequestsTable)
+    .where(eq(paymentRequestsTable.id, requestId));
+  assert.equal(afterPlanEdit?.price, 137, "a pending request amount must not change after a plan edit");
+  assert.equal((afterPlanEdit?.priceSnapshot as { effective?: { price?: number } } | null)?.effective?.price, 137);
+
+  /* A price response rendered before the edit cannot silently turn into a
+   * request at the new amount: the server rejects the stale freshness token. */
+  const staleDisplayAttempt = await api("/api/payments", newUserJar, {
+    method: "POST",
+    body: JSON.stringify({
+      planKey: "synthetic-vip",
+      pricingToken: initialPricingToken,
+      method: "vodafone",
+      tx: "pricing-stale-display-002",
+      proofImage: "data:image/png;base64,iVBORw0KGgo=",
+    }),
+  });
+  assert.equal(staleDisplayAttempt.response.status, 409);
+
+  const revert = await api(`/api/admin/plans/${plan.id}/pricing/revert`, adminJar, { method: "POST", body: "{}" });
+  assert.equal(revert.response.status, 200, "the latest price change must be reversible");
+  const [revertedPlan] = await memory.db.select().from(subscriptionPlansTable).where(eq(subscriptionPlansTable.id, plan.id));
+  assert.equal(revertedPlan?.price, 137);
+  const [restoredOffer] = await memory.db.select().from(planPriceOffersTable)
+    .where(eq(planPriceOffersTable.id, "offer-pricing-schedule-new-user"));
+  assert.equal(restoredOffer?.status, "active", "revert restores an archived offer instead of deleting history");
 });
 
 test("price-alert evaluator requires a fresh source-backed quote and honors price/change rules", async () => {
