@@ -421,9 +421,9 @@ ${newsSummary || "لا توجد أخبار"}
 
     logger.info({ inserted }, "AI opportunities generated");
     return res.json({ status: "ok", inserted, closedOld: aiGenIds.length });
-  } catch (e: any) {
-    logger.error({ err: e?.message }, "generate opportunities error");
-    return res.status(500).json({ status: "error", message: e?.message || "Failed" });
+  } catch (e: unknown) {
+    logger.error({ err: e }, "generate opportunities error");
+    return res.status(500).json({ status: "error", message: "تعذر التوليد — أعد المحاولة" });
   }
 });
 
@@ -463,9 +463,9 @@ router.post("/opportunities/seed", requireAuth, async (req, res) => {
       inserted++;
     }
     return res.json({ status: "ok", inserted, source: "live" });
-  } catch (e: any) {
-    logger.error({ err: e?.message }, "seed opportunities error");
-    return res.status(500).json({ status: "error", message: e?.message || "Failed" });
+  } catch (e: unknown) {
+    logger.error({ err: e }, "seed opportunities error");
+    return res.status(500).json({ status: "error", message: "تعذر تجهيز الفرص — أعد المحاولة" });
   }
 });
 

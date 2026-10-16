@@ -109,8 +109,8 @@ export function isVipClaims(claims: UserClaims | null): boolean {
  * this a banned or downgraded user would keep VIP access until token expiry.
  * Also the reverse: a user upgraded AFTER login carries a stale non-VIP
  * claim — the DB is the source of truth, so re-verify before rejecting.
- * Fail-open only applies when the claims themselves said VIP (pre-existing
- * behavior for transient DB hiccups); a non-VIP claim never fails open. */
+ * Authorization is deliberately fail-closed: an unavailable database can
+ * never turn an old client-side claim into paid access. */
 async function dbVipCheck(userId: number): Promise<boolean> {
   const { db } = await import("@workspace/db");
   const { appUsersTable } = await import("@workspace/db/schema");
@@ -127,16 +127,8 @@ async function dbVipCheck(userId: number): Promise<boolean> {
 
 export async function isVipActive(claims: UserClaims | null): Promise<boolean> {
   if (!claims) return false;
-  if (isVipClaims(claims)) {
-    try {
-      return await dbVipCheck(claims.sub);
-    } catch {
-      return true; // claims already validated; only a DB failure lands here
-    }
-  }
-  // Claims say non-VIP — could be a stale token (VIP granted after login).
-  // Verify against the DB, but fail CLOSED on DB errors (never grant VIP
-  // from a failed check).
+  // Both stale-VIP and stale-free claims must be resolved by the server-side
+  // record. Any lookup failure is an authorization failure, not a grant.
   try {
     return await dbVipCheck(claims.sub);
   } catch {

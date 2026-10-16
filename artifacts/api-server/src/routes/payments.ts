@@ -222,7 +222,7 @@ router.post("/payments", async (req: Request, res: Response) => {
       proofImage,
       proofName: proofName || null,
     });
-    logger.info({ phone: user.phone, planKey: plan.key, price: plan.price, method: chosen.id }, "payment request submitted");
+    logger.info({ planKey: plan.key, price: plan.price, method: chosen.id }, "payment request submitted");
     res.json({ status: "ok", id, message: "تم إرسال طلبك — جاري مراجعة الدفع" });
   } catch (e: unknown) {
     const msg = String(e);

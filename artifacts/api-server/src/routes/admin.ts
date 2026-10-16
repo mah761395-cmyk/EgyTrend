@@ -207,13 +207,19 @@ function requireRole(...roles: string[]) {
 /* ─── Audit log helper ─── */
 async function auditLog(
   action: string, actor: JWTPayload | undefined, target: string | undefined,
-  detail: Record<string, unknown>, ip?: string,
+  detail: Record<string, unknown>, _ip?: string,
 ): Promise<void> {
   try {
+    /* Audit rows must be useful without becoming a shadow store of personal
+     * data. Retain staff ID/role and non-sensitive target identifiers only. */
     await db.insert(auditLogsTable).values({
-      action, actorId: actor?.sub ?? null, actorName: actor?.name ?? "Legacy Admin",
-      actorRole: actor?.role ?? "super_admin", target: target ?? null,
-      detail, ip: ip ?? null,
+      action,
+      actorId: actor?.sub ?? null,
+      actorName: actor ? `staff:${actor.sub}` : "legacy-admin",
+      actorRole: actor?.role ?? "super_admin",
+      target: target ?? null,
+      detail,
+      ip: null,
     });
   } catch (e) {
     logger.warn({ err: e }, "audit log write failed");
@@ -329,7 +335,7 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
       clearLoginFailures(ip);
       await db.update(employeesTable).set({ lastLogin: new Date() }).where(eq(employeesTable.id, emp.id));
       const token = signToken({ sub: emp.id, name: emp.name, role: emp.role, email: emp.email });
-      await auditLog("login", { sub: emp.id, name: emp.name, role: emp.role, email: emp.email }, "employee", { email }, req.ip);
+      await auditLog("login", { sub: emp.id, name: emp.name, role: emp.role, email: emp.email }, `staff:${emp.id}`, {}, req.ip);
       res.cookie(ADMIN_SESSION_COOKIE, token, sessionCookieOptions(24 * 60 * 60 * 1000));
       res.json({ status: "ok", employee: { id: emp.id, name: emp.name, role: emp.role, email: emp.email } });
       return;
@@ -391,13 +397,14 @@ router.post("/ai-usage/log", requireAuth, requireWriteRate, async (req: AuthRequ
   try {
     const { requestType, tokensEstimate } = req.body || {};
     await db.insert(aiUsageTable).values({
-      userId: String(req.actor?.email || req.actor?.name || "staff"),
+      userId: req.actor ? `staff:${req.actor.sub}` : "staff", 
       requestType: String(requestType || "unknown").slice(0, 40),
       tokensEstimate: Math.max(0, Math.min(1_000_000, Number(tokensEstimate) || 0)),
     });
     res.json({ status: "ok" });
   } catch (e) {
-    res.status(500).json({ status: "error", message: String(e) });
+    logger.error({ err: e }, "admin AI usage log error");
+    res.status(500).json({ status: "error", message: "server error" });
   }
 });
 
@@ -445,9 +452,17 @@ router.get("/stats", requireAuth, async (req: AuthRequest, res: Response) => {
     });
   } catch (e) {
     logger.error({ err: e }, "stats error");
-    res.status(500).json({ status: "error", message: String(e) });
+    res.status(500).json({ status: "error", message: "server error" });
   }
 });
+
+function contentStorageUnavailable(res: Response, err: unknown): void {
+  logger.error({ err }, "admin content storage unavailable");
+  res.status(503).json({
+    status: "error",
+    message: "تعذّر حفظ المحتوى بشكل دائم حاليًا — لم يتم تطبيق التغيير",
+  });
+}
 
 /* ─── Sources (existing, enhanced) ─── */
 router.get("/sources", requireAuth, (_req, res: Response) => {
@@ -457,7 +472,8 @@ router.get("/sources", requireAuth, (_req, res: Response) => {
 router.post("/sources", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {
   const v = validateSource(req.body);
   if ("error" in v) { res.status(400).json({ status: "error", message: v.error }); return; }
-  await upsertSource(v);
+  try { await upsertSource(v); }
+  catch (err) { contentStorageUnavailable(res, err); return; }
   await auditLog("upsert_source", req.actor, v.id, { name: v.name }, req.ip);
   logger.info({ id: v.id }, "admin: source upserted");
   res.json({ status: "ok", source: v });
@@ -465,9 +481,11 @@ router.post("/sources", requireAuth, requireWriteRate, requireRole("super_admin"
 
 router.delete("/sources/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = String(req.params["id"] || "");
-  const ok = await deleteSource(id);
+  let ok: boolean;
+  try { ok = await deleteSource(id); }
+  catch (err) { contentStorageUnavailable(res, err); return; }
   if (!ok) { res.status(404).json({ status: "error", message: "not found" }); return; }
-  await auditLog("delete_source", req.actor, id, {}, req.ip);
+  await auditLog("archive_source", req.actor, id, {}, req.ip);
   logger.info({ id }, "admin: source deleted");
   res.json({ status: "ok" });
 });
@@ -480,7 +498,8 @@ router.get("/articles", requireAuth, (_req, res: Response) => {
 router.post("/articles", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {
   const v = validateArticle(req.body);
   if ("error" in v) { res.status(400).json({ status: "error", message: v.error }); return; }
-  await upsertCustomArticle(v);
+  try { await upsertCustomArticle(v); }
+  catch (err) { contentStorageUnavailable(res, err); return; }
   await auditLog("upsert_article", req.actor, v.id, { title: v.title.slice(0, 60), scheduled: v.pubDate }, req.ip);
   logger.info({ id: v.id }, "admin: article upserted");
   res.json({ status: "ok", article: v });
@@ -488,9 +507,11 @@ router.post("/articles", requireAuth, requireWriteRate, requireRole("super_admin
 
 router.delete("/articles/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {
   const id = String(req.params["id"] || "");
-  const ok = await deleteCustomArticle(id);
+  let ok: boolean;
+  try { ok = await deleteCustomArticle(id); }
+  catch (err) { contentStorageUnavailable(res, err); return; }
   if (!ok) { res.status(404).json({ status: "error", message: "not found" }); return; }
-  await auditLog("delete_article", req.actor, id, {}, req.ip);
+  await auditLog("archive_article", req.actor, id, {}, req.ip);
   logger.info({ id }, "admin: article deleted");
   res.json({ status: "ok" });
 });
@@ -534,12 +555,13 @@ router.post("/employees", requireAuth, requireWriteRate, requireRole("super_admi
       permissions: Array.isArray(permissions) ? permissions : [],
       status: "active",
     }).returning({ id: employeesTable.id, name: employeesTable.name, email: employeesTable.email, role: employeesTable.role });
-    await auditLog("create_employee", req.actor, String(email), { name, role }, req.ip);
+    await auditLog("create_employee", req.actor, `staff:${emp.id}`, { role: emp.role }, req.ip);
     res.json({ status: "ok", employee: emp });
   } catch (e: unknown) {
     const msg = String(e);
     if (msg.includes("unique")) { res.status(409).json({ status: "error", message: "email already exists" }); return; }
-    res.status(500).json({ status: "error", message: msg });
+    logger.error({ err: e }, "employee create error");
+    res.status(500).json({ status: "error", message: "server error" });
   }
 });
 
@@ -565,7 +587,7 @@ router.put("/employees/:id", requireAuth, requireWriteRate, requireRole("super_a
     updates["passwordHash"] = hashPassword(String(password));
   }
   await db.update(employeesTable).set(updates as any).where(eq(employeesTable.id, id));
-  await auditLog("update_employee", req.actor, String(id), { name, role, status }, req.ip);
+  await auditLog("update_employee", req.actor, `staff:${id}`, { role, status, passwordChanged: Boolean(password) }, req.ip);
   res.json({ status: "ok" });
 });
 
@@ -606,7 +628,8 @@ router.post("/plans", requireAuth, requireWriteRate, requireRole("super_admin", 
   } catch (e: unknown) {
     const msg = String(e);
     if (msg.includes("unique")) { res.status(409).json({ status: "error", message: "plan key already exists" }); return; }
-    res.status(500).json({ status: "error", message: msg });
+    logger.error({ err: e }, "plan create error");
+    res.status(500).json({ status: "error", message: "server error" });
   }
 });
 
@@ -670,7 +693,8 @@ router.post("/coupons", requireAuth, requireWriteRate, requireRole("super_admin"
   } catch (e: unknown) {
     const msg = String(e);
     if (msg.includes("unique")) { res.status(409).json({ status: "error", message: "coupon code already exists" }); return; }
-    res.status(500).json({ status: "error", message: msg });
+    logger.error({ err: e }, "coupon create error");
+    res.status(500).json({ status: "error", message: "server error" });
   }
 });
 
@@ -818,7 +842,7 @@ router.post("/users/action", requireAuth, requireWriteRate, requireRole("super_a
     updates.status = "active";
   }
   await db.update(appUsersTable).set(updates).where(eq(appUsersTable.id, user.id));
-  await auditLog(String(action), req.actor, String(phone), { name: name || phone, reason: reason || "" }, req.ip);
+  await auditLog(String(action), req.actor, `user:${user.id}`, {}, req.ip);
   res.json({ status: "ok", action, phone });
 });
 
@@ -826,65 +850,15 @@ router.post("/users/action", requireAuth, requireWriteRate, requireRole("super_a
    PAYMENT REQUESTS (subscription sign-ups)
 ══════════════════════════════════════════════ */
 
-/* Public: any logged-in user can submit a payment request */
-router.post("/requests", async (req: Request, res: Response) => {
-  const user = currentUser(req);
-  if (!user) {
-    res.status(401).json({ status: "error", message: "login required" });
-    return;
-  }
-  const b = req.body || {};
-  const id = `req-${Date.now()}-${crypto.randomBytes(5).toString("hex")}`;
-  const phone    = String(b.phone    || "").trim().slice(0, 30);
-  const name     = stripHtml(String(b.name    || "").trim()).slice(0, 80);
-  const planKey  = String(b.planKey  || "").trim().replace(/[^a-z0-9_\-]/gi, "").slice(0, 30);
-  const payMethod= String(b.payMethod|| "").trim().slice(0, 30);
-  const price    = Math.max(0, Number(b.price) || 0);
-  const tx       = stripHtml(String(b.tx || "").trim()).slice(0, 100);
-
-  if (!phone || !name || !planKey || !tx) {
-    res.status(400).json({ status: "error", message: "phone, name, planKey, tx required" });
-    return;
-  }
-  if (!/^01[0-9]{9}$/.test(phone.replace(/\s/g, ""))) {
-    res.status(400).json({ status: "error", message: "رقم الهاتف غير صحيح — يجب أن يبدأ بـ 01 ويكون 11 رقماً" });
-    return;
-  }
-  if (phone !== user.phone) {
-    res.status(403).json({ status: "error", message: "phone does not match authenticated user" });
-    return;
-  }
-
-  const [plan] = await db.select({
-    key: subscriptionPlansTable.key,
-    price: subscriptionPlansTable.price,
-    isActive: subscriptionPlansTable.isActive,
-  }).from(subscriptionPlansTable)
-    .where(and(eq(subscriptionPlansTable.key, planKey), eq(subscriptionPlansTable.isActive, true)))
-    .limit(1);
-  if (!plan) {
-    res.status(400).json({ status: "error", message: "invalid or inactive plan" });
-    return;
-  }
-  if (price !== plan.price) {
-    res.status(400).json({ status: "error", message: "plan price mismatch" });
-    return;
-  }
-
-  // Rate limit: max 3 requests per phone per 10 minutes
-  if (checkPayRateLimit(phone) === "limited") {
-    res.status(429).json({ status: "error", message: "تم إرسال طلبات كثيرة — يرجى الانتظار 10 دقائق" });
-    return;
-  }
-
-  try {
-    await db.insert(paymentRequestsTable).values({ id, phone, name, planKey, payMethod, price, tx, status: "pending" });
-    logger.info({ phone, planKey }, "payment request submitted");
-    res.json({ status: "ok", id });
-  } catch (e) {
-    logger.error({ err: e }, "payment request create error");
-    res.status(500).json({ status: "error", message: "server error" });
-  }
+/* Legacy submission endpoint retired: it accepted payment metadata without
+ * the proof/method safeguards in /api/payments. The current frontend submits
+ * only through that canonical route; fail closed rather than silently
+ * accepting a second, weaker payment path. */
+router.post("/requests", (_req: Request, res: Response) => {
+  res.status(410).json({
+    status: "error",
+    message: "مسار طلب الدفع تغيّر — حدّث الصفحة ثم أرسل الطلب من الاشتراك",
+  });
 });
 
 /* Protected: list all payment requests */
@@ -918,88 +892,133 @@ router.get("/requests", requireAuth, requireRole("super_admin", "admin", "suppor
     );
     res.json({ status: "ok", requests: outRows });
   } catch (e) {
-    res.status(500).json({ status: "error", message: String(e) });
+    logger.error({ err: e }, "payment requests list error");
+    res.status(500).json({ status: "error", message: "server error" });
   }
 });
 
 /* Protected: approve or reject a request */
+class PaymentDecisionError extends Error {
+  constructor(readonly httpStatus: number, message: string) {
+    super(message);
+  }
+}
+
 router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = String(req.params["id"] || "").trim();
-  const { status, notes } = req.body || {};
-  if (!["approved", "rejected"].includes(String(status))) {
+  const requestedStatus = req.body?.status === "approved" ? "approved"
+    : req.body?.status === "rejected" ? "rejected"
+      : null;
+  const decisionNotes = stripHtml(String(req.body?.notes || "").trim()).slice(0, 200) || null;
+  if (!requestedStatus) {
     res.status(400).json({ status: "error", message: "status must be approved|rejected" });
     return;
   }
+
   try {
-    const [existing] = await db.select().from(paymentRequestsTable).where(eq(paymentRequestsTable.id, id));
-    if (!existing) { res.status(404).json({ status: "error", message: "request not found" }); return; }
-    if (existing.status !== "pending") {
-      /* Already decided — keep the endpoint idempotent-safe and re-armable:
-       * a rejected request CAN be approved later (user fixed the proof),
-       * an approved one cannot be un-approved through this path. */
-      if (status === "rejected" && existing.status === "approved") {
-        res.status(409).json({ status: "error", message: "الطلب مقبول بالفعل ولا يمكن رفضه" });
-        return;
+    /* The status change and VIP activation are one transaction. A locked
+     * request row prevents two admin clicks from extending the same payment
+     * twice, and validation happens before the request is marked approved. */
+    const outcome = await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(paymentRequestsTable)
+        .where(eq(paymentRequestsTable.id, id)).for("update");
+      if (!existing) throw new PaymentDecisionError(404, "request not found");
+
+      if (existing.status !== "pending") {
+        /* A rejected request can be re-reviewed and approved after corrected
+         * proof; an approved request can never be downgraded by this path. */
+        if (requestedStatus === "rejected" && existing.status === "approved") {
+          throw new PaymentDecisionError(409, "الطلب مقبول بالفعل ولا يمكن رفضه");
+        }
+        if (requestedStatus === existing.status) {
+          return { already: true as const, existing, planNameAr: existing.planKey };
+        }
       }
-      if (status === existing.status) {
-        res.json({ status: "ok", already: true });
-        return;
-      }
-    }
-    await db.update(paymentRequestsTable)
-      .set({ status: String(status), notes: notes ? String(notes).slice(0, 200) : null, updatedAt: new Date(), decidedAt: new Date() })
-      .where(eq(paymentRequestsTable.id, id));
-    if (status === "approved") {
-      const [plan] = await db.select({
-        durationMonths: subscriptionPlansTable.durationMonths,
-      }).from(subscriptionPlansTable)
-        .where(and(eq(subscriptionPlansTable.key, existing.planKey), eq(subscriptionPlansTable.isActive, true)))
-        .limit(1);
-      const [user] = await db.select({ id: appUsersTable.id, plan: appUsersTable.plan, vipExpiresAt: appUsersTable.vipExpiresAt }).from(appUsersTable)
-        .where(eq(appUsersTable.phone, existing.phone)).limit(1);
-      if (plan && user) {
-        /* Stack on an existing active VIP instead of restarting it. */
+
+      let planNameAr = existing.planKey;
+      if (requestedStatus === "approved") {
+        const [plan] = await tx.select({
+          durationMonths: subscriptionPlansTable.durationMonths,
+          nameAr: subscriptionPlansTable.nameAr,
+        }).from(subscriptionPlansTable)
+          .where(and(eq(subscriptionPlansTable.key, existing.planKey), eq(subscriptionPlansTable.isActive, true)))
+          .limit(1);
+        const [user] = await tx.select({
+          id: appUsersTable.id,
+          plan: appUsersTable.plan,
+          vipExpiresAt: appUsersTable.vipExpiresAt,
+          status: appUsersTable.status,
+        }).from(appUsersTable).where(eq(appUsersTable.phone, existing.phone)).limit(1);
+
+        /* Never report a successful approval when activation cannot happen. */
+        if (!plan || !user || user.status !== "active") {
+          throw new PaymentDecisionError(409, "تعذر تفعيل الاشتراك؛ راجع الخطة وحالة الحساب قبل الموافقة");
+        }
+        planNameAr = plan.nameAr;
+        /* Stack paid time on an existing active VIP instead of restarting it. */
         const base = user.plan === "vip" && user.vipExpiresAt && new Date(user.vipExpiresAt) > new Date()
           ? new Date(user.vipExpiresAt)
           : new Date();
         const expires = new Date(base);
         expires.setMonth(expires.getMonth() + plan.durationMonths);
-        await db.update(appUsersTable).set({
+        await tx.update(appUsersTable).set({
           plan: "vip",
           vipExpiresAt: expires,
           updatedAt: new Date(),
         }).where(eq(appUsersTable.id, user.id));
       }
+
+      await tx.update(paymentRequestsTable).set({
+        status: requestedStatus,
+        notes: decisionNotes,
+        updatedAt: new Date(),
+        decidedAt: new Date(),
+      }).where(eq(paymentRequestsTable.id, id));
+      return { already: false as const, existing, planNameAr };
+    });
+
+    if (outcome.already) {
+      res.json({ status: "ok", already: true });
+      return;
     }
-    /* In-platform notification so the user learns the decision without asking support. */
+
+    /* Notifications are helpful but cannot invalidate a paid activation if a
+     * pre-existing deployment has not created the optional table yet. */
     try {
-      let planNameAr = existing.planKey;
-      try {
-        const [p] = await db.select({ nameAr: subscriptionPlansTable.nameAr }).from(subscriptionPlansTable)
-          .where(eq(subscriptionPlansTable.key, existing.planKey)).limit(1);
-        if (p?.nameAr) planNameAr = p.nameAr;
-      } catch { /* keep key */ }
       const notifId = `un-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       await db.insert(userNotificationsTable).values({
         id: notifId,
-        phone: existing.phone,
-        kind: status === "approved" ? "payment_approved" : "payment_rejected",
-        title: status === "approved" ? "🎉 تم تفعيل اشتراك VIP" : "تحديث بخصوص طلب الدفع",
+        phone: outcome.existing.phone,
+        kind: requestedStatus === "approved" ? "payment_approved" : "payment_rejected",
+        title: requestedStatus === "approved" ? "🎉 تم تفعيل اشتراك VIP" : "تحديث بخصوص طلب الدفع",
         body:
-          status === "approved"
-            ? `تم تأكيد دفعتك (${planNameAr}) وتفعيل اشتراك VIP بنجاح. مبروك!`
-            : notes
-              ? `تم رفض طلب الدفع. السبب: ${String(notes).slice(0, 150)}`
+          requestedStatus === "approved"
+            ? `تم تأكيد دفعتك (${outcome.planNameAr}) وتفعيل اشتراك VIP بنجاح.`
+            : decisionNotes
+              ? `تم رفض طلب الدفع. السبب: ${decisionNotes}`
               : "تم رفض طلب الدفع. يمكنك إعادة الطلب بعد تصحيح بيانات التحويل.",
       });
-    } catch (ne) {
-      logger.error({ err: ne }, "user notification insert failed (non-fatal)");
+    } catch (notificationError) {
+      logger.error({ err: notificationError }, "user notification insert failed after payment decision");
     }
-    await auditLog(`request_${status}`, req.actor, existing.phone, { id, planKey: existing.planKey, tx: existing.tx }, req.ip);
+
+    /* Audit identifiers are non-sensitive: do not persist phone numbers,
+     * transaction IDs, wallet values, or client-supplied notes in log rows. */
+    await auditLog(
+      `request_${requestedStatus}`,
+      req.actor,
+      `payment-request:${id}`,
+      { planKey: outcome.existing.planKey },
+      req.ip,
+    );
     res.json({ status: "ok" });
   } catch (e) {
+    if (e instanceof PaymentDecisionError) {
+      res.status(e.httpStatus).json({ status: "error", message: e.message });
+      return;
+    }
     logger.error({ err: e }, "payment request update error");
-    res.status(500).json({ status: "error", message: String(e) });
+    res.status(500).json({ status: "error", message: "server error" });
   }
 });
 
@@ -1025,11 +1044,15 @@ router.get("/settings/payment", requireAuth, requireRole("super_admin", "admin",
     const out: Record<string, string> = {};
     for (const k of PAYMENT_SETTING_KEYS) {
       const r = rows.find((x) => x.key === k);
-      out[k] = r?.value ?? (k === "payment_vodafone_number" ? "01008605139" : "");
+      /* No public or admin-facing fallback wallet values: an absent DB setting
+       * means absent, so an operator cannot accidentally see or publish a
+       * stale number as if it were configured. */
+      out[k] = r?.value ?? "";
     }
     res.json({ status: "ok", settings: out, methods: PAY_METHODS });
   } catch (e) {
-    res.status(500).json({ status: "error", message: String(e) });
+    logger.error({ err: e }, "payment settings read error");
+    res.status(500).json({ status: "error", message: "server error" });
   }
 });
 
@@ -1082,11 +1105,13 @@ router.put("/settings/payment", requireAuth, requireWriteRate, requireRole("supe
         .values({ key, value, updatedAt: new Date() })
         .onConflictDoUpdate({ target: appSettingsTable.key, set: { value, updatedAt: new Date() } });
     }
-    await auditLog("update_payment_settings", req.actor, "payment", Object.fromEntries(updates), req.ip);
+    /* Wallet values are sensitive operational data; audit only which setting
+     * keys changed, never their values. */
+    await auditLog("update_payment_settings", req.actor, "payment", { changedKeys: updates.map(([key]) => key) }, req.ip);
     res.json({ status: "ok" });
   } catch (e) {
     logger.error({ err: e }, "payment settings update error");
-    res.status(500).json({ status: "error", message: String(e) });
+    res.status(500).json({ status: "error", message: "server error" });
   }
 });
 
@@ -1107,7 +1132,8 @@ router.get("/user-notifications", requireAuth, requireRole("super_admin", "admin
       .orderBy(desc(userNotificationsTable.createdAt)).limit(50);
     res.json({ status: "ok", notifications: rows });
   } catch (e) {
-    res.status(500).json({ status: "error", message: String(e) });
+    logger.error({ err: e }, "user notifications admin read error");
+    res.status(500).json({ status: "error", message: "server error" });
   }
 });
 
