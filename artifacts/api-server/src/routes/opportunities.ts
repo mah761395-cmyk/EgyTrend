@@ -1,11 +1,11 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import { opportunities } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { logger } from "../lib/logger";
-import { currentUser, isVipActive } from "../lib/userAuth";
+import { ADMIN_SESSION_COOKIE, currentUser, isVipActive, readSessionCookie } from "../lib/userAuth";
 import { buildLocalOpportunities, type OppCandidate } from "../lib/opp-engine";
 import { getMarketsSnapshot, getStocksSnapshot, type StockQuote } from "./markets";
 import { getNewsSnapshot } from "./news";
@@ -24,8 +24,10 @@ const ANTHROPIC_KEY =
   "";
 const AI_MODEL       = "claude-sonnet-4-6";
 
-function isAdmin(req: { headers: Record<string, string | string[] | undefined> }): boolean {
-  const token = req.headers["x-admin-token"] as string | undefined;
+function isAdmin(req: Request): boolean {
+  const token = readSessionCookie(req, ADMIN_SESSION_COOKIE)
+    || (req.header("x-admin-token") || "").trim()
+    || (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return false;
   if (LEGACY_TOKEN && token === LEGACY_TOKEN) return true;
   if (!JWT_SECRET) return false;
@@ -40,6 +42,67 @@ function isAdmin(req: { headers: Record<string, string | string[] | undefined> }
 function requireAuth(req: any, res: any, next: any) {
   if (!isAdmin(req)) return res.status(401).json({ status: "error", message: "unauthorized" });
   next();
+}
+
+const OPP_TYPES = new Set(["stock", "bond", "crypto", "commodity", "realestate", "etf", "fund", "ipo"]);
+const OPP_MARKETS = new Set(["egypt", "us", "gulf", "crypto", "global"]);
+const OPP_STATUSES = new Set(["active", "coming", "closed"]);
+const OPP_ID_RX = /^[a-z0-9_-]{1,50}$/i;
+
+type OpportunityInput = {
+  title?: string; summary?: string; details?: string | null; type?: string; market?: string;
+  expectedReturn?: string | null; riskLevel?: number; sector?: string | null; duration?: string | null;
+  deadline?: string | null; status?: string; featured?: boolean; vipOnly?: boolean;
+};
+
+function boundedText(value: unknown, max: number, required = false): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return required ? null : null;
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  if (required && !text) return undefined;
+  return text ? text.slice(0, max) : null;
+}
+
+function validateOpportunityInput(body: unknown, partial = false): OpportunityInput | { error: string } {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { error: "invalid request body" };
+  const raw = body as Record<string, unknown>;
+  const title = boundedText(raw.title, 300, !partial);
+  const summary = boundedText(raw.summary, 1500, !partial);
+  if ((!partial && (title === undefined || title === null || summary === undefined || summary === null))
+    || (partial && ((raw.title !== undefined && (title === undefined || title === null))
+      || (raw.summary !== undefined && (summary === undefined || summary === null))))) {
+    return { error: "title and summary are required text fields" };
+  }
+  const type = raw.type === undefined ? undefined : String(raw.type);
+  const market = raw.market === undefined ? undefined : String(raw.market);
+  const status = raw.status === undefined ? undefined : String(raw.status);
+  if ((!partial && (!type || !market)) || (type !== undefined && !OPP_TYPES.has(type)) || (market !== undefined && !OPP_MARKETS.has(market))) {
+    return { error: "invalid opportunity type or market" };
+  }
+  if (status !== undefined && !OPP_STATUSES.has(status)) return { error: "invalid opportunity status" };
+  const risk = raw.riskLevel === undefined ? undefined : Number(raw.riskLevel);
+  if (risk !== undefined && (!Number.isInteger(risk) || risk < 1 || risk > 5)) return { error: "riskLevel must be an integer from 1 to 5" };
+  for (const key of ["featured", "vipOnly"] as const) {
+    if (raw[key] !== undefined && typeof raw[key] !== "boolean") return { error: `${key} must be boolean` };
+  }
+  const optional = (key: string, max: number): string | null | undefined => boundedText(raw[key], max);
+  const fields: Array<[string, number]> = [["details", 8000], ["expectedReturn", 100], ["sector", 100], ["duration", 100], ["deadline", 100]];
+  const out: OpportunityInput = {
+    ...(partial ? {} : { title: title as string, summary: summary as string, type: type!, market: market! }),
+    ...(partial && raw.title !== undefined ? { title: title as string } : {}),
+    ...(partial && raw.summary !== undefined ? { summary: summary as string } : {}),
+    ...(type !== undefined ? { type } : {}), ...(market !== undefined ? { market } : {}),
+    ...(status !== undefined ? { status } : {}), ...(risk !== undefined ? { riskLevel: risk } : {}),
+    ...(raw.featured !== undefined ? { featured: raw.featured as boolean } : {}),
+    ...(raw.vipOnly !== undefined ? { vipOnly: raw.vipOnly as boolean } : {}),
+  };
+  for (const [key, max] of fields) {
+    const value = optional(key, max);
+    if (raw[key] !== undefined && value === undefined) return { error: `${key} must be text or null` };
+    if (raw[key] !== undefined) Object.assign(out, { [key]: value });
+  }
+  return out;
 }
 
 /* ─── Live in-process inputs (serverless-safe) ─────────────────────────
@@ -127,69 +190,60 @@ router.get("/opportunities", async (req, res) => {
 
 /* ─── POST /api/opportunities ────────────────────────────────── */
 router.post("/opportunities", requireAuth, async (req, res) => {
+  const input = validateOpportunityInput(req.body);
+  if ("error" in input) return res.status(400).json({ status: "error", message: input.error });
   try {
-    const { title, summary, details, type, market, expectedReturn, riskLevel, sector, duration, deadline, status, featured, vipOnly } = req.body;
-    if (!title || !summary || !type || !market) {
-      return res.status(400).json({ status: "error", message: "title, summary, type, market required" });
-    }
     const id = crypto.randomUUID().slice(0, 12);
     await db.insert(opportunities).values({
       id,
-      title,
-      summary,
-      details: details || null,
-      type,
-      market,
-      expectedReturn: expectedReturn || null,
-      riskLevel: riskLevel ?? 3,
-      sector: sector || null,
-      duration: duration || null,
-      deadline: deadline || null,
-      status: status || "active",
-      featured: featured ?? false,
-      vipOnly: vipOnly ?? false,
+      title: input.title!,
+      summary: input.summary!,
+      details: input.details ?? null,
+      type: input.type!,
+      market: input.market!,
+      expectedReturn: input.expectedReturn ?? null,
+      riskLevel: input.riskLevel ?? 3,
+      sector: input.sector ?? null,
+      duration: input.duration ?? null,
+      deadline: input.deadline ?? null,
+      status: input.status ?? "active",
+      featured: input.featured ?? false,
+      vipOnly: input.vipOnly ?? false,
     });
     return res.json({ status: "ok", id });
   } catch (e) {
+    logger.error({ err: e }, "opportunity create failed");
     return res.status(500).json({ status: "error", message: "Failed to create opportunity" });
   }
 });
 
 /* ─── PUT /api/opportunities/:id ─────────────────────────────── */
 router.put("/opportunities/:id", requireAuth, async (req, res) => {
+  const id = String(req.params.id || "").trim();
+  if (!OPP_ID_RX.test(id)) return res.status(400).json({ status: "error", message: "invalid opportunity id" });
+  const input = validateOpportunityInput(req.body, true);
+  if ("error" in input) return res.status(400).json({ status: "error", message: input.error });
+  if (!Object.keys(input).length) return res.status(400).json({ status: "error", message: "no update fields supplied" });
   try {
-    const { id } = req.params;
-    const { title, summary, details, type, market, expectedReturn, riskLevel, sector, duration, deadline, status, featured, vipOnly } = req.body;
     await db.update(opportunities)
-      .set({
-        ...(title !== undefined && { title }),
-        ...(summary !== undefined && { summary }),
-        ...(details !== undefined && { details }),
-        ...(type !== undefined && { type }),
-        ...(market !== undefined && { market }),
-        ...(expectedReturn !== undefined && { expectedReturn }),
-        ...(riskLevel !== undefined && { riskLevel }),
-        ...(sector !== undefined && { sector }),
-        ...(duration !== undefined && { duration }),
-        ...(deadline !== undefined && { deadline }),
-        ...(status !== undefined && { status }),
-        ...(featured !== undefined && { featured }),
-        ...(vipOnly !== undefined && { vipOnly }),
-        updatedAt: new Date(),
-      })
+      .set({ ...input, updatedAt: new Date() })
       .where(eq(opportunities.id, id));
     return res.json({ status: "ok" });
   } catch (e) {
+    logger.error({ err: e }, "opportunity update failed");
     return res.status(500).json({ status: "error", message: "Failed to update opportunity" });
   }
 });
 
 /* ─── DELETE /api/opportunities/:id ─────────────────────────── */
 router.delete("/opportunities/:id", requireAuth, async (req, res) => {
+  const id = String(req.params.id || "").trim();
+  if (!OPP_ID_RX.test(id)) return res.status(400).json({ status: "error", message: "invalid opportunity id" });
   try {
-    await db.delete(opportunities).where(eq(opportunities.id, req.params.id));
+    await db.delete(opportunities).where(eq(opportunities.id, id));
     return res.json({ status: "ok" });
   } catch (e) {
+    logger.error({ err: e }, "opportunity delete failed");
     return res.status(500).json({ status: "error", message: "Failed to delete opportunity" });
   }
 });

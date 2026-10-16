@@ -1,6 +1,11 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { logger } from "../lib/logger";
-import { currentUser } from "../lib/userAuth";
+import {
+  ADMIN_SESSION_COOKIE,
+  currentUser,
+  readSessionCookie,
+  sessionCookieOptions,
+} from "../lib/userAuth";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import {
@@ -165,7 +170,8 @@ function checkPassword(pw: string, encoded: string): boolean {
 interface AuthRequest extends Request { actor?: JWTPayload; isLegacyAdmin?: boolean; }
 
 function extractToken(req: Request): string {
-  return (req.header("x-admin-token") || "").trim()
+  return readSessionCookie(req, ADMIN_SESSION_COOKIE)
+    || (req.header("x-admin-token") || "").trim()
     || (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim();
 }
 
@@ -324,7 +330,8 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
       await db.update(employeesTable).set({ lastLogin: new Date() }).where(eq(employeesTable.id, emp.id));
       const token = signToken({ sub: emp.id, name: emp.name, role: emp.role, email: emp.email });
       await auditLog("login", { sub: emp.id, name: emp.name, role: emp.role, email: emp.email }, "employee", { email }, req.ip);
-      res.json({ status: "ok", token, employee: { id: emp.id, name: emp.name, role: emp.role, email: emp.email } });
+      res.cookie(ADMIN_SESSION_COOKIE, token, sessionCookieOptions(24 * 60 * 60 * 1000));
+      res.json({ status: "ok", employee: { id: emp.id, name: emp.name, role: emp.role, email: emp.email } });
       return;
     }
     recordLoginFailure(ip);
@@ -351,7 +358,21 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
     role: "super_admin",
     email: "admin@egytrend",
   });
-  res.json({ status: "ok", token });
+  res.cookie(ADMIN_SESSION_COOKIE, token, sessionCookieOptions(24 * 60 * 60 * 1000));
+  res.json({ status: "ok", employee: { id: 0, name: "Super Admin", role: "super_admin", email: "admin@egytrend" } });
+});
+
+router.post("/logout", (_req: Request, res: Response) => {
+  res.clearCookie(ADMIN_SESSION_COOKIE, sessionCookieOptions());
+  res.status(204).end();
+});
+
+router.get("/session", requireAuth, (req: AuthRequest, res: Response) => {
+  const actor = req.actor;
+  res.json({
+    status: "ok",
+    employee: actor ? { id: actor.sub, name: actor.name, role: actor.role, email: actor.email } : null,
+  });
 });
 
 /* Public: check AI config (for frontend to know what's enabled) */

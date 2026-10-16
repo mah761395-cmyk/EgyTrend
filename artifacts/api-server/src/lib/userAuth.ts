@@ -13,6 +13,29 @@ export type UserClaims = {
 
 const JWT_SECRET = process.env["SESSION_SECRET"];
 
+/* Browser sessions are HttpOnly cookies, not JavaScript-readable bearer
+ * tokens. The bearer/header paths remain only for approved non-browser
+ * clients during the compatibility window. */
+export const USER_SESSION_COOKIE = "et_user_session";
+export const ADMIN_SESSION_COOKIE = "et_admin_session";
+
+type CookieRequest = Request & { cookies?: Record<string, unknown> };
+
+export function readSessionCookie(req: Request, name: string): string {
+  const value = (req as CookieRequest).cookies?.[name];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function sessionCookieOptions(maxAge?: number) {
+  return {
+    httpOnly: true,
+    secure: process.env["NODE_ENV"] === "production" || process.env["VERCEL"] === "1",
+    sameSite: "lax" as const,
+    path: "/",
+    ...(maxAge === undefined ? {} : { maxAge }),
+  };
+}
+
 function secret(): string {
   if (!JWT_SECRET) throw new Error("SESSION_SECRET is not configured");
   return JWT_SECRET;
@@ -60,11 +83,13 @@ export function bearerToken(req: Request): string {
 }
 
 export function currentUser(req: Request): UserClaims | null {
-  return verifyUserToken(bearerToken(req));
+  return verifyUserToken(readSessionCookie(req, USER_SESSION_COOKIE) || bearerToken(req));
 }
 
 export function isAdminToken(req: Request): boolean {
-  const token = (req.header("x-admin-token") || "").trim();
+  const token = readSessionCookie(req, ADMIN_SESSION_COOKIE)
+    || (req.header("x-admin-token") || "").trim()
+    || bearerToken(req);
   if (!token || !JWT_SECRET) return false;
   try {
     const value = jwt.verify(token, JWT_SECRET);

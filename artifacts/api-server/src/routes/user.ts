@@ -9,6 +9,8 @@ import {
   hashUserPassword,
   normalizeUserPhone,
   signUserToken,
+  USER_SESSION_COOKIE,
+  sessionCookieOptions,
 } from "../lib/userAuth";
 import { isSmtpConfigured, resetEmailHtml, sendMail } from "../lib/mailer";
 import { logger } from "../lib/logger";
@@ -78,7 +80,8 @@ router.post("/register", async (req: Request, res: Response) => {
     ...(email ? { email } : {}),
   }).returning();
   const token = signUserToken({ sub: user.id, phone: user.phone, name: user.name, role: "user", plan: user.plan });
-  res.status(201).json({ status: "ok", token, user: publicUser(user) });
+  res.cookie(USER_SESSION_COOKIE, token, sessionCookieOptions(7 * 24 * 60 * 60 * 1000));
+  res.status(201).json({ status: "ok", user: publicUser(user) });
 });
 
 router.post("/login", async (req: Request, res: Response) => {
@@ -104,7 +107,13 @@ router.post("/login", async (req: Request, res: Response) => {
     ...(normalized.vipExpiresAt ? { vipExpiresAt: normalized.vipExpiresAt } : {}),
   });
   await db.update(appUsersTable).set({ updatedAt: new Date() }).where(eq(appUsersTable.id, user.id));
-  res.json({ status: "ok", token, user: normalized });
+  res.cookie(USER_SESSION_COOKIE, token, sessionCookieOptions(7 * 24 * 60 * 60 * 1000));
+  res.json({ status: "ok", user: normalized });
+});
+
+router.post("/logout", (_req: Request, res: Response) => {
+  res.clearCookie(USER_SESSION_COOKIE, sessionCookieOptions());
+  res.status(204).end();
 });
 
 router.get("/me", async (req: Request, res: Response) => {
@@ -183,10 +192,11 @@ router.post("/forgot-password", async (req: Request, res: Response) => {
       const link = `${base}/?reset=${raw}`;
       const r = await sendMail(email, "EgyTrend — إعادة تعيين كلمة المرور", resetEmailHtml(user.name, link));
       sent = r.delivered;
-      // Without SMTP there is no delivery — log the link ONLY outside
-      // production so local testing can complete the flow end-to-end.
+      // Do not log reset links, even in development: logs are routinely
+      // exported and would turn a single-use credential into a leak. Local
+      // testing can inspect the test mailbox or use a disposable SMTP sink.
       if (!sent && process.env.NODE_ENV !== "production") {
-        logger.warn({ to: email, resetLink: link }, "DEV reset link (SMTP not configured)");
+        logger.warn({ userId: user.id }, "password reset requested but SMTP is not configured");
       }
     }
   } catch (e) {

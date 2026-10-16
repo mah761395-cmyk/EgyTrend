@@ -940,13 +940,22 @@ export type StockQuote = {
   ts: number;
 };
 
-/* yahoo-finance2 v3 — default export is the YahooFinance class; must use `new`. */
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const YFClass = require("yahoo-finance2").default as new(opts?: Record<string, unknown>) => {
+/* yahoo-finance2 v2 is pinned because it supports the committed Node 20
+ * runtime. v3.14+ advertises Node 20 but rejects it at runtime. Keep this
+ * tiny compatibility shim so an intentional provider upgrade can be tested
+ * without changing every quote call. */
+type YahooClient = {
   quote: (symbol: string, queryOptions?: Record<string, unknown>, moduleOptions?: Record<string, unknown>) => Promise<Record<string, unknown>>;
   chart: (symbol: string, queryOptions?: Record<string, unknown>, moduleOptions?: Record<string, unknown>) => Promise<{ quotes?: Array<{ volume?: number | null; date?: unknown }>; meta?: Record<string, unknown> }>;
+  suppressNotices?: (notices: string[]) => void;
 };
-const yf = new YFClass({ suppressNotices: ["yahooSurvey"] });
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const yahooFinanceModule = require("yahoo-finance2") as { default?: YahooClient | (new (opts?: Record<string, unknown>) => YahooClient) };
+const yahooDefault = yahooFinanceModule.default;
+const yf: YahooClient = typeof yahooDefault === "function"
+  ? new yahooDefault({ suppressNotices: ["yahooSurvey"] })
+  : (yahooDefault as YahooClient);
+yf.suppressNotices?.(["yahooSurvey"]);
 
 /* The Yahoo quote endpoint omits regularMarketVolume for EGX (Egyptian Exchange)
  * tickers entirely. The chart endpoint DOES return real daily volume bars.

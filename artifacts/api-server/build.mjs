@@ -55,7 +55,6 @@ async function buildAll() {
       "pg-native",
       "oracledb",
       "mongodb-client-encryption",
-      "nodemailer",
       "handlebars",
       "knex",
       "typeorm",
@@ -107,7 +106,9 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
     ],
-    sourcemap: "linked",
+    // Source maps make the serverless artifact substantially larger and are
+    // not required at runtime. Opt in locally only when diagnosing a build.
+    sourcemap: process.env["GENERATE_SOURCEMAP"] === "true" ? "linked" : false,
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
       esbuildPluginPino({ transports: ["pino-pretty"] })

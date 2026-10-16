@@ -6,7 +6,7 @@
  * monorepo exactly like locally (`pnpm run build`).
  *
  * Steps (invoked by vercel.json buildCommand = "node vercel-build.mjs"):
- *   1. enable corepack pnpm (pinned version, matches the local lockfile)
+ *   1. resolve the Corepack-pinned pnpm (with a process-local shim if needed)
  *   2. pnpm install --frozen-lockfile (root install covers all workspaces)
  *   3. pnpm run build → typecheck + libs + api-server esbuild bundle + SPA
  *   4. sanity-check the two outputs Vercel will serve:
@@ -15,6 +15,7 @@
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,14 +34,28 @@ const run = (cmd, args, cwd = root) => {
 
 console.log("◆ EgyTrend — Vercel build");
 
-/* 1. make sure pnpm exists (corepack is bundled with Node on Vercel images) */
-let hasPnpm = spawnSync("pnpm", ["--version"], { stdio: "ignore", shell: false }).status === 0;
+/* 1. make sure pnpm exists. Vercel normally exposes Corepack's pnpm shim,
+ * but `corepack enable` writes into the Node install directory and fails on
+ * locked-down/non-root build images. If pnpm is absent, install a tiny
+ * process-local shim which delegates to the version pinned in packageManager.
+ * Keeping it on PATH also lets nested package scripts (`pnpm run …`) work. */
+const hasPnpm = spawnSync("pnpm", ["--version"], { stdio: "ignore", shell: false }).status === 0;
 if (!hasPnpm) {
-  console.log("◆ pnpm not found — activating via corepack…");
-  run("corepack", ["enable"]);
-  run("corepack", ["prepare", "pnpm@12.3.4", "--activate"]);
-  hasPnpm = spawnSync("pnpm", ["--version"], { stdio: "ignore", shell: false }).status === 0;
-  if (!hasPnpm) fail("could not activate pnpm via corepack");
+  if (spawnSync("corepack", ["--version"], { stdio: "ignore", shell: false }).status !== 0) {
+    fail("pnpm is unavailable and Corepack is not installed");
+  }
+  console.log("◆ pnpm not found — using a process-local Corepack shim…");
+  const shimDir = fs.mkdtempSync(path.join(os.tmpdir(), "egytrend-pnpm-"));
+  const shim = path.join(shimDir, process.platform === "win32" ? "pnpm.cmd" : "pnpm");
+  if (process.platform === "win32") {
+    fs.writeFileSync(shim, "@echo off\r\ncorepack pnpm %*\r\n", "utf8");
+  } else {
+    fs.writeFileSync(shim, "#!/bin/sh\nexec corepack pnpm \"$@\"\n", { encoding: "utf8", mode: 0o755 });
+  }
+  process.env.PATH = `${shimDir}${path.delimiter}${process.env.PATH || ""}`;
+  if (spawnSync("pnpm", ["--version"], { stdio: "inherit", shell: false, env: process.env }).status !== 0) {
+    fail("could not start pnpm through Corepack");
+  }
 }
 
 /* 2. install every workspace from the lockfile (root install = all packages) */
