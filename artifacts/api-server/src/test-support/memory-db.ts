@@ -75,6 +75,21 @@ export async function createMemoryDatabase(): Promise<{
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE user_onboarding (
+      user_id integer PRIMARY KEY REFERENCES app_users(id),
+      tour_version integer NOT NULL DEFAULT 1,
+      tour_status text NOT NULL DEFAULT 'new',
+      tour_started_at timestamp,
+      tour_completed_at timestamp,
+      tour_skipped_at timestamp,
+      watchlist_count integer NOT NULL DEFAULT 0,
+      watchlist_completed_at timestamp,
+      notifications_enabled_at timestamp,
+      news_explored_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX user_onboarding_tour_status_idx ON user_onboarding(tour_status, updated_at);
     CREATE TABLE password_resets (
       id serial PRIMARY KEY,
       user_id integer NOT NULL REFERENCES app_users(id),

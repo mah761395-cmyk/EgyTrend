@@ -1,6 +1,6 @@
 # Database migrations
 
-`0001_market_daily_ohlc` through `0008_admin_broadcasts` are **pending, unexecuted** migrations.
+`0001_market_daily_ohlc` through `0011_user_onboarding` are **pending, unexecuted** migrations.
 
 They are intentionally SQL files rather than a `drizzle-kit push`: no verified isolated database connection exists in this workspace, and an agent must never change a shared or production database without an approved backup and deployment window.
 
@@ -12,6 +12,9 @@ They are intentionally SQL files rather than a `drizzle-kit push`: no verified i
 - `0006_user_calculator_scenarios` adds saved VIP calculator scenarios and explicit save/copy/export activity. Input/result JSON is server-validated and size bounded; a scenario is archived rather than deleted. Its rollback marks records archived and leaves the additive tables in place, so no financial scenario is destroyed.
 - `0007_subscription_lifecycle` normalizes entitlement instants to UTC, gives each paid term a fresh cycle id, adds an optional per-term grace endpoint, server-authored notification CTAs, durable reminder/outbox state, and immutable lifecycle metric events. The only conversion interprets existing subscription timestamps as the API's documented UTC values; it does not manufacture expiry dates. Its rollback archives the new reminder/event tables and deliberately retains added columns and UTC semantics.
 - `0008_admin_broadcasts` adds server-selected public announcements, validated image media, one durable display/interaction row per registered user and announcement, and audit-friendly admin preview records. It also adds explicit account-level marketing opt-in/opt-out timestamps; consent is not inferred from a recovery email and no campaign sender is introduced by this migration. The rollback archives broadcast tables and intentionally keeps consent evidence rather than deleting it.
+- `0009_free_vip_trial` adds the configurable free-VIP trial claim/subscription and its durable message state. It does not enable a trial by itself; the feature remains disabled until an authorized admin enables it.
+- `0010_referral_program` adds configurable referral snapshots, fraud-review signals, reward ledger rows, and automatic referral-coupon metadata. Its rollback drops referral history, so it must only be used after a verified backup and an explicit operator decision to discard that history.
+- `0011_user_onboarding` adds an account-owned tour/checklist record. It contains only product-navigation progress; it never changes a subscription, payment, entitlement, or portfolio/alert record. Its rollback only removes that onboarding state.
 
 ## Safe execution sequence
 
@@ -22,4 +25,4 @@ They are intentionally SQL files rather than a `drizzle-kit push`: no verified i
 5. Reconcile any legacy VIP rows with no expiry before promoting entitlement-only authorization.
 6. Promote only after explicit approval for the production backup, migration, and deployment window.
 
-Each paired `down` script is intentionally non-destructive: it either preserves a rollback archive or marks the added records archived rather than dropping financial/user data. Revert application code first; restore only after investigation.
+Review every paired `down` script before use. Most preserve a rollback archive or mark added records archived; `0010_referral_program.down.sql` is explicitly destructive to referral history and therefore requires a verified backup and an operator decision. Revert application code first; restore only after investigation.
