@@ -16,9 +16,10 @@ import {
 import { getEffectivePrice } from "./pricing";
 import { type UserClaims, getVipEntitlement } from "./userAuth";
 import { cairoCalendarDaysUntil } from "./subscription-time";
+import { readFreeTrialSettings } from "./trial-settings";
 
 export const BROADCAST_TYPES = ["offer", "greeting", "new_feature", "maintenance", "important"] as const;
-export const BROADCAST_AUDIENCES = ["all", "guests", "free", "vip", "expiring", "new_users"] as const;
+export const BROADCAST_AUDIENCES = ["all", "guests", "free", "vip", "expiring", "new_users", "trial", "trial_expired_recently"] as const;
 export const BROADCAST_STATUSES = ["draft", "published", "paused", "archived"] as const;
 
 export type BroadcastType = typeof BROADCAST_TYPES[number];
@@ -502,20 +503,24 @@ type ViewerContext = {
   claims: UserClaims | null;
   user: { id: number; name: string; createdAt: Date; marketingEmailOptIn: boolean } | null;
   entitlement: Awaited<ReturnType<typeof getVipEntitlement>> | null;
+  recentlyExpiredAudienceDays: number;
   now: Date;
 };
 
 async function viewerContext(claims: UserClaims | null, now: Date): Promise<ViewerContext> {
-  if (!claims) return { claims: null, user: null, entitlement: null, now };
+  if (!claims) return { claims: null, user: null, entitlement: null, recentlyExpiredAudienceDays: 0, now };
   const [user] = await db.select({
     id: appUsersTable.id,
     name: appUsersTable.name,
     createdAt: appUsersTable.createdAt,
     marketingEmailOptIn: appUsersTable.marketingEmailOptIn,
   }).from(appUsersTable).where(and(eq(appUsersTable.id, claims.sub), eq(appUsersTable.status, "active"))).limit(1);
-  if (!user) return { claims: null, user: null, entitlement: null, now };
-  const entitlement = await getVipEntitlement(claims, now);
-  return { claims, user, entitlement, now };
+  if (!user) return { claims: null, user: null, entitlement: null, recentlyExpiredAudienceDays: 0, now };
+  const [entitlement, trialSettings] = await Promise.all([
+    getVipEntitlement(claims, now),
+    readFreeTrialSettings(),
+  ]);
+  return { claims, user, entitlement, recentlyExpiredAudienceDays: trialSettings.recentlyExpiredAudienceDays, now };
 }
 
 function matchesAudience(message: BroadcastMessageRow, context: ViewerContext): boolean {
@@ -526,6 +531,13 @@ function matchesAudience(message: BroadcastMessageRow, context: ViewerContext): 
   if (!context.user || !context.entitlement) return false;
   if (message.audience === "free") return !context.entitlement.active;
   if (message.audience === "vip") return context.entitlement.active;
+  if (message.audience === "trial") return context.entitlement.subscriptionType === "trial" && context.entitlement.active && !context.entitlement.trialConvertedAt;
+  if (message.audience === "trial_expired_recently") {
+    const endedAt = context.entitlement.trialEndedAt;
+    return context.entitlement.subscriptionType !== "paid" && !!endedAt
+      && endedAt.getTime() <= context.now.getTime()
+      && context.now.getTime() - endedAt.getTime() <= context.recentlyExpiredAudienceDays * 24 * 60 * 60 * 1000;
+  }
   if (message.audience === "new_users") return context.now.getTime() - context.user.createdAt.getTime() <= 7 * 24 * 60 * 60 * 1000;
   if (message.audience === "expiring") {
     const end = context.entitlement.expiresAt;
@@ -600,6 +612,13 @@ function eligibleAudienceKeys(context: ViewerContext): BroadcastAudience[] {
   if (!context.user) return ["all", "guests"];
   const result: BroadcastAudience[] = ["all"];
   if (context.entitlement?.active) result.push("vip"); else result.push("free");
+  if (context.entitlement?.subscriptionType === "trial" && context.entitlement.active && !context.entitlement.trialConvertedAt) result.push("trial");
+  const trialEndedAt = context.entitlement?.trialEndedAt;
+  if (context.entitlement?.subscriptionType !== "paid" && trialEndedAt
+    && trialEndedAt.getTime() <= context.now.getTime()
+    && context.now.getTime() - trialEndedAt.getTime() <= context.recentlyExpiredAudienceDays * 24 * 60 * 60 * 1000) {
+    result.push("trial_expired_recently");
+  }
   if (context.now.getTime() - context.user.createdAt.getTime() <= 7 * 24 * 60 * 60 * 1000) result.push("new_users");
   const endsAt = context.entitlement?.expiresAt;
   if (context.entitlement?.active && endsAt) {
@@ -667,7 +686,7 @@ export async function previewBroadcastDraft(input: BroadcastDraftInput, now = ne
     updatedAt: now,
     archivedAt: null,
   } as BroadcastMessageRow;
-  const context: ViewerContext = { claims: null, user: null, entitlement: null, now };
+  const context: ViewerContext = { claims: null, user: null, entitlement: null, recentlyExpiredAudienceDays: 0, now };
   return { message: await toPublicMessage(virtual, media, context), imageDataUrl: media?.dataUrl || null };
 }
 

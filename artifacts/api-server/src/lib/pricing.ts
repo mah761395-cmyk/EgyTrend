@@ -20,8 +20,9 @@ import {
   type SubscriptionPlan,
 } from "@workspace/db/schema";
 import type { UserClaims } from "./userAuth";
+import { readFreeTrialSettings } from "./trial-settings";
 
-export const PRICE_AUDIENCES = ["all", "new_users", "expired_subscribers"] as const;
+export const PRICE_AUDIENCES = ["all", "new_users", "expired_subscribers", "trial", "trial_expired_recently"] as const;
 export type PriceAudience = (typeof PRICE_AUDIENCES)[number];
 export const PRICE_BADGE_MODES = ["none", "auto", "custom"] as const;
 export type PriceBadgeMode = (typeof PRICE_BADGE_MODES)[number];
@@ -242,10 +243,15 @@ async function audiencesForUser(user: PricingUser, now: Date): Promise<Set<Price
   }).from(appUsersTable).where(eq(appUsersTable.id, user.sub)).limit(1);
   if (!account) return audiences;
 
-  const [subscription] = await db.select({
-    expiresAt: userSubscriptionsTable.expiresAt,
-    status: userSubscriptionsTable.status,
-  }).from(userSubscriptionsTable).where(eq(userSubscriptionsTable.userId, account.id)).limit(1);
+  const [subscription, trialSettings] = await Promise.all([
+    db.select({
+      expiresAt: userSubscriptionsTable.expiresAt,
+      status: userSubscriptionsTable.status,
+      subscriptionType: userSubscriptionsTable.subscriptionType,
+      trialEndedAt: userSubscriptionsTable.trialEndedAt,
+    }).from(userSubscriptionsTable).where(eq(userSubscriptionsTable.userId, account.id)).limit(1).then((rows) => rows[0]),
+    readFreeTrialSettings(),
+  ]);
   const [approvedRequest] = await db.select({ id: paymentRequestsTable.id })
     .from(paymentRequestsTable)
     .where(and(eq(paymentRequestsTable.phone, user.phone), eq(paymentRequestsTable.status, "approved")))
@@ -255,6 +261,19 @@ async function audiencesForUser(user: PricingUser, now: Date): Promise<Set<Price
   const subscriptionExpired = Boolean(subscription && (subscription.status !== "active" || subscription.expiresAt.getTime() <= now.getTime()));
   const legacyExpired = account.plan === "vip" && account.vipExpiresAt !== null && account.vipExpiresAt.getTime() <= now.getTime();
   if (subscriptionExpired || legacyExpired) audiences.add("expired_subscribers");
+
+  const liveTrial = subscription?.subscriptionType === "trial"
+    && subscription.status === "active" && subscription.expiresAt.getTime() > now.getTime();
+  if (liveTrial) audiences.add("trial");
+  /* A converted/active paid entitlement never receives a post-trial offer,
+   * even though it retains trial history for analytics. */
+  const activePaid = subscription?.subscriptionType === "paid"
+    && subscription.status === "active" && subscription.expiresAt.getTime() > now.getTime();
+  const endedAt = subscription?.trialEndedAt;
+  if (!activePaid && endedAt && endedAt.getTime() <= now.getTime()
+    && now.getTime() - endedAt.getTime() <= trialSettings.recentlyExpiredAudienceDays * 24 * 60 * 60 * 1000) {
+    audiences.add("trial_expired_recently");
+  }
   return audiences;
 }
 

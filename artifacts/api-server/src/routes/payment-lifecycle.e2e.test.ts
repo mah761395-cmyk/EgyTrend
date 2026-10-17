@@ -18,6 +18,8 @@ import {
   subscriptionPlansTable,
   subscriptionLifecycleEventsTable,
   subscriptionRemindersSentTable,
+  trialClaimsTable,
+  freeTrialMessageStepsTable,
   userNotificationsTable,
   userSubscriptionsTable,
 } from "@workspace/db/schema";
@@ -700,6 +702,9 @@ test("subscription lifecycle uses one Cairo calendar reminder per threshold and 
     phone: "01077770001",
     name: "Lifecycle Synthetic User",
     email: "lifecycle.synthetic@example.test",
+    /* The day+3 winback is marketing: this synthetic recipient explicitly
+     * opted in so the lifecycle regression still exercises its email outbox. */
+    marketingEmailOptIn: true,
     passwordHash: "test-only-hash",
     plan: "vip",
     vipExpiresAt: day30,

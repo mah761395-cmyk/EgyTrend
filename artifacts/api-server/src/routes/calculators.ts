@@ -7,7 +7,7 @@ import { EGX_STOCKS } from "../lib/market-data/catalog";
 import { getMarketDataService } from "../lib/market-data/service";
 import { getCalculatorMathModuleSource } from "../lib/calculators/math";
 import { getCalculatorRuntimeModuleSource } from "../lib/calculators/runtime";
-import { currentUser, requireVipUser } from "../lib/userAuth";
+import { currentUser, requireVipFeature } from "../lib/userAuth";
 import { getStocksSnapshot, type StockQuote } from "./markets";
 import { logger } from "../lib/logger";
 
@@ -127,7 +127,7 @@ function publicActivity(row: typeof userCalculatorActivityTable.$inferSelect) {
 
 /* The complete calculator runtime and every computational function are gated
  * independently. A copied runtime URL is therefore not an entitlement bypass. */
-router.get("/calculators/bootstrap", requireVipUser, (_req: Request, res: Response) => {
+router.get("/calculators/bootstrap", requireVipFeature("calculators"), (_req: Request, res: Response) => {
   res.set("Cache-Control", "private, no-store, max-age=0").json({
     status: "ok",
     runtime: "/api/calculators/runtime.js",
@@ -136,17 +136,17 @@ router.get("/calculators/bootstrap", requireVipUser, (_req: Request, res: Respon
   });
 });
 
-router.get("/calculators/runtime.js", requireVipUser, (_req: Request, res: Response) => {
+router.get("/calculators/runtime.js", requireVipFeature("calculators"), (_req: Request, res: Response) => {
   noStoreJavascript(res, getCalculatorRuntimeModuleSource());
 });
 
-router.get("/calculators/math.js", requireVipUser, (_req: Request, res: Response) => {
+router.get("/calculators/math.js", requireVipFeature("calculators"), (_req: Request, res: Response) => {
   noStoreJavascript(res, getCalculatorMathModuleSource());
 });
 
 /** A quote may be used in a calculator only while its licensed source and
  * declared freshness are present. End-of-day/unknown/stale values fail closed. */
-router.get("/calculators/quote", requireVipUser, async (req: Request, res: Response) => {
+router.get("/calculators/quote", requireVipFeature("calculators"), async (req: Request, res: Response) => {
   const symbol = String(req.query["symbol"] || "").trim().toUpperCase();
   if (!SYMBOL_RX.test(symbol) || !EGX_STOCKS.some((stock) => stock.sym === symbol)) {
     res.status(400).json({ status: "error", message: "رمز سهم EGX غير مدعوم لاستخدام السعر الحالي" });
@@ -183,7 +183,7 @@ router.get("/calculators/quote", requireVipUser, async (req: Request, res: Respo
  * unit conversion identity; every other rate must pass the same freshness
  * rules, and the response carries its actual source/as-of per currency.
  */
-router.get("/calculators/fx", requireVipUser, async (_req: Request, res: Response) => {
+router.get("/calculators/fx", requireVipFeature("calculators"), async (_req: Request, res: Response) => {
   const targetInstruments = new Map([
     ["USD", "fx:USD-EGP"], ["EUR", "fx:EUR-EGP"], ["GBP", "fx:GBP-EGP"], ["SAR", "fx:SAR-EGP"],
   ]);
@@ -228,7 +228,7 @@ router.get("/calculators/fx", requireVipUser, async (_req: Request, res: Respons
   }
 });
 
-router.get("/calculators/scenarios", requireVipUser, async (req: Request, res: Response) => {
+router.get("/calculators/scenarios", requireVipFeature("calculators"), async (req: Request, res: Response) => {
   const user = currentUser(req)!;
   const calculatorKey = String(req.query["calculator"] || "").trim();
   if (!CALCULATOR_KEYS.has(calculatorKey)) {
@@ -248,7 +248,7 @@ router.get("/calculators/scenarios", requireVipUser, async (req: Request, res: R
   }
 });
 
-router.post("/calculators/scenarios", requireVipUser, async (req: Request, res: Response) => {
+router.post("/calculators/scenarios", requireVipFeature("calculators"), async (req: Request, res: Response) => {
   const user = currentUser(req)!;
   const input = parsePayload(req.body, "scenario");
   if (!input || !input.name) {
@@ -276,7 +276,7 @@ router.post("/calculators/scenarios", requireVipUser, async (req: Request, res: 
 });
 
 /** Archive rather than delete a financial scenario. */
-router.delete("/calculators/scenarios/:id", requireVipUser, async (req: Request, res: Response) => {
+router.delete("/calculators/scenarios/:id", requireVipFeature("calculators"), async (req: Request, res: Response) => {
   const user = currentUser(req)!;
   const id = String(req.params["id"] || "").trim();
   if (!ID_RX.test(id)) {
@@ -301,7 +301,7 @@ router.delete("/calculators/scenarios/:id", requireVipUser, async (req: Request,
 /* Browser-native print preserves Arabic text and lets the user choose Save as
  * PDF. This authorization/log endpoint must succeed before the protected
  * runtime writes any exportable result into the print window. */
-router.post("/calculators/export", requireVipUser, async (req: Request, res: Response) => {
+router.post("/calculators/export", requireVipFeature("calculators"), async (req: Request, res: Response) => {
   const user = currentUser(req)!;
   const raw = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body as Record<string, unknown> : {};
   const input = parsePayload({ ...raw, action: "exported" }, "activity");
@@ -321,7 +321,7 @@ router.post("/calculators/export", requireVipUser, async (req: Request, res: Res
   }
 });
 
-router.get("/calculators/history", requireVipUser, async (req: Request, res: Response) => {
+router.get("/calculators/history", requireVipFeature("calculators"), async (req: Request, res: Response) => {
   const user = currentUser(req)!;
   try {
     const rows = await db.select().from(userCalculatorActivityTable)
@@ -334,7 +334,7 @@ router.get("/calculators/history", requireVipUser, async (req: Request, res: Res
   }
 });
 
-router.post("/calculators/history", requireVipUser, async (req: Request, res: Response) => {
+router.post("/calculators/history", requireVipFeature("calculators"), async (req: Request, res: Response) => {
   const user = currentUser(req)!;
   const input = parsePayload(req.body, "activity");
   if (!input || !input.action) {

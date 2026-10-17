@@ -29,6 +29,7 @@ import {
   pricingCacheVersion,
 } from "../lib/pricing";
 import { logger } from "../lib/logger";
+import { freeTrialAccountStatus } from "../lib/free-trials";
 import { checkPayRateLimit } from "./admin";
 import { cairoCalendarDaysUntil, formatCairoDate } from "../lib/subscription-time";
 
@@ -133,10 +134,14 @@ router.get("/payments/my", async (req: Request, res: Response) => {
       .where(eq(paymentRequestsTable.phone, user.phone))
       .orderBy(desc(paymentRequestsTable.createdAt))
       .limit(10);
-    const entitlement = await getVipEntitlement(user);
+    const [entitlement, trial] = await Promise.all([
+      getVipEntitlement(user),
+      freeTrialAccountStatus(user.sub),
+    ]);
     res.json({
       status: "ok",
       requests: rows,
+      trial,
       plan: entitlement.active ? "vip" : "free",
       subscription: {
         active: entitlement.active,
@@ -148,6 +153,13 @@ router.get("/payments/my", async (req: Request, res: Response) => {
         endsAt: entitlement.expiresAt?.toISOString() || null,
         graceEndsAt: entitlement.graceEndsAt?.toISOString() || null,
         renewalState: entitlement.status,
+        subscriptionType: entitlement.subscriptionType,
+        trialFeatureScope: entitlement.trialFeatureScope,
+        trialAiDailyLimit: entitlement.trialAiDailyLimit,
+        trialStartedAt: entitlement.trialStartedAt?.toISOString() || null,
+        trialEndsAt: entitlement.trialEndsAt?.toISOString() || null,
+        trialEndedAt: entitlement.trialEndedAt?.toISOString() || null,
+        trialConvertedAt: entitlement.trialConvertedAt?.toISOString() || null,
       },
     });
   } catch (e) {
@@ -176,7 +188,8 @@ router.get("/subscriptions/banner", async (req: Request, res: Response) => {
       res.json({ status: "ok", visible: false, asOf: now.toISOString() });
       return;
     }
-    const actionUrl = `/vip?plan=${encodeURIComponent(entitlement.planKey)}&renew=1`;
+    const isTrial = entitlement.subscriptionType === "trial";
+    const actionUrl = isTrial ? "/vip?renew=1" : `/vip?plan=${encodeURIComponent(entitlement.planKey)}&renew=1`;
     res.setHeader("Cache-Control", "private, no-store, max-age=0");
     res.json({
       status: "ok",
@@ -184,10 +197,12 @@ router.get("/subscriptions/banner", async (req: Request, res: Response) => {
       daysUntilExpiry,
       endsAt: endsAt.toISOString(),
       endsOn: formatCairoDate(endsAt),
-      planKey: entitlement.planKey,
-      body: `ينتهي اشتراكك يوم ${formatCairoDate(endsAt)}. بعد الانتهاء يعود الحساب للخطة المجانية وتبقى قوائمك ومحفظتك وتنبيهاتك وسيناريوهاتك محفوظة لكنها مقفولة حتى التجديد.`,
+      planKey: isTrial ? null : entitlement.planKey,
+      body: isTrial
+        ? `تنتهي تجربتك المجانية يوم ${formatCairoDate(endsAt)}. لا يوجد خصم أو تجديد تلقائي؛ تبقى بياناتك محفوظة ويمكنك اختيار باقة عندما تكون جاهزًا.`
+        : `ينتهي اشتراكك يوم ${formatCairoDate(endsAt)}. بعد الانتهاء يعود الحساب للخطة المجانية وتبقى قوائمك ومحفظتك وتنبيهاتك وسيناريوهاتك محفوظة لكنها مقفولة حتى التجديد.`,
       actionUrl,
-      actionLabel: "جدّد الآن",
+      actionLabel: isTrial ? "اختيار باقة" : "جدّد الآن",
       asOf: now.toISOString(),
     });
   } catch (error) {

@@ -4,6 +4,8 @@ export const appUsersTable = pgTable("app_users", {
   id: serial("id").primaryKey(),
   phone: text("phone").notNull().unique(),
   email: text("email"), // optional — used for password-reset emails and (later) account login
+  /** Set only after a hashed, single-use verification token is consumed. */
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   /** Explicit account consent only; never inferred from providing a recovery email. */
   marketingEmailOptIn: boolean("marketing_email_opt_in").notNull().default(false),
   marketingEmailOptedInAt: timestamp("marketing_email_opted_in_at", { withTimezone: true }),

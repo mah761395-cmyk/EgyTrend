@@ -63,6 +63,7 @@ export async function createMemoryDatabase(): Promise<{
       id serial PRIMARY KEY,
       phone text NOT NULL UNIQUE,
       email text UNIQUE,
+      email_verified_at timestamp,
       marketing_email_opt_in boolean NOT NULL DEFAULT false,
       marketing_email_opted_in_at timestamp,
       marketing_email_unsubscribed_at timestamp,
@@ -147,6 +148,13 @@ export async function createMemoryDatabase(): Promise<{
       plan_name_ar text NOT NULL,
       plan_duration_months integer NOT NULL,
       plan_features jsonb NOT NULL DEFAULT '[]'::jsonb,
+      subscription_type text NOT NULL DEFAULT 'paid',
+      trial_feature_scope jsonb,
+      trial_ai_daily_limit integer,
+      trial_started_at timestamp,
+      trial_ends_at timestamp,
+      trial_ended_at timestamp,
+      trial_converted_at timestamp,
       status text NOT NULL DEFAULT 'active',
       cycle_id text NOT NULL UNIQUE,
       starts_at timestamp NOT NULL,
@@ -259,6 +267,7 @@ export async function createMemoryDatabase(): Promise<{
       user_id integer NOT NULL REFERENCES app_users(id),
       reminder_type text NOT NULL,
       reminder_class text NOT NULL DEFAULT 'transactional',
+      trial_message_step_id text,
       target_ends_at timestamp NOT NULL,
       delivery_status text NOT NULL DEFAULT 'queued',
       content jsonb NOT NULL,
@@ -271,6 +280,8 @@ export async function createMemoryDatabase(): Promise<{
       email_claimed_at timestamp,
       email_sent_at timestamp,
       email_last_error text,
+      opened_at timestamp,
+      clicked_at timestamp,
       cancelled_at timestamp,
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -291,6 +302,50 @@ export async function createMemoryDatabase(): Promise<{
       UNIQUE(subscription_cycle_id, event_type)
     );
     CREATE INDEX subscription_lifecycle_events_type_at_idx ON subscription_lifecycle_events(event_type, occurred_at);
+    CREATE TABLE email_verification_tokens (
+      id text PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES app_users(id),
+      token_hash text NOT NULL,
+      expires_at timestamp NOT NULL,
+      used_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX email_verification_tokens_hash_idx ON email_verification_tokens(token_hash);
+    CREATE TABLE trial_claims (
+      id text PRIMARY KEY,
+      user_id integer NOT NULL UNIQUE REFERENCES app_users(id),
+      canonical_email text NOT NULL UNIQUE,
+      trial_subscription_id text NOT NULL REFERENCES user_subscriptions(id),
+      started_at timestamp NOT NULL,
+      converted_at timestamp,
+      paid_starts_at timestamp,
+      ip_signal_hash text,
+      device_signal_hash text,
+      manual_override boolean NOT NULL DEFAULT false,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE free_trial_message_steps (
+      id text PRIMARY KEY,
+      timing text NOT NULL,
+      offset_days integer NOT NULL DEFAULT 0,
+      channels jsonb NOT NULL DEFAULT '[]'::jsonb,
+      title_template text NOT NULL,
+      body_template text NOT NULL,
+      message_type text NOT NULL DEFAULT 'important',
+      action_label text,
+      action_plan_key text,
+      coupon_code text,
+      email_marketing boolean NOT NULL DEFAULT false,
+      status text NOT NULL DEFAULT 'active',
+      version integer NOT NULL DEFAULT 1,
+      created_by integer REFERENCES employees(id),
+      updated_by integer REFERENCES employees(id),
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      archived_at timestamp
+    );
+    CREATE INDEX free_trial_message_steps_status_idx ON free_trial_message_steps(status, timing, offset_days);
     CREATE TABLE broadcast_media (
       id text PRIMARY KEY,
       mime_type text NOT NULL,

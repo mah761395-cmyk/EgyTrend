@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { appUsersTable, userNotificationsTable, userPriceAlertsTable } from "@workspace/db/schema";
 import { EGX_STOCKS } from "../lib/market-data/catalog";
-import { currentUser, requireVipUser } from "../lib/userAuth";
+import { currentUser, requireVipFeature } from "../lib/userAuth";
 import { escapeHtml, isSmtpConfigured, sendMail } from "../lib/mailer";
 import { logger } from "../lib/logger";
 import { getStocksSnapshot, type StockQuote } from "./markets";
@@ -73,7 +73,7 @@ function publicAlert(row: typeof userPriceAlertsTable.$inferSelect) {
   };
 }
 
-router.get("/price-alerts", requireVipUser, async (req: Request, res: Response) => {
+router.get("/price-alerts", requireVipFeature("price_alerts"), async (req: Request, res: Response) => {
   const user = currentUser(req)!;
   try {
     const rows = await db.select().from(userPriceAlertsTable)
@@ -86,7 +86,7 @@ router.get("/price-alerts", requireVipUser, async (req: Request, res: Response) 
   }
 });
 
-router.post("/price-alerts", requireVipUser, async (req: Request, res: Response) => {
+router.post("/price-alerts", requireVipFeature("price_alerts"), async (req: Request, res: Response) => {
   const user = currentUser(req)!;
   const input = parseAlertInput(req.body);
   if (!input) {
@@ -159,7 +159,7 @@ router.post("/price-alerts", requireVipUser, async (req: Request, res: Response)
   }
 });
 
-router.delete("/price-alerts/:id", requireVipUser, async (req: Request, res: Response) => {
+router.delete("/price-alerts/:id", requireVipFeature("price_alerts"), async (req: Request, res: Response) => {
   const user = currentUser(req)!;
   const id = String(req.params["id"] || "").trim();
   if (!ID_RX.test(id)) {

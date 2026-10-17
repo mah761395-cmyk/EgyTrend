@@ -80,6 +80,9 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 #sub-renewal-banner .sub-banner-copy{min-width:0;flex:1;}
 #sub-renewal-banner .sub-banner-title{font-weight:900;color:var(--au);font-size:11px;}
 #sub-renewal-banner .sub-banner-action{flex-shrink:0;border:0;border-radius:8px;background:var(--au);color:#17110a;font-family:var(--sans);font-size:10.5px;font-weight:900;padding:7px 10px;cursor:pointer;}
+#trial-banner{display:none;align-items:center;justify-content:space-between;gap:9px;padding:8px 12px;background:linear-gradient(90deg,rgba(99,102,241,.18),rgba(16,185,129,.08));border-top:1px solid rgba(129,140,248,.28);color:var(--t2);font-size:10.5px;line-height:1.55;}
+#trial-banner.show{display:flex;}#trial-banner .trial-banner-copy{min-width:0;flex:1;}#trial-banner .trial-banner-title{font-weight:900;color:#c4b5fd;font-size:11px;}#trial-banner .trial-banner-action{flex-shrink:0;border:0;border-radius:8px;background:#818cf8;color:#101126;font-family:var(--sans);font-size:10.5px;font-weight:900;padding:7px 10px;cursor:pointer;}
+@media(max-width:420px){#trial-banner,#sub-renewal-banner{align-items:flex-start;}#trial-banner .trial-banner-action,#sub-renewal-banner .sub-banner-action{padding:6px 8px;font-size:10px;}}
 #search-bar{padding:0 14px 10px;display:none;}
 #search-bar.open{display:block;}
 #search-in{width:100%;padding:10px 14px;background:var(--s1);border:1px solid var(--b2);border-radius:11px;color:var(--t1);font-size:13px;outline:none;font-family:var(--sans);direction:rtl;}
@@ -935,6 +938,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
       </div>
     </div>
     <div id="sub-renewal-banner" role="status" aria-live="polite"></div>
+    <div id="trial-banner" role="status" aria-live="polite"></div>
     <div id="search-bar"><input id="search-in" class="a-in" placeholder="ابحث في الأخبار..." oninput="onSearch()" dir="rtl" style="margin-bottom:0;"/></div>
   </div>
 
@@ -1132,7 +1136,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 <!-- Broadcast Modal: populated exclusively from the sanitized server AST. -->
 <div class="overlay" id="broadcast-ov" aria-hidden="true">
   <section class="broadcast-modal" id="broadcast-modal" role="dialog" aria-modal="true" aria-labelledby="broadcast-title" tabindex="-1">
-    <button type="button" class="modal-close" id="broadcast-close" aria-label="إغلاق الرسالة" onclick="closeBroadcastModal('close')">✕</button>
+    <button type="button" class="modal-close" id="broadcast-close" aria-label="إغلاق الرسالة" onclick="closeActiveBroadcastDialog()">✕</button>
     <div id="broadcast-el"></div>
   </section>
 </div>
@@ -1171,6 +1175,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
     <button class="adm-tab" data-tab="plans" onclick="admTab('plans')">💎 الاشتراكات</button>
     <button class="adm-tab" data-tab="lifecycle" onclick="admTab('lifecycle')">⏰ التجديدات</button>
     <button class="adm-tab" data-tab="broadcasts" onclick="admTab('broadcasts')">📣 الرسائل العامة</button>
+    <button class="adm-tab" data-tab="trials" onclick="admTab('trials')">🎁 التجربة المجانية</button>
     <button class="adm-tab" data-tab="coupons" onclick="admTab('coupons')">🎟️ الكوبونات</button>
     <button class="adm-tab" data-tab="employees" onclick="admTab('employees')">👨‍💼 الموظفون</button>
     <button class="adm-tab" data-tab="aiconfig" onclick="admTab('aiconfig')">🤖 إدارة AI</button>
@@ -1562,7 +1567,7 @@ document.addEventListener("DOMContentLoaded",async()=>{
   try{
     const r=await fetch("/api/user/me",{credentials:"same-origin"});
     const d=await r.json().catch(()=>({}));
-    if(r.ok&&d.status==="ok"&&d.user){setCurrentUser(d.user);bootApp();}
+    if(r.ok&&d.status==="ok"&&d.user){setCurrentUser({...d.user,trial:d.trial||null,subscription:d.subscription||null});bootApp();}
     else{
       const ar=await fetch("/api/admin/session",{credentials:"same-origin"});
       const ad=await ar.json().catch(()=>({}));
@@ -1575,6 +1580,7 @@ document.addEventListener("DOMContentLoaded",async()=>{
   /* Guests may receive guest-targeted announcements; this runs after the
    * auth/session check so a logged-in user is never treated as a guest. */
   if(!U) queueBroadcastMessage();
+  await completeEmailVerificationFromLink();
   /* Remove tokens and stale identity snapshots left by pre-cookie releases. */
   DB.d("userTok");DB.d("admTok");DB.d("s");
   buildTicker();buildCalendar();buildFAQ();
@@ -1591,7 +1597,7 @@ function bootApp(){
   buildMarkets();fetchMarketsData();fetchCalendarData();
   syncSources().then(()=>fetchAllNews(false));
   fetchStocksData();
-  renderVIP();renderProfile();
+  renderVIP();renderProfile();renderTrialBanner();
   updateNotifBadge();
   maybeRequestNotifPerm();
   updateBellBadge();
@@ -1600,6 +1606,7 @@ function bootApp(){
   loadSubscriptionBanner();
   openSubscriptionDeepLink();
   queueBroadcastMessage();
+  queueTrialMessage();
   if(window.location.pathname==="/calculators")goNav("calculators",{syncUrl:false});
   setInterval(fetchMarketsData,60000);
   setInterval(fetchCalendarData,30*60*1000);
@@ -1615,6 +1622,7 @@ function bootApp(){
  * display suppression and never for authorization. */
 let broadcastSessionShown=false;
 let activeBroadcastMessage=null;
+let activeTrialMessage=null;
 function broadcastShownThisSession(){try{return sessionStorage.getItem("et_broadcast_shown_session")==="1";}catch{return false;}}
 function markBroadcastShownThisSession(){try{sessionStorage.setItem("et_broadcast_shown_session","1");}catch{}}
 
@@ -1648,7 +1656,7 @@ function broadcastFocusable(){
 }
 function trapBroadcastFocus(event){
   if(!document.getElementById("broadcast-ov")?.classList.contains("open"))return;
-  if(event.key==="Escape"){event.preventDefault();closeBroadcastModal("close");return;}
+  if(event.key==="Escape"){event.preventDefault();if(activeTrialMessage)closeTrialMessageModal();else closeBroadcastModal("close");return;}
   if(event.key!=="Tab")return;
   const focusable=broadcastFocusable();
   if(!focusable.length){event.preventDefault();document.getElementById("broadcast-modal")?.focus();return;}
@@ -1685,7 +1693,7 @@ function appendBroadcastContent(host,content){
   });
   if(!host.children.length){const p=document.createElement("p");p.textContent="غير متاح حاليًا";host.appendChild(p);}
 }
-function buildBroadcastCard(message,{imageDataUrl=null,preview=false}={}){
+function buildBroadcastCard(message,{imageDataUrl=null,preview=false,onDismiss=null,onCta=null}={}){
   const meta=BROADCAST_META[message?.messageType]||BROADCAST_META.important;
   const card=document.createElement("div");card.className=`broadcast-modal type-${String(message?.messageType||"important")}`;
   if(preview)card.removeAttribute("role");
@@ -1704,13 +1712,13 @@ function buildBroadcastCard(message,{imageDataUrl=null,preview=false}={}){
   }
   const actions=document.createElement("div");actions.className="broadcast-actions";
   const dismiss=document.createElement("button");dismiss.type="button";dismiss.className="btn btn-sm broadcast-dismiss";dismiss.textContent="حسنًا";
-  if(preview)dismiss.disabled=true;else dismiss.addEventListener("click",()=>closeBroadcastModal("close"));
+  if(preview)dismiss.disabled=true;else dismiss.addEventListener("click",()=>typeof onDismiss==="function"?onDismiss():closeBroadcastModal("close"));
   actions.appendChild(dismiss);
   const action=message?.action&&typeof message.action==="object"?message.action:{};
   const href=action.kind==="link"?isSafeBroadcastClientUrl(action.url):null;
   if(href&&action.label){
     const cta=document.createElement("button");cta.type="button";cta.className="btn btn-sm broadcast-cta";cta.textContent=String(action.label).slice(0,40);
-    if(preview)cta.disabled=true;else cta.addEventListener("click",()=>activateBroadcastCta(href));
+    if(preview)cta.disabled=true;else cta.addEventListener("click",()=>typeof onCta==="function"?onCta(href):activateBroadcastCta(href));
     actions.appendChild(cta);
   }
   card.appendChild(actions);return card;
@@ -1741,7 +1749,9 @@ function closeBroadcastModal(eventName="close"){
   activeBroadcastMessage=null;
   if(broadcastLastFocus&&document.contains(broadcastLastFocus))broadcastLastFocus.focus();
   broadcastLastFocus=null;
+  queueTrialMessage();
 }
+function closeActiveBroadcastDialog(){if(activeTrialMessage)closeTrialMessageModal();else closeBroadcastModal("close");}
 function activateBroadcastCta(href){
   void recordBroadcastEvent("cta_click");
   closeBroadcastModal("close");
@@ -1749,7 +1759,7 @@ function activateBroadcastCta(href){
   window.open(href,"_blank","noopener,noreferrer");
 }
 async function loadBroadcastMessage(){
-  if(broadcastSessionShown||broadcastShownThisSession()||document.getElementById("broadcast-ov")?.classList.contains("open")||U?.plan==="admin")return;
+  if(broadcastSessionShown||broadcastShownThisSession()||activeTrialMessage||document.getElementById("broadcast-ov")?.classList.contains("open")||U?.plan==="admin")return;
   const loggedIn=Boolean(U&&Number.isInteger(U.id));
   const query=loggedIn?"":`?seen=${encodeURIComponent(broadcastGuestSeen().join(","))}`;
   const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),9000);
@@ -1770,6 +1780,43 @@ async function loadBroadcastMessage(){
   }finally{clearTimeout(timer);}
 }
 function queueBroadcastMessage(){setTimeout(()=>loadBroadcastMessage(),750);}
+
+/* Trial sequence messages reuse the exact safe Broadcast AST renderer. Their
+ * eligibility, snapshot and engagement state remain server-side; no browser
+ * storage is used to decide whether a member receives a trial message. */
+let trialMessageLoading=false;
+async function recordTrialMessageEvent(id,event){
+  if(!id)return;try{await fetch(`/api/user/trial/messages/${encodeURIComponent(id)}/events`,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({event})});}catch{/* analytics cannot block a visible service message */}
+}
+function closeTrialMessageModal(){
+  const overlay=document.getElementById("broadcast-ov");if(!overlay||!overlay.classList.contains("open"))return;
+  overlay.classList.remove("open");overlay.setAttribute("aria-hidden","true");document.removeEventListener("keydown",trapBroadcastFocus);
+  activeTrialMessage=null;if(broadcastLastFocus&&document.contains(broadcastLastFocus))broadcastLastFocus.focus();broadcastLastFocus=null;
+}
+function openTrialMessageAction(message,href){
+  void recordTrialMessageEvent(message.id,"cta_click");closeTrialMessageModal();
+  if(href.startsWith("/")){openSubscriptionAction(href);return;}window.open(href,"_blank","noopener,noreferrer");
+}
+function showTrialMessageModal(message){
+  const overlay=document.getElementById("broadcast-ov"),modal=document.getElementById("broadcast-modal"),host=document.getElementById("broadcast-el");
+  if(!overlay||!modal||!host)return;
+  activeTrialMessage=message;broadcastSessionShown=true;broadcastLastFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
+  modal.className=`broadcast-modal type-${String(message?.messageType||"important")}`;host.replaceChildren();
+  const card=buildBroadcastCard(message,{onDismiss:()=>closeTrialMessageModal(),onCta:href=>openTrialMessageAction(message,href)});[...card.childNodes].forEach(node=>host.appendChild(node));
+  overlay.classList.add("open");overlay.setAttribute("aria-hidden","false");document.addEventListener("keydown",trapBroadcastFocus);(broadcastFocusable()[0]||modal).focus();
+}
+async function loadTrialMessage(){
+  if(trialMessageLoading||!U||U.plan==="admin"||activeBroadcastMessage||activeTrialMessage||document.getElementById("broadcast-ov")?.classList.contains("open"))return;
+  trialMessageLoading=true;const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
+  try{
+    const r=await fetch("/api/user/trial/messages",{credentials:"same-origin",cache:"no-store",signal:ctrl.signal});const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok"||!Array.isArray(j.messages))return;
+    const message=j.messages.find(m=>m&&Array.isArray(m.channels)&&m.channels.includes("modal")&&!m.openedAt);
+    if(!message)return;await recordTrialMessageEvent(message.id,"open");showTrialMessageModal(message);
+  }catch{/* lifecycle content stays available in the in-app notifications; retry on next normal load */}
+  finally{clearTimeout(timer);trialMessageLoading=false;}
+}
+function queueTrialMessage(){setTimeout(()=>void loadTrialMessage(),1250);}
 
 /* ─── Bounded backend requests: no browser call can leave a view loading forever. */
 async function fetchJsonWithTimeout(url,timeoutMs){
@@ -1932,7 +1979,7 @@ function doAuth(){
       const rr=await fetch("/api/user/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,phone,password:pass,email:email||undefined})});
       const rd=await rr.json().catch(()=>({}));
       if(!rr.ok||rd.status!=="ok"||!rd.user){showE(rd.message||"تعذر إنشاء الحساب");return;}
-      setCurrentUser(rd.user);
+      setCurrentUser({...rd.user,trial:rd.trial||null,subscription:rd.subscription||null});
     } else {
       if(!phone||!pass){showE("أدخل الرقم وكلمة المرور");return;}
       /* Admin authentication is server-verified and establishes an HttpOnly
@@ -1960,7 +2007,7 @@ function doAuth(){
         const ur=await fetch("/api/user/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,password:pass})});
         const ud=await ur.json().catch(()=>({}));
         if(!ur.ok||ud.status!=="ok"||!ud.user){showE(ud.message==="invalid credentials"?"الرقم أو كلمة المرور غير صحيحة":ud.message||"تعذر تسجيل الدخول");return;}
-        setCurrentUser(ud.user);
+        setCurrentUser({...ud.user,trial:ud.trial||null,subscription:ud.subscription||null});
       }
     }
     bootApp();
@@ -4981,6 +5028,58 @@ async function loadPayStatus(){
     }else el.innerHTML="";
   }catch(e){el.innerHTML="";}
 }
+/* ─── Free VIP trial: server-sourced status only ─────────────────────── */
+function trialState(){return U&&U.trial&&typeof U.trial==="object"?U.trial:null;}
+function renderTrialBanner(){
+  const el=document.getElementById("trial-banner");if(!el)return;
+  const t=trialState();
+  if(!U||U.plan==="admin"||!t){el.classList.remove("show");el.replaceChildren();return;}
+  const expired=t.active!==true&&t.status==="expired";
+  if(t.active!==true&&!expired){el.classList.remove("show");el.replaceChildren();return;}
+  const days=Number.isInteger(t.daysLeft)?Math.max(0,t.daysLeft):null;
+  const copy=document.createElement("div");copy.className="trial-banner-copy";
+  const title=document.createElement("div");title.className="trial-banner-title";title.textContent=expired?"⏳ انتهت تجربتك المجانية":days===0?"⭐ آخر يوم من تجربة VIP المجانية":"⭐ تجربة VIP المجانية نشطة";
+  const body=document.createElement("div");body.textContent=expired?"عُدت إلى الخطة المجانية وبياناتك محفوظة. اشترك لمتابعة مزايا VIP.":days===null?"حالة الأيام غير متاحة حاليًا من الخادم.":`باقي ${days} ${days===1?"يوم":"أيام"} · لا يوجد خصم أو تجديد تلقائي.`;
+  copy.append(title,body);
+  const action=document.createElement("button");action.type="button";action.className="trial-banner-action";action.textContent=expired?"اشترك الآن":"اختيار باقة";action.onclick=()=>openSub();
+  el.replaceChildren(copy,action);el.classList.add("show");
+}
+async function refreshTrialStatus(){
+  if(!U||U.plan==="admin")return null;
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{const r=await fetch("/api/user/trial",{credentials:"same-origin",cache:"no-store",signal:ctrl.signal});const j=await r.json().catch(()=>null);if(!r.ok||!j||j.status!=="ok"||!j.trial)throw new Error(j?.message||"trial_unavailable");U.trial=j.trial;renderTrialBanner();renderProfile();return j.trial;}
+  finally{clearTimeout(timer);}
+}
+async function startFreeTrialUi(button){
+  if(!U||U.plan==="admin"){showToast("⚠️ سجّل الدخول بحساب مستخدم أولًا");return;}
+  if(button){button.disabled=true;button.textContent="جارٍ بدء التجربة...";}
+  try{
+    const r=await fetch("/api/user/trial/start",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:"{}"});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر بدء التجربة");
+    U.trial=j.trial||U.trial;U.plan="vip";U.exp=j.trial?.endsAt||null;renderHdrVip();renderTrialBanner();renderProfile();queueTrialMessage();showToast("✅ بدأت تجربتك لمدة 7 أيام — بلا بيانات دفع أو تجديد تلقائي");
+  }catch(e){showToast("⚠️ "+String(e?.message||"تعذر بدء التجربة"));}
+  finally{if(button){button.disabled=false;button.textContent="🎁 ابدأ تجربتك المجانية لمدة 7 أيام";}}
+}
+async function requestTrialEmailVerification(button){
+  if(button){button.disabled=true;button.textContent="جارٍ إرسال الرابط...";}
+  try{
+    const r=await fetch("/api/user/email-verification/request",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:"{}"});
+    const j=await r.json().catch(()=>null);if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر طلب التأكيد");
+    showToast(j.message||"راجع بريدك لتأكيده.");
+  }catch(e){showToast("⚠️ "+String(e?.message||"تعذر طلب التأكيد"));}
+  finally{if(button){button.disabled=false;button.textContent="✉️ إرسال رابط تأكيد البريد";}}
+}
+async function completeEmailVerificationFromLink(){
+  let token="";try{token=String(new URLSearchParams(location.search).get("verify_email")||"").trim();}catch{}if(!/^[a-f0-9]{64}$/i.test(token))return;
+  try{
+    const r=await fetch("/api/user/email-verification/confirm",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({token})});
+    const j=await r.json().catch(()=>null);history.replaceState({},"",location.pathname||"/");
+    if(!r.ok||!j||j.status!=="ok"){showToast("⚠️ "+String(j?.message||"رابط التأكيد غير صالح أو منتهٍ"));return;}
+    showToast(j.message||"✅ تم تأكيد البريد الإلكتروني");
+    if(U)await refreshTrialStatus();
+  }catch{showToast("⚠️ تعذر تأكيد البريد حاليًا؛ حاول مرة أخرى.");}
+}
 function subscriptionDateLabel(value){
   const d=new Date(value||"");
   return Number.isFinite(d.getTime())?d.toLocaleDateString("ar-EG",{timeZone:"Africa/Cairo",year:"numeric",month:"long",day:"numeric"}):"غير متاح";
@@ -4996,7 +5095,7 @@ function syncSubscriptionView(subscription){
   const active=subscription.active===true;
   U.plan=active?"vip":"free";
   U.exp=active&&subscription.expiresAt?String(subscription.expiresAt):null;
-  renderHdrVip();
+  renderHdrVip();renderTrialBanner();
   if(document.getElementById("profile")?.classList.contains("open"))renderProfile();
 }
 function subscriptionRequestState(status){
@@ -5012,13 +5111,17 @@ async function loadMySubscription(){
     if(r.status===401){body.innerHTML=`<div class="empty">سجّل الدخول أولًا لمتابعة اشتراكك.</div>`;return;}
     if(!r.ok||!j||j.status!=="ok")throw new Error("subscription_unavailable");
     const sub=j.subscription&&typeof j.subscription==="object"?j.subscription:{};
+    const trial=j.trial&&typeof j.trial==="object"?j.trial:trialState();
+    if(U&&trial)U.trial=trial;
     syncSubscriptionView(sub);
+    renderTrialBanner();
     const active=sub.active===true;
     const days=subscriptionDaysLeft(sub.expiresAt);
     const status=sub.status==="cancelled"?"تم إيقافه":sub.status==="expired"?"منتهي":sub.status==="grace"?"فترة سماح":active?"نشط":"غير نشط";
     const statusColor=sub.status==="grace"?"var(--au)":active?"var(--g)":sub.status==="cancelled"?"var(--dn)":"var(--au)";
     const requests=Array.isArray(j.requests)?j.requests.slice(0,10):[];
     body.innerHTML=`
+      ${trial?`<div style="background:${trial.active?"rgba(79,70,229,.18)":"var(--s1)"};border:1px solid ${trial.active?"rgba(165,180,252,.32)":"var(--b1)"};border-radius:15px;padding:13px;margin-bottom:10px;"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div><div style="color:#c4b5fd;font-weight:900;font-size:13px;">🎁 التجربة المجانية</div><div style="color:var(--t4);font-size:10.5px;margin-top:4px;">${trial.active?`باقي ${Number.isInteger(trial.daysLeft)?Math.max(0,trial.daysLeft):"—"} يوم · تنتهي ${subscriptionDateLabel(trial.endsAt)}`:trial.endedAt?`انتهت في ${subscriptionDateLabel(trial.endedAt)}`:"لم تبدأ"}</div></div><span style="font-size:20px;">${trial.active?"⭐":"⏳"}</span></div><div style="color:var(--t5);font-size:10px;line-height:1.65;margin-top:8px;">لا توجد بيانات دفع أو خصم أو تجديد تلقائي. بعد النهاية تعود للخطة المجانية وتبقى بياناتك محفوظة.</div>${trial.active?`<button class="btn btn-au btn-full" style="margin-top:10px;padding:9px;font-size:11px;" onclick="closeMySubscription();openSub()">اختيار باقة للاشتراك</button>`:""}</div>`:""}
       <div style="background:${active?"var(--gd)":"var(--s1)"};border:1px solid ${active?"rgba(16,185,129,.25)":"var(--b1)"};border-radius:15px;padding:14px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div><div style="color:var(--t4);font-size:10px;">حالة الاشتراك</div><div style="color:${statusColor};font-weight:900;font-size:17px;margin-top:2px;">${status}</div></div><span style="font-size:22px;">${active?"⭐":"📋"}</span></div>
         <div style="margin-top:9px;color:var(--t2);font-size:12px;">الباقة: <b>${sanitize(sub.planNameAr||sub.planKey||"غير متاح")}</b></div>
@@ -5098,11 +5201,14 @@ function buildFAQ(){
 /* ═══════════════════ PROFILE ═══════════════════ */
 function renderProfile(){
   if(!U)return;
+  const trial=trialState();
+  const isTrial=trial?.active===true;
   const isVip=U.plan==="vip"||U.plan==="admin";const isAdm=U.plan==="admin";
   document.getElementById("pav").textContent=isVip?"⭐":"👤";
   document.getElementById("pname").textContent=U.name||"—";
   document.getElementById("pphone").textContent=U.phone||"—";
-  let chipHtml=`<div class="plan-chip ${isVip?"vip":"free"}">${isVip?"⭐ عضو VIP نشط":"مستخدم مجاني"}</div>`;
+  let chipHtml=`<div class="plan-chip ${isVip?"vip":"free"}">${isTrial?"🎁 تجربة VIP نشطة":isVip?"⭐ عضو VIP نشط":"مستخدم مجاني"}</div>`;
+  if(isTrial){const d=Number.isInteger(trial.daysLeft)?Math.max(0,trial.daysLeft):null;chipHtml+=`<div style="color:#c4b5fd;font-size:10px;margin-top:4px;">${d===null?"حالة الأيام غير متاحة حاليًا":`باقي ${d} يوم · تنتهي ${subscriptionDateLabel(trial.endsAt)}`}</div>`;}
   if(isVip&&U.exp&&U.plan!=="admin"){
     const expD=new Date(U.exp);const now=new Date();const daysLeft=Math.max(0,Math.ceil((expD-now)/(1000*60*60*24)));
     chipHtml+=`<div style="color:${daysLeft<=7?"var(--dn)":"var(--t4)"};font-size:10px;margin-top:4px;">ينتهي: ${expD.toLocaleDateString("ar-EG")} ${daysLeft<=30?`(${daysLeft<=7?"⚠️":"⏱"} ${daysLeft} يوم)`:""}</div>`;
@@ -5110,7 +5216,14 @@ function renderProfile(){
   document.getElementById("pchip").innerHTML=chipHtml;
   let btns="";
   if(!isAdm)btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t2);margin-bottom:9px;" onclick="openMySubscription()">📋 اشتراكي وسجل الدفعات</button>`;
-  if(!isVip)btns+=`<button class="prof-btn sub" onclick="openSub()">⭐ اشترك في VIP الآن</button>`;
+  if(!isAdm&&trial&&!isTrial){
+    if(trial.canStart===true)btns+=`<button class="prof-btn sub" id="trial-start-btn" onclick="startFreeTrialUi(this)">🎁 ابدأ تجربتك المجانية لمدة 7 أيام</button><div style="color:var(--t5);font-size:10px;line-height:1.55;margin:-3px 2px 9px;">لا يلزم دفع ولا يوجد خصم أو تجديد تلقائي.</div>`;
+    else if(trial.reason==="email_unverified")btns+=`<button class="prof-btn" style="background:#312e81;border:1px solid rgba(165,180,252,.35);color:#e0e7ff;margin-bottom:9px;" onclick="requestTrialEmailVerification(this)">✉️ إرسال رابط تأكيد البريد</button>`;
+    else if(trial.reason==="email_missing")btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t2);margin-bottom:9px;" onclick="openSetEmail()">✉️ أضف بريدًا لتأكيد أهلية التجربة</button>`;
+    else if(trial.reason)btns+=`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:9px 10px;color:var(--t4);font-size:10.5px;line-height:1.65;margin-bottom:9px;">${trial.status==="expired"?"انتهت التجربة وعاد حسابك إلى الخطة المجانية؛ بياناتك محفوظة ويمكنك الاشتراك في VIP الآن.":trial.reason==="disabled"?"التجربة المجانية غير مفعّلة حاليًا.":trial.reason==="already_claimed"?"استُخدمت التجربة المجانية سابقًا لهذا الحساب أو البريد.":trial.reason==="email_disposable"?"لا يمكن استخدام بريد مؤقت للتجربة.":"حالة التجربة غير متاحة حاليًا."}</div>`;
+  }
+  if(isTrial)btns+=`<button class="prof-btn sub" onclick="openSub()">⭐ اختر باقة بعد التجربة</button>`;
+  if(!isVip&&!isTrial)btns+=`<button class="prof-btn sub" onclick="openSub()">⭐ اشترك في VIP الآن</button>`;
   if(isAdm)btns+=`<button class="prof-btn" style="background:var(--gd);border:1px solid rgba(16,185,129,.15);color:var(--g);margin-bottom:9px;" onclick="openAdm()">⚙️ لوحة التحكم</button>`;
   if(U.phone!=="admin")btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openSetEmail()">✉️ بريد الاسترداد والتنبيهات</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openMarketingEmailSettings()">📬 رسائل تسويقية ${U.marketingEmailOptIn?"· مفعّلة":"· متوقفة"}</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openChangePass()">🔒 تغيير كلمة المرور</button>`;
   btns+=`<button class="prof-btn out" onclick="logout()">تسجيل الخروج</button>`;
@@ -5156,7 +5269,7 @@ function openSetEmail(){
   if(!U||U.phone==="admin"){showToast("⚠️ هذه الإعدادات لحساب المستخدم فقط");return;}
   document.getElementById("set-email-ov")?.remove();
   const ov=document.createElement("div");ov.id="set-email-ov";ov.style.cssText="position:fixed;inset:0;z-index:700;background:rgba(3,7,18,.92);display:flex;align-items:flex-end;";
-  ov.innerHTML=`<div style="width:100%;max-width:430px;margin:0 auto;background:var(--ink2);border-radius:22px 22px 0 0;padding:20px 18px 30px;"><div style="color:var(--t2);font-weight:800;font-size:15px;margin-bottom:7px;">✉️ بريد الاسترداد والتنبيهات</div><div style="color:var(--t4);font-size:10.5px;line-height:1.65;margin-bottom:12px;">يُستخدم لاستعادة كلمة المرور ولتنبيهات الأسعار التي تختار إرسالها إلى بريد حسابك فقط.</div><input class="a-in" id="set-email-in" type="email" autocomplete="email" dir="ltr" placeholder="name@example.com" style="margin-bottom:9px;"/><div id="set-email-err" style="display:none;color:var(--dn);font-size:12px;margin-bottom:9px;"></div><button class="btn btn-g btn-full" id="set-email-btn" onclick="saveUserEmail()" style="padding:12px;">حفظ البريد</button><button onclick="document.getElementById('set-email-ov').remove()" style="width:100%;margin-top:8px;background:none;border:none;color:var(--t4);font-size:12px;cursor:pointer;font-family:var(--sans);">إلغاء</button></div>`;
+  ov.innerHTML=`<div style="width:100%;max-width:430px;margin:0 auto;background:var(--ink2);border-radius:22px 22px 0 0;padding:20px 18px 30px;"><div style="color:var(--t2);font-weight:800;font-size:15px;margin-bottom:7px;">✉️ بريد الاسترداد والتنبيهات</div><div style="color:var(--t4);font-size:10.5px;line-height:1.65;margin-bottom:12px;">يُستخدم لاستعادة كلمة المرور وتنبيهات الأسعار التي تختارها، وتأكيد أهلية تجربة VIP المجانية. تغيير البريد يتطلب تأكيده من جديد.</div><input class="a-in" id="set-email-in" type="email" autocomplete="email" dir="ltr" placeholder="name@example.com" style="margin-bottom:9px;"/><div id="set-email-err" style="display:none;color:var(--dn);font-size:12px;margin-bottom:9px;"></div><button class="btn btn-g btn-full" id="set-email-btn" onclick="saveUserEmail()" style="padding:12px;">حفظ البريد</button><button onclick="document.getElementById('set-email-ov').remove()" style="width:100%;margin-top:8px;background:none;border:none;color:var(--t4);font-size:12px;cursor:pointer;font-family:var(--sans);">إلغاء</button></div>`;
   document.body.appendChild(ov);
 }
 async function saveUserEmail(){
@@ -5170,7 +5283,7 @@ async function saveUserEmail(){
     const r=await fetch("/api/user/email",{method:"PUT",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({email}),signal:ctrl.signal});
     const j=await r.json().catch(()=>null);
     if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر حفظ البريد");
-    document.getElementById("set-email-ov")?.remove();showToast("✅ تم حفظ بريد الاسترداد والتنبيهات");
+    if(U){U.email=email;U.emailVerified=false;if(U.trial)U.trial={...U.trial,emailVerified:false,reason:"email_unverified",canStart:false};}document.getElementById("set-email-ov")?.remove();renderProfile();showToast("✅ تم حفظ البريد — أرسل رابط تأكيده قبل بدء التجربة.");
   }catch(e){fail(String(e?.message||"تعذر الاتصال بالخادم"));}
   finally{clearTimeout(timer);if(btn){btn.disabled=false;btn.textContent="حفظ البريد";}}
 }
@@ -5226,14 +5339,14 @@ async function renderAdmStats(){
   ].map(s=>`<div class="astat"><div class="astat-v" style="color:${s.c};">${s.v}</div><div class="astat-l">${s.l}</div></div>`).join("");
 }
 
-const ADM_TABS=["dash","users","reqs","articles","sources","plans","lifecycle","broadcasts","coupons","employees","aiconfig","audit"];
+const ADM_TABS=["dash","users","reqs","articles","sources","plans","lifecycle","broadcasts","trials","coupons","employees","aiconfig","audit"];
 
 function admTab(tab){
   document.querySelectorAll(".adm-tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===tab));
   const el=document.getElementById("adm-body");
   el.innerHTML=`<div class="empty"><div style="font-size:22px;margin-bottom:8px;">⏳</div><div>جارٍ التحميل...</div></div>`;
   const fns={dash:renderAdmDash,users:renderAdmUsers,reqs:renderAdmReqs,articles:renderAdmArticles,
-    sources:renderAdmSources,plans:renderAdmPlans,lifecycle:renderAdmLifecycle,broadcasts:renderAdmBroadcasts,coupons:renderAdmCoupons,
+    sources:renderAdmSources,plans:renderAdmPlans,lifecycle:renderAdmLifecycle,broadcasts:renderAdmBroadcasts,trials:renderAdmTrials,coupons:renderAdmCoupons,
     employees:renderAdmEmployees,aiconfig:renderAdmAIConfig,audit:renderAdmAudit,opps:renderAdmOpps};
   if(fns[tab]) fns[tab](el);
 }
@@ -5851,6 +5964,38 @@ async function sendAdmManualReminder(id){
   if(!confirm("إرسال تذكير واحد لهذه الدورة؟ لن يُكرر تلقائيًا من هذا الزر."))return;
   try{const r=await admFetch(`/api/admin/subscriptions/${encodeURIComponent(id)}/manual-reminder`,{method:"POST",body:"{}"}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر إنشاء التذكير");const d=j.delivery||{};const emailState=Number(d.emailSent)>0?"وأُرسل البريد":Number(d.emailUnavailable)>0?"وتعذر البريد (ظاهر في القائمة)":"والبريد قيد إعادة المحاولة";showToast(`✅ أُنشئ الإشعار داخل المنصة ${emailState}`);admTab("lifecycle");}catch(e){showToast("❌ "+String(e.message||e));}
 }
+
+/* ─── Free VIP trial: server-owned acquisition, sequence and support ─── */
+let admTrialState={settings:null,steps:[],users:[],stats:null,editingId:null};
+function admTrialDate(value){const d=new Date(value||"");return Number.isFinite(d.getTime())?d.toLocaleString("ar-EG",{timeZone:"Africa/Cairo",dateStyle:"medium",timeStyle:"short"}):"غير متاح حاليًا";}
+function admTrialTimingLabel(v){return ({after_start:"بعد البدء",before_end:"قبل النهاية",at_end:"عند النهاية",after_end:"بعد النهاية"})[v]||"غير متاح";}
+function admTrialStep(id){return admTrialState.steps.find(x=>x.id===id)||null;}
+function admTrialSetMsg(text,color="var(--t4)"){const el=document.getElementById("at-msg");if(el){el.textContent=text;el.style.color=color;}}
+function admTrialScopeInputs(scope){const selected=scope==="all"?null:new Set(Array.isArray(scope)?scope:[]);const choices=[["portfolio","المحفظة"],["price_alerts","تنبيهات الأسعار"],["calculators","الحاسبات"],["ai","AI"],["opportunities","الفرص"],["indicators","المؤشرات"]];return `<label style="display:flex;gap:6px;align-items:center;color:var(--t3);font-size:10.5px;margin-bottom:5px;"><input id="at-scope-all" type="radio" name="at-scope" value="all" ${selected===null?"checked":""} onchange="admTrialToggleScope()"/> كل مزايا VIP</label><label style="display:flex;gap:6px;align-items:center;color:var(--t3);font-size:10.5px;margin-bottom:5px;"><input id="at-scope-picked" type="radio" name="at-scope" value="picked" ${selected!==null?"checked":""} onchange="admTrialToggleScope()"/> ميزات مختارة</label><div id="at-scope-features" style="display:${selected===null?"none":"grid"};grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 8px;padding:7px;background:var(--ink2);border:1px solid var(--b1);border-radius:9px;">${choices.map(([key,label])=>`<label style="display:flex;gap:5px;align-items:center;color:var(--t4);font-size:9.5px;"><input type="checkbox" data-at-feature="${key}" ${selected?.has(key)?"checked":""}/> ${label}</label>`).join("")}</div>`;}
+function admTrialToggleScope(){const features=document.getElementById("at-scope-features"),picked=document.getElementById("at-scope-picked");if(features)features.style.display=picked?.checked?"grid":"none";}
+function admTrialSettingsPayload(){const picked=Boolean(document.getElementById("at-scope-picked")?.checked);const features=[...document.querySelectorAll("[data-at-feature]:checked")].map(x=>x.getAttribute("data-at-feature")).filter(Boolean);return {enabled:Boolean(document.getElementById("at-enabled")?.checked),durationDays:Number(vG("at-duration")),startMode:vG("at-start-mode"),featureScope:picked?features:"all",aiDailyLimit:Number(vG("at-ai-limit")),recentlyExpiredAudienceDays:Number(vG("at-recent-days"))};}
+async function renderAdmTrials(el){
+  try{
+    const r=await admFetch("/api/admin/free-trial"),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر تحميل التجربة");
+    admTrialState={settings:j.settings||{},steps:Array.isArray(j.steps)?j.steps:[],users:Array.isArray(j.users)?j.users:[],stats:j.stats||{},editingId:null};const s=admTrialState.settings,stats=admTrialState.stats||{},users=admTrialState.users;
+    el.innerHTML=`<div style="color:var(--t4);font-size:10px;line-height:1.65;margin-bottom:11px;">المصدر: إعدادات التجربة ورسائلها من الخادم · آخر تحديث: ${admTrialDate(j.asOf)} · الحسابات والأهلية لا تعتمد على المتصفح.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:15px;">${aCard("بدايات",Number(stats.starts)||0,"#818cf8")}${aCard("تحويلات",Number(stats.conversions)||0,"#10b981",stats.conversionRate===null||stats.conversionRate===undefined?"غير متاح حاليًا":`${stats.conversionRate}%`)}${aCard("انتهت بلا تحويل",Number(stats.expiredWithoutConversion)||0,"#f59e0b")}${aCard("متوسط أيام للتحويل",stats.averageDaysToSubscription===null||stats.averageDaysToSubscription===undefined?"غير متاح":Number(stats.averageDaysToSubscription),"#60a5fa")}</div>
+      ${aSection("⚙️ إعدادات التجربة",`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:12px;"><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;"><label style="color:var(--t3);font-size:10.5px;"><input id="at-enabled" type="checkbox" ${s.enabled?"checked":""}/> تفعيل بدايات جديدة</label><label style="color:var(--t3);font-size:10.5px;">نمط البدء<select id="at-start-mode" class="a-in" style="margin-top:4px;"><option value="manual" ${s.startMode==="manual"?"selected":""}>زر المستخدم بعد تأكيد البريد</option><option value="after_email_verification" ${s.startMode==="after_email_verification"?"selected":""}>تلقائيًا بعد تأكيد البريد</option></select></label><label style="color:var(--t3);font-size:10.5px;">المدة (1–31 يوم)<input id="at-duration" class="a-in" type="number" min="1" max="31" value="${Number(s.durationDays)||7}" style="margin-top:4px;"/></label><label style="color:var(--t3);font-size:10.5px;">حد AI اليومي (0–100)<input id="at-ai-limit" class="a-in" type="number" min="0" max="100" value="${Number(s.aiDailyLimit)||0}" style="margin-top:4px;"/></label><label style="color:var(--t3);font-size:10.5px;">نافذة جمهور «منتهية حديثًا» N يوم<input id="at-recent-days" class="a-in" type="number" min="1" max="90" value="${Number(s.recentlyExpiredAudienceDays)||7}" style="margin-top:4px;"/></label></div><div style="margin-top:9px;">${admTrialScopeInputs(s.featureScope||"all")}</div><div style="color:var(--t5);font-size:9.5px;line-height:1.65;margin-top:8px;">إيقاف التفعيل يمنع بدء تجارب جديدة فقط؛ لا يقطع تجربة نشطة. IP والجهاز يسجلان كإشارة مراجعة مُهشّمة فقط ولا يرفضان تلقائيًا. Phone OTP اقتراح اختياري غير مفعّل ولا مورد أو تكلفة معتمدة.</div><button class="btn btn-g" style="margin-top:9px;padding:8px 13px;font-size:11px;" onclick="saveAdmTrialSettings()">حفظ إعدادات التجربة</button><div id="at-settings-msg" style="font-size:10px;margin-top:7px;"></div></div>`)}
+      ${aSection("✉️ تسلسل الرسائل",`<div style="display:grid;gap:8px;">${admTrialState.steps.map(step=>{const m=(stats.messages||[]).find(x=>x.stepId===step.id)||{};return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:10px;"><div style="display:flex;justify-content:space-between;gap:7px;align-items:flex-start;flex-wrap:wrap;"><div><div style="color:var(--t2);font-weight:800;font-size:11.5px;">${sanitize(step.titleTemplate||"رسالة")}</div><div style="color:var(--t4);font-size:9.5px;margin-top:3px;">${admTrialTimingLabel(step.timing)}${Number(step.offsetDays)?` · ${Number(step.offsetDays)} يوم`:""} · ${(Array.isArray(step.channels)?step.channels:[]).map(x=>x==="in_app"?"داخل التطبيق":x==="modal"?"نافذة":"بريد").join(" + ")} · ${step.status==="active"?"مفعّلة":step.status==="paused"?"موقوفة":"مؤرشفة"}</div><div style="color:var(--t5);font:9px var(--mono);margin-top:3px;">تسليم ${Number(m.delivered)||0} · فتح ${Number(m.opened)||0} · نقر ${Number(m.clicked)||0}</div></div><div style="display:flex;gap:5px;flex-wrap:wrap;"><button class="r-btn" onclick='admTrialOpenComposer(${safeJsArg(step.id)})'>تحرير</button>${step.status!=="archived"?`<button class="r-btn" onclick='admTrialToggleStep(${safeJsArg(step.id)})'>${step.status==="paused"?"تفعيل":"إيقاف"}</button><button class="r-btn rej" onclick='admTrialArchive(${safeJsArg(step.id)})'>أرشفة</button>`:""}<button class="r-btn" onclick='admTrialTest(${safeJsArg(step.id)})'>اختبار للأدمن</button></div></div></div>`;}).join("")}</div><button class="btn btn-ghost" style="margin-top:9px;padding:8px 13px;font-size:11px;" onclick="admTrialOpenComposer()">＋ رسالة تسلسل جديدة</button><div id="at-composer" style="margin-top:10px;"></div>`)}
+      ${aSection("👥 مستخدمو التجربة النشطون",`<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:8px;"><input id="at-grant-user" class="a-in" type="number" min="1" placeholder="معرف مستخدم للمنح اليدوي" style="margin:0;flex:1;min-width:170px;"/><input id="at-grant-days" class="a-in" type="number" min="1" max="31" placeholder="أيام (اختياري)" style="margin:0;width:125px;"/><button class="btn btn-g" style="padding:8px 12px;font-size:10.5px;" onclick="admTrialGrant()">منح يدوي</button></div>${users.length?`<div style="display:grid;gap:6px;">${users.map(u=>`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:9px 10px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;"><div><div style="color:var(--t2);font-size:11px;font-weight:800;">${sanitize(u.name||"مستخدم")} <span style="color:var(--t5);font-family:var(--mono);font-weight:400;">#${Number(u.userId)}</span></div><div style="color:var(--t4);font-size:9.5px;margin-top:3px;">ينتهي ${admTrialDate(u.endsAt)} · باقي ${Number(u.daysLeft)} يوم · ${sanitize(Array.isArray(u.featureScope)?u.featureScope.join(", "):u.featureScope||"all")}</div></div><div style="display:flex;gap:5px;"><button class="r-btn" onclick='admTrialExtend(${Number(u.userId)})'>+ أيام</button><button class="r-btn rej" onclick='admTrialEndNow(${Number(u.userId)})'>إنهاء الآن</button></div></div>`).join("")}</div>`:`<div class="empty" style="padding:15px;">لا توجد تجارب نشطة حاليًا.</div>`}`)}`;
+  }catch(e){el.innerHTML=`<div class="empty" style="padding:26px;"><div style="color:var(--dn);font-weight:800;">تعذر تحميل التجربة المجانية</div><div style="color:var(--t4);font-size:10px;margin-top:5px;">${sanitize(String(e.message||e))}</div><button class="btn btn-ghost" style="margin-top:10px;padding:8px 13px;" onclick="admTab('trials')">↻ إعادة المحاولة</button></div>`;}
+}
+async function saveAdmTrialSettings(){const msg=document.getElementById("at-settings-msg");try{const p=admTrialSettingsPayload(),r=await admFetch("/api/admin/free-trial/settings",{method:"PUT",body:JSON.stringify(p)}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر الحفظ");if(msg){msg.style.color="var(--g)";msg.textContent="تم الحفظ؛ التجارب النشطة لا تتغير بأثر رجعي.";}showToast("✅ تم حفظ إعدادات التجربة");}catch(e){if(msg){msg.style.color="var(--dn)";msg.textContent="⚠️ "+String(e.message||e);}else showToast("❌ "+String(e.message||e));}}
+function admTrialOpenComposer(id=null){admTrialState.editingId=id;const step=id?admTrialStep(id):{timing:"after_start",offsetDays:0,channels:["in_app"],titleTemplate:"",bodyTemplate:"",messageType:"important",actionLabel:"اشترك الآن",actionPlanKey:"",emailMarketing:false,status:"active"};const host=document.getElementById("at-composer");if(!host)return;const ch=Array.isArray(step.channels)?step.channels:[];host.innerHTML=`<div style="background:var(--ink2);border:1px solid var(--b1);border-radius:13px;padding:11px;"><div style="color:var(--t2);font-weight:800;font-size:12px;">${id?"تحرير رسالة التسلسل":"رسالة تسلسل جديدة"}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px;"><label class="adm-bc-label">التوقيت<select id="ats-timing" class="a-in" style="margin:3px 0 0;"><option value="after_start" ${step.timing==="after_start"?"selected":""}>بعد البدء</option><option value="before_end" ${step.timing==="before_end"?"selected":""}>قبل النهاية</option><option value="at_end" ${step.timing==="at_end"?"selected":""}>عند النهاية</option><option value="after_end" ${step.timing==="after_end"?"selected":""}>بعد النهاية</option></select></label><label class="adm-bc-label">الإزاحة بالأيام<input id="ats-offset" class="a-in" type="number" min="0" max="90" value="${Number(step.offsetDays)||0}" style="margin:3px 0 0;"/></label></div><label class="adm-bc-label">العنوان</label><input id="ats-title" class="a-in" maxlength="140" value="${sanitize(step.titleTemplate||"")}"/><label class="adm-bc-label">النص</label><textarea id="ats-body" class="adm-bc-text" style="min-height:105px;">${sanitize(step.bodyTemplate||"")}</textarea><div class="adm-bc-help">المتغيرات: {{name}} {{days_left}} {{end_date}} {{price}} {{old_price}} {{discount_percent}}. الكوبون غير متاح قبل redemption حقيقي.</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px;"><label class="adm-bc-label">نوع العرض<select id="ats-type" class="a-in" style="margin:3px 0 0;"><option value="important" ${step.messageType==="important"?"selected":""}>تنبيه</option><option value="offer" ${step.messageType==="offer"?"selected":""}>عرض</option><option value="greeting" ${step.messageType==="greeting"?"selected":""}>ترحيب</option><option value="new_feature" ${step.messageType==="new_feature"?"selected":""}>ميزة</option></select></label><label class="adm-bc-label">حالة<select id="ats-status" class="a-in" style="margin:3px 0 0;"><option value="active" ${step.status==="active"?"selected":""}>مفعّلة</option><option value="paused" ${step.status==="paused"?"selected":""}>موقوفة</option></select></label><label class="adm-bc-label">CTA اشتراك<input id="ats-label" class="a-in" maxlength="40" value="${sanitize(step.actionLabel||"")}" style="margin:3px 0 0;"/></label><label class="adm-bc-label">مفتاح الباقة (اختياري)<input id="ats-plan" class="a-in" maxlength="40" value="${sanitize(step.actionPlanKey||"")}" style="margin:3px 0 0;"/></label></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"><label style="color:var(--t3);font-size:10px;"><input id="ats-inapp" type="checkbox" ${ch.includes("in_app")?"checked":""}/> داخل التطبيق</label><label style="color:var(--t3);font-size:10px;"><input id="ats-modal" type="checkbox" ${ch.includes("modal")?"checked":""}/> نافذة Modal</label><label style="color:var(--t3);font-size:10px;"><input id="ats-email" type="checkbox" ${ch.includes("email")?"checked":""}/> بريد</label><label style="color:var(--au);font-size:10px;"><input id="ats-marketing" type="checkbox" ${step.emailMarketing?"checked":""}/> بريد تسويقي (consent + unsubscribe)</label></div><div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;"><button class="btn btn-bl btn-sm" onclick="admTrialPreview()">معاينة خادم</button><button class="btn btn-g btn-sm" onclick="admTrialSaveStep()">حفظ</button><button class="btn btn-ghost btn-sm" onclick="admTrialOpenComposer(null)">إلغاء</button></div><div id="at-msg" class="adm-bc-help" aria-live="polite"></div><div id="at-preview" style="margin-top:9px;"></div></div>`;}
+function admTrialStepPayload(){const channels=[];if(document.getElementById("ats-inapp")?.checked)channels.push("in_app");if(document.getElementById("ats-modal")?.checked)channels.push("modal");if(document.getElementById("ats-email")?.checked)channels.push("email");return {timing:vG("ats-timing"),offsetDays:Number(vG("ats-offset")),channels,titleTemplate:vG("ats-title"),bodyTemplate:vG("ats-body"),messageType:vG("ats-type"),actionLabel:vG("ats-label")||null,actionPlanKey:vG("ats-plan")||null,emailMarketing:Boolean(document.getElementById("ats-marketing")?.checked),status:vG("ats-status")};}
+async function admTrialPreview(){admTrialSetMsg("جارٍ توليد المعاينة من الخادم…","var(--t4)");try{const r=await admFetch("/api/admin/free-trial/messages/preview",{method:"POST",body:JSON.stringify(admTrialStepPayload())}),j=await r.json();if(!r.ok||j.status!=="ok"||!j.preview)throw new Error(j.message||"تعذر المعاينة");const host=document.getElementById("at-preview");if(host){host.replaceChildren(buildBroadcastCard(j.preview,{preview:true}));}admTrialSetMsg("✅ المعاينة تستخدم تنظيف المحتوى وتسعير الخادم الحالي.","var(--g)");}catch(e){admTrialSetMsg("⚠️ "+String(e.message||e),"var(--dn)");}}
+async function admTrialSaveStep(){const id=admTrialState.editingId;admTrialSetMsg("جارٍ الحفظ…","var(--t4)");try{const r=await admFetch(id?`/api/admin/free-trial/messages/${encodeURIComponent(id)}`:"/api/admin/free-trial/messages",{method:id?"PUT":"POST",body:JSON.stringify(admTrialStepPayload())}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر الحفظ");showToast("✅ تم حفظ رسالة التجربة؛ التغيير للمستقبل فقط");admTab("trials");}catch(e){admTrialSetMsg("⚠️ "+String(e.message||e),"var(--dn)");}}
+async function admTrialToggleStep(id){const step=admTrialStep(id);if(!step)return;const payload={timing:step.timing,offsetDays:step.offsetDays,channels:step.channels,titleTemplate:step.titleTemplate,bodyTemplate:step.bodyTemplate,messageType:step.messageType,actionLabel:step.actionLabel,actionPlanKey:step.actionPlanKey,emailMarketing:step.emailMarketing,status:step.status==="paused"?"active":"paused"};try{const r=await admFetch(`/api/admin/free-trial/messages/${encodeURIComponent(id)}`,{method:"PUT",body:JSON.stringify(payload)}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر التعديل");showToast("✅ تم تحديث حالة الرسالة");admTab("trials");}catch(e){showToast("❌ "+String(e.message||e));}}
+async function admTrialArchive(id){if(!confirm("أرشفة الرسالة؟ ستتوقف الإرسالات المستقبلية فقط."))return;try{const r=await admFetch(`/api/admin/free-trial/messages/${encodeURIComponent(id)}/archive`,{method:"POST",body:"{}"}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر الأرشفة");showToast("✅ تمت الأرشفة");admTab("trials");}catch(e){showToast("❌ "+String(e.message||e));}}
+async function admTrialTest(id){try{const r=await admFetch(`/api/admin/free-trial/messages/${encodeURIComponent(id)}/test`,{method:"POST",body:"{}"}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر الاختبار");showToast("✅ "+(j.message||"أُرسل الاختبار إلى بريد المدير فقط"));}catch(e){showToast("⚠️ "+String(e.message||e));}}
+async function admTrialExtend(userId){const raw=prompt("عدد الأيام الإضافية (1–31):","3");if(raw===null)return;const days=Number(raw);try{const r=await admFetch(`/api/admin/free-trial/users/${userId}/extend`,{method:"POST",body:JSON.stringify({days})}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر التمديد");showToast("✅ تم التمديد وتحريك الرسائل القادمة");admTab("trials");}catch(e){showToast("❌ "+String(e.message||e));}}
+async function admTrialEndNow(userId){if(!confirm("إنهاء التجربة الآن؟ سيعود الحساب للخطة المجانية وتبقى البيانات محفوظة."))return;try{const r=await admFetch(`/api/admin/free-trial/users/${userId}/end-now`,{method:"POST",body:"{}"}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر الإنهاء");showToast("✅ انتهت التجربة الآن");admTab("trials");}catch(e){showToast("❌ "+String(e.message||e));}}
+async function admTrialGrant(){const id=Number(vG("at-grant-user")),days=vG("at-grant-days");if(!Number.isInteger(id)||id<=0){showToast("⚠️ أدخل معرف مستخدم صحيحًا");return;}try{const r=await admFetch(`/api/admin/free-trial/users/${id}/grant`,{method:"POST",body:JSON.stringify(days?{days:Number(days)}:{})}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر المنح");showToast("✅ تم منح التجربة يدويًا");admTab("trials");}catch(e){showToast("❌ "+String(e.message||e));}}
 
 /* ─── Broadcasts: server-validated content, schedule and audience ─── */
 let admBroadcastState={items:[],templates:[],editingId:null};

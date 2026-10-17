@@ -3,7 +3,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { logger } from "../lib/logger";
 import { EGX_STOCKS, MARKET_INSTRUMENTS, US_STOCKS, type StockDefinition } from "../lib/market-data/catalog";
 import { getMarketHistorySnapshot, getMarketSparklines, parseHistoryRange, runMarketDailySnapshot } from "../lib/market-data/history";
-import { currentUser, isAdminToken, hasVip } from "../lib/userAuth";
+import { currentUser, isAdminToken, hasVipFeature } from "../lib/userAuth";
 import { getMarketDataService, type MarketDataService, type QuoteSnapshot } from "../lib/market-data/service";
 import type { CalendarEvent, CanonicalQuote, MarketInstrument, MarketSection } from "../lib/market-data/types";
 
@@ -296,7 +296,7 @@ router.get("/history/:instrumentId", async (req: Request, res: Response) => {
     // basic OHLC series remains available under the product's free-chart plan.
     if (isAdminToken(req)) indicatorsAllowed = true;
     else {
-      try { indicatorsAllowed = await hasVip(currentUser(req)); } catch { indicatorsAllowed = false; }
+      try { indicatorsAllowed = await hasVipFeature(currentUser(req), "indicators"); } catch { indicatorsAllowed = false; }
     }
   }
 

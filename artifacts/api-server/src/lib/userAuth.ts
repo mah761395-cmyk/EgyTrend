@@ -105,9 +105,17 @@ export type VipEntitlement = {
   active: boolean;
   /** subscription is the post-migration source of truth; legacy is temporary compatibility only. */
   source: "subscription" | "legacy" | "none";
+  subscriptionType: "paid" | "trial" | "legacy" | "none";
   planKey: string | null;
   planNameAr: string | null;
   planFeatures: string[];
+  /** A selected-scope trial still has VIP, but individual server gates consult this scope. */
+  trialFeatureScope: string[] | "all" | null;
+  trialAiDailyLimit: number | null;
+  trialStartedAt: Date | null;
+  trialEndsAt: Date | null;
+  trialEndedAt: Date | null;
+  trialConvertedAt: Date | null;
   status: "active" | "grace" | "cancelled" | "expired" | "none";
   expiresAt: Date | null;
   graceEndsAt: Date | null;
@@ -116,9 +124,16 @@ export type VipEntitlement = {
 const NO_VIP: VipEntitlement = {
   active: false,
   source: "none",
+  subscriptionType: "none",
   planKey: null,
   planNameAr: null,
   planFeatures: [],
+  trialFeatureScope: null,
+  trialAiDailyLimit: null,
+  trialStartedAt: null,
+  trialEndsAt: null,
+  trialEndedAt: null,
+  trialConvertedAt: null,
   status: "none",
   expiresAt: null,
   graceEndsAt: null,
@@ -134,9 +149,16 @@ function legacyEntitlement(row: { plan: string; vipExpiresAt: Date | null }, now
   return {
     active,
     source: "legacy",
+    subscriptionType: "legacy",
     planKey: "legacy-vip",
     planNameAr: "اشتراك VIP سابق",
     planFeatures: [],
+    trialFeatureScope: null,
+    trialAiDailyLimit: null,
+    trialStartedAt: null,
+    trialEndsAt: null,
+    trialEndedAt: null,
+    trialConvertedAt: null,
     status: active ? "active" : "expired",
     expiresAt: row.vipExpiresAt,
     graceEndsAt: null,
@@ -176,6 +198,14 @@ export async function getVipEntitlement(claims: Pick<UserClaims, "sub"> | null, 
         planKey: userSubscriptionsTable.planKey,
         planNameAr: userSubscriptionsTable.planNameAr,
         planFeatures: userSubscriptionsTable.planFeatures,
+        subscriptionType: userSubscriptionsTable.subscriptionType,
+        trialFeatureScope: userSubscriptionsTable.trialFeatureScope,
+        trialAiDailyLimit: userSubscriptionsTable.trialAiDailyLimit,
+        trialStartedAt: userSubscriptionsTable.trialStartedAt,
+        trialEndsAt: userSubscriptionsTable.trialEndsAt,
+        trialEndedAt: userSubscriptionsTable.trialEndedAt,
+        trialConvertedAt: userSubscriptionsTable.trialConvertedAt,
+        startsAt: userSubscriptionsTable.startsAt,
         status: userSubscriptionsTable.status,
         expiresAt: userSubscriptionsTable.expiresAt,
         graceEndsAt: userSubscriptionsTable.graceEndsAt,
@@ -191,12 +221,29 @@ export async function getVipEntitlement(claims: Pick<UserClaims, "sub"> | null, 
         && expiresAt.getTime() <= now.getTime()
         && Boolean(subscription.graceEndsAt && subscription.graceEndsAt.getTime() > now.getTime());
       const active = paidActive || graceActive;
+      /* A payment approved mid-trial has a future paid startsAt. The current
+       * row is paid for billing/lifecycle purposes, but the retained trial
+       * feature snapshot remains authoritative until that date. */
+      const trialWindowBeforePaidStart = subscription.subscriptionType === "paid"
+        && subscription.startsAt.getTime() > now.getTime()
+        && !!subscription.trialEndsAt && subscription.trialEndsAt.getTime() > now.getTime()
+        && (subscription.trialFeatureScope === "all" || Array.isArray(subscription.trialFeatureScope));
       return {
         active,
         source: "subscription",
+        subscriptionType: subscription.subscriptionType === "trial" || trialWindowBeforePaidStart ? "trial" : "paid",
         planKey: subscription.planKey,
         planNameAr: subscription.planNameAr,
         planFeatures: Array.isArray(subscription.planFeatures) ? subscription.planFeatures : [],
+        trialFeatureScope: (subscription.subscriptionType === "trial" || trialWindowBeforePaidStart)
+          ? (subscription.trialFeatureScope === "all" || Array.isArray(subscription.trialFeatureScope) ? subscription.trialFeatureScope : "all")
+          : null,
+        trialAiDailyLimit: (subscription.subscriptionType === "trial" || trialWindowBeforePaidStart) && Number.isInteger(subscription.trialAiDailyLimit)
+          ? Number(subscription.trialAiDailyLimit) : null,
+        trialStartedAt: subscription.trialStartedAt,
+        trialEndsAt: subscription.trialEndsAt,
+        trialEndedAt: subscription.trialEndedAt,
+        trialConvertedAt: subscription.trialConvertedAt,
         status: paidActive ? "active" : graceActive ? "grace" : subscription.status === "cancelled" ? "cancelled" : "expired",
         expiresAt,
         graceEndsAt: subscription.graceEndsAt,
@@ -223,6 +270,21 @@ export async function hasVip(claims: Pick<UserClaims, "sub"> | null): Promise<bo
   }
 }
 
+/** A trial may be configured for a selected feature subset. `hasVip()` stays
+ * true for its whole active period, while every feature-specific server gate
+ * calls this predicate so a browser can never expand the chosen scope. */
+export async function hasVipFeature(claims: Pick<UserClaims, "sub"> | null, feature: string): Promise<boolean> {
+  try {
+    const entitlement = await getVipEntitlement(claims);
+    if (!entitlement.active) return false;
+    if (entitlement.subscriptionType !== "trial") return true;
+    return entitlement.trialFeatureScope === "all"
+      || (Array.isArray(entitlement.trialFeatureScope) && entitlement.trialFeatureScope.includes(feature));
+  } catch {
+    return false;
+  }
+}
+
 export async function requireVipUser(req: Request, res: Response, next: NextFunction): Promise<void> {
   const claims = currentUser(req);
   if (!claims) {
@@ -234,5 +296,20 @@ export async function requireVipUser(req: Request, res: Response, next: NextFunc
     return;
   }
   next();
+}
+
+export function requireVipFeature(feature: string) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const claims = currentUser(req);
+    if (!claims) {
+      res.status(401).json({ status: "error", message: "login required" });
+      return;
+    }
+    if (!(await hasVipFeature(claims, feature))) {
+      res.status(403).json({ status: "error", message: "هذه الميزة غير متاحة ضمن اشتراكك الحالي" });
+      return;
+    }
+    next();
+  };
 }
 

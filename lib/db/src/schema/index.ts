@@ -12,6 +12,7 @@ export * from "./opportunities";
 export * from "./users";
 export * from "./user_subscriptions";
 export * from "./subscription_lifecycle";
+export * from "./free_trials";
 export * from "./broadcast_messages";
 export * from "./portfolio_positions";
 export * from "./price_alerts";

@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { logger } from "../lib/logger";
-import { currentUser, isAdminToken, hasVip } from "../lib/userAuth";
+import { currentUser, getVipEntitlement, hasVipFeature, isAdminToken } from "../lib/userAuth";
 import { db } from "@workspace/db";
 import { aiConfigTable, aiUsageTable } from "@workspace/db";
 import { and, eq, gte, sql } from "drizzle-orm";
@@ -55,16 +55,22 @@ const AI_GLOBAL_DAILY_HARD_CAP = Math.max(
 
 type AiReservation = "ok" | "limit" | "unavailable";
 
-async function reserveExternalAiRequest(userId: string, requestType: string, tokensEstimate: number): Promise<AiReservation> {
+async function reserveExternalAiRequest(userId: string, requestType: string, tokensEstimate: number, trialDailyLimit: number | null = null): Promise<AiReservation> {
   try {
     const since = new Date(Date.now() - AI_BUDGET_WINDOW_MS);
     const [cfg] = await db.select().from(aiConfigTable).limit(1);
     /* 0 means disabled, not unlimited. A malformed value is bounded by the
      * code cap, so neither an outage nor a bad dashboard entry opens spend. */
     const configured = Number(cfg?.dailyRequestLimit ?? AI_PER_PRINCIPAL_HARD_CAP);
-    const perPrincipalLimit = Number.isFinite(configured)
+    const configuredLimit = Number.isFinite(configured)
       ? Math.max(0, Math.min(Math.floor(configured), AI_PER_PRINCIPAL_HARD_CAP))
       : AI_PER_PRINCIPAL_HARD_CAP;
+    /* A trial cap is captured server-side at trial start. It can only tighten
+     * the platform-wide per-principal policy, never raise it. */
+    const trialLimit = Number.isInteger(trialDailyLimit)
+      ? Math.max(0, Math.min(Number(trialDailyLimit), AI_PER_PRINCIPAL_HARD_CAP))
+      : null;
+    const perPrincipalLimit = trialLimit === null ? configuredLimit : Math.min(configuredLimit, trialLimit);
     if (perPrincipalLimit === 0) return "limit";
 
     const [principalUsage] = await db
@@ -141,7 +147,8 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 router.post("/chat", async (req: Request, res: Response) => {
   const claims = currentUser(req);
   const isAdmin = isAdminToken(req);
-  if (!isAdmin && !(await hasVip(claims))) {
+  const entitlement = !isAdmin ? await getVipEntitlement(claims) : null;
+  if (!isAdmin && !(await hasVipFeature(claims, "ai"))) {
     res.status(req.header("authorization") ? 403 : 401).json({ status: "error", message: "VIP subscription required" });
     return;
   }
@@ -219,7 +226,12 @@ router.post("/chat", async (req: Request, res: Response) => {
 
   const engine = engineName();
   if (engine !== "local") {
-    const reservation = await reserveExternalAiRequest(userKey, `chat-${engine}-reserved`, maxTokens);
+    const reservation = await reserveExternalAiRequest(
+      userKey,
+      `chat-${engine}-reserved`,
+      maxTokens,
+      entitlement?.subscriptionType === "trial" ? entitlement.trialAiDailyLimit : null,
+    );
     if (reservation === "limit") {
       res.status(429).json({ status: "error", message: "ai_daily_limit" });
       return;

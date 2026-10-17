@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import crypto from "crypto";
 import { and, eq, gt, isNull, ne } from "drizzle-orm";
-import { appUsersTable, passwordResetsTable } from "@workspace/db/schema";
+import { appUsersTable, emailVerificationTokensTable, passwordResetsTable } from "@workspace/db/schema";
 import { db } from "@workspace/db";
 import {
   checkUserPassword,
@@ -14,7 +14,17 @@ import {
   getVipEntitlement,
   type VipEntitlement,
 } from "../lib/userAuth";
-import { isSmtpConfigured, resetEmailHtml, sendMail } from "../lib/mailer";
+import { escapeHtml, isSmtpConfigured, resetEmailHtml, sendMail } from "../lib/mailer";
+import {
+  canonicalTrialEmail,
+  freeTrialAccountStatus,
+  isDisposableTrialEmail,
+  listFreeTrialMessages,
+  recordFreeTrialMessageEvent,
+  startFreeTrial,
+} from "../lib/free-trials";
+import { readFreeTrialSettings } from "../lib/trial-settings";
+import { validMarketingUnsubscribeToken } from "../lib/marketing-email";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -49,6 +59,8 @@ function publicUser(user: typeof appUsersTable.$inferSelect, entitlement?: VipEn
     vipExpiresAt: activeVip ? entitlement?.expiresAt?.toISOString() || null : null,
     /* Consent is account state from the server, never inferred from the email field. */
     marketingEmailOptIn: user.marketingEmailOptIn,
+    email: user.email || null,
+    emailVerified: Boolean(user.emailVerifiedAt),
   };
 }
 
@@ -67,6 +79,13 @@ function publicSubscription(entitlement: VipEntitlement) {
     /* Compatibility is visible to the account only as neutral state; the
      * browser still never determines authorization. */
     source: entitlement.source,
+    subscriptionType: entitlement.subscriptionType,
+    trialFeatureScope: entitlement.trialFeatureScope,
+    trialAiDailyLimit: entitlement.trialAiDailyLimit,
+    trialStartedAt: entitlement.trialStartedAt?.toISOString() || null,
+    trialEndsAt: entitlement.trialEndsAt?.toISOString() || null,
+    trialEndedAt: entitlement.trialEndedAt?.toISOString() || null,
+    trialConvertedAt: entitlement.trialConvertedAt?.toISOString() || null,
   };
 }
 
@@ -123,7 +142,10 @@ router.post("/login", async (req: Request, res: Response) => {
     res.status(401).json({ status: "error", message: "invalid credentials" });
     return;
   }
-  const entitlement = await getVipEntitlement({ sub: user.id });
+  const [entitlement, trial] = await Promise.all([
+    getVipEntitlement({ sub: user.id }),
+    freeTrialAccountStatus(user.id),
+  ]);
   const normalized = publicUser(user, entitlement);
   const token = signUserToken({
     sub: user.id,
@@ -135,7 +157,7 @@ router.post("/login", async (req: Request, res: Response) => {
   });
   await db.update(appUsersTable).set({ updatedAt: new Date() }).where(eq(appUsersTable.id, user.id));
   res.cookie(USER_SESSION_COOKIE, token, sessionCookieOptions(7 * 24 * 60 * 60 * 1000));
-  res.json({ status: "ok", user: normalized, subscription: publicSubscription(entitlement) });
+  res.json({ status: "ok", user: normalized, subscription: publicSubscription(entitlement), trial });
 });
 
 router.post("/logout", (_req: Request, res: Response) => {
@@ -155,8 +177,192 @@ router.get("/me", async (req: Request, res: Response) => {
     res.status(401).json({ status: "error", message: "user not found" });
     return;
   }
-  const entitlement = await getVipEntitlement({ sub: user.id });
-  res.json({ status: "ok", user: publicUser(user, entitlement), subscription: publicSubscription(entitlement) });
+  const [entitlement, trial] = await Promise.all([
+    getVipEntitlement({ sub: user.id }),
+    freeTrialAccountStatus(user.id),
+  ]);
+  res.json({ status: "ok", user: publicUser(user, entitlement), subscription: publicSubscription(entitlement), trial });
+});
+
+/* ═══════════ FREE VIP TRIAL + EMAIL VERIFICATION ═══════════ */
+function verifiedEmailLink(rawToken: string): string | null {
+  const configured = String(process.env["APP_BASE_URL"] || "").trim().replace(/\/+$/, "");
+  const fallback = process.env.NODE_ENV === "production" ? "" : "http://localhost:3000";
+  try {
+    const base = new URL(configured || fallback);
+    if (base.protocol !== "https:" && process.env.NODE_ENV === "production") return null;
+    if (base.protocol !== "https:" && base.protocol !== "http:") return null;
+    return new URL(`/?verify_email=${encodeURIComponent(rawToken)}`, base).toString();
+  } catch { return null; }
+}
+
+function verificationEmailHtml(name: string, link: string): string {
+  return `<!doctype html><html dir="rtl" lang="ar"><body style="margin:0;background:#f4f6f5;padding:22px;font-family:Tahoma,Arial,sans-serif;color:#172033"><div style="max-width:560px;margin:auto;background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:24px"><h2 style="margin:0 0 14px;color:#047857">تأكيد البريد الإلكتروني — EgyTrend</h2><p style="font-size:15px;line-height:1.9">مرحبًا ${escapeHtml(name)}. أكّد بريدك لفتح أهلية تجربة VIP المجانية عند تفعيلها من الإدارة. لا تبدأ تجربة ولا تُخصم أي مبالغ بمجرد فتح هذا الرابط.</p><p style="text-align:center;margin:24px 0"><a href="${escapeHtml(link)}" style="display:inline-block;background:#059669;color:#fff;text-decoration:none;font-weight:700;padding:12px 26px;border-radius:10px">تأكيد البريد</a></p><p style="font-size:12px;color:#6b7280;line-height:1.7">الرابط صالح 30 دقيقة ويستخدم مرة واحدة. إذا لم تطلبه فتجاهل الرسالة.</p></div></body></html>`;
+}
+
+function trialReasonMessage(reason: string): string {
+  const messages: Record<string, string> = {
+    disabled: "التجربة المجانية غير مفعّلة حاليًا.",
+    email_unverified: "أكّد بريدك الإلكتروني أولًا قبل بدء التجربة.",
+    email_missing: "أضف بريدًا إلكترونيًا صالحًا ثم أكّده قبل بدء التجربة.",
+    email_disposable: "لا يمكن استخدام بريد مؤقت للتجربة المجانية.",
+    already_claimed: "استُخدمت التجربة المجانية سابقًا لهذا الحساب أو البريد.",
+    already_active: "لديك تجربة VIP نشطة بالفعل.",
+    already_paid: "لديك اشتراك VIP مدفوع نشط بالفعل.",
+    user_not_found: "الحساب غير متاح حاليًا.",
+  };
+  return messages[reason] || "تعذر بدء التجربة حاليًا.";
+}
+
+router.get("/trial", async (req: Request, res: Response) => {
+  const claims = currentUser(req);
+  if (!claims) { res.status(401).json({ status: "error", message: "login required" }); return; }
+  try {
+    const trial = await freeTrialAccountStatus(claims.sub);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ status: "ok", trial });
+  } catch (error) {
+    logger.error({ err: error }, "free trial status error");
+    res.status(503).json({ status: "error", message: "تعذر تحميل حالة التجربة حاليًا" });
+  }
+});
+
+router.post("/email-verification/request", async (req: Request, res: Response) => {
+  const claims = currentUser(req);
+  if (!claims) { res.status(401).json({ status: "error", message: "login required" }); return; }
+  const ip = req.ip || "unknown";
+  if (rateLimitHit(`ev-ip:${ip}`, 10, 15 * 60 * 1000) || rateLimitHit(`ev-user:${claims.sub}`, 3, 15 * 60 * 1000)) {
+    res.status(429).json({ status: "error", message: "طلبات كثيرة — حاول بعد 15 دقيقة" });
+    return;
+  }
+  try {
+    const [user] = await db.select().from(appUsersTable)
+      .where(and(eq(appUsersTable.id, claims.sub), eq(appUsersTable.status, "active"))).limit(1);
+    if (!user) { res.status(401).json({ status: "error", message: "الحساب غير متاح" }); return; }
+    const canonical = canonicalTrialEmail(user.email);
+    if (!canonical) { res.status(400).json({ status: "error", message: "أضف بريدًا إلكترونيًا صالحًا أولًا." }); return; }
+    if (isDisposableTrialEmail(canonical)) { res.status(400).json({ status: "error", message: "لا يمكن استخدام بريد مؤقت لتأكيد أهلية التجربة." }); return; }
+    if (user.emailVerifiedAt) { res.json({ status: "ok", alreadyVerified: true, emailDelivered: false, message: "بريدك مؤكد بالفعل." }); return; }
+    const raw = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx.update(emailVerificationTokensTable).set({ usedAt: now })
+        .where(and(eq(emailVerificationTokensTable.userId, user.id), isNull(emailVerificationTokensTable.usedAt)));
+      await tx.insert(emailVerificationTokensTable).values({
+        id: `email-verify-${crypto.randomUUID()}`,
+        userId: user.id,
+        tokenHash,
+        expiresAt: new Date(now.getTime() + 30 * 60 * 1000),
+        createdAt: now,
+      });
+    });
+    const link = verifiedEmailLink(raw);
+    if (!link) {
+      res.status(503).json({ status: "error", message: "رابط التأكيد غير مهيأ بأمان حاليًا؛ تواصل مع الدعم." });
+      return;
+    }
+    const delivery = await sendMail(user.email!, "EgyTrend — تأكيد البريد الإلكتروني", verificationEmailHtml(user.name, link));
+    res.json({
+      status: "ok",
+      emailDelivered: delivery.delivered,
+      message: delivery.delivered
+        ? "أرسلنا رابط التأكيد إلى بريدك. افحص البريد غير المرغوب أيضًا."
+        : "لم تُرسل الرسالة لأن خدمة البريد غير مفعّلة حاليًا؛ لا يمكن تأكيد البريد من دون رابط آمن.",
+    });
+  } catch (error) {
+    logger.error({ err: error }, "email verification request error");
+    res.status(503).json({ status: "error", message: "تعذر طلب تأكيد البريد حاليًا" });
+  }
+});
+
+router.post("/email-verification/confirm", async (req: Request, res: Response) => {
+  const ip = req.ip || "unknown";
+  if (rateLimitHit(`ev-confirm:${ip}`, 20, 15 * 60 * 1000)) { res.status(429).json({ status: "error", message: "محاولات كثيرة — حاول لاحقًا" }); return; }
+  const raw = String(req.body?.token || "").trim();
+  if (!/^[a-f0-9]{64}$/i.test(raw)) { res.status(400).json({ status: "error", message: "رابط التأكيد غير صالح أو منتهي." }); return; }
+  const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
+  const now = new Date();
+  try {
+    const verified = await db.transaction(async (tx) => {
+      const [token] = await tx.select().from(emailVerificationTokensTable)
+        .where(and(eq(emailVerificationTokensTable.tokenHash, tokenHash), isNull(emailVerificationTokensTable.usedAt), gt(emailVerificationTokensTable.expiresAt, now)))
+        .for("update").limit(1);
+      if (!token) return null;
+      const [user] = await tx.select().from(appUsersTable).where(and(eq(appUsersTable.id, token.userId), eq(appUsersTable.status, "active"))).limit(1);
+      if (!user) return null;
+      await tx.update(emailVerificationTokensTable).set({ usedAt: now }).where(eq(emailVerificationTokensTable.id, token.id));
+      await tx.update(appUsersTable).set({ emailVerifiedAt: now, updatedAt: now }).where(eq(appUsersTable.id, user.id));
+      return user;
+    });
+    if (!verified) { res.status(400).json({ status: "error", message: "رابط التأكيد غير صالح أو منتهي." }); return; }
+    const settings = await readFreeTrialSettings();
+    const trial = settings.enabled && settings.startMode === "after_email_verification"
+      ? await startFreeTrial({ userId: verified.id, now, mode: "auto", ip, device: req.header("user-agent") || "" })
+      : null;
+    res.json({
+      status: "ok",
+      emailVerified: true,
+      trialStarted: trial?.reason === "started",
+      trialReason: trial?.reason || null,
+      message: trial?.reason === "started"
+        ? "تم تأكيد بريدك وبدأت تجربتك المجانية لمدة 7 أيام."
+        : "تم تأكيد بريدك الإلكتروني بنجاح.",
+    });
+  } catch (error) {
+    logger.error({ err: error }, "email verification confirm error");
+    res.status(503).json({ status: "error", message: "تعذر تأكيد البريد حاليًا" });
+  }
+});
+
+router.post("/trial/start", async (req: Request, res: Response) => {
+  const claims = currentUser(req);
+  if (!claims) { res.status(401).json({ status: "error", message: "login required" }); return; }
+  try {
+    const result = await startFreeTrial({
+      userId: claims.sub,
+      mode: "self",
+      ip: req.ip || "",
+      device: `${req.header("user-agent") || ""}|${String(req.header("x-device-id") || "").slice(0, 160)}`,
+    });
+    if (result.reason !== "started") {
+      const status = ["already_claimed", "already_active", "already_paid"].includes(result.reason) ? 409 : 400;
+      res.status(status).json({ status: "error", reason: result.reason, message: trialReasonMessage(result.reason) });
+      return;
+    }
+    const trial = await freeTrialAccountStatus(claims.sub);
+    res.json({ status: "ok", trial, message: "بدأت تجربتك المجانية لمدة 7 أيام. لا توجد بيانات دفع أو خصم أو تجديد تلقائي." });
+  } catch (error) {
+    logger.error({ err: error }, "free trial self-start error");
+    res.status(503).json({ status: "error", message: "تعذر بدء التجربة حاليًا" });
+  }
+});
+
+router.get("/trial/messages", async (req: Request, res: Response) => {
+  const claims = currentUser(req);
+  if (!claims) { res.status(401).json({ status: "error", message: "login required" }); return; }
+  try {
+    const messages = await listFreeTrialMessages(claims.sub);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ status: "ok", messages });
+  } catch (error) {
+    logger.error({ err: error }, "trial messages list error");
+    res.status(503).json({ status: "error", message: "تعذر تحميل رسائل التجربة حاليًا" });
+  }
+});
+
+router.post("/trial/messages/:id/events", async (req: Request, res: Response) => {
+  const claims = currentUser(req);
+  if (!claims) { res.status(401).json({ status: "error", message: "login required" }); return; }
+  const event = req.body?.event === "open" ? "open" : req.body?.event === "cta_click" ? "cta_click" : null;
+  if (!event) { res.status(400).json({ status: "error", message: "event must be open or cta_click" }); return; }
+  try {
+    const recorded = await recordFreeTrialMessageEvent(claims.sub, String(req.params.id || ""), event);
+    res.json({ status: "ok", recorded });
+  } catch (error) {
+    logger.error({ err: error }, "trial message event error");
+    res.status(503).json({ status: "error", message: "تعذر تسجيل التفاعل حاليًا" });
+  }
 });
 
 router.put("/password", async (req: Request, res: Response) => {
@@ -311,8 +517,14 @@ router.put("/email", async (req: Request, res: Response) => {
     res.status(409).json({ status: "error", message: "هذا البريد مستخدم في حساب آخر" });
     return;
   }
-  await db.update(appUsersTable).set({ email, updatedAt: new Date() }).where(eq(appUsersTable.id, claims.sub));
-  res.json({ status: "ok", message: "تم حفظ البريد — يمكنك الآن استعادة كلمة المرور عبره" });
+  await db.update(appUsersTable).set({
+    email,
+    /* Changing the address invalidates trial eligibility until the new owner
+     * proves control. The old verified timestamp must never follow it. */
+    emailVerifiedAt: null,
+    updatedAt: new Date(),
+  }).where(eq(appUsersTable.id, claims.sub));
+  res.json({ status: "ok", message: "تم حفظ البريد — أرسل رابط التأكيد قبل بدء التجربة المجانية." });
 });
 
 /* Explicit account-level marketing consent. Supplying an email for password
@@ -360,43 +572,8 @@ router.put("/marketing-email", async (req: Request, res: Response) => {
 /* Future campaign mail must link here with a short-lived HMAC token. The
  * broadcast implementation intentionally creates no campaign mail at all;
  * this endpoint exists now so unsubscribe is not bolted on afterward. */
-/** For a future, separately approved sender only. The broadcast feature does
- * not call this and therefore cannot send campaign e-mail by accident. */
-export function createMarketingUnsubscribeToken(userId: number, expiresAt = Date.now() + 90 * 24 * 60 * 60 * 1000): string | null {
-  const secret = process.env["SESSION_SECRET"];
-  if (!secret || !Number.isSafeInteger(userId) || userId <= 0 || !Number.isSafeInteger(expiresAt)) return null;
-  const payload = `${userId}.${expiresAt}`;
-  const signature = crypto.createHmac("sha256", secret).update(`marketing-unsubscribe:${payload}`).digest("hex");
-  return `${payload}.${signature}`;
-}
-
-export function createMarketingUnsubscribeUrl(userId: number, appBaseUrl = process.env["APP_BASE_URL"]): string | null {
-  const token = createMarketingUnsubscribeToken(userId);
-  if (!token || !appBaseUrl) return null;
-  try {
-    const base = new URL(appBaseUrl);
-    if (base.protocol !== "https:" || base.username || base.password) return null;
-    return new URL(`/api/user/unsubscribe-marketing?token=${encodeURIComponent(token)}`, base).toString();
-  } catch {
-    return null;
-  }
-}
-
-function validMarketingUnsubscribeToken(value: unknown): { userId: number } | null {
-  const token = String(value || "").trim();
-  const match = /^(\d{1,10})\.(\d{10,13})\.([a-f0-9]{64})$/i.exec(token);
-  const secret = process.env["SESSION_SECRET"];
-  if (!match || !secret) return null;
-  const userId = Number(match[1]);
-  const expiresAt = Number(match[2]);
-  if (!Number.isSafeInteger(userId) || userId <= 0 || !Number.isFinite(expiresAt) || expiresAt < Date.now()) return null;
-  const payload = `${userId}.${expiresAt}`;
-  const expected = crypto.createHmac("sha256", secret).update(`marketing-unsubscribe:${payload}`).digest("hex");
-  const supplied = Buffer.from(match[3]!, "hex");
-  const expectedBuffer = Buffer.from(expected, "hex");
-  if (supplied.length !== expectedBuffer.length || !crypto.timingSafeEqual(supplied, expectedBuffer)) return null;
-  return { userId };
-}
+/** Marketing unsubscribe token helpers live in lib/marketing-email so the
+ * lifecycle outbox and this route use the same signed format. */
 
 router.get("/unsubscribe-marketing", async (req: Request, res: Response) => {
   const parsed = validMarketingUnsubscribeToken(req.query?.token);

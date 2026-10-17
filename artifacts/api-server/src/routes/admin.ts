@@ -17,7 +17,7 @@ import { db } from "@workspace/db";
 import {
   employeesTable, subscriptionPlansTable, couponsTable, auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable, appUsersTable, userNotificationsTable,
   userSubscriptionsTable, appSettingsTable, planPriceOffersTable, planPriceChangeLogsTable,
-  subscriptionLifecycleEventsTable, subscriptionRemindersSentTable,
+  subscriptionLifecycleEventsTable, subscriptionRemindersSentTable, trialClaimsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, like, or, sql, isNull, inArray } from "drizzle-orm";
 import {
@@ -46,6 +46,20 @@ import {
   validateSubscriptionLifecycleSettings,
 } from "../lib/subscription-lifecycle";
 import { parseCairoDateTime } from "../lib/subscription-time";
+import {
+  archiveFreeTrialMessageStep,
+  createFreeTrialMessageStep,
+  endFreeTrialNow,
+  extendFreeTrial,
+  freeTrialStats,
+  listAdminFreeTrialUsers,
+  listFreeTrialMessageSteps,
+  previewFreeTrialMessageStep,
+  startFreeTrial,
+  updateFreeTrialMessageStep,
+} from "../lib/free-trials";
+import { readFreeTrialSettings, saveFreeTrialSettings, validateFreeTrialSettings } from "../lib/trial-settings";
+import { isSmtpConfigured, sendMail } from "../lib/mailer";
 import {
   BROADCAST_TEMPLATES,
   archiveBroadcast,
@@ -505,7 +519,7 @@ router.post("/ai-usage/log", requireAuth, requireWriteRate, async (req: AuthRequ
   try {
     const { requestType, tokensEstimate } = req.body || {};
     await db.insert(aiUsageTable).values({
-      userId: req.actor ? `staff:${req.actor.sub}` : "staff", 
+      userId: req.actor ? `staff:${req.actor.sub}` : "staff",
       requestType: String(requestType || "unknown").slice(0, 40),
       tokensEstimate: Math.max(0, Math.min(1_000_000, Number(tokensEstimate) || 0)),
     });
@@ -1523,6 +1537,13 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
           startsAt: userSubscriptionsTable.startsAt,
           expiresAt: userSubscriptionsTable.expiresAt,
           status: userSubscriptionsTable.status,
+          subscriptionType: userSubscriptionsTable.subscriptionType,
+          trialFeatureScope: userSubscriptionsTable.trialFeatureScope,
+          trialAiDailyLimit: userSubscriptionsTable.trialAiDailyLimit,
+          trialStartedAt: userSubscriptionsTable.trialStartedAt,
+          trialEndsAt: userSubscriptionsTable.trialEndsAt,
+          trialEndedAt: userSubscriptionsTable.trialEndedAt,
+          trialConvertedAt: userSubscriptionsTable.trialConvertedAt,
         }).from(userSubscriptionsTable).where(eq(userSubscriptionsTable.userId, user.id)).limit(1);
 
         planNameAr = activationPlan.nameAr;
@@ -1530,18 +1551,23 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
          * A post-expiry (including grace-period) approval starts from approval
          * time, as required; monthly arithmetic is exactly 30 elapsed days. */
         const extendsCurrentTerm = currentSubscription?.status === "active" && currentSubscription.expiresAt > now;
+        const convertsLiveTrial = extendsCurrentTerm && currentSubscription?.subscriptionType === "trial";
         const extendsLegacyProjection = !currentSubscription && user.plan === "vip" && user.vipExpiresAt && user.vipExpiresAt > now;
         const existingExpiry = extendsCurrentTerm
           ? currentSubscription.expiresAt
           : extendsLegacyProjection
             ? user.vipExpiresAt!
             : now;
+        /* Paying on day 3 of a trial reserves the paid term after the trial;
+         * it never consumes the free days or begins a second entitlement now. */
         const expires = calculateApprovedSubscriptionEnd(existingExpiry, activationPlan.durationMonths);
-        const startsAt = extendsCurrentTerm ? currentSubscription.startsAt : now;
+        const startsAt = extendsCurrentTerm
+          ? (convertsLiveTrial ? existingExpiry : currentSubscription.startsAt)
+          : now;
         const subscriptionId = currentSubscription?.id || `sub-${user.id}`;
         const cycleId = createSubscriptionCycleId(user.id, existing.id);
         const graceEndsAt = calculateSubscriptionGraceEnd(expires, lifecycleSettings.graceDays);
-        const isRenewal = Boolean(currentSubscription || extendsLegacyProjection);
+        const isRenewal = Boolean((currentSubscription && !convertsLiveTrial) || extendsLegacyProjection);
 
         /* The prior current row is overwritten, so cancel only undelivered or
          * still-pending deliveries from its old cycle inside this same payment
@@ -1575,6 +1601,16 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
           planNameAr: activationPlan.nameAr,
           planDurationMonths: activationPlan.durationMonths,
           planFeatures: activationPlan.features,
+          subscriptionType: "paid",
+          /* During a paid term scheduled after a live trial, retain the
+           * trial snapshot until startsAt so selected-feature trials do not
+           * become all-feature access early. */
+          trialFeatureScope: convertsLiveTrial ? currentSubscription?.trialFeatureScope || "all" : null,
+          trialAiDailyLimit: convertsLiveTrial ? currentSubscription?.trialAiDailyLimit || null : null,
+          trialStartedAt: currentSubscription?.trialStartedAt || null,
+          trialEndsAt: currentSubscription?.trialEndsAt || (convertsLiveTrial ? currentSubscription?.expiresAt || null : null),
+          trialEndedAt: convertsLiveTrial ? currentSubscription?.expiresAt || null : (currentSubscription?.trialEndedAt || null),
+          trialConvertedAt: convertsLiveTrial ? now : (currentSubscription?.trialConvertedAt || null),
           status: "active",
           cycleId,
           startsAt,
@@ -1592,6 +1628,13 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
             planNameAr: activationPlan.nameAr,
             planDurationMonths: activationPlan.durationMonths,
             planFeatures: activationPlan.features,
+            subscriptionType: "paid",
+            trialFeatureScope: convertsLiveTrial ? currentSubscription?.trialFeatureScope || "all" : null,
+            trialAiDailyLimit: convertsLiveTrial ? currentSubscription?.trialAiDailyLimit || null : null,
+            trialStartedAt: currentSubscription?.trialStartedAt || null,
+            trialEndsAt: currentSubscription?.trialEndsAt || (convertsLiveTrial ? currentSubscription?.expiresAt || null : null),
+            trialEndedAt: convertsLiveTrial ? currentSubscription?.expiresAt || null : (currentSubscription?.trialEndedAt || null),
+            trialConvertedAt: convertsLiveTrial ? now : (currentSubscription?.trialConvertedAt || null),
             status: "active",
             cycleId,
             startsAt,
@@ -1603,12 +1646,22 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
             updatedAt: now,
           },
         });
+        if (convertsLiveTrial) {
+          /* Preserve conversion evidence outside the current-entitlement row;
+           * the paid row replaces the trial projection but sequence delivery
+           * is already cancelled above and cannot resume later. */
+          await tx.update(trialClaimsTable).set({
+            convertedAt: now,
+            paidStartsAt: existingExpiry,
+            updatedAt: now,
+          }).where(eq(trialClaimsTable.userId, user.id));
+        }
         await tx.insert(subscriptionLifecycleEventsTable).values({
           id: `subevent-${existing.id}`,
           userId: user.id,
           subscriptionId,
           subscriptionCycleId: cycleId,
-          eventType: isRenewal ? "renewed" : "activated",
+          eventType: convertsLiveTrial ? "trial_converted" : isRenewal ? "renewed" : "activated",
           relatedCycleId: currentSubscription?.cycleId || null,
           planKey: activationPlan.key,
           occurredAt: now,
@@ -1898,6 +1951,242 @@ router.put("/settings/payment", requireAuth, requireWriteRate, requireRole("supe
     logger.error({ err: e }, "payment settings update error");
     res.status(500).json({ status: "error", message: "server error" });
   }
+});
+
+/* ════════════════════════════════════════════
+   FREE VIP TRIAL — server-authorized settings, sequence and users
+════════════════════════════════════════════ */
+function trialStepRouteId(value: unknown): string | null {
+  const id = String(value || "").trim();
+  return /^trial-step-[a-zA-Z0-9_-]{1,100}$/.test(id) ? id : null;
+}
+
+function trialUserId(value: unknown): number | null {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+router.get("/free-trial", requireAuth, requireRole("super_admin", "admin", "support"), async (_req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const [settings, steps, users, stats] = await Promise.all([
+      readFreeTrialSettings(),
+      listFreeTrialMessageSteps(true),
+      listAdminFreeTrialUsers(now),
+      freeTrialStats(now),
+    ]);
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({
+      status: "ok", timezone: "Africa/Cairo", asOf: now.toISOString(), settings, steps, users, stats,
+      antiAbuse: {
+        emailCanonicalization: "lowercase + remove +suffix; Gmail dots removed and googlemail.com unified",
+        disposableEmail: "rejected from self-service trial",
+        ipDevice: "hashed review signals only; never an automatic rejection",
+        phoneOtp: "اقتراح اختياري فقط؛ غير مفعّل ولا يوجد مزود أو تكلفة معتمدة.",
+      },
+    });
+  } catch (error) {
+    logger.error({ err: error }, "free trial admin dashboard error");
+    res.status(503).json({ status: "error", message: "تعذر تحميل لوحة التجربة المجانية حاليًا" });
+  }
+});
+
+router.get("/free-trial/settings", requireAuth, requireRole("super_admin", "admin", "support"), async (_req: Request, res: Response) => {
+  try {
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({ status: "ok", settings: await readFreeTrialSettings(), timezone: "Africa/Cairo" });
+  } catch (error) {
+    logger.error({ err: error }, "free trial settings read error");
+    res.status(503).json({ status: "error", message: "إعدادات التجربة غير متاحة حاليًا" });
+  }
+});
+
+router.put("/free-trial/settings", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const settings = validateFreeTrialSettings(req.body);
+  if (!settings) {
+    res.status(400).json({ status: "error", message: "إعدادات التجربة غير صالحة: المدة 1–31 يومًا، وحد AI 0–100، ونافذة الجمهور 1–90 يومًا." });
+    return;
+  }
+  try {
+    await saveFreeTrialSettings(settings, new Date());
+    await auditLog("update_free_trial_settings", req.actor, "free-trial:settings", {
+      enabled: settings.enabled,
+      durationDays: settings.durationDays,
+      startMode: settings.startMode,
+      scope: settings.featureScope,
+      aiDailyLimit: settings.aiDailyLimit,
+      recentlyExpiredAudienceDays: settings.recentlyExpiredAudienceDays,
+    }, req.ip);
+    res.json({
+      status: "ok", settings,
+      note: "تعطيل التجربة يوقف بدايات جديدة فقط ولا يقطع تجربة نشطة أو يغيّر لقطة نطاقها.",
+    });
+  } catch (error) {
+    logger.error({ err: error }, "free trial settings save error");
+    res.status(503).json({ status: "error", message: "تعذر حفظ إعدادات التجربة" });
+  }
+});
+
+router.get("/free-trial/messages", requireAuth, requireRole("super_admin", "admin", "support"), async (_req: Request, res: Response) => {
+  try {
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({ status: "ok", steps: await listFreeTrialMessageSteps(true) });
+  } catch (error) {
+    logger.error({ err: error }, "free trial message list error");
+    res.status(503).json({ status: "error", message: "تعذر تحميل رسائل التجربة" });
+  }
+});
+
+router.post("/free-trial/messages/preview", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "support"), async (req: AuthRequest, res: Response) => {
+  try {
+    const preview = await previewFreeTrialMessageStep(req.body, new Date());
+    if (!preview.message) { res.status(400).json({ status: "error", message: preview.error || "تعذر إنشاء المعاينة." }); return; }
+    await auditLog("preview_free_trial_message", req.actor, "free-trial:preview", { delivery: "admin_preview_only" }, req.ip);
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({ status: "ok", preview: preview.message, mode: "admin_only_no_delivery" });
+  } catch (error) {
+    logger.error({ err: error }, "free trial message preview error");
+    res.status(503).json({ status: "error", message: "تعذر إنشاء المعاينة الحقيقية حاليًا" });
+  }
+});
+
+router.post("/free-trial/messages", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await createFreeTrialMessageStep(req.body, req.actor?.sub && req.actor.sub > 0 ? req.actor.sub : null, new Date());
+    if (!result.step) { res.status(400).json({ status: "error", message: result.error || "تعذر إنشاء الرسالة." }); return; }
+    await auditLog("create_free_trial_message", req.actor, `free-trial-step:${result.step.id}`, { timing: result.step.timing, channels: result.step.channels, status: result.step.status }, req.ip);
+    res.status(201).json({ status: "ok", step: result.step });
+  } catch (error) {
+    logger.error({ err: error }, "free trial message create error");
+    res.status(503).json({ status: "error", message: "تعذر حفظ رسالة التجربة" });
+  }
+});
+
+router.put("/free-trial/messages/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = trialStepRouteId(req.params["id"]);
+  if (!id) { res.status(404).json({ status: "error", message: "الرسالة غير موجودة." }); return; }
+  try {
+    const result = await updateFreeTrialMessageStep(id, req.body, req.actor?.sub && req.actor.sub > 0 ? req.actor.sub : null, new Date());
+    if (!result.step) { res.status(400).json({ status: "error", message: result.error || "تعذر تحديث الرسالة." }); return; }
+    await auditLog("update_free_trial_message", req.actor, `free-trial-step:${id}`, { timing: result.step.timing, channels: result.step.channels, status: result.step.status, version: result.step.version }, req.ip);
+    res.json({ status: "ok", step: result.step, note: "التعديل يؤثر على الإرسال المستقبلي فقط؛ اللقطات المرسلة تبقى محفوظة." });
+  } catch (error) {
+    logger.error({ err: error }, "free trial message update error");
+    res.status(503).json({ status: "error", message: "تعذر تحديث رسالة التجربة" });
+  }
+});
+
+router.post("/free-trial/messages/:id/archive", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = trialStepRouteId(req.params["id"]);
+  if (!id) { res.status(404).json({ status: "error", message: "الرسالة غير موجودة." }); return; }
+  try {
+    const step = await archiveFreeTrialMessageStep(id, req.actor?.sub && req.actor.sub > 0 ? req.actor.sub : null, new Date());
+    if (!step) { res.status(404).json({ status: "error", message: "الرسالة غير موجودة أو مؤرشفة." }); return; }
+    await auditLog("archive_free_trial_message", req.actor, `free-trial-step:${id}`, {}, req.ip);
+    res.json({ status: "ok", step });
+  } catch (error) {
+    logger.error({ err: error }, "free trial message archive error");
+    res.status(503).json({ status: "error", message: "تعذر أرشفة رسالة التجربة" });
+  }
+});
+
+function trialPreviewPlainText(content: unknown): string {
+  const blocks = content && typeof content === "object" && Array.isArray((content as { blocks?: unknown }).blocks)
+    ? (content as { blocks: Array<Record<string, unknown>> }).blocks : [];
+  return blocks.flatMap((block) => {
+    if (Array.isArray(block.inlines)) return [(block.inlines as Array<{ text?: unknown }>).map((item) => String(item.text || "")).join("")];
+    if (Array.isArray(block.items)) return (block.items as Array<Array<{ text?: unknown }>>).map((items) => items.map((item) => String(item.text || "")).join(""));
+    return [];
+  }).join("\n").slice(0, 5_000);
+}
+
+/* This is the only trial test-send path. It resolves the currently logged-in
+ * active employee from the database and sends only to that employee address;
+ * no audience/user delivery or state is touched. */
+router.post("/free-trial/messages/:id/test", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = trialStepRouteId(req.params["id"]);
+  if (!id || !req.actor?.sub || req.actor.sub <= 0) { res.status(403).json({ status: "error", message: "يتطلب إرسال الاختبار جلسة موظف فعلية." }); return; }
+  try {
+    const [employee] = await db.select({ id: employeesTable.id, email: employeesTable.email, status: employeesTable.status })
+      .from(employeesTable).where(eq(employeesTable.id, req.actor.sub)).limit(1);
+    const step = (await listFreeTrialMessageSteps(true)).find((entry) => entry.id === id);
+    if (!employee || employee.status !== "active" || !step) { res.status(404).json({ status: "error", message: "الموظف أو الرسالة غير متاح." }); return; }
+    const preview = await previewFreeTrialMessageStep({
+      timing: step.timing, offsetDays: step.offsetDays, channels: step.channels,
+      titleTemplate: step.titleTemplate, bodyTemplate: step.bodyTemplate, messageType: step.messageType,
+      actionLabel: step.actionLabel, actionPlanKey: step.actionPlanKey, emailMarketing: step.emailMarketing, status: step.status === "archived" ? "paused" : step.status,
+    });
+    if (!preview.message) { res.status(400).json({ status: "error", message: preview.error || "تعذر إعداد رسالة الاختبار." }); return; }
+    if (!isSmtpConfigured()) { res.status(503).json({ status: "error", message: "خدمة البريد غير مفعّلة؛ لم يُرسل اختبار وهمي." }); return; }
+    const body = trialPreviewPlainText(preview.message.content);
+    const sent = await sendMail(employee.email, `اختبار تجربة VIP — ${preview.message.title}`.slice(0, 180), `<div dir="rtl"><h2>${preview.message.title.replace(/[&<>"']/g, "")}</h2><p style="white-space:pre-line">${body.replace(/[&<>"']/g, "")}</p></div>`);
+    if (!sent.delivered) { res.status(503).json({ status: "error", message: "تعذر إرسال اختبار البريد؛ لم تُرسل أي رسالة للمستخدمين." }); return; }
+    await auditLog("test_send_free_trial_message", req.actor, `free-trial-step:${id}`, { delivery: "employee_email_only" }, req.ip);
+    res.json({ status: "ok", delivery: "employee_email_only", message: "أُرسل الاختبار إلى بريد الموظف الحالي فقط." });
+  } catch (error) {
+    logger.error({ err: error }, "free trial message test send error");
+    res.status(503).json({ status: "error", message: "تعذر إرسال اختبار رسالة التجربة" });
+  }
+});
+
+router.get("/free-trial/users", requireAuth, requireRole("super_admin", "admin", "support"), async (_req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({ status: "ok", users: await listAdminFreeTrialUsers(now), asOf: now.toISOString(), timezone: "Africa/Cairo" });
+  } catch (error) {
+    logger.error({ err: error }, "free trial users list error");
+    res.status(503).json({ status: "error", message: "تعذر تحميل مستخدمي التجربة" });
+  }
+});
+
+router.post("/free-trial/users/:id/extend", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const userId = trialUserId(req.params["id"]);
+  const days = Number(req.body?.days);
+  if (!userId || !Number.isInteger(days) || days < 1 || days > 31) { res.status(400).json({ status: "error", message: "حدّد زيادة من 1 إلى 31 يومًا." }); return; }
+  try {
+    const result = await extendFreeTrial(userId, days, new Date());
+    if (result.status !== "extended") { res.status(result.status === "not_found" ? 404 : 409).json({ status: "error", message: "التجربة غير نشطة أو غير موجودة." }); return; }
+    await auditLog("extend_free_trial", req.actor, `user:${userId}`, { days, endsAt: result.endsAt?.toISOString() || null }, req.ip);
+    res.json({ status: "ok", endsAt: result.endsAt?.toISOString() || null, message: "تم تمديد التجربة؛ الرسائل القادمة تُحسب من تاريخ الانتهاء الجديد." });
+  } catch (error) {
+    logger.error({ err: error }, "free trial extension error");
+    res.status(503).json({ status: "error", message: "تعذر تمديد التجربة" });
+  }
+});
+
+router.post("/free-trial/users/:id/end-now", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const userId = trialUserId(req.params["id"]);
+  if (!userId) { res.status(400).json({ status: "error", message: "معرف المستخدم غير صالح." }); return; }
+  try {
+    const result = await endFreeTrialNow(userId, new Date());
+    if (result.status !== "ended") { res.status(result.status === "not_found" ? 404 : 409).json({ status: "error", message: "التجربة غير نشطة أو غير موجودة." }); return; }
+    await auditLog("end_free_trial_now", req.actor, `user:${userId}`, {}, req.ip);
+    res.json({ status: "ok", message: "انتهت التجربة وعاد الحساب للخطة المجانية؛ البيانات محفوظة." });
+  } catch (error) {
+    logger.error({ err: error }, "free trial end-now error");
+    res.status(503).json({ status: "error", message: "تعذر إنهاء التجربة" });
+  }
+});
+
+router.post("/free-trial/users/:id/grant", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const userId = trialUserId(req.params["id"]);
+  const days = req.body?.days === undefined ? undefined : Number(req.body.days);
+  if (!userId || (days !== undefined && (!Number.isInteger(days) || days < 1 || days > 31))) { res.status(400).json({ status: "error", message: "المدة اليدوية يجب أن تكون من 1 إلى 31 يومًا." }); return; }
+  try {
+    const result = await startFreeTrial({ userId, mode: "admin", durationDays: days, actorEmployeeId: req.actor?.sub || null, ip: req.ip || "", device: "admin-manual-grant" });
+    if (result.reason !== "started") { res.status(409).json({ status: "error", reason: result.reason, message: "تعذر منح التجربة: الحساب لديه تجربة نشطة أو اشتراك مدفوع." }); return; }
+    await auditLog("grant_free_trial", req.actor, `user:${userId}`, { days: days || null, endsAt: result.endsAt?.toISOString() || null }, req.ip);
+    res.status(201).json({ status: "ok", endsAt: result.endsAt?.toISOString() || null });
+  } catch (error) {
+    logger.error({ err: error }, "free trial manual grant error");
+    res.status(503).json({ status: "error", message: "تعذر منح التجربة" });
+  }
+});
+
+router.get("/free-trial/stats", requireAuth, requireRole("super_admin", "admin", "support"), async (_req: Request, res: Response) => {
+  try { res.setHeader("Cache-Control", "no-store, max-age=0"); res.json({ status: "ok", stats: await freeTrialStats(new Date()) }); }
+  catch (error) { logger.error({ err: error }, "free trial stats error"); res.status(503).json({ status: "error", message: "إحصاءات التجربة غير متاحة حاليًا" }); }
 });
 
 /* ════════════════════════════════════════════

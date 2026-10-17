@@ -1,6 +1,22 @@
 import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { appUsersTable } from "./users";
 import { userSubscriptionsTable } from "./user_subscriptions";
+import type { BroadcastAction, BroadcastContent } from "./broadcast_messages";
+
+/** Immutable snapshot used for a trial-sequence delivery. The raw admin
+ * template is never sent to a member; variables are resolved and the safe
+ * Broadcast AST is saved at reservation time. */
+export type TrialMessageSnapshot = {
+  kind: "free_trial";
+  stepId: string;
+  stepVersion: number;
+  channels: Array<"in_app" | "modal" | "email">;
+  messageType: "offer" | "greeting" | "new_feature" | "maintenance" | "important";
+  content: BroadcastContent;
+  action: BroadcastAction;
+  variableSource: "current_server_price" | "not_requested" | "unavailable";
+  generatedAt: string;
+};
 
 export type SubscriptionReminderContent = {
   title: string;
@@ -10,6 +26,8 @@ export type SubscriptionReminderContent = {
   emailSubject: string;
   emailHtml: string;
   transactional: boolean;
+  /** Existing paid reminders omit this; trial messages carry their exact safe snapshot. */
+  trial?: TrialMessageSnapshot;
 };
 
 /**
@@ -26,6 +44,8 @@ export const subscriptionRemindersSentTable = pgTable("reminders_sent", {
   userId: integer("user_id").notNull().references(() => appUsersTable.id, { onDelete: "restrict" }),
   reminderType: text("reminder_type").notNull(),
   reminderClass: text("reminder_class").notNull().default("transactional"),
+  /** Null for paid lifecycle reminders; identifies sequence analytics safely. */
+  trialMessageStepId: text("trial_message_step_id"),
   targetEndsAt: timestamp("target_ends_at", { withTimezone: true }).notNull(),
   deliveryStatus: text("delivery_status").notNull().default("queued"),
   content: jsonb("content").$type<SubscriptionReminderContent>().notNull(),
@@ -40,6 +60,9 @@ export const subscriptionRemindersSentTable = pgTable("reminders_sent", {
   emailSentAt: timestamp("email_sent_at", { withTimezone: true }),
   /** A safe category only, never SMTP/vendor text that may expose credentials. */
   emailLastError: text("email_last_error"),
+  /** Account-scoped engagement events, written by authenticated trial-message APIs. */
+  openedAt: timestamp("opened_at", { withTimezone: true }),
+  clickedAt: timestamp("clicked_at", { withTimezone: true }),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -48,6 +71,7 @@ export const subscriptionRemindersSentTable = pgTable("reminders_sent", {
   index("subscription_reminders_sent_delivery_idx").on(table.deliveryStatus, table.targetEndsAt),
   index("subscription_reminders_sent_email_idx").on(table.emailStatus, table.emailNextAttemptAt),
   index("subscription_reminders_sent_user_idx").on(table.userId, table.createdAt),
+  index("subscription_reminders_sent_trial_step_idx").on(table.trialMessageStepId, table.createdAt),
 ]);
 
 /** Immutable, non-financial lifecycle evidence for the admin renewal metrics. */

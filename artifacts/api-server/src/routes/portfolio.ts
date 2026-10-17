@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { portfolioPositionsTable } from "@workspace/db/schema";
 import { EGX_STOCKS } from "../lib/market-data/catalog";
-import { currentUser, requireVipUser } from "../lib/userAuth";
+import { currentUser, requireVipFeature } from "../lib/userAuth";
 import { getStocksSnapshot, type StockQuote } from "./markets";
 import { logger } from "../lib/logger";
 
@@ -61,7 +61,7 @@ function publicPosition(row: typeof portfolioPositionsTable.$inferSelect, quote?
 
 /* All portfolio reads/writes require the central server-side entitlement.
  * Local storage may still hold old UI preferences, but never portfolio truth. */
-router.get("/portfolio", requireVipUser, async (req: Request, res: Response) => {
+router.get("/portfolio", requireVipFeature("portfolio"), async (req: Request, res: Response) => {
   const user = currentUser(req)!;
   try {
     const rows = await db.select().from(portfolioPositionsTable)
@@ -86,7 +86,7 @@ router.get("/portfolio", requireVipUser, async (req: Request, res: Response) => 
   }
 });
 
-router.post("/portfolio/positions", requireVipUser, async (req: Request, res: Response) => {
+router.post("/portfolio/positions", requireVipFeature("portfolio"), async (req: Request, res: Response) => {
   const user = currentUser(req)!;
   const input = parsePositionInput(req.body);
   if (!input) {
@@ -141,7 +141,7 @@ router.post("/portfolio/positions", requireVipUser, async (req: Request, res: Re
   }
 });
 
-router.put("/portfolio/positions/:id", requireVipUser, async (req: Request, res: Response) => {
+router.put("/portfolio/positions/:id", requireVipFeature("portfolio"), async (req: Request, res: Response) => {
   const user = currentUser(req)!;
   const id = String(req.params["id"] || "").trim();
   const input = parsePositionInput(req.body);
@@ -177,7 +177,7 @@ router.put("/portfolio/positions/:id", requireVipUser, async (req: Request, res:
   }
 });
 
-router.delete("/portfolio/positions/:id", requireVipUser, async (req: Request, res: Response) => {
+router.delete("/portfolio/positions/:id", requireVipFeature("portfolio"), async (req: Request, res: Response) => {
   const user = currentUser(req)!;
   const id = String(req.params["id"] || "").trim();
   if (!ID_RX.test(id)) {

@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import {
   appSettingsTable,
   appUsersTable,
@@ -338,6 +338,9 @@ async function subscriptionCandidates(): Promise<SubscriptionCandidate[]> {
   }).from(userSubscriptionsTable)
     .innerJoin(appUsersTable, eq(userSubscriptionsTable.userId, appUsersTable.id))
     .where(and(
+      /* Trial expiry/messages have their own branch in the same worker; paid
+       * renewal reminders must never be reserved for a trial cycle. */
+      ne(userSubscriptionsTable.subscriptionType, "trial"),
       inArray(userSubscriptionsTable.status, ["active", "grace", "expired"]),
       eq(appUsersTable.status, "active"),
     ));
@@ -435,7 +438,8 @@ async function transitionEntitlements(candidates: SubscriptionCandidate[], now: 
   return { grace, expired };
 }
 
-async function deliverInApp(now: Date): Promise<number> {
+export async function deliverLifecycleInApp(now: Date, cycleIds?: string[]): Promise<number> {
+  const scope = cycleIds?.length ? inArray(subscriptionRemindersSentTable.subscriptionCycleId, cycleIds) : undefined;
   const rows = await db.select({
     reminder: subscriptionRemindersSentTable,
     phone: appUsersTable.phone,
@@ -445,24 +449,29 @@ async function deliverInApp(now: Date): Promise<number> {
       eq(subscriptionRemindersSentTable.deliveryStatus, "queued"),
       isNull(subscriptionRemindersSentTable.inAppSentAt),
       eq(appUsersTable.status, "active"),
+      scope,
     )).limit(EMAIL_BATCH_SIZE) as Array<{ reminder: ReminderRow; phone: string }>;
   let delivered = 0;
   for (const row of rows) {
+    const channels = row.reminder.content.trial?.channels;
+    const shouldCreateNotification = !channels || channels.includes("in_app");
     const notificationId = row.reminder.inAppNotificationId || `sub-notification-${row.reminder.id}`;
     try {
       await db.transaction(async (tx) => {
-        await tx.insert(userNotificationsTable).values({
-          id: notificationId,
-          phone: row.phone,
-          kind: "subscription",
-          title: row.reminder.content.title,
-          body: row.reminder.content.body,
-          actionUrl: row.reminder.content.actionUrl,
-          actionLabel: row.reminder.content.actionLabel,
-          createdAt: now,
-        }).onConflictDoNothing();
+        if (shouldCreateNotification) {
+          await tx.insert(userNotificationsTable).values({
+            id: notificationId,
+            phone: row.phone,
+            kind: row.reminder.content.trial ? "free_trial" : "subscription",
+            title: row.reminder.content.title,
+            body: row.reminder.content.body,
+            actionUrl: row.reminder.content.actionUrl,
+            actionLabel: row.reminder.content.actionLabel,
+            createdAt: now,
+          }).onConflictDoNothing();
+        }
         const updated = await tx.update(subscriptionRemindersSentTable).set({
-          inAppNotificationId: notificationId,
+          ...(shouldCreateNotification ? { inAppNotificationId: notificationId } : {}),
           inAppSentAt: now,
           deliveryStatus: "delivered",
           updatedAt: now,
@@ -489,11 +498,19 @@ function retryAfter(now: Date, attempted: number): Date {
   return new Date(now.getTime() + minutes * 60 * 1000);
 }
 
-async function processEmailOutbox(now: Date, mailer: LifecycleMailer, mailConfigured = isSmtpConfigured(), linkReady = subscriptionEmailLinkReady()): Promise<{ sent: number; retrying: number; failed: number; unavailable: number }> {
+export async function processLifecycleEmailOutbox(
+  now: Date,
+  mailer: LifecycleMailer,
+  mailConfigured = isSmtpConfigured(),
+  linkReady = subscriptionEmailLinkReady(),
+  cycleIds?: string[],
+): Promise<{ sent: number; retrying: number; failed: number; unavailable: number; suppressed: number }> {
   const staleLease = new Date(now.getTime() - EMAIL_LEASE_MS);
+  const scope = cycleIds?.length ? inArray(subscriptionRemindersSentTable.subscriptionCycleId, cycleIds) : undefined;
   const rows = await db.select({
     reminder: subscriptionRemindersSentTable,
     email: appUsersTable.email,
+    marketingEmailOptIn: appUsersTable.marketingEmailOptIn,
   }).from(subscriptionRemindersSentTable)
     .innerJoin(appUsersTable, eq(subscriptionRemindersSentTable.userId, appUsersTable.id))
     .where(and(
@@ -502,13 +519,28 @@ async function processEmailOutbox(now: Date, mailer: LifecycleMailer, mailConfig
         and(eq(subscriptionRemindersSentTable.emailStatus, "pending"), lte(subscriptionRemindersSentTable.emailNextAttemptAt, now)),
         and(eq(subscriptionRemindersSentTable.emailStatus, "sending"), lte(subscriptionRemindersSentTable.emailClaimedAt, staleLease)),
       ),
-    )).orderBy(subscriptionRemindersSentTable.createdAt).limit(EMAIL_BATCH_SIZE) as Array<{ reminder: ReminderRow; email: string | null }>;
+      scope,
+    )).orderBy(subscriptionRemindersSentTable.createdAt).limit(EMAIL_BATCH_SIZE) as Array<{ reminder: ReminderRow; email: string | null; marketingEmailOptIn: boolean }>;
 
   let sent = 0;
   let retrying = 0;
   let failed = 0;
   let unavailable = 0;
+  let suppressed = 0;
   for (const row of rows) {
+    if (row.reminder.reminderClass === "marketing" && !row.marketingEmailOptIn) {
+      const updated = await db.update(subscriptionRemindersSentTable).set({
+        emailStatus: "suppressed",
+        emailLastError: "marketing_consent_not_granted",
+        emailNextAttemptAt: null,
+        updatedAt: now,
+      }).where(and(
+        eq(subscriptionRemindersSentTable.id, row.reminder.id),
+        inArray(subscriptionRemindersSentTable.emailStatus, ["pending", "sending"]),
+      )).returning({ id: subscriptionRemindersSentTable.id });
+      suppressed += updated.length;
+      continue;
+    }
     if (!validRecipient(row.email)) {
       const updated = await db.update(subscriptionRemindersSentTable).set({
         emailStatus: "unavailable",
@@ -592,7 +624,7 @@ async function processEmailOutbox(now: Date, mailer: LifecycleMailer, mailConfig
     else if (nextStatus === "failed") failed += updated.length;
     else unavailable += updated.length;
   }
-  return { sent, retrying, failed, unavailable };
+  return { sent, retrying, failed, unavailable, suppressed };
 }
 
 /**
@@ -609,6 +641,11 @@ export async function runSubscriptionLifecycle(options: {
   const now = options.now ? new Date(options.now) : new Date();
   if (!Number.isFinite(now.getTime())) throw new Error("Invalid lifecycle clock");
   const dryRun = options.dryRun === true;
+  /* Keep trial expiry/messages in this exact scheduler invocation and its
+   * reminders_sent idempotency table. Dynamic import avoids a module-init
+   * cycle because the trial branch reuses the outbox helpers above. */
+  const { runFreeTrialLifecycle } = await import("./free-trials");
+  await runFreeTrialLifecycle({ now, dryRun, mailer: options.mailer });
   const settings = await readSubscriptionLifecycleSettings();
   const candidates = await subscriptionCandidates();
   const transitions = await transitionEntitlements(candidates, now, dryRun);
@@ -660,8 +697,8 @@ export async function runSubscriptionLifecycle(options: {
     };
   }
 
-  const inAppDelivered = await deliverInApp(now);
-  const emails = await processEmailOutbox(now, options.mailer || sendMail, options.mailer ? true : isSmtpConfigured());
+  const inAppDelivered = await deliverLifecycleInApp(now);
+  const emails = await processLifecycleEmailOutbox(now, options.mailer || sendMail, options.mailer ? true : isSmtpConfigured());
   return {
     now: now.toISOString(), timezone: CAIRO_TIME_ZONE, dryRun: false, inspected: candidates.length,
     transitionedToGrace: transitions.grace, transitionedToExpired: transitions.expired,
@@ -683,8 +720,8 @@ export async function queueManualSubscriptionReminder(subscriptionId: string, no
   if (days < 0 || days > 7 || candidate.status === "expired") return { status: "not_eligible" };
   const inserted = await reserveReminder({ candidate, type: "manual", reminderClass: "transactional", now });
   if (!inserted) return { status: "already_queued" };
-  const inAppDelivered = await deliverInApp(now);
-  const emails = await processEmailOutbox(now, sendMail);
+  const inAppDelivered = await deliverLifecycleInApp(now);
+  const emails = await processLifecycleEmailOutbox(now, sendMail);
   return {
     status: "queued",
     result: {
