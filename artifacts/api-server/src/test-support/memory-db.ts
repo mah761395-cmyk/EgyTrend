@@ -245,6 +245,9 @@ export async function createMemoryDatabase(): Promise<{
       notes text,
       proof_image text,
       proof_name text,
+      sender_phone text,
+      proof_hash text,
+      referral_reward_id text,
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       decided_at timestamp
@@ -440,8 +443,196 @@ export async function createMemoryDatabase(): Promise<{
       starts_at timestamp,
       expires_at timestamp,
       created_by integer,
+      owner_user_id integer,
+      referral_reward_id text,
+      first_subscription_only boolean NOT NULL DEFAULT false,
+      renewal_only boolean NOT NULL DEFAULT false,
+      auto_apply boolean NOT NULL DEFAULT false,
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE INDEX coupons_referral_reward_idx ON coupons(referral_reward_id);
+    CREATE INDEX coupons_owner_auto_apply_idx ON coupons(owner_user_id, auto_apply, is_active);
+    CREATE TABLE referral_program_settings (
+      id text PRIMARY KEY,
+      enabled boolean NOT NULL DEFAULT false,
+      attribution_cookie_days integer NOT NULL DEFAULT 30,
+      terms_text text NOT NULL DEFAULT '',
+      updated_by integer REFERENCES employees(id),
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE referral_campaigns (
+      id text PRIMARY KEY,
+      name text NOT NULL,
+      status text NOT NULL DEFAULT 'paused',
+      priority integer NOT NULL DEFAULT 0,
+      starts_at timestamp,
+      ends_at timestamp,
+      qualification_event text NOT NULL DEFAULT 'first_paid',
+      hold_days integer NOT NULL DEFAULT 7,
+      referrer_reward_type text NOT NULL,
+      referrer_reward_value integer NOT NULL,
+      referrer_reward_cost integer,
+      invitee_reward_type text NOT NULL DEFAULT 'first_subscription_percent',
+      invitee_reward_value integer NOT NULL DEFAULT 0,
+      invitee_reward_cost integer,
+      max_referrer_monthly integer,
+      max_referrer_total integer,
+      created_by integer REFERENCES employees(id),
+      updated_by integer REFERENCES employees(id),
+      archived_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX referral_campaigns_schedule_idx ON referral_campaigns(status, starts_at, ends_at, priority);
+    CREATE TABLE referral_tiers (
+      id text PRIMARY KEY,
+      campaign_id text NOT NULL REFERENCES referral_campaigns(id),
+      threshold integer NOT NULL,
+      reward_type text NOT NULL,
+      reward_value integer NOT NULL,
+      reward_cost integer,
+      status text NOT NULL DEFAULT 'active',
+      created_by integer REFERENCES employees(id),
+      updated_by integer REFERENCES employees(id),
+      archived_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(campaign_id, threshold)
+    );
+    CREATE INDEX referral_tiers_campaign_status_idx ON referral_tiers(campaign_id, status);
+    CREATE TABLE referral_codes (
+      id text PRIMARY KEY,
+      code text NOT NULL UNIQUE,
+      kind text NOT NULL DEFAULT 'user',
+      owner_user_id integer REFERENCES app_users(id),
+      campaign_id text REFERENCES referral_campaigns(id),
+      rule_override jsonb,
+      label text,
+      status text NOT NULL DEFAULT 'active',
+      expires_at timestamp,
+      commission_due integer NOT NULL DEFAULT 0,
+      commission_notes text,
+      created_by integer REFERENCES employees(id),
+      updated_by integer REFERENCES employees(id),
+      disabled_at timestamp,
+      archived_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX referral_codes_campaign_status_idx ON referral_codes(campaign_id, status, expires_at);
+    CREATE INDEX referral_codes_owner_user_idx ON referral_codes(owner_user_id);
+    CREATE UNIQUE INDEX referral_codes_active_user_owner_uidx ON referral_codes(owner_user_id) WHERE kind = 'user' AND status = 'active' AND archived_at IS NULL;
+    CREATE TABLE referral_attributions (
+      id text PRIMARY KEY,
+      invited_user_id integer NOT NULL UNIQUE REFERENCES app_users(id),
+      referrer_user_id integer REFERENCES app_users(id),
+      code_id text NOT NULL REFERENCES referral_codes(id),
+      campaign_id text NOT NULL REFERENCES referral_campaigns(id),
+      code_snapshot text NOT NULL,
+      rule_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+      status text NOT NULL DEFAULT 'registered',
+      review_status text NOT NULL DEFAULT 'not_required',
+      email_verified_at timestamp,
+      trial_started_at timestamp,
+      first_paid_at timestamp,
+      payment_request_id text,
+      ip_signal_hash text,
+      device_signal_hash text,
+      suspicious boolean NOT NULL DEFAULT false,
+      blocked_reason text,
+      review_reason text,
+      reviewed_by integer REFERENCES employees(id),
+      reviewed_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX referral_attributions_referrer_idx ON referral_attributions(referrer_user_id, created_at);
+    CREATE INDEX referral_attributions_review_idx ON referral_attributions(review_status, created_at);
+    CREATE INDEX referral_attributions_code_idx ON referral_attributions(code_id, created_at);
+    CREATE TABLE referral_review_signals (
+      id text PRIMARY KEY,
+      attribution_id text NOT NULL REFERENCES referral_attributions(id),
+      signal_type text NOT NULL,
+      detail jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(attribution_id, signal_type)
+    );
+    CREATE INDEX referral_review_signals_type_idx ON referral_review_signals(signal_type, created_at);
+    CREATE TABLE referral_rewards (
+      id text PRIMARY KEY,
+      attribution_id text REFERENCES referral_attributions(id),
+      campaign_id text NOT NULL REFERENCES referral_campaigns(id),
+      tier_id text REFERENCES referral_tiers(id),
+      recipient_user_id integer NOT NULL REFERENCES app_users(id),
+      recipient_role text NOT NULL,
+      reward_type text NOT NULL,
+      reward_value integer NOT NULL,
+      estimated_cost integer,
+      status text NOT NULL DEFAULT 'pending',
+      qualification_event text NOT NULL,
+      hold_until timestamp,
+      payment_request_id text,
+      coupon_id integer REFERENCES coupons(id),
+      idempotency_key text NOT NULL UNIQUE,
+      rule_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+      grant_snapshot jsonb,
+      reason text,
+      granted_by integer REFERENCES employees(id),
+      granted_at timestamp,
+      cancelled_by integer REFERENCES employees(id),
+      cancelled_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX referral_rewards_status_hold_idx ON referral_rewards(status, hold_until);
+    CREATE INDEX referral_rewards_recipient_idx ON referral_rewards(recipient_user_id, created_at);
+    CREATE INDEX referral_rewards_attribution_idx ON referral_rewards(attribution_id, created_at);
+    CREATE TABLE referral_reward_ledger (
+      id text PRIMARY KEY,
+      reward_id text NOT NULL REFERENCES referral_rewards(id),
+      action text NOT NULL,
+      reason text,
+      actor_employee_id integer REFERENCES employees(id),
+      detail jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX referral_reward_ledger_reward_idx ON referral_reward_ledger(reward_id, created_at);
+    CREATE TABLE referral_message_templates (
+      id text PRIMARY KEY,
+      event_key text NOT NULL UNIQUE,
+      channels jsonb NOT NULL DEFAULT '["in_app"]'::jsonb,
+      title_template text NOT NULL,
+      body_template text NOT NULL,
+      status text NOT NULL DEFAULT 'active',
+      version integer NOT NULL DEFAULT 1,
+      updated_by integer REFERENCES employees(id),
+      archived_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE referral_message_deliveries (
+      id text PRIMARY KEY,
+      delivery_key text NOT NULL UNIQUE,
+      recipient_user_id integer NOT NULL REFERENCES app_users(id),
+      template_id text REFERENCES referral_message_templates(id),
+      event_key text NOT NULL,
+      notification_id text,
+      email_status text NOT NULL DEFAULT 'not_requested',
+      content_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX referral_message_deliveries_recipient_idx ON referral_message_deliveries(recipient_user_id, created_at);
+    CREATE TABLE referral_click_events (
+      id text PRIMARY KEY,
+      code_id text NOT NULL REFERENCES referral_codes(id),
+      campaign_id text REFERENCES referral_campaigns(id),
+      visitor_signal_hash text,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX referral_click_events_campaign_idx ON referral_click_events(campaign_id, created_at);
+    CREATE INDEX referral_click_events_code_idx ON referral_click_events(code_id, created_at);
     CREATE TABLE opportunities (
       id varchar(50) PRIMARY KEY,
       title text NOT NULL,

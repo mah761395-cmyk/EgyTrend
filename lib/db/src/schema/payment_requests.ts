@@ -20,6 +20,12 @@ export const paymentRequestsTable = pgTable("payment_requests", {
   /* Payment proof uploaded by the user: data URL (≤ ~290KB) + original file name. */
   proofImage: text("proof_image"),
   proofName: text("proof_name"),
+  /** Optional, normalized sender number is used only as a review signal for
+   * referral fraud—not as a reason to auto-reject a payment or account. */
+  senderPhone: text("sender_phone"),
+  /** SHA-256 of the supplied proof; raw proof remains in the payment record. */
+  proofHash: text("proof_hash"),
+  referralRewardId: text("referral_reward_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   /* When an admin approved/rejected the request (pending-age + notifications). */
