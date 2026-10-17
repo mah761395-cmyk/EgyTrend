@@ -646,6 +646,10 @@ export async function runSubscriptionLifecycle(options: {
    * cycle because the trial branch reuses the outbox helpers above. */
   const { runFreeTrialLifecycle } = await import("./free-trials");
   await runFreeTrialLifecycle({ now, dryRun, mailer: options.mailer });
+  /* Referral holds use the same authoritative scheduler clock (Cairo-aware
+   * dates are created in the referral service), not browser timers. */
+  const { runReferralLifecycle } = await import("./referrals");
+  await runReferralLifecycle({ now, dryRun });
   const settings = await readSubscriptionLifecycleSettings();
   const candidates = await subscriptionCandidates();
   const transitions = await transitionEntitlements(candidates, now, dryRun);

@@ -19,7 +19,7 @@ import {
   subscriptionPlansTable,
   userNotificationsTable,
 } from "@workspace/db/schema";
-import { currentUser, getVipEntitlement } from "../lib/userAuth";
+import { currentUser, getVipEntitlement, normalizeUserPhone } from "../lib/userAuth";
 import {
   buildPaymentPriceSnapshot,
   effectivePriceTemplateVariables,
@@ -30,6 +30,7 @@ import {
 } from "../lib/pricing";
 import { logger } from "../lib/logger";
 import { freeTrialAccountStatus } from "../lib/free-trials";
+import { referralProofHash, reserveReferralPaymentDiscount, resolveReferralPaymentDiscount } from "../lib/referrals";
 import { checkPayRateLimit } from "./admin";
 import { cairoCalendarDaysUntil, formatCairoDate } from "../lib/subscription-time";
 
@@ -79,23 +80,35 @@ router.get("/payments/config", async (req: Request, res: Response) => {
     const pricedPlans = rawPlans.filter((plan) => Number.isSafeInteger(plan.price) && plan.price > 0);
     const plans = await Promise.all(pricedPlans.map(async (plan) => {
       const effective = await getEffectivePrice(user, plan, now);
+      /* Referral discounts are resolved for the authenticated account on the
+       * server and shown as a normal locked price—there is no coupon field for
+       * the invitee to copy, edit or fabricate. */
+      const referral = user ? await resolveReferralPaymentDiscount({ userId: user.sub, phone: user.phone, price: effective.price, now }) : { price: effective.price, rewardId: null, couponId: null, discount: 0, label: null };
+      const displayed = referral.discount > 0 ? {
+        ...effective,
+        price: referral.price,
+        oldPrice: effective.price,
+        discountPercent: Math.round((referral.discount / effective.price) * 100),
+        badge: referral.label,
+      } : effective;
       return {
         key: plan.key,
         nameAr: plan.nameAr,
         /* `price` remains the client contract but is always effective, never base. */
-        price: effective.price,
-        oldPrice: effective.oldPrice,
-        discountPercent: effective.discountPercent,
-        priceBadge: effective.badge,
+        price: displayed.price,
+        oldPrice: displayed.oldPrice,
+        discountPercent: displayed.discountPercent,
+        priceBadge: displayed.badge,
         durationMonths: plan.durationMonths,
         features: plan.features,
         /* Preserve the existing descriptive plan label separately. */
         badge: plan.badge,
-        showCountdown: effective.showCountdown,
-        endsAt: effective.endsAt?.toISOString() || null,
-        priceSource: effective.source,
-        pricingToken: effectivePriceToken(plan, effective),
-        templateVariables: effectivePriceTemplateVariables(effective),
+        showCountdown: displayed.showCountdown,
+        endsAt: displayed.endsAt?.toISOString() || null,
+        priceSource: displayed.source,
+        pricingToken: effectivePriceToken(plan, displayed),
+        templateVariables: effectivePriceTemplateVariables(displayed),
+        referralApplied: referral.discount > 0,
       };
     }));
     plans.sort((left, right) => left.price - right.price || left.key.localeCompare(right.key));
@@ -235,6 +248,10 @@ router.post("/payments", async (req: Request, res: Response) => {
   const pricingToken = typeof b.pricingToken === "string" ? b.pricingToken.trim().slice(0, 1000) : "";
   const proofImage = typeof b.proofImage === "string" ? b.proofImage : "";
   const proofName = String(b.proofName || "").trim().slice(0, 120);
+  /* Optional sender number is normalized server-side and kept only for a
+   * referral-review signal. It never affects payment approval by itself. */
+  const senderPhoneRaw = typeof b.senderPhone === "string" ? b.senderPhone : "";
+  const senderPhone = senderPhoneRaw ? normalizeUserPhone(senderPhoneRaw) : null;
 
   if (!planKey) {
     res.status(400).json({ status: "error", message: "اختر خطة الاشتراك" });
@@ -246,6 +263,10 @@ router.post("/payments", async (req: Request, res: Response) => {
   }
   if (!proofImage || !DATA_URL_RE.test(proofImage)) {
     res.status(400).json({ status: "error", message: "ارفع صورة إثبات الدفع (PNG/JPG)" });
+    return;
+  }
+  if (senderPhoneRaw && !senderPhone) {
+    res.status(400).json({ status: "error", message: "رقم هاتف المُحوِّل غير صحيح" });
     return;
   }
   if (proofImage.length > PROOF_MAX) {
@@ -292,17 +313,25 @@ router.post("/payments", async (req: Request, res: Response) => {
     }
     const now = new Date();
     const effective = await getEffectivePrice(user, plan, now);
-    if (!Number.isSafeInteger(effective.price) || effective.price <= 0) {
+    const referral = await resolveReferralPaymentDiscount({ userId: user.sub, phone: user.phone, price: effective.price, now });
+    const lockedEffective = referral.discount > 0 ? {
+      ...effective,
+      price: referral.price,
+      oldPrice: effective.price,
+      discountPercent: Math.round((referral.discount / effective.price) * 100),
+      badge: referral.label,
+    } : effective;
+    if (!Number.isSafeInteger(lockedEffective.price) || lockedEffective.price <= 0) {
       res.status(503).json({ status: "error", message: "سعر الباقة غير متاح حاليًا — تواصل مع الإدارة" });
       return;
     }
-    if (!pricingToken || pricingToken !== effectivePriceToken(plan, effective)) {
+    if (!pricingToken || pricingToken !== effectivePriceToken(plan, lockedEffective)) {
       res.status(409).json({ status: "error", message: "تغيّر سعر أو عرض الباقة — أعد تحميل الباقات قبل إنشاء الطلب" });
       return;
     }
     const lockHours = await getPaymentPriceLockHours();
     const priceLockedUntil = new Date(now.getTime() + lockHours * 60 * 60 * 1000);
-    const priceSnapshot = buildPaymentPriceSnapshot(plan, effective, lockHours, now);
+    const priceSnapshot = { ...buildPaymentPriceSnapshot(plan, lockedEffective, lockHours, now), referral: referral.rewardId ? { rewardId: referral.rewardId, couponId: referral.couponId, discount: referral.discount, automatic: true } : null };
 
     /* Method must be one the admin enabled (wallet number configured). */
     const methods = await readMethodSettings();
@@ -353,20 +382,26 @@ router.post("/payments", async (req: Request, res: Response) => {
       name: user.name || user.phone,
       planKey: plan.key,
       payMethod: chosen.id,
-      /* Exact `getEffectivePrice()` amount, never a browser-supplied amount. */
-      price: effective.price,
+      /* Exact server-calculated (and, when eligible, auto-referral-discounted)
+       * amount—never a browser-supplied value. */
+      price: lockedEffective.price,
       priceSnapshot,
       priceLockedUntil,
       tx,
       status: "pending",
       proofImage,
       proofName: proofName || null,
+      senderPhone,
+      proofHash: referralProofHash(proofImage),
+      referralRewardId: referral.rewardId,
     });
-    logger.info({ planKey: plan.key, price: effective.price, method: chosen.id }, "payment request submitted");
+    try { await reserveReferralPaymentDiscount({ rewardId: referral.rewardId, couponId: referral.couponId, paymentRequestId: id, now }); }
+    catch (referralError) { logger.error({ err: referralError, paymentRequestId: id }, "referral discount reservation failed after payment insert"); }
+    logger.info({ planKey: plan.key, price: lockedEffective.price, method: chosen.id, referralApplied: Boolean(referral.rewardId) }, "payment request submitted");
     res.json({
       status: "ok",
       id,
-      amount: effective.price,
+      amount: lockedEffective.price,
       priceLockedUntil: priceLockedUntil.toISOString(),
       message: "تم إرسال طلبك — السعر محفوظ لمدة محدودة وجارٍ مراجعة الدفع",
     });

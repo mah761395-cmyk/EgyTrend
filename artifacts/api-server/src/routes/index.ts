@@ -12,6 +12,7 @@ import priceAlertsRouter from "./price-alerts";
 import calculatorsRouter from "./calculators";
 import subscriptionLifecycleRouter from "./subscription-lifecycle";
 import broadcastsRouter from "./broadcasts";
+import referralsRouter from "./referrals";
 
 const router: IRouter = Router();
 
@@ -26,6 +27,7 @@ router.use(portfolioRouter);
 router.use(priceAlertsRouter);
 router.use(subscriptionLifecycleRouter);
 router.use("/broadcasts", broadcastsRouter);
+router.use("/referrals", referralsRouter);
 router.use(calculatorsRouter);
 router.use(opportunitiesRouter);
 

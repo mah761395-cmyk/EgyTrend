@@ -74,6 +74,31 @@ import {
   updateBroadcast,
   validateBroadcastDraft,
 } from "../lib/broadcasts";
+import {
+  adminReferralDashboard,
+  approveReferralReview,
+  archiveReferralCampaign,
+  archiveReferralTier,
+  archiveSpecialReferralCode,
+  cancelReferralReward,
+  createReferralCampaign,
+  createReferralTier,
+  createSpecialReferralCode,
+  grantManualReferralReward,
+  rejectReferralReview,
+  saveReferralSettings,
+  saveReferralTemplate,
+  setReferralUserProgramState,
+  updateReferralCampaign,
+  updateReferralTier,
+  updateSpecialReferralCode,
+  validateReferralCampaign,
+  validateReferralTier,
+  validateReferralSettings,
+  withdrawReferralReward,
+  onReferralPaymentApproved,
+  onReferralPaymentCancelled,
+} from "../lib/referrals";
 
 const router: IRouter = Router();
 
@@ -1395,14 +1420,15 @@ router.get("/requests", requireAuth, requireRole("super_admin", "admin", "suppor
   try {
     const statusFilter = String(req.query["status"] || "").trim();
     let rows;
-    if (statusFilter && ["pending", "approved", "rejected", "expired"].includes(statusFilter)) {
+    if (statusFilter && ["pending", "approved", "rejected", "refunded", "cancelled", "expired"].includes(statusFilter)) {
       rows = await db.select({
         id: paymentRequestsTable.id, phone: paymentRequestsTable.phone, name: paymentRequestsTable.name,
         planKey: paymentRequestsTable.planKey, payMethod: paymentRequestsTable.payMethod,
         price: paymentRequestsTable.price, priceSnapshot: paymentRequestsTable.priceSnapshot, priceLockedUntil: paymentRequestsTable.priceLockedUntil,
         tx: paymentRequestsTable.tx, status: paymentRequestsTable.status,
         notes: paymentRequestsTable.notes, proofImage: paymentRequestsTable.proofImage,
-        proofName: paymentRequestsTable.proofName, createdAt: paymentRequestsTable.createdAt,
+        proofName: paymentRequestsTable.proofName, senderPhone: paymentRequestsTable.senderPhone,
+        referralRewardId: paymentRequestsTable.referralRewardId, createdAt: paymentRequestsTable.createdAt,
       }).from(paymentRequestsTable).where(eq(paymentRequestsTable.status, statusFilter)).orderBy(desc(paymentRequestsTable.createdAt)).limit(300);
     } else {
       rows = await db.select({
@@ -1411,7 +1437,8 @@ router.get("/requests", requireAuth, requireRole("super_admin", "admin", "suppor
         price: paymentRequestsTable.price, priceSnapshot: paymentRequestsTable.priceSnapshot, priceLockedUntil: paymentRequestsTable.priceLockedUntil,
         tx: paymentRequestsTable.tx, status: paymentRequestsTable.status,
         notes: paymentRequestsTable.notes, proofImage: paymentRequestsTable.proofImage,
-        proofName: paymentRequestsTable.proofName, createdAt: paymentRequestsTable.createdAt,
+        proofName: paymentRequestsTable.proofName, senderPhone: paymentRequestsTable.senderPhone,
+        referralRewardId: paymentRequestsTable.referralRewardId, createdAt: paymentRequestsTable.createdAt,
       }).from(paymentRequestsTable).orderBy(desc(paymentRequestsTable.createdAt)).limit(300);
     }
     /* Pending-age tracking so the UI can flag requests waiting > 1h. */
@@ -1448,10 +1475,12 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
   const id = String(req.params["id"] || "").trim();
   const requestedStatus = req.body?.status === "approved" ? "approved"
     : req.body?.status === "rejected" ? "rejected"
-      : null;
+      : req.body?.status === "refunded" ? "refunded"
+        : req.body?.status === "cancelled" ? "cancelled"
+          : null;
   const decisionNotes = stripHtml(String(req.body?.notes || "").trim()).slice(0, 200) || null;
   if (!requestedStatus) {
-    res.status(400).json({ status: "error", message: "status must be approved|rejected" });
+    res.status(400).json({ status: "error", message: "status must be approved|rejected|refunded|cancelled" });
     return;
   }
 
@@ -1470,10 +1499,15 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
       if (!existing) throw new PaymentDecisionError(404, "request not found");
 
       if (existing.status !== "pending") {
-        /* A rejected request can be re-reviewed and approved after corrected
-         * proof; an approved request can never be downgraded by this path. */
+        /* A rejected request can be re-reviewed after corrected proof. An
+         * approved request may only move to refunded/cancelled: entitlement
+         * reversal remains an explicit separate administrative decision, while
+         * the referral hold is cancelled safely by the post-commit hook. */
         if (requestedStatus === "rejected" && existing.status === "approved") {
-          throw new PaymentDecisionError(409, "الطلب مقبول بالفعل ولا يمكن رفضه");
+          throw new PaymentDecisionError(409, "الطلب مقبول بالفعل ولا يمكن رفضه؛ استخدم حالة الاسترجاع أو الإلغاء عند الحاجة");
+        }
+        if (["refunded", "cancelled"].includes(requestedStatus) && !["approved", "pending"].includes(existing.status)) {
+          throw new PaymentDecisionError(409, "لا يمكن استرجاع أو إلغاء هذه الحالة");
         }
         if (requestedStatus === existing.status) {
           return { already: true as const, existing, planNameAr: existing.planKey };
@@ -1481,6 +1515,7 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
       }
 
       let planNameAr = existing.planKey;
+      let approvedUserId: number | null = null;
       if (requestedStatus === "approved") {
         const now = paymentDecisionNow();
         /* New-format requests reserve their immutable server price only for
@@ -1531,6 +1566,7 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
         if (!activationPlan || !user || user.status !== "active") {
           throw new PaymentDecisionError(409, "تعذر تفعيل الاشتراك؛ راجع الخطة وحالة الحساب قبل الموافقة");
         }
+        approvedUserId = user.id;
         const [currentSubscription] = await tx.select({
           id: userSubscriptionsTable.id,
           cycleId: userSubscriptionsTable.cycleId,
@@ -1682,7 +1718,7 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
         updatedAt: new Date(),
         decidedAt: new Date(),
       }).where(eq(paymentRequestsTable.id, id));
-      return { already: false as const, existing, planNameAr };
+      return { already: false as const, existing, planNameAr, userId: approvedUserId };
     });
 
     if ("expired" in outcome && outcome.expired) {
@@ -1695,6 +1731,20 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
       return;
     }
 
+    /* Referral reward state is a separate durable/idempotent concern. It runs
+     * only after the payment decision committed, so a retry or double-click
+     * cannot grant a second reward. A failure is logged for the shared
+     * lifecycle worker/review tooling rather than misreporting payment state. */
+    try {
+      if (requestedStatus === "approved" && outcome.userId) {
+        await onReferralPaymentApproved({ userId: outcome.userId, paymentRequestId: id, senderPhone: outcome.existing.senderPhone, proofHash: outcome.existing.proofHash, now: paymentDecisionNow() });
+      } else if (requestedStatus === "refunded" || requestedStatus === "cancelled" || requestedStatus === "rejected") {
+        await onReferralPaymentCancelled(id, requestedStatus === "rejected" ? "تم رفض الدفع" : "تم إلغاء أو استرجاع الدفع", paymentDecisionNow());
+      }
+    } catch (referralError) {
+      logger.error({ err: referralError, paymentRequestId: id }, "referral payment hook failed");
+    }
+
     /* Notifications are best-effort only; entitlement and payment status were
      * already committed together in the transaction above. */
     try {
@@ -1703,13 +1753,15 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
         id: notifId,
         phone: outcome.existing.phone,
         kind: requestedStatus === "approved" ? "payment_approved" : "payment_rejected",
-        title: requestedStatus === "approved" ? "🎉 تم تفعيل اشتراك VIP" : "تحديث بخصوص طلب الدفع",
+        title: requestedStatus === "approved" ? "🎉 تم تفعيل اشتراك VIP" : requestedStatus === "refunded" || requestedStatus === "cancelled" ? "تحديث بخصوص الدفع" : "تحديث بخصوص طلب الدفع",
         body:
           requestedStatus === "approved"
             ? `تم تأكيد دفعتك (${outcome.planNameAr}) بالقيمة المثبتة ${outcome.existing.price} جنيه وتفعيل اشتراك VIP بنجاح.`
-            : decisionNotes
-              ? `تم رفض طلب الدفع. السبب: ${decisionNotes}`
-              : "تم رفض طلب الدفع. يمكنك إعادة الطلب بعد تصحيح بيانات التحويل.",
+            : requestedStatus === "refunded" || requestedStatus === "cancelled"
+              ? (decisionNotes || "تم تسجيل إلغاء أو استرجاع الدفع. لا تتغير الصلاحية تلقائيًا من هذا الإجراء؛ راجع الإدارة عند الحاجة.")
+              : decisionNotes
+                ? `تم رفض طلب الدفع. السبب: ${decisionNotes}`
+                : "تم رفض طلب الدفع. يمكنك إعادة الطلب بعد تصحيح بيانات التحويل.",
       });
     } catch (notificationError) {
       logger.error({ err: notificationError }, "user notification insert failed after payment decision");
@@ -2177,6 +2229,8 @@ router.post("/free-trial/users/:id/grant", requireAuth, requireWriteRate, requir
     const result = await startFreeTrial({ userId, mode: "admin", durationDays: days, actorEmployeeId: req.actor?.sub || null, ip: req.ip || "", device: "admin-manual-grant" });
     if (result.reason !== "started") { res.status(409).json({ status: "error", reason: result.reason, message: "تعذر منح التجربة: الحساب لديه تجربة نشطة أو اشتراك مدفوع." }); return; }
     await auditLog("grant_free_trial", req.actor, `user:${userId}`, { days: days || null, endsAt: result.endsAt?.toISOString() || null }, req.ip);
+    try { const { recordReferralEvent } = await import("../lib/referrals"); await recordReferralEvent({ userId, event: "trial_started", now: new Date() }); }
+    catch (referralError) { logger.error({ err: referralError, userId }, "referral event after manual trial grant failed"); }
     res.status(201).json({ status: "ok", endsAt: result.endsAt?.toISOString() || null });
   } catch (error) {
     logger.error({ err: error }, "free trial manual grant error");
@@ -2187,6 +2241,215 @@ router.post("/free-trial/users/:id/grant", requireAuth, requireWriteRate, requir
 router.get("/free-trial/stats", requireAuth, requireRole("super_admin", "admin", "support"), async (_req: Request, res: Response) => {
   try { res.setHeader("Cache-Control", "no-store, max-age=0"); res.json({ status: "ok", stats: await freeTrialStats(new Date()) }); }
   catch (error) { logger.error({ err: error }, "free trial stats error"); res.status(503).json({ status: "error", message: "إحصاءات التجربة غير متاحة حاليًا" }); }
+});
+
+/* ════════════════════════════════════════════
+   REFERRAL PROGRAM — all rules and interventions are server-authorized
+════════════════════════════════════════════ */
+function referralRouteId(value: unknown, prefix: string): string | null {
+  const id = String(value || "").trim();
+  return new RegExp(`^${prefix}-[a-zA-Z0-9_-]{8,100}$`).test(id) ? id : null;
+}
+function referralActorId(req: AuthRequest): number | null { return req.actor?.sub && req.actor.sub > 0 ? req.actor.sub : null; }
+
+router.get("/referrals", requireAuth, requireRole("super_admin", "admin", "support"), async (_req: Request, res: Response) => {
+  try {
+    const dashboard = await adminReferralDashboard(new Date());
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({ status: "ok", timezone: "Africa/Cairo", ...dashboard });
+  } catch (error) {
+    logger.error({ err: error }, "referral admin dashboard error");
+    res.status(503).json({ status: "error", message: "تعذر تحميل لوحة الإحالات حاليًا" });
+  }
+});
+
+router.put("/referrals/settings", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const settings = validateReferralSettings(req.body);
+  if (!settings) { res.status(400).json({ status: "error", message: "إعدادات الإحالة غير صالحة: مدة cookie من 1 إلى 90 يومًا." }); return; }
+  try {
+    await saveReferralSettings(settings, referralActorId(req), new Date());
+    await auditLog("update_referral_settings", req.actor, "referrals:settings", { enabled: settings.enabled, cookieDays: settings.attributionCookieDays }, req.ip);
+    res.json({ status: "ok", settings, note: "التعديل يطبّق على الروابط والإحالات الجديدة؛ لا يعيد كتابة لقطات القواعد السابقة." });
+  } catch (error) {
+    logger.error({ err: error }, "referral settings save error");
+    res.status(503).json({ status: "error", message: "تعذر حفظ إعدادات الإحالات" });
+  }
+});
+
+router.post("/referrals/campaigns", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const input = validateReferralCampaign(req.body);
+  if (!input) { res.status(400).json({ status: "error", message: "بيانات الحملة غير صالحة. راجع الجوائز، المواعيد بتوقيت القاهرة، والسقوف." }); return; }
+  try {
+    const campaign = await createReferralCampaign(input, referralActorId(req), new Date());
+    await auditLog("create_referral_campaign", req.actor, `referral-campaign:${campaign.id}`, { status: campaign.status, qualificationEvent: campaign.qualificationEvent, priority: campaign.priority }, req.ip);
+    res.status(201).json({ status: "ok", campaign });
+  } catch (error) {
+    logger.error({ err: error }, "create referral campaign error");
+    res.status(503).json({ status: "error", message: "تعذر إنشاء الحملة" });
+  }
+});
+
+router.put("/referrals/campaigns/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = referralRouteId(req.params["id"], "refcamp"), input = validateReferralCampaign(req.body);
+  if (!id || !input) { res.status(400).json({ status: "error", message: "بيانات الحملة غير صالحة." }); return; }
+  try {
+    const campaign = await updateReferralCampaign(id, input, referralActorId(req), new Date());
+    if (!campaign) { res.status(404).json({ status: "error", message: "الحملة غير موجودة أو مؤرشفة." }); return; }
+    await auditLog("update_referral_campaign", req.actor, `referral-campaign:${id}`, { status: campaign.status, priority: campaign.priority }, req.ip);
+    res.json({ status: "ok", campaign, note: "التعديل يسري على الإحالات الجديدة فقط؛ اللقطات السابقة محفوظة." });
+  } catch (error) {
+    logger.error({ err: error }, "update referral campaign error");
+    res.status(503).json({ status: "error", message: "تعذر تعديل الحملة" });
+  }
+});
+
+router.post("/referrals/campaigns/:id/archive", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = referralRouteId(req.params["id"], "refcamp");
+  if (!id) { res.status(404).json({ status: "error", message: "الحملة غير موجودة." }); return; }
+  try {
+    const campaign = await archiveReferralCampaign(id, referralActorId(req), new Date());
+    if (!campaign) { res.status(404).json({ status: "error", message: "الحملة غير موجودة أو مؤرشفة." }); return; }
+    await auditLog("archive_referral_campaign", req.actor, `referral-campaign:${id}`, {}, req.ip);
+    res.json({ status: "ok", campaign, note: "أرشفة الحملة لا تلغي الجوائز أو السجل السابق." });
+  } catch (error) { logger.error({ err: error }, "archive referral campaign error"); res.status(503).json({ status: "error", message: "تعذر أرشفة الحملة" }); }
+});
+
+router.post("/referrals/tiers", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const input = validateReferralTier(req.body);
+  if (!input) { res.status(400).json({ status: "error", message: "بيانات المستوى غير صالحة." }); return; }
+  try {
+    const tier = await createReferralTier(input, referralActorId(req), new Date());
+    if (!tier) { res.status(409).json({ status: "error", message: "الحملة غير موجودة أو يوجد مستوى بنفس العتبة." }); return; }
+    await auditLog("create_referral_tier", req.actor, `referral-tier:${tier.id}`, { campaignId: tier.campaignId, threshold: tier.threshold }, req.ip);
+    res.status(201).json({ status: "ok", tier });
+  } catch (error) { logger.error({ err: error }, "create referral tier error"); res.status(503).json({ status: "error", message: "تعذر إنشاء المستوى" }); }
+});
+
+router.put("/referrals/tiers/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = referralRouteId(req.params["id"], "reftier"), input = validateReferralTier(req.body);
+  if (!id || !input) { res.status(400).json({ status: "error", message: "بيانات المستوى غير صالحة." }); return; }
+  try {
+    const tier = await updateReferralTier(id, input, referralActorId(req), new Date());
+    if (!tier) { res.status(404).json({ status: "error", message: "المستوى غير موجود أو مؤرشف." }); return; }
+    await auditLog("update_referral_tier", req.actor, `referral-tier:${id}`, { threshold: tier.threshold }, req.ip);
+    res.json({ status: "ok", tier, note: "التعديل للحوافز المستقبلية فقط." });
+  } catch (error) { logger.error({ err: error }, "update referral tier error"); res.status(503).json({ status: "error", message: "تعذر تعديل المستوى" }); }
+});
+
+router.post("/referrals/tiers/:id/archive", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = referralRouteId(req.params["id"], "reftier");
+  if (!id) { res.status(404).json({ status: "error", message: "المستوى غير موجود." }); return; }
+  try {
+    const tier = await archiveReferralTier(id, referralActorId(req), new Date());
+    if (!tier) { res.status(404).json({ status: "error", message: "المستوى غير موجود أو مؤرشف." }); return; }
+    await auditLog("archive_referral_tier", req.actor, `referral-tier:${id}`, {}, req.ip);
+    res.json({ status: "ok", tier });
+  } catch (error) { logger.error({ err: error }, "archive referral tier error"); res.status(503).json({ status: "error", message: "تعذر أرشفة المستوى" }); }
+});
+
+router.post("/referrals/special-codes", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  try {
+    const code = await createSpecialReferralCode(req.body || {}, referralActorId(req), new Date());
+    if (!code) { res.status(400).json({ status: "error", message: "الكود الخاص أو بياناته غير صالحة أو غير فريدة." }); return; }
+    await auditLog("create_referral_special_code", req.actor, `referral-code:${code.id}`, { kind: "special", campaignId: code.campaignId }, req.ip);
+    res.status(201).json({ status: "ok", code });
+  } catch (error) {
+    if (/unique/i.test(String(error))) { res.status(409).json({ status: "error", message: "الكود مستخدم بالفعل." }); return; }
+    logger.error({ err: error }, "create special referral code error"); res.status(503).json({ status: "error", message: "تعذر إنشاء الكود الخاص" });
+  }
+});
+
+router.put("/referrals/special-codes/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = referralRouteId(req.params["id"], "refcode");
+  if (!id) { res.status(404).json({ status: "error", message: "الكود غير موجود." }); return; }
+  try {
+    const code = await updateSpecialReferralCode(id, (req.body || {}) as Record<string, unknown>, referralActorId(req), new Date());
+    if (!code) { res.status(400).json({ status: "error", message: "تعذر تعديل الكود؛ راجع البيانات والحالة." }); return; }
+    await auditLog("update_referral_special_code", req.actor, `referral-code:${id}`, { status: code.status, commissionDue: code.commissionDue }, req.ip);
+    res.json({ status: "ok", code, note: "تعديل/إيقاف الكود لا يغيّر الإحالات المسجلة سابقًا." });
+  } catch (error) { logger.error({ err: error }, "update special referral code error"); res.status(503).json({ status: "error", message: "تعذر تعديل الكود الخاص" }); }
+});
+
+router.post("/referrals/special-codes/:id/archive", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = referralRouteId(req.params["id"], "refcode");
+  if (!id) { res.status(404).json({ status: "error", message: "الكود غير موجود." }); return; }
+  try {
+    const code = await archiveSpecialReferralCode(id, referralActorId(req), new Date());
+    if (!code) { res.status(404).json({ status: "error", message: "الكود غير موجود أو مؤرشف." }); return; }
+    await auditLog("archive_referral_special_code", req.actor, `referral-code:${id}`, {}, req.ip);
+    res.json({ status: "ok", code });
+  } catch (error) { logger.error({ err: error }, "archive special referral code error"); res.status(503).json({ status: "error", message: "تعذر أرشفة الكود الخاص" }); }
+});
+
+router.post("/referrals/users/:id/:action", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const userId = Number(req.params["id"]), action = String(req.params["action"] || "");
+  if (!Number.isSafeInteger(userId) || userId <= 0 || !["block", "disable_code", "regenerate_code"].includes(action)) { res.status(400).json({ status: "error", message: "طلب إدارة المستخدم غير صالح." }); return; }
+  try {
+    const result = await setReferralUserProgramState(userId, action as "block" | "disable_code" | "regenerate_code", referralActorId(req), new Date());
+    await auditLog(`referral_user_${action}`, req.actor, `user:${userId}`, {}, req.ip);
+    res.json({ status: "ok", result });
+  } catch (error) { logger.error({ err: error }, "referral user admin action error"); res.status(503).json({ status: "error", message: "تعذر تنفيذ إدارة المستخدم" }); }
+});
+
+router.post("/referrals/rewards/manual", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const userId = Number(req.body?.userId), campaignId = String(req.body?.campaignId || "").trim();
+  try {
+    const result = await grantManualReferralReward({ userId, campaignId, rewardType: req.body?.rewardType, rewardValue: req.body?.rewardValue, reason: req.body?.reason, actorEmployeeId: referralActorId(req), now: new Date() });
+    if (result.status !== "granted" && result.status !== "already_granted") { res.status(400).json({ status: "error", message: "تعذر منح الجائزة يدويًا؛ راجع المستخدم والحملة وقيمة الجائزة." }); return; }
+    await auditLog("manual_referral_reward", req.actor, `referral-reward:${result.rewardId || ""}`, { userId, campaignId }, req.ip);
+    res.json({ status: "ok", result });
+  } catch (error) { logger.error({ err: error }, "manual referral reward error"); res.status(503).json({ status: "error", message: "تعذر منح الجائزة" }); }
+});
+
+router.post("/referrals/rewards/:id/withdraw", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = referralRouteId(req.params["id"], "refreward"), reason = stripHtml(String(req.body?.reason || "")).slice(0, 300);
+  if (!id || !reason) { res.status(400).json({ status: "error", message: "سبب السحب مطلوب." }); return; }
+  try {
+    const result = await withdrawReferralReward(id, referralActorId(req), reason, new Date());
+    if (!result.status.startsWith("withdrawn")) { res.status(409).json({ status: "error", message: "الجائزة ليست ممنوحة أو لا يمكن سحبها." }); return; }
+    await auditLog("withdraw_referral_reward", req.actor, `referral-reward:${id}`, { status: result.status }, req.ip);
+    res.json({ status: "ok", result, note: result.status === "withdrawn_recorded" ? "سُجل السحب؛ لم تُقصّر صلاحية تراكمت بعدها مدة مدفوعة تلقائيًا." : undefined });
+  } catch (error) { logger.error({ err: error }, "withdraw referral reward error"); res.status(503).json({ status: "error", message: "تعذر سحب الجائزة" }); }
+});
+
+router.post("/referrals/reviews/:id/:decision", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = referralRouteId(req.params["id"], "refattr"), decision = String(req.params["decision"] || "");
+  if (!id || !["approve", "reject"].includes(decision)) { res.status(400).json({ status: "error", message: "قرار المراجعة غير صالح." }); return; }
+  const reason = stripHtml(String(req.body?.reason || "")).slice(0, 300);
+  try {
+    const ok = decision === "approve" ? await approveReferralReview(id, referralActorId(req), new Date()) : await rejectReferralReview(id, referralActorId(req), reason || "رفض المراجعة", new Date());
+    if (!ok) { res.status(409).json({ status: "error", message: "الإحالة ليست قيد المراجعة." }); return; }
+    await auditLog(`referral_review_${decision}`, req.actor, `referral-attribution:${id}`, { reason: reason || null }, req.ip);
+    res.json({ status: "ok" });
+  } catch (error) { logger.error({ err: error }, "referral review decision error"); res.status(503).json({ status: "error", message: "تعذر حفظ قرار المراجعة" }); }
+});
+
+router.put("/referrals/templates/:event", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const event = String(req.params["event"] || "");
+  try {
+    const template = await saveReferralTemplate(event, req.body, referralActorId(req), new Date());
+    if (!template) { res.status(400).json({ status: "error", message: "القالب أو المتغيرات غير صالحة. المتغيرات المسموحة: {{name}}, {{reward}}, {{friend_name}}, {{days}}." }); return; }
+    await auditLog("update_referral_template", req.actor, `referral-template:${event}`, { version: template.version }, req.ip);
+    res.json({ status: "ok", template, note: "التعديل يؤثر على الإرسال المستقبلي فقط؛ اللقطات السابقة محفوظة." });
+  } catch (error) { logger.error({ err: error }, "referral template save error"); res.status(503).json({ status: "error", message: "تعذر حفظ قالب الإحالة" }); }
+});
+
+router.get("/referrals/export.csv", requireAuth, requireRole("super_admin", "admin", "support"), async (_req: Request, res: Response) => {
+  try {
+    const dashboard = await adminReferralDashboard(new Date());
+    const safeCsv = (value: unknown) => {
+      const text = String(value ?? "").replace(/[\r\n]+/g, " ");
+      const neutral = /^[=+\-@]/.test(text) ? `'${text}` : text;
+      return `"${neutral.replace(/"/g, '""')}"`;
+    };
+    const rows = [["نوع", "المعرف", "الحالة", "تاريخ", "القيمة"],
+      ...dashboard.attributions.map((a) => ["إحالة", a.id, `${a.status}/${a.reviewStatus}`, a.createdAt.toISOString(), a.codeSnapshot]),
+      ...dashboard.rewards.map((r) => ["جائزة", r.id, r.status, r.createdAt.toISOString(), `${r.rewardType}:${r.rewardValue}`]),
+    ];
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", "attachment; filename=referrals.csv");
+    res.send(`\uFEFF${rows.map((row) => row.map(safeCsv).join(",")).join("\r\n")}`);
+  } catch (error) { logger.error({ err: error }, "referral csv export error"); res.status(503).json({ status: "error", message: "تعذر تصدير تقرير الإحالات" }); }
 });
 
 /* ════════════════════════════════════════════

@@ -26,6 +26,13 @@ import {
 import { readFreeTrialSettings } from "../lib/trial-settings";
 import { validMarketingUnsubscribeToken } from "../lib/marketing-email";
 import { logger } from "../lib/logger";
+import {
+  attachReferralAtRegistration,
+  decodeReferralCookie,
+  deliverReferralMessage,
+  publicReferralDashboard,
+  recordReferralEvent,
+} from "../lib/referrals";
 
 const router = Router();
 
@@ -118,15 +125,38 @@ router.post("/register", async (req: Request, res: Response) => {
     }
   }
 
-  const [user] = await db.insert(appUsersTable).values({
-    phone,
-    name,
-    passwordHash: hashUserPassword(password),
-    ...(email ? { email } : {}),
-  }).returning();
+  /* Referral attribution is accepted only in this new-account transaction.
+   * A logged-in/existing account has no route to change it later. An invalid,
+   * expired or rate-limited code is intentionally ignored rather than exposed
+   * as a code-existence oracle. */
+  const explicitReferral = typeof req.body?.referralCode === "string" ? req.body.referralCode : "";
+  const cookieReferral = decodeReferralCookie(req.cookies?.["egytrend_referral"]);
+  const referralCode = rateLimitHit(`referral-code:${req.ip || "unknown"}`, 12, 15 * 60 * 1000)
+    ? null : (explicitReferral || cookieReferral || null);
+  let referral: { attributionId: string | null; attached: boolean; referrerUserId: number | null } = { attributionId: null, attached: false, referrerUserId: null };
+  const [user] = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(appUsersTable).values({
+      phone,
+      name,
+      passwordHash: hashUserPassword(password),
+      ...(email ? { email } : {}),
+    }).returning();
+    if (!created) throw new Error("user creation failed");
+    referral = await attachReferralAtRegistration({
+      userId: created.id, email: email || null, phone: created.phone, code: referralCode,
+      ip: req.ip || "", device: req.header("user-agent") || "", now: new Date(), database: tx,
+    });
+    return [created];
+  });
   const token = signUserToken({ sub: user.id, phone: user.phone, name: user.name, role: "user", plan: user.plan });
   res.cookie(USER_SESSION_COOKIE, token, sessionCookieOptions(7 * 24 * 60 * 60 * 1000));
-  res.status(201).json({ status: "ok", user: publicUser(user) });
+  /* A referral notification is transactional and independently idempotent;
+   * failure to deliver it can never roll back a safely registered account. */
+  if (referral.attached && referral.referrerUserId) {
+    const friendName = name.split(/\s+/)[0] || "صديقك";
+    void deliverReferralMessage({ deliveryKey: `registered:${referral.attributionId}`, recipientUserId: referral.referrerUserId, eventKey: "friend_registered", vars: { name: "", friend_name: friendName, reward: "", days: "" } });
+  }
+  res.status(201).json({ status: "ok", user: publicUser(user), referral: { attached: referral.attached } });
 });
 
 router.post("/login", async (req: Request, res: Response) => {
@@ -182,6 +212,20 @@ router.get("/me", async (req: Request, res: Response) => {
     freeTrialAccountStatus(user.id),
   ]);
   res.json({ status: "ok", user: publicUser(user, entitlement), subscription: publicSubscription(entitlement), trial });
+});
+
+/* ═══════════ REFERRAL DASHBOARD (authenticated account only) ═══════════ */
+router.get("/referrals", async (req: Request, res: Response) => {
+  const claims = currentUser(req);
+  if (!claims) { res.status(401).json({ status: "error", message: "login required" }); return; }
+  try {
+    const dashboard = await publicReferralDashboard(claims.sub, new Date());
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    res.json({ status: "ok", ...dashboard });
+  } catch (error) {
+    logger.error({ err: error }, "referral user dashboard error");
+    res.status(503).json({ status: "error", message: "إحصاءات الإحالات غير متاحة حاليًا" });
+  }
 });
 
 /* ═══════════ FREE VIP TRIAL + EMAIL VERIFICATION ═══════════ */
@@ -300,6 +344,12 @@ router.post("/email-verification/confirm", async (req: Request, res: Response) =
     const trial = settings.enabled && settings.startMode === "after_email_verification"
       ? await startFreeTrial({ userId: verified.id, now, mode: "auto", ip, device: req.header("user-agent") || "" })
       : null;
+    /* Referral credit requires server-confirmed email. A configured auto-trial
+     * records its own event only after the trial row was created. */
+    try {
+      await recordReferralEvent({ userId: verified.id, event: "email_verified", now });
+      if (trial?.reason === "started") await recordReferralEvent({ userId: verified.id, event: "trial_started", now });
+    } catch (referralError) { logger.error({ err: referralError }, "referral event after email verification failed"); }
     res.json({
       status: "ok",
       emailVerified: true,
@@ -331,6 +381,8 @@ router.post("/trial/start", async (req: Request, res: Response) => {
       return;
     }
     const trial = await freeTrialAccountStatus(claims.sub);
+    try { await recordReferralEvent({ userId: claims.sub, event: "trial_started", now: new Date() }); }
+    catch (referralError) { logger.error({ err: referralError }, "referral event after trial start failed"); }
     res.json({ status: "ok", trial, message: "بدأت تجربتك المجانية لمدة 7 أيام. لا توجد بيانات دفع أو خصم أو تجديد تلقائي." });
   } catch (error) {
     logger.error({ err: error }, "free trial self-start error");
