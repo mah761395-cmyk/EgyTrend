@@ -21,17 +21,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # pnpm must exist before `actions/setup-node` runs: its `cache: pnpm`
+      # option resolves the pnpm binary while configuring the store cache, and
+      # on a clean runner it fails with "Unable to locate executable file: pnpm".
+      # The Vercel build resolves the same pinned pnpm through Corepack.
+      - name: Enable the pinned pnpm version
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.3.4 --activate
+          pnpm --version
+
       - name: Use the pinned Node runtime
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - name: Enable the pinned pnpm version
+      # Vercel builds only 22.x and 24.x. An engines range that excludes both
+      # (e.g. the Node 20 range this repository shipped with) fails the
+      # deployment before the build starts, so it is blocked here instead.
+      - name: Guard the Vercel build runtime
         run: |
-          corepack enable
-          corepack prepare pnpm@12.3.4 --activate
-          pnpm --version
+          node -e "const e=require('./package.json').engines||{};if(!['22.x','24.x'].includes(e.node)){console.error('engines.node must be a Vercel-supported major (22.x or 24.x), found: '+e.node);process.exit(1);}console.log('engines.node OK: '+e.node)"
 
       - name: Install from the committed lockfile
         run: pnpm install --frozen-lockfile
