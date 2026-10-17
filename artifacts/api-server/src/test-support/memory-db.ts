@@ -63,6 +63,9 @@ export async function createMemoryDatabase(): Promise<{
       id serial PRIMARY KEY,
       phone text NOT NULL UNIQUE,
       email text UNIQUE,
+      marketing_email_opt_in boolean NOT NULL DEFAULT false,
+      marketing_email_opted_in_at timestamp,
+      marketing_email_unsubscribed_at timestamp,
       name text NOT NULL,
       password_hash text NOT NULL,
       plan text NOT NULL DEFAULT 'free',
@@ -288,6 +291,57 @@ export async function createMemoryDatabase(): Promise<{
       UNIQUE(subscription_cycle_id, event_type)
     );
     CREATE INDEX subscription_lifecycle_events_type_at_idx ON subscription_lifecycle_events(event_type, occurred_at);
+    CREATE TABLE broadcast_media (
+      id text PRIMARY KEY,
+      mime_type text NOT NULL,
+      data_url text NOT NULL,
+      size_bytes integer NOT NULL,
+      created_by integer NOT NULL REFERENCES employees(id),
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      archived_at timestamp
+    );
+    CREATE TABLE broadcast_messages (
+      id text PRIMARY KEY,
+      title text NOT NULL,
+      content jsonb NOT NULL,
+      message_type text NOT NULL,
+      audience text NOT NULL DEFAULT 'all',
+      priority integer NOT NULL DEFAULT 0,
+      status text NOT NULL DEFAULT 'draft',
+      starts_at timestamp,
+      ends_at timestamp,
+      image_media_id text REFERENCES broadcast_media(id),
+      action jsonb NOT NULL DEFAULT '{"kind":"none"}'::jsonb,
+      variable_plan_key text,
+      marketing_email_requested boolean NOT NULL DEFAULT false,
+      marketing_email_confirmed_at timestamp,
+      created_by integer NOT NULL REFERENCES employees(id),
+      updated_by integer REFERENCES employees(id),
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      archived_at timestamp
+    );
+    CREATE INDEX broadcast_messages_schedule_idx ON broadcast_messages(status, starts_at, ends_at);
+    CREATE TABLE broadcast_message_user_states (
+      id text PRIMARY KEY,
+      message_id text NOT NULL REFERENCES broadcast_messages(id),
+      user_id integer NOT NULL REFERENCES app_users(id),
+      seen_at timestamp NOT NULL,
+      closed_at timestamp,
+      do_not_show_again_at timestamp,
+      cta_clicked_at timestamp,
+      coupon_copied_at timestamp,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(message_id, user_id)
+    );
+    CREATE INDEX broadcast_message_user_states_message_idx ON broadcast_message_user_states(message_id, seen_at);
+    CREATE TABLE broadcast_test_deliveries (
+      id text PRIMARY KEY,
+      message_id text NOT NULL REFERENCES broadcast_messages(id),
+      employee_id integer NOT NULL REFERENCES employees(id),
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX broadcast_test_deliveries_message_idx ON broadcast_test_deliveries(message_id, created_at);
     CREATE TABLE app_settings (
       key text PRIMARY KEY,
       value text NOT NULL,

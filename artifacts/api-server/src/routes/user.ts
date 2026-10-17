@@ -47,6 +47,8 @@ function publicUser(user: typeof appUsersTable.$inferSelect, entitlement?: VipEn
     name: user.name,
     plan: activeVip ? "vip" : "free",
     vipExpiresAt: activeVip ? entitlement?.expiresAt?.toISOString() || null : null,
+    /* Consent is account state from the server, never inferred from the email field. */
+    marketingEmailOptIn: user.marketingEmailOptIn,
   };
 }
 
@@ -311,6 +313,109 @@ router.put("/email", async (req: Request, res: Response) => {
   }
   await db.update(appUsersTable).set({ email, updatedAt: new Date() }).where(eq(appUsersTable.id, claims.sub));
   res.json({ status: "ok", message: "تم حفظ البريد — يمكنك الآن استعادة كلمة المرور عبره" });
+});
+
+/* Explicit account-level marketing consent. Supplying an email for password
+ * recovery is deliberately not consent. This setting does not activate a mail
+ * worker; broadcasts remain in-product until a separately approved sender is
+ * built and can include unsubscribe links on every delivery. */
+router.put("/marketing-email", async (req: Request, res: Response) => {
+  const claims = currentUser(req);
+  if (!claims) { res.status(401).json({ status: "error", message: "login required" }); return; }
+  const optIn = req.body?.optIn === true;
+  const confirmation = req.body?.confirmation === true;
+  try {
+    const [user] = await db.select({ id: appUsersTable.id, email: appUsersTable.email })
+      .from(appUsersTable).where(and(eq(appUsersTable.id, claims.sub), eq(appUsersTable.status, "active"))).limit(1);
+    if (!user) { res.status(401).json({ status: "error", message: "الحساب غير موجود" }); return; }
+    if (optIn && (!user.email || !EMAIL_RE.test(user.email))) {
+      res.status(400).json({ status: "error", message: "أضف بريدًا إلكترونيًا صالحًا قبل الموافقة على الرسائل التسويقية." });
+      return;
+    }
+    if (optIn && !confirmation) {
+      res.status(400).json({ status: "error", message: "يلزم تأكيد موافقتك الصريحة على الرسائل التسويقية." });
+      return;
+    }
+    const now = new Date();
+    await db.update(appUsersTable).set({
+      marketingEmailOptIn: optIn,
+      marketingEmailOptedInAt: optIn ? now : undefined,
+      marketingEmailUnsubscribedAt: optIn ? null : now,
+      updatedAt: now,
+    }).where(eq(appUsersTable.id, user.id));
+    res.json({
+      status: "ok",
+      marketingEmailOptIn: optIn,
+      mailSendingEnabled: false,
+      message: optIn
+        ? "تم حفظ موافقتك. لا توجد حملة بريدية مفعّلة حاليًا."
+        : "تم إلغاء اشتراكك من الرسائل التسويقية ولن نرسل حملات بريدية لهذا العنوان.",
+    });
+  } catch (error) {
+    logger.error({ err: error }, "marketing consent update error");
+    res.status(503).json({ status: "error", message: "تعذر حفظ تفضيلات البريد حاليًا" });
+  }
+});
+
+/* Future campaign mail must link here with a short-lived HMAC token. The
+ * broadcast implementation intentionally creates no campaign mail at all;
+ * this endpoint exists now so unsubscribe is not bolted on afterward. */
+/** For a future, separately approved sender only. The broadcast feature does
+ * not call this and therefore cannot send campaign e-mail by accident. */
+export function createMarketingUnsubscribeToken(userId: number, expiresAt = Date.now() + 90 * 24 * 60 * 60 * 1000): string | null {
+  const secret = process.env["SESSION_SECRET"];
+  if (!secret || !Number.isSafeInteger(userId) || userId <= 0 || !Number.isSafeInteger(expiresAt)) return null;
+  const payload = `${userId}.${expiresAt}`;
+  const signature = crypto.createHmac("sha256", secret).update(`marketing-unsubscribe:${payload}`).digest("hex");
+  return `${payload}.${signature}`;
+}
+
+export function createMarketingUnsubscribeUrl(userId: number, appBaseUrl = process.env["APP_BASE_URL"]): string | null {
+  const token = createMarketingUnsubscribeToken(userId);
+  if (!token || !appBaseUrl) return null;
+  try {
+    const base = new URL(appBaseUrl);
+    if (base.protocol !== "https:" || base.username || base.password) return null;
+    return new URL(`/api/user/unsubscribe-marketing?token=${encodeURIComponent(token)}`, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+function validMarketingUnsubscribeToken(value: unknown): { userId: number } | null {
+  const token = String(value || "").trim();
+  const match = /^(\d{1,10})\.(\d{10,13})\.([a-f0-9]{64})$/i.exec(token);
+  const secret = process.env["SESSION_SECRET"];
+  if (!match || !secret) return null;
+  const userId = Number(match[1]);
+  const expiresAt = Number(match[2]);
+  if (!Number.isSafeInteger(userId) || userId <= 0 || !Number.isFinite(expiresAt) || expiresAt < Date.now()) return null;
+  const payload = `${userId}.${expiresAt}`;
+  const expected = crypto.createHmac("sha256", secret).update(`marketing-unsubscribe:${payload}`).digest("hex");
+  const supplied = Buffer.from(match[3]!, "hex");
+  const expectedBuffer = Buffer.from(expected, "hex");
+  if (supplied.length !== expectedBuffer.length || !crypto.timingSafeEqual(supplied, expectedBuffer)) return null;
+  return { userId };
+}
+
+router.get("/unsubscribe-marketing", async (req: Request, res: Response) => {
+  const parsed = validMarketingUnsubscribeToken(req.query?.token);
+  if (!parsed) {
+    res.status(400).type("html").send("<p dir=\"rtl\">رابط إلغاء الاشتراك غير صالح أو منتهي.</p>");
+    return;
+  }
+  try {
+    await db.update(appUsersTable).set({
+      marketingEmailOptIn: false,
+      marketingEmailUnsubscribedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(appUsersTable.id, parsed.userId));
+    res.setHeader("Cache-Control", "no-store");
+    res.type("html").send("<p dir=\"rtl\">تم إلغاء اشتراكك من الرسائل التسويقية بنجاح.</p>");
+  } catch (error) {
+    logger.error({ err: error }, "marketing unsubscribe error");
+    res.status(503).type("html").send("<p dir=\"rtl\">تعذر إتمام الطلب حاليًا. حاول لاحقًا.</p>");
+  }
 });
 
 export default router;

@@ -46,6 +46,20 @@ import {
   validateSubscriptionLifecycleSettings,
 } from "../lib/subscription-lifecycle";
 import { parseCairoDateTime } from "../lib/subscription-time";
+import {
+  BROADCAST_TEMPLATES,
+  archiveBroadcast,
+  broadcastMediaById,
+  createBroadcast,
+  createBroadcastMedia,
+  createBroadcastTestDelivery,
+  duplicateBroadcast,
+  listBroadcastsForAdmin,
+  pauseBroadcast,
+  previewBroadcastDraft,
+  updateBroadcast,
+  validateBroadcastDraft,
+} from "../lib/broadcasts";
 
 const router: IRouter = Router();
 
@@ -258,6 +272,44 @@ async function requirePricingAccess(req: AuthRequest, res: Response, next: NextF
     logger.error({ err: error }, "pricing permission check failed");
     res.status(503).json({ status: "error", message: "تعذر التحقق من صلاحية إدارة الأسعار" });
   }
+}
+
+/* Broadcasts are security-sensitive public content. Unlike older legacy-admin
+ * endpoints, they require a current active employee row so every mutation has
+ * a durable actor ID for its audit entry. */
+interface BroadcastAuthRequest extends AuthRequest { broadcastActorId?: number; }
+async function requireBroadcastAccess(req: BroadcastAuthRequest, res: Response, next: NextFunction): Promise<void> {
+  if (req.isLegacyAdmin || !req.actor || !Number.isInteger(req.actor.sub) || req.actor.sub <= 0) {
+    res.status(403).json({ status: "error", message: "يلزم حساب مدير فعّال لإدارة الرسائل العامة" });
+    return;
+  }
+  try {
+    const [staff] = await db.select({ id: employeesTable.id, role: employeesTable.role, status: employeesTable.status })
+      .from(employeesTable).where(eq(employeesTable.id, req.actor.sub)).limit(1);
+    if (!staff || staff.status !== "active" || !["super_admin", "admin"].includes(staff.role)) {
+      res.status(403).json({ status: "error", message: "لا تملك صلاحية إدارة الرسائل العامة" });
+      return;
+    }
+    req.broadcastActorId = staff.id;
+    next();
+  } catch (error) {
+    logger.error({ err: error }, "broadcast permission check failed");
+    res.status(503).json({ status: "error", message: "تعذر التحقق من صلاحية إدارة الرسائل" });
+  }
+}
+
+function parseBroadcastDraftRequest(body: unknown): ReturnType<typeof validateBroadcastDraft> {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { error: "بيانات الرسالة غير صالحة." };
+  const raw = body as Record<string, unknown>;
+  const parseOptionalCairoDate = (value: unknown): { value: Date | null; error?: string } => {
+    if (value === undefined || value === null || String(value).trim() === "") return { value: null };
+    const date = parseCairoDateTime(String(value));
+    return date ? { value: date } : { value: null, error: "وقت الجدولة غير صالح؛ استخدم توقيت القاهرة." };
+  };
+  const starts = parseOptionalCairoDate(raw.startsAt);
+  const ends = parseOptionalCairoDate(raw.endsAt);
+  if (starts.error || ends.error) return { error: starts.error || ends.error };
+  return validateBroadcastDraft({ ...raw, startsAt: starts.value, endsAt: ends.value });
 }
 
 /* ─── Audit log helper ─── */
@@ -1867,6 +1919,198 @@ router.get("/user-notifications", requireAuth, requireRole("super_admin", "admin
   } catch (e) {
     logger.error({ err: e }, "user notifications admin read error");
     res.status(500).json({ status: "error", message: "server error" });
+  }
+});
+
+/* ════════════════════════════════════════════
+   BROADCASTS — audited, server-authorized public announcements
+════════════════════════════════════════════ */
+function broadcastRouteId(value: unknown): string | null {
+  const id = String(value || "").trim();
+  return /^broadcast-[a-zA-Z0-9_-]{8,100}$/.test(id) ? id : null;
+}
+
+router.get("/broadcasts/templates", requireAuth, requireBroadcastAccess, (_req: BroadcastAuthRequest, res: Response) => {
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+  res.json({ status: "ok", templates: BROADCAST_TEMPLATES, timezone: "Africa/Cairo", marketingEmail: { enabled: false, reason: "لا يوجد إرسال جماعي قبل تشغيل consent وunsubscribe والموافقة التشغيلية." } });
+});
+
+router.get("/broadcasts", requireAuth, requireBroadcastAccess, async (_req: BroadcastAuthRequest, res: Response) => {
+  try {
+    const broadcasts = await listBroadcastsForAdmin(new Date());
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({
+      status: "ok",
+      timezone: "Africa/Cairo",
+      marketingEmail: { enabled: false, reason: "الإرسال الجماعي غير مفعّل ولا تُرسل أي رسالة بريدية من هذه الشاشة." },
+      broadcasts: broadcasts.map(({ message, effectiveState, stats }) => ({
+        id: message.id,
+        title: message.title,
+        content: message.content,
+        messageType: message.messageType,
+        audience: message.audience,
+        priority: message.priority,
+        status: message.status,
+        effectiveState,
+        startsAt: message.startsAt?.toISOString() || null,
+        endsAt: message.endsAt?.toISOString() || null,
+        imageMediaId: message.imageMediaId,
+        imageUrl: message.imageMediaId ? `/api/admin/broadcasts/media/${encodeURIComponent(message.imageMediaId)}` : null,
+        action: message.action,
+        variablePlanKey: message.variablePlanKey,
+        createdAt: message.createdAt.toISOString(),
+        updatedAt: message.updatedAt.toISOString(),
+        archivedAt: message.archivedAt?.toISOString() || null,
+        stats,
+      })),
+    });
+  } catch (error) {
+    logger.error({ err: error }, "broadcast list error");
+    res.status(503).json({ status: "error", message: "تعذر تحميل الرسائل العامة حاليًا" });
+  }
+});
+
+router.get("/broadcasts/media/:id", requireAuth, requireBroadcastAccess, async (req: BroadcastAuthRequest, res: Response) => {
+  const id = String(req.params["id"] || "").trim();
+  if (!/^broadcast-media-[a-zA-Z0-9_-]{8,100}$/.test(id)) { res.status(404).end(); return; }
+  try {
+    const media = await broadcastMediaById(id);
+    if (!media) { res.status(404).end(); return; }
+    const encoded = media.dataUrl.split(",", 2)[1];
+    if (!encoded) { res.status(404).end(); return; }
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.type(media.mimeType).send(Buffer.from(encoded, "base64"));
+  } catch (error) {
+    logger.error({ err: error }, "broadcast admin media error");
+    res.status(503).end();
+  }
+});
+
+router.post("/broadcasts/media", requireAuth, requireWriteRate, requireBroadcastAccess, async (req: BroadcastAuthRequest, res: Response) => {
+  try {
+    const result = await createBroadcastMedia({ dataUrl: req.body?.dataUrl, employeeId: req.broadcastActorId!, now: new Date() });
+    if (!result.media) { res.status(400).json({ status: "error", message: result.error || "الصورة غير صالحة." }); return; }
+    await auditLog("create_broadcast_media", req.actor, `broadcast-media:${result.media.id}`, {
+      mimeType: result.media.mimeType,
+      sizeBytes: result.media.sizeBytes,
+    }, req.ip);
+    res.status(201).json({ status: "ok", media: { id: result.media.id, mimeType: result.media.mimeType, sizeBytes: result.media.sizeBytes, imageUrl: `/api/admin/broadcasts/media/${encodeURIComponent(result.media.id)}` } });
+  } catch (error) {
+    logger.error({ err: error }, "broadcast media upload error");
+    res.status(503).json({ status: "error", message: "تعذر حفظ الصورة حاليًا" });
+  }
+});
+
+router.post("/broadcasts/preview", requireAuth, requireBroadcastAccess, async (req: BroadcastAuthRequest, res: Response) => {
+  const checked = parseBroadcastDraftRequest(req.body);
+  if (!checked.value) { res.status(400).json({ status: "error", message: checked.error || "بيانات الرسالة غير صالحة." }); return; }
+  try {
+    const preview = await previewBroadcastDraft(checked.value, new Date());
+    if (!preview.message) { res.status(400).json({ status: "error", message: preview.error || "تعذر إنشاء المعاينة." }); return; }
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({ status: "ok", preview: preview.message, imageDataUrl: preview.imageDataUrl || null, mode: "admin_only_no_delivery" });
+  } catch (error) {
+    logger.error({ err: error }, "broadcast preview error");
+    res.status(503).json({ status: "error", message: "تعذر إنشاء المعاينة الحقيقية حاليًا" });
+  }
+});
+
+router.post("/broadcasts", requireAuth, requireWriteRate, requireBroadcastAccess, async (req: BroadcastAuthRequest, res: Response) => {
+  const checked = parseBroadcastDraftRequest(req.body);
+  if (!checked.value) { res.status(400).json({ status: "error", message: checked.error || "بيانات الرسالة غير صالحة." }); return; }
+  try {
+    const result = await createBroadcast(checked.value, req.broadcastActorId!, new Date());
+    if (!result.message) { res.status(400).json({ status: "error", message: result.error || "تعذر إنشاء الرسالة." }); return; }
+    const message = result.message;
+    await auditLog("create_broadcast", req.actor, `broadcast:${message.id}`, {
+      messageType: message.messageType, audience: message.audience, priority: message.priority, status: message.status,
+      startsAt: message.startsAt?.toISOString() || null, endsAt: message.endsAt?.toISOString() || null,
+      hasImage: Boolean(message.imageMediaId), actionKind: message.action.kind, marketingEmailSent: false,
+    }, req.ip);
+    res.status(201).json({ status: "ok", message: { id: message.id } });
+  } catch (error) {
+    logger.error({ err: error }, "broadcast create error");
+    res.status(503).json({ status: "error", message: "تعذر إنشاء الرسالة حاليًا" });
+  }
+});
+
+router.put("/broadcasts/:id", requireAuth, requireWriteRate, requireBroadcastAccess, async (req: BroadcastAuthRequest, res: Response) => {
+  const id = broadcastRouteId(req.params["id"]);
+  if (!id) { res.status(404).json({ status: "error", message: "الرسالة غير موجودة." }); return; }
+  const checked = parseBroadcastDraftRequest(req.body);
+  if (!checked.value) { res.status(400).json({ status: "error", message: checked.error || "بيانات الرسالة غير صالحة." }); return; }
+  try {
+    const result = await updateBroadcast(id, checked.value, req.broadcastActorId!, new Date());
+    if (!result.message) { res.status(404).json({ status: "error", message: result.error || "الرسالة غير موجودة." }); return; }
+    const message = result.message;
+    await auditLog("update_broadcast", req.actor, `broadcast:${message.id}`, {
+      messageType: message.messageType, audience: message.audience, priority: message.priority, status: message.status,
+      startsAt: message.startsAt?.toISOString() || null, endsAt: message.endsAt?.toISOString() || null,
+      hasImage: Boolean(message.imageMediaId), actionKind: message.action.kind, marketingEmailSent: false,
+    }, req.ip);
+    res.json({ status: "ok", message: { id: message.id } });
+  } catch (error) {
+    logger.error({ err: error }, "broadcast update error");
+    res.status(503).json({ status: "error", message: "تعذر تحديث الرسالة حاليًا" });
+  }
+});
+
+router.post("/broadcasts/:id/pause", requireAuth, requireWriteRate, requireBroadcastAccess, async (req: BroadcastAuthRequest, res: Response) => {
+  const id = broadcastRouteId(req.params["id"]);
+  if (!id) { res.status(404).json({ status: "error", message: "الرسالة غير موجودة." }); return; }
+  try {
+    const message = await pauseBroadcast(id, req.broadcastActorId!, new Date());
+    if (!message) { res.status(404).json({ status: "error", message: "الرسالة غير موجودة." }); return; }
+    await auditLog("pause_broadcast", req.actor, `broadcast:${id}`, { previousSchedule: Boolean(message.startsAt || message.endsAt) }, req.ip);
+    res.json({ status: "ok" });
+  } catch (error) {
+    logger.error({ err: error }, "broadcast pause error");
+    res.status(503).json({ status: "error", message: "تعذر إيقاف الرسالة حاليًا" });
+  }
+});
+
+router.post("/broadcasts/:id/archive", requireAuth, requireWriteRate, requireBroadcastAccess, async (req: BroadcastAuthRequest, res: Response) => {
+  const id = broadcastRouteId(req.params["id"]);
+  if (!id) { res.status(404).json({ status: "error", message: "الرسالة غير موجودة." }); return; }
+  try {
+    const message = await archiveBroadcast(id, req.broadcastActorId!, new Date());
+    if (!message) { res.status(404).json({ status: "error", message: "الرسالة غير موجودة." }); return; }
+    await auditLog("archive_broadcast", req.actor, `broadcast:${id}`, {}, req.ip);
+    res.json({ status: "ok" });
+  } catch (error) {
+    logger.error({ err: error }, "broadcast archive error");
+    res.status(503).json({ status: "error", message: "تعذر أرشفة الرسالة حاليًا" });
+  }
+});
+
+router.post("/broadcasts/:id/duplicate", requireAuth, requireWriteRate, requireBroadcastAccess, async (req: BroadcastAuthRequest, res: Response) => {
+  const id = broadcastRouteId(req.params["id"]);
+  if (!id) { res.status(404).json({ status: "error", message: "الرسالة غير موجودة." }); return; }
+  try {
+    const copy = await duplicateBroadcast(id, req.broadcastActorId!, new Date());
+    if (!copy) { res.status(404).json({ status: "error", message: "الرسالة غير موجودة." }); return; }
+    await auditLog("duplicate_broadcast", req.actor, `broadcast:${copy.id}`, { sourceBroadcastId: id }, req.ip);
+    res.status(201).json({ status: "ok", message: { id: copy.id } });
+  } catch (error) {
+    logger.error({ err: error }, "broadcast duplicate error");
+    res.status(503).json({ status: "error", message: "تعذر تكرار الرسالة حاليًا" });
+  }
+});
+
+/* A test is an audit-recorded private composer preview only — it never sends
+ * an e-mail, marks a user as having seen a message, or expands the audience. */
+router.post("/broadcasts/:id/test", requireAuth, requireWriteRate, requireBroadcastAccess, async (req: BroadcastAuthRequest, res: Response) => {
+  const id = broadcastRouteId(req.params["id"]);
+  if (!id) { res.status(404).json({ status: "error", message: "الرسالة غير موجودة." }); return; }
+  try {
+    const exists = await createBroadcastTestDelivery(id, req.broadcastActorId!, new Date());
+    if (!exists) { res.status(404).json({ status: "error", message: "الرسالة غير موجودة." }); return; }
+    await auditLog("test_broadcast_preview", req.actor, `broadcast:${id}`, { delivery: "admin_preview_only", emailSent: false }, req.ip);
+    res.json({ status: "ok", delivery: "admin_preview_only", emailSent: false, message: "تم تسجيل تجربة خاصة بحساب المدير فقط؛ لم يُرسل بريد أو إشعار للمستخدمين." });
+  } catch (error) {
+    logger.error({ err: error }, "broadcast test preview error");
+    res.status(503).json({ status: "error", message: "تعذر تسجيل التجربة حاليًا" });
   }
 });
 

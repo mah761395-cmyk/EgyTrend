@@ -56,6 +56,16 @@
 - محرك lifecycle المحلي (`subscription-lifecycle.ts`) يحجز monthly 7/3/1/expiry/+3 winback وannual 30/14/7/1/expiry بصيغة Cairo DST-safe، مع in-app CTA إلى الباقة المختارة وemail outbox مستقل (3 محاولات للفشل الفعلي). ينتهي access عند instant الانتهاء من `hasVip()` حتى لو Cron تأخر، وتبقى البيانات محفوظة ومقفولة.
 - `SUBSCRIPTION_LIFECYCLE_HANDOVER.md` هو مرجع cron/grace/admin/dry-run وقرار Vercel؛ لا يوجد Cron أو secret أو migration منفذ بعد.
 - `app_users.plan/vip_expires_at` الآن compatibility bridge فقط؛ للـ legacy users ذوي expiry معروف يوجد backfill في migration. لا يُخترع expiry لمن ليس له تاريخ مسجل.
+
+### 3.1) رسائل المدير العامة Broadcast (محليًا، pending migration `0008`)
+
+- `BROADCAST_HANDOVER.md` هو مرجع التنفيذ والتشغيل؛ لا يوجد deploy أو migration أو campaign email منفذ.
+- الرسالة تخزن AST غنيًا محدودًا (`عريض`/قوائم/روابط allowlisted) لا HTML raw، مع type وجمهور وأولوية وجدولة Cairo وصورة PNG/JPEG/WebP متحققة server-side (MIME/magic/dimensions/size).
+- الاستهداف `all/guests/free/vip/expiring/new_users` يحسمه الخادم من entitlement/account truth. priority ثم الأحدث؛ status الظاهر مشتق (مسودة/مجدولة/نشطة/منتهية/موقوفة/مؤرشفة).
+- ظهور المستخدم المسجل يحجز row unique في DB قبل عرض modal؛ الضيف فقط يحتفظ بـ suppression محلي، ولا localStorage مصدر صلاحية أو audience. modal RTL/mobile-first مع focus trap وEsc وARIA، وبحد رسالة واحدة للجلسة.
+- Admin create/edit/pause/archive/duplicate/test/preview/media routes تتحقق من employee active role في DB وتسجل audit. الصور draft لا تتاح من public route، والـpublic media لا يظهر إلا للجمهور المؤهل لرسالة نشطة.
+- CTA كوبون وmass email مقفلتان fail-closed لأن redemption/payment sender غير موجودين. يوجد consent صريح account-level وunsubscribe endpoint HMAC للمستقبل فقط؛ لا يؤدي opt-in إلى إرسال.
+- متغيرات السعر تستدعي `getEffectivePrice()` من server truth؛ عند غياب plan/source تظهر `غير متاح حاليًا` بدل رقم مصطنع.
 - الباقات العامة تقرأ السعر/المدة/المزايا من إعدادات السيرفر. تعديل باقة جديدة لا يغير snapshot مشترك حالي.
 - حذف الباقة من لوحة الإدارة أصبح archive (`isActive=false`) وليس delete.
 - صفحة **اشتراكي** تعرض الباقة، الانتهاء، الأيام المتبقية، التجديد وسجل الدفعات من `/api/payments/my`.
@@ -107,6 +117,7 @@
 | `0005_subscription_plan_pricing` | عروض أسعار server-side/targeting/history وsnapshot طلب الدفع/مدة تثبيت السعر. |
 | `0006_user_calculator_scenarios` | سيناريوهات حاسبات VIP وسجل save/copy/PDF export؛ archive-only rollback. |
 | `0007_subscription_lifecycle` | cycle/grace UTC، reminders outbox/CTA، lifecycle events؛ rollback archive-only. |
+| `0008_admin_broadcasts` | رسائل عامة/صور/registered display state/admin test records + consent timestamps؛ rollback archive-only ويحافظ على consent. |
 
 كل ملف `down.sql` غير مدمر: يحتفظ بـrollback archive أو يعلّم السجلات archived بدل الحذف. تفاصيل التسلسل في `lib/db/migrations/README.md`.
 
@@ -137,8 +148,9 @@ node --check /tmp/egytrend-calculator-math.mjs
 node --check /tmp/egytrend-calculator-runtime.mjs
 ```
 
-- API: **41/41 tests passed** باستخدام `pg-mem` synthetic فقط، بلا `DATABASE_URL` حقيقية.
+- API: **47/47 tests passed** باستخدام `pg-mem` synthetic فقط، بلا `DATABASE_URL` حقيقية (منها 6 اختبارات Broadcast).
 - suite تغطي: lifecycle دفع/entitlement/renewal، rejection of stale VIP JWT، server portfolio CRUD/archive، alerts CRUD/archive، وسلامة evaluator أمام quote stale/EOD، وتسعير الباقات (بداية/نهاية العرض، targeting، رفض old price غير صالح، snapshot، تجاهل مبلغ المتصفح، ورفض موظف بلا permission)، ومعادلات الحاسبات وحماية free/VIP المباشرة للـruntime/math/save/history/PDF export. أضيفت fake-clock coverage لدورة الاشتراك: day 23/27/29/30/33، cron مكرر بلا duplicate، 30 يوم UTC، renewal day 25 → day 60 وإلغاء pending، بقاء البيانات مع Free، DST Cairo، 3 محاولات البريد وdry-run غير المعدّل.
+- تضاف تغطية Broadcast: Cairo schedule boundary، audience guests/free/VIP/expiring/new-users من server truth، unique claim/no-repeat، XSS/unsafe-link، رفض create من غير admin، consent صريح بلا campaign، ورفض coupon CTA/mass email قبل redemption/delivery حقيقيين.
 - تضاف تغطية Twelve الحالية: منع الطلب عند غياب contract reference، منع `real-time` عند delay صفر دون acknowledgement، حجب EGX حتى approval/reference مستقلين، ومنع تلخيص errors من تسريب API key أو request URL.
 - تحذيران `dataStore watch ENOENT` أثناء tests بسبب مسارات JSON غير موجودة داخل test harness؛ ليسا فشلًا ولا كتابة على DB.
 - `preflight:live:full` نجح على environment اصطناعية كاملة فقط، ورفض map EGX بلا acknowledgement/reference خاصين به كما هو مقصود؛ لم تُستخدم أي credentials حقيقية. تفاصيل النتيجة والشروط في `LIVE_READINESS.md`.
@@ -162,4 +174,4 @@ node --check /tmp/egytrend-calculator-runtime.mjs
 
 ## الخطوة المنطقية التالية
 
-ابدأ بترتيب المالك الخارجي الموثق في `LIVE_READINESS.md`: تأكيد حقوق العرض/التأخير والرموز من provider، ثم وضع القيم في Vercel بدون مشاركتها في chat أو Git. بعد موافقة منفصلة على **Preview DB + backup workflow فقط**: طبّق migrations في Preview (ومنها `0006`)، نفذ E2E/visual smoke يدوي للحاسبات والحفظ/PDF، ثم أضف scheduler Preview محدود لتنبيهات الأسعار والموجز الصباحي. لا تنتقل إلى Production أو تضف provider مدفوع دون موافقة صريحة جديدة.
+ابدأ بترتيب المالك الخارجي الموثق في `LIVE_READINESS.md`: تأكيد حقوق العرض/التأخير والرموز من provider، ثم وضع القيم في Vercel بدون مشاركتها في chat أو Git. بعد موافقة منفصلة على **Preview DB + backup workflow فقط**: طبّق migrations في Preview (ومنها `0006`–`0008`)، نفذ E2E/visual smoke يدوي للحاسبات والحفظ/PDF وBroadcast، ثم أضف scheduler Preview محدود لتنبيهات الأسعار والموجز الصباحي. لا تنتقل إلى Production أو تضف provider مدفوع دون موافقة صريحة جديدة.

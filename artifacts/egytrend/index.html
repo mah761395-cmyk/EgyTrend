@@ -338,6 +338,25 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .modal{width:100%;max-width:415px;background:linear-gradient(155deg,#041208,#081a0e);border:1px solid rgba(245,158,11,.2);border-radius:22px;padding:25px;position:relative;max-height:92vh;overflow-y:auto;animation:scaleIn .26s cubic-bezier(.22,1,.36,1);}
 .modal-close{position:absolute;top:14px;left:14px;background:var(--s2);border:none;border-radius:9px;width:31px;height:31px;color:var(--t3);cursor:pointer;font-size:13px;transition:all .18s;}
 .modal-close:hover{background:var(--s3);color:var(--t2);}
+/* Server-selected public broadcast. Rich content is assembled with text nodes
+ * in JavaScript; these styles never rely on injected HTML. */
+#broadcast-ov{z-index:1200;}
+.broadcast-modal{width:100%;max-width:470px;max-height:92vh;overflow-y:auto;background:linear-gradient(155deg,#06151d,#08131f);border:1px solid rgba(59,130,246,.25);border-radius:22px;padding:21px;position:relative;box-shadow:0 22px 80px rgba(0,0,0,.58);animation:scaleIn .26s cubic-bezier(.22,1,.36,1);}
+.broadcast-modal.type-offer{border-color:rgba(245,158,11,.38);background:linear-gradient(155deg,#191307,#0b1420);}
+.broadcast-modal.type-greeting{border-color:rgba(139,92,246,.38);background:linear-gradient(155deg,#130d21,#08131f);}
+.broadcast-modal.type-new_feature{border-color:rgba(59,130,246,.38);}
+.broadcast-modal.type-maintenance{border-color:rgba(100,116,139,.45);background:linear-gradient(155deg,#0f1724,#08131f);}
+.broadcast-modal.type-important{border-color:rgba(239,68,68,.45);background:linear-gradient(155deg,#200b10,#120c19);}
+.broadcast-kicker{display:flex;align-items:center;gap:8px;color:var(--t4);font-size:10px;font-weight:800;margin-bottom:8px;}
+.broadcast-icon{width:32px;height:32px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;background:var(--bld);font-size:16px;}
+.broadcast-title{color:var(--t1);font-size:19px;font-weight:900;line-height:1.55;padding-left:30px;}
+.broadcast-image{width:100%;max-height:190px;object-fit:cover;border-radius:14px;margin:14px 0 4px;border:1px solid var(--b1);background:var(--ink3);}
+.broadcast-content{color:var(--t2);font-size:13px;line-height:1.95;margin:14px 0;word-break:break-word;}
+.broadcast-content p{margin:0 0 9px;}.broadcast-content p:last-child{margin-bottom:0;}.broadcast-content ul,.broadcast-content ol{margin:7px 20px 10px 0;padding-right:18px;}.broadcast-content li{margin:4px 0;}.broadcast-content a{color:#8eecc1;text-decoration:underline;overflow-wrap:anywhere;}
+.broadcast-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin-top:17px;}
+.broadcast-dismiss{background:var(--s2);border:1px solid var(--b1);color:var(--t2);}.broadcast-cta{background:linear-gradient(135deg,var(--g2),var(--g));border:none;color:#fff;}
+.adm-bc-wrap{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(260px,.9fr);gap:14px;align-items:start;}.adm-bc-composer,.adm-bc-list{background:var(--s1);border:1px solid var(--b1);border-radius:15px;padding:13px;}.adm-bc-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;}.adm-bc-label{display:block;color:var(--t4);font-size:10px;font-weight:800;margin:8px 0 4px;}.adm-bc-help{color:var(--t5);font-size:9.5px;line-height:1.6;margin-top:4px;}.adm-bc-text{width:100%;min-height:132px;background:var(--ink2);border:1px solid var(--b1);border-radius:10px;padding:10px;color:var(--t1);font:12px/1.7 var(--sans);direction:rtl;resize:vertical;}.adm-bc-text:focus{outline:none;border-color:rgba(16,185,129,.4);}.adm-bc-preview-grid{display:grid;grid-template-columns:1fr;gap:10px;}.adm-bc-preview-frame{background:#030712;border:1px solid var(--b1);border-radius:14px;padding:10px;min-height:120px;overflow:hidden;}.adm-bc-preview-frame.mobile{max-width:330px;margin:0 auto;width:100%;}.adm-bc-preview-frame .broadcast-modal{max-width:none;max-height:none;min-height:0;padding:15px;border-radius:15px;box-shadow:none;transform:scale(.98);transform-origin:top center;}.adm-bc-preview-frame .broadcast-title{font-size:15px;}.adm-bc-preview-frame .broadcast-content{font-size:11px;margin:9px 0;}.adm-bc-preview-frame .broadcast-image{max-height:110px;margin:8px 0 0;}.adm-bc-preview-frame .broadcast-actions{margin-top:10px;}.adm-bc-preview-frame .btn{padding:7px 9px;font-size:10px;}.adm-bc-row{padding:10px 0;border-bottom:1px solid var(--b1);}.adm-bc-row:last-child{border-bottom:none;}.adm-bc-meta{color:var(--t5);font-size:9.5px;line-height:1.65;margin-top:4px;}.adm-bc-stat{display:inline-flex;background:var(--ink2);border:1px solid var(--b1);border-radius:6px;padding:2px 5px;color:var(--t4);font:9px var(--mono);margin:4px 2px 0 0;}
+@media(max-width:760px){.adm-bc-wrap{grid-template-columns:1fr;}.adm-bc-grid{grid-template-columns:1fr;}.broadcast-modal{padding:19px;}}
 .plan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px;}
 .plan-c{border:2px solid var(--b1);border-radius:12px;padding:11px 4px;text-align:center;cursor:pointer;transition:all .18s;position:relative;}
 .plan-c.active{border-color:var(--au);background:var(--aud);}
@@ -1110,6 +1129,14 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
   <div class="modal"><button class="modal-close" onclick="closeSub()">✕</button><div id="sub-el"></div></div>
 </div>
 
+<!-- Broadcast Modal: populated exclusively from the sanitized server AST. -->
+<div class="overlay" id="broadcast-ov" aria-hidden="true">
+  <section class="broadcast-modal" id="broadcast-modal" role="dialog" aria-modal="true" aria-labelledby="broadcast-title" tabindex="-1">
+    <button type="button" class="modal-close" id="broadcast-close" aria-label="إغلاق الرسالة" onclick="closeBroadcastModal('close')">✕</button>
+    <div id="broadcast-el"></div>
+  </section>
+</div>
+
 <!-- AI Rewriter Modal -->
 <div class="overlay" id="ai-ov">
   <div class="ai-modal">
@@ -1143,6 +1170,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
     <button class="adm-tab" data-tab="sources" onclick="admTab('sources')">🔗 المصادر</button>
     <button class="adm-tab" data-tab="plans" onclick="admTab('plans')">💎 الاشتراكات</button>
     <button class="adm-tab" data-tab="lifecycle" onclick="admTab('lifecycle')">⏰ التجديدات</button>
+    <button class="adm-tab" data-tab="broadcasts" onclick="admTab('broadcasts')">📣 الرسائل العامة</button>
     <button class="adm-tab" data-tab="coupons" onclick="admTab('coupons')">🎟️ الكوبونات</button>
     <button class="adm-tab" data-tab="employees" onclick="admTab('employees')">👨‍💼 الموظفون</button>
     <button class="adm-tab" data-tab="aiconfig" onclick="admTab('aiconfig')">🤖 إدارة AI</button>
@@ -1544,6 +1572,9 @@ document.addEventListener("DOMContentLoaded",async()=>{
       }else document.getElementById("auth").classList.add("open");
     }
   }catch{document.getElementById("auth").classList.add("open");}
+  /* Guests may receive guest-targeted announcements; this runs after the
+   * auth/session check so a logged-in user is never treated as a guest. */
+  if(!U) queueBroadcastMessage();
   /* Remove tokens and stale identity snapshots left by pre-cookie releases. */
   DB.d("userTok");DB.d("admTok");DB.d("s");
   buildTicker();buildCalendar();buildFAQ();
@@ -1568,6 +1599,7 @@ function bootApp(){
   startPayNotifPolling();
   loadSubscriptionBanner();
   openSubscriptionDeepLink();
+  queueBroadcastMessage();
   if(window.location.pathname==="/calculators")goNav("calculators",{syncUrl:false});
   setInterval(fetchMarketsData,60000);
   setInterval(fetchCalendarData,30*60*1000);
@@ -1576,6 +1608,168 @@ function bootApp(){
   setInterval(fetchUsStocksData, 5*60*1000);
   setInterval(loadSubscriptionBanner, 15*60*1000);
 }
+
+/* ─── Public broadcast modal ──────────────────────────────────────────────
+ * Eligibility, priority and registered-user no-repeat state are determined on
+ * the server. Browser storage is used only for an anonymous visitor's own
+ * display suppression and never for authorization. */
+let broadcastSessionShown=false;
+let activeBroadcastMessage=null;
+function broadcastShownThisSession(){try{return sessionStorage.getItem("et_broadcast_shown_session")==="1";}catch{return false;}}
+function markBroadcastShownThisSession(){try{sessionStorage.setItem("et_broadcast_shown_session","1");}catch{}}
+
+let broadcastLastFocus=null;
+let broadcastRetryScheduled=false;
+const BROADCAST_META={
+  offer:{icon:"✨",label:"عرض",color:"var(--au)"},
+  greeting:{icon:"🌙",label:"تهنئة",color:"#c4b5fd"},
+  new_feature:{icon:"🚀",label:"ميزة جديدة",color:"#93c5fd"},
+  maintenance:{icon:"🔧",label:"صيانة",color:"#94a3b8"},
+  important:{icon:"⚠️",label:"تنبيه مهم",color:"#fca5a5"},
+};
+function broadcastGuestSeen(){
+  const raw=DB.g("broadcast_guest_seen_v1",[]);
+  return Array.isArray(raw)?[...new Set(raw.map(x=>String(x||"")).filter(x=>/^broadcast-[A-Za-z0-9_-]{8,100}$/.test(x)))].slice(-50):[];
+}
+function markGuestBroadcastSeen(id){
+  if(U&&Number.isInteger(U.id))return;
+  const seen=broadcastGuestSeen();
+  if(!seen.includes(id))seen.push(id);
+  DB.s("broadcast_guest_seen_v1",seen.slice(-50));
+}
+function isSafeBroadcastClientUrl(value){
+  const raw=String(value||"").trim();
+  if(/^\/(?!\/)[A-Za-z0-9_?=&%./#-]{1,500}$/.test(raw))return raw;
+  try{const url=new URL(raw);return url.protocol==="https:"&&!url.username&&!url.password?url.href:null;}catch{return null;}
+}
+function broadcastFocusable(){
+  const modal=document.getElementById("broadcast-modal");
+  return modal?[...modal.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')].filter(el=>el.offsetParent!==null):[];
+}
+function trapBroadcastFocus(event){
+  if(!document.getElementById("broadcast-ov")?.classList.contains("open"))return;
+  if(event.key==="Escape"){event.preventDefault();closeBroadcastModal("close");return;}
+  if(event.key!=="Tab")return;
+  const focusable=broadcastFocusable();
+  if(!focusable.length){event.preventDefault();document.getElementById("broadcast-modal")?.focus();return;}
+  const first=focusable[0],last=focusable[focusable.length-1];
+  if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+  else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+}
+function appendBroadcastInlines(parent,inlines){
+  (Array.isArray(inlines)?inlines:[]).forEach(raw=>{
+    const item=raw&&typeof raw==="object"?raw:{};
+    const text=String(item.text||"").slice(0,500);
+    if(!text)return;
+    let node;
+    const href=isSafeBroadcastClientUrl(item.link);
+    if(href){
+      node=document.createElement("a");node.href=href;node.textContent=text;
+      if(href.startsWith("https://")){node.target="_blank";node.rel="noopener noreferrer";}
+    }else if(item.bold){node=document.createElement("strong");node.textContent=text;}
+    else{node=document.createTextNode(text);}
+    parent.appendChild(node);
+  });
+}
+function appendBroadcastContent(host,content){
+  const blocks=content&&content.version===1&&Array.isArray(content.blocks)?content.blocks:[];
+  blocks.slice(0,24).forEach(raw=>{
+    const block=raw&&typeof raw==="object"?raw:{};
+    if(block.type==="bullet_list"||block.type==="ordered_list"){
+      const list=document.createElement(block.type==="ordered_list"?"ol":"ul");
+      (Array.isArray(block.items)?block.items:[]).slice(0,20).forEach(items=>{const li=document.createElement("li");appendBroadcastInlines(li,items);if(li.textContent)list.appendChild(li);});
+      if(list.children.length)host.appendChild(list);
+    }else{
+      const p=document.createElement("p");appendBroadcastInlines(p,block.inlines);if(p.textContent)host.appendChild(p);
+    }
+  });
+  if(!host.children.length){const p=document.createElement("p");p.textContent="غير متاح حاليًا";host.appendChild(p);}
+}
+function buildBroadcastCard(message,{imageDataUrl=null,preview=false}={}){
+  const meta=BROADCAST_META[message?.messageType]||BROADCAST_META.important;
+  const card=document.createElement("div");card.className=`broadcast-modal type-${String(message?.messageType||"important")}`;
+  if(preview)card.removeAttribute("role");
+  const kicker=document.createElement("div");kicker.className="broadcast-kicker";
+  const icon=document.createElement("span");icon.className="broadcast-icon";icon.style.color=meta.color;icon.textContent=meta.icon;
+  const kind=document.createElement("span");kind.textContent=meta.label;kicker.append(icon,kind);card.appendChild(kicker);
+  const title=document.createElement("h2");title.className="broadcast-title";if(!preview)title.id="broadcast-title";title.textContent=String(message?.title||"رسالة من المنصة");card.appendChild(title);
+  const imageUrl=imageDataUrl||isSafeBroadcastClientUrl(message?.imageUrl);
+  if(imageUrl){const image=document.createElement("img");image.className="broadcast-image";image.src=imageUrl;image.alt="";image.loading="lazy";card.appendChild(image);}
+  const content=document.createElement("div");content.className="broadcast-content";appendBroadcastContent(content,message?.content);card.appendChild(content);
+  if(message?.variableSource==="current_server_price"||message?.variableSource==="unavailable"){
+    const source=document.createElement("div");source.style.cssText="color:var(--t5);font-size:9px;line-height:1.55;margin-top:-6px;";
+    const time=message?.generatedAt?new Date(message.generatedAt):null;
+    source.textContent=message.variableSource==="current_server_price"?`متغيرات السعر: مصدر الخادم الحالي${time&&Number.isFinite(time.getTime())?` · ${time.toLocaleString("ar-EG",{timeZone:"Africa/Cairo",hour:"2-digit",minute:"2-digit"})}`:""}`:"متغيرات السعر: غير متاح حاليًا من مصدر صالح";
+    card.appendChild(source);
+  }
+  const actions=document.createElement("div");actions.className="broadcast-actions";
+  const dismiss=document.createElement("button");dismiss.type="button";dismiss.className="btn btn-sm broadcast-dismiss";dismiss.textContent="حسنًا";
+  if(preview)dismiss.disabled=true;else dismiss.addEventListener("click",()=>closeBroadcastModal("close"));
+  actions.appendChild(dismiss);
+  const action=message?.action&&typeof message.action==="object"?message.action:{};
+  const href=action.kind==="link"?isSafeBroadcastClientUrl(action.url):null;
+  if(href&&action.label){
+    const cta=document.createElement("button");cta.type="button";cta.className="btn btn-sm broadcast-cta";cta.textContent=String(action.label).slice(0,40);
+    if(preview)cta.disabled=true;else cta.addEventListener("click",()=>activateBroadcastCta(href));
+    actions.appendChild(cta);
+  }
+  card.appendChild(actions);return card;
+}
+async function recordBroadcastEvent(event){
+  const msg=activeBroadcastMessage;if(!msg||!U||!Number.isInteger(U.id))return;
+  try{await fetch(`/api/broadcasts/${encodeURIComponent(msg.id)}/events`,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({event})});}catch{/* display state was already claimed; analytics is best effort */}
+}
+function showBroadcastModal(message){
+  const overlay=document.getElementById("broadcast-ov"),modal=document.getElementById("broadcast-modal"),host=document.getElementById("broadcast-el");
+  if(!overlay||!modal||!host)return;
+  activeBroadcastMessage=message;broadcastSessionShown=true;markBroadcastShownThisSession();
+  modal.className=`broadcast-modal type-${String(message?.messageType||"important")}`;
+  broadcastLastFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
+  host.replaceChildren();
+  const card=buildBroadcastCard(message);/* Keep one dialog container, not nested dialogs. */
+  [...card.childNodes].forEach(node=>host.appendChild(node));
+  overlay.classList.add("open");overlay.setAttribute("aria-hidden","false");
+  document.addEventListener("keydown",trapBroadcastFocus);
+  const focusable=broadcastFocusable();(focusable[0]||modal).focus();
+}
+function closeBroadcastModal(eventName="close"){
+  const overlay=document.getElementById("broadcast-ov");if(!overlay||!overlay.classList.contains("open"))return;
+  const id=activeBroadcastMessage?.id;
+  overlay.classList.remove("open");overlay.setAttribute("aria-hidden","true");document.removeEventListener("keydown",trapBroadcastFocus);
+  if(id)markGuestBroadcastSeen(id);
+  void recordBroadcastEvent(eventName);
+  activeBroadcastMessage=null;
+  if(broadcastLastFocus&&document.contains(broadcastLastFocus))broadcastLastFocus.focus();
+  broadcastLastFocus=null;
+}
+function activateBroadcastCta(href){
+  void recordBroadcastEvent("cta_click");
+  closeBroadcastModal("close");
+  if(href.startsWith("/")){window.location.assign(href);return;}
+  window.open(href,"_blank","noopener,noreferrer");
+}
+async function loadBroadcastMessage(){
+  if(broadcastSessionShown||broadcastShownThisSession()||document.getElementById("broadcast-ov")?.classList.contains("open")||U?.plan==="admin")return;
+  const loggedIn=Boolean(U&&Number.isInteger(U.id));
+  const query=loggedIn?"":`?seen=${encodeURIComponent(broadcastGuestSeen().join(","))}`;
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),9000);
+  try{
+    const r=await fetch(`/api/broadcasts/active${query}`,{credentials:"same-origin",signal:ctrl.signal});
+    const d=await r.json().catch(()=>null);if(!r.ok||!d||d.status!=="ok"||!d.message)return;
+    let message=d.message;
+    if(loggedIn){
+      const claim=await fetch(`/api/broadcasts/active/${encodeURIComponent(message.id)}/claim`,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:"{}"});
+      const claimed=await claim.json().catch(()=>null);
+      if(!claim.ok||claimed?.status!=="ok"||!claimed.message)return;
+      message=claimed.message;
+    }
+    showBroadcastModal(message);
+  }catch{
+    /* One quiet retry allows transient cold starts without blocking the page. */
+    if(!broadcastRetryScheduled){broadcastRetryScheduled=true;setTimeout(()=>{broadcastRetryScheduled=false;loadBroadcastMessage();},30000);}
+  }finally{clearTimeout(timer);}
+}
+function queueBroadcastMessage(){setTimeout(()=>loadBroadcastMessage(),750);}
 
 /* ─── Bounded backend requests: no browser call can leave a view loading forever. */
 async function fetchJsonWithTimeout(url,timeoutMs){
@@ -4918,7 +5112,7 @@ function renderProfile(){
   if(!isAdm)btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t2);margin-bottom:9px;" onclick="openMySubscription()">📋 اشتراكي وسجل الدفعات</button>`;
   if(!isVip)btns+=`<button class="prof-btn sub" onclick="openSub()">⭐ اشترك في VIP الآن</button>`;
   if(isAdm)btns+=`<button class="prof-btn" style="background:var(--gd);border:1px solid rgba(16,185,129,.15);color:var(--g);margin-bottom:9px;" onclick="openAdm()">⚙️ لوحة التحكم</button>`;
-  if(U.phone!=="admin")btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openSetEmail()">✉️ بريد الاسترداد والتنبيهات</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openChangePass()">🔒 تغيير كلمة المرور</button>`;
+  if(U.phone!=="admin")btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openSetEmail()">✉️ بريد الاسترداد والتنبيهات</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openMarketingEmailSettings()">📬 رسائل تسويقية ${U.marketingEmailOptIn?"· مفعّلة":"· متوقفة"}</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openChangePass()">🔒 تغيير كلمة المرور</button>`;
   btns+=`<button class="prof-btn out" onclick="logout()">تسجيل الخروج</button>`;
   document.getElementById("pbtns").innerHTML=btns;
   updateStats();
@@ -4981,6 +5175,29 @@ async function saveUserEmail(){
   finally{clearTimeout(timer);if(btn){btn.disabled=false;btn.textContent="حفظ البريد";}}
 }
 
+function openMarketingEmailSettings(){
+  if(!U||!Number.isInteger(U.id)){showToast("⚠️ هذه الإعدادات لحساب المستخدم فقط");return;}
+  document.getElementById("marketing-email-ov")?.remove();
+  const ov=document.createElement("div");ov.id="marketing-email-ov";ov.style.cssText="position:fixed;inset:0;z-index:700;background:rgba(3,7,18,.92);display:flex;align-items:flex-end;";
+  ov.innerHTML=`<div style="width:100%;max-width:430px;margin:0 auto;background:var(--ink2);border-radius:22px 22px 0 0;padding:20px 18px 30px;"><div style="color:var(--t2);font-weight:800;font-size:15px;margin-bottom:7px;">📬 الرسائل التسويقية</div><div style="color:var(--t4);font-size:10.5px;line-height:1.72;margin-bottom:12px;">اختيارك منفصل عن بريد استعادة كلمة المرور. لا توجد حملة بريدية مفعّلة حاليًا، ويمكنك إلغاء الاشتراك في أي وقت من هذه الشاشة أو من رابط أي رسالة مستقبلية.</div><label style="display:flex;gap:8px;align-items:flex-start;color:var(--t2);font-size:12px;line-height:1.6;margin-bottom:8px;"><input id="marketing-opt-in" type="checkbox" ${U.marketingEmailOptIn?"checked":""}/> أوافق صراحة على تلقي رسائل تسويقية مستقبلية على بريد حسابي.</label><label id="marketing-confirm-wrap" style="display:${U.marketingEmailOptIn?"flex":"none"};gap:8px;align-items:flex-start;color:var(--au);font-size:11px;line-height:1.6;margin-bottom:10px;"><input id="marketing-confirm" type="checkbox"/> أفهم أن الموافقة لا تعني إرسال رسالة الآن، وأن الإرسال لا يبدأ من دون نظام موافقات وإلغاء اشتراك.</label><div id="marketing-email-err" style="display:none;color:var(--dn);font-size:12px;margin-bottom:9px;"></div><button class="btn btn-g btn-full" id="marketing-email-btn" onclick="saveMarketingEmailSettings()" style="padding:12px;">حفظ التفضيلات</button><button onclick="document.getElementById('marketing-email-ov').remove()" style="width:100%;margin-top:8px;background:none;border:none;color:var(--t4);font-size:12px;cursor:pointer;font-family:var(--sans);">إلغاء</button></div>`;
+  document.body.appendChild(ov);
+  document.getElementById("marketing-opt-in")?.addEventListener("change",e=>{const wrap=document.getElementById("marketing-confirm-wrap");if(wrap)wrap.style.display=e.target.checked?"flex":"none";});
+}
+async function saveMarketingEmailSettings(){
+  const optIn=Boolean(document.getElementById("marketing-opt-in")?.checked);
+  const confirmation=Boolean(document.getElementById("marketing-confirm")?.checked);
+  const err=document.getElementById("marketing-email-err"),btn=document.getElementById("marketing-email-btn");
+  const fail=m=>{if(err){err.textContent=m;err.style.display="block";}};if(err)err.style.display="none";
+  if(optIn&&!confirmation){fail("أكد موافقتك الصريحة قبل الحفظ.");return;}
+  if(btn){btn.disabled=true;btn.textContent="جارٍ الحفظ...";}
+  try{
+    const r=await fetch("/api/user/marketing-email",{method:"PUT",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({optIn,confirmation})});
+    const j=await r.json().catch(()=>null);if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر حفظ التفضيلات");
+    U.marketingEmailOptIn=optIn;document.getElementById("marketing-email-ov")?.remove();renderProfile();showToast(optIn?"✅ تم حفظ الموافقة — لا توجد حملة مفعّلة حاليًا":"✅ تم إيقاف الرسائل التسويقية");
+  }catch(e){fail(String(e?.message||"تعذر الاتصال بالخادم"));}
+  finally{if(btn){btn.disabled=false;btn.textContent="حفظ التفضيلات";}}
+}
+
 function updateStats(){
   const s1=document.getElementById("st-sv"),s2=document.getElementById("st-wl"),s3=document.getElementById("st-src");
   if(s1)s1.textContent=savedIds.length;if(s2)s2.textContent=wl.length;
@@ -5009,14 +5226,14 @@ async function renderAdmStats(){
   ].map(s=>`<div class="astat"><div class="astat-v" style="color:${s.c};">${s.v}</div><div class="astat-l">${s.l}</div></div>`).join("");
 }
 
-const ADM_TABS=["dash","users","reqs","articles","sources","plans","lifecycle","coupons","employees","aiconfig","audit"];
+const ADM_TABS=["dash","users","reqs","articles","sources","plans","lifecycle","broadcasts","coupons","employees","aiconfig","audit"];
 
 function admTab(tab){
   document.querySelectorAll(".adm-tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===tab));
   const el=document.getElementById("adm-body");
   el.innerHTML=`<div class="empty"><div style="font-size:22px;margin-bottom:8px;">⏳</div><div>جارٍ التحميل...</div></div>`;
   const fns={dash:renderAdmDash,users:renderAdmUsers,reqs:renderAdmReqs,articles:renderAdmArticles,
-    sources:renderAdmSources,plans:renderAdmPlans,lifecycle:renderAdmLifecycle,coupons:renderAdmCoupons,
+    sources:renderAdmSources,plans:renderAdmPlans,lifecycle:renderAdmLifecycle,broadcasts:renderAdmBroadcasts,coupons:renderAdmCoupons,
     employees:renderAdmEmployees,aiconfig:renderAdmAIConfig,audit:renderAdmAudit,opps:renderAdmOpps};
   if(fns[tab]) fns[tab](el);
 }
@@ -5634,6 +5851,59 @@ async function sendAdmManualReminder(id){
   if(!confirm("إرسال تذكير واحد لهذه الدورة؟ لن يُكرر تلقائيًا من هذا الزر."))return;
   try{const r=await admFetch(`/api/admin/subscriptions/${encodeURIComponent(id)}/manual-reminder`,{method:"POST",body:"{}"}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر إنشاء التذكير");const d=j.delivery||{};const emailState=Number(d.emailSent)>0?"وأُرسل البريد":Number(d.emailUnavailable)>0?"وتعذر البريد (ظاهر في القائمة)":"والبريد قيد إعادة المحاولة";showToast(`✅ أُنشئ الإشعار داخل المنصة ${emailState}`);admTab("lifecycle");}catch(e){showToast("❌ "+String(e.message||e));}
 }
+
+/* ─── Broadcasts: server-validated content, schedule and audience ─── */
+let admBroadcastState={items:[],templates:[],editingId:null};
+function broadcastAstToMarkdown(content){
+  const inline=arr=>(Array.isArray(arr)?arr:[]).map(x=>{
+    const text=String(x?.text||"");if(x?.link)return `[${text}](${String(x.link)})`;return x?.bold?`**${text}**`:text;
+  }).join("");
+  const blocks=content&&content.version===1&&Array.isArray(content.blocks)?content.blocks:[];
+  return blocks.map(b=>b?.type==="bullet_list"?(Array.isArray(b.items)?b.items:[]).map(i=>`- ${inline(i)}`).join("\n"):b?.type==="ordered_list"?(Array.isArray(b.items)?b.items:[]).map((i,n)=>`${n+1}. ${inline(i)}`).join("\n"):inline(b?.inlines)).filter(Boolean).join("\n\n");
+}
+function admBroadcastBlank(){return {id:null,title:"",content:{version:1,blocks:[]},messageType:"important",audience:"all",priority:0,status:"draft",startsAt:null,endsAt:null,imageMediaId:null,imageUrl:null,action:{kind:"none"},variablePlanKey:null};}
+function admBroadcastMessage(id){return admBroadcastState.items.find(x=>x.id===id)||null;}
+function admBroadcastSetMsg(text,color="var(--t4)"){const el=document.getElementById("abc-msg");if(el){el.textContent=text;el.style.color=color;}}
+async function renderAdmBroadcasts(el){
+  el.innerHTML=`<div class="empty"><div class="sp sp-g sp-md" style="margin:0 auto 10px;"></div><div>جارٍ تحميل الرسائل العامة من الخادم...</div></div>`;
+  try{
+    const [listR,templatesR]=await Promise.all([admFetch("/api/admin/broadcasts"),admFetch("/api/admin/broadcasts/templates")]);
+    const [listJ,templatesJ]=await Promise.all([listR.json(),templatesR.json()]);
+    if(!listR.ok||listJ.status!=="ok")throw new Error(listJ.message||"تعذر تحميل الرسائل");
+    if(!templatesR.ok||templatesJ.status!=="ok")throw new Error(templatesJ.message||"تعذر تحميل القوالب");
+    admBroadcastState={items:Array.isArray(listJ.broadcasts)?listJ.broadcasts:[],templates:Array.isArray(templatesJ.templates)?templatesJ.templates:[],editingId:null};
+    el.innerHTML=`<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px;"><div><div style="color:var(--g);font-size:15px;font-weight:900;">📣 الرسائل العامة</div><div style="color:var(--t5);font-size:10px;line-height:1.6;margin-top:2px;">استهداف وترتيب وحالة العرض يحسمها الخادم. كل المواعيد بتوقيت القاهرة.</div></div><button class="btn btn-g btn-sm" onclick="admBroadcastOpenComposer()">＋ رسالة جديدة</button></div><div class="adm-bc-wrap"><div class="adm-bc-composer" id="abc-composer"><div style="color:var(--t4);font-size:11px;">اختر «رسالة جديدة» أو حرّر رسالة من السجل.</div></div><div class="adm-bc-list" id="abc-list"></div></div>`;
+    renderAdmBroadcastList();
+  }catch(e){el.innerHTML=`<div class="empty" style="padding:25px;"><div style="color:var(--dn);font-weight:800;">تعذر تحميل الرسائل العامة</div><div style="color:var(--t4);font-size:10.5px;margin-top:5px;">${sanitize(String(e.message||e))}</div><button class="btn btn-ghost" style="margin-top:10px;padding:8px 13px;" onclick="admTab('broadcasts')">↻ إعادة المحاولة</button></div>`;}
+}
+function admBroadcastTypeLabel(type){return ({offer:"عرض",greeting:"تهنئة",new_feature:"ميزة جديدة",maintenance:"صيانة",important:"تنبيه مهم"})[type]||"تنبيه";}
+function admBroadcastAudienceLabel(value){return ({all:"الكل",guests:"الزوار",free:"المجانيون",vip:"VIP",expiring:"قرب انتهاء الاشتراك",new_users:"أول 7 أيام"})[value]||"غير متاح";}
+function admBroadcastStateLabel(value){return ({draft:"مسودة",scheduled:"مجدولة",active:"نشطة",ended:"منتهية",paused:"موقوفة",archived:"مؤرشفة"})[value]||"غير متاح";}
+function renderAdmBroadcastList(){
+  const host=document.getElementById("abc-list");if(!host)return;
+  const rows=admBroadcastState.items;
+  host.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;"><div style="color:var(--t2);font-size:12px;font-weight:800;">السجل والإحصاءات</div><span style="color:var(--t5);font:10px var(--mono);">${rows.length}</span></div>${rows.length?rows.map(m=>{const stats=m.stats||{};const isArchived=m.effectiveState==="archived";return `<div class="adm-bc-row"><div style="display:flex;justify-content:space-between;gap:7px;align-items:flex-start;"><div style="min-width:0;"><div style="color:var(--t2);font-size:12px;font-weight:800;line-height:1.5;">${sanitize(m.title||"رسالة بلا عنوان")}</div><div class="adm-bc-meta">${sanitize(admBroadcastTypeLabel(m.messageType))} · ${sanitize(admBroadcastAudienceLabel(m.audience))} · أولوية ${Number(m.priority)||0}<br>${sanitize(admBroadcastStateLabel(m.effectiveState))} · ${m.startsAt?sanitize(lifecycleAdminDate(m.startsAt,true)):"بلا بداية"}</div></div><span class="bdg" style="background:var(--s2);color:var(--t3);white-space:nowrap;">${sanitize(admBroadcastStateLabel(m.effectiveState))}</span></div><div>${`<span class="adm-bc-stat">👁 ${Number(stats.views)||0}</span><span class="adm-bc-stat">✕ ${Number(stats.closes)||0}</span><span class="adm-bc-stat">↗ ${Number(stats.clicks)||0}</span><span class="adm-bc-stat" title="لا يوجد redemption فعلي بعد">🎟 غير متاح</span>`}</div><div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px;"><button class="r-btn app" onclick='admBroadcastOpenComposer(${safeJsArg(m.id)})'>${isArchived?"عرض/نسخ":"تعديل"}</button>${!isArchived?`<button class="r-btn" style="background:var(--aud);color:var(--au);" onclick='admBroadcastAction(${safeJsArg(m.id)},"pause")'>إيقاف</button><button class="r-btn" style="background:var(--bld);color:#93c5fd;" onclick='admBroadcastAction(${safeJsArg(m.id)},"test")'>تجربة</button><button class="r-btn rej" onclick='admBroadcastAction(${safeJsArg(m.id)},"archive")'>أرشفة</button>`:""}<button class="r-btn" style="background:var(--pud);color:#c4b5fd;" onclick='admBroadcastAction(${safeJsArg(m.id)},"duplicate")'>تكرار</button></div></div>`;}).join(""):`<div class="empty" style="padding:24px 8px;font-size:12px;">لا توجد رسائل بعد. أنشئ مسودة أو رسالة مجدولة.</div>`}`;
+}
+function admBroadcastOpenComposer(id=null){
+  const host=document.getElementById("abc-composer");if(!host)return;
+  const source=id?admBroadcastMessage(id):null;
+  /* Archived records stay immutable: duplication preserves history instead. */
+  const item=source&&source.effectiveState!=="archived"?source:admBroadcastBlank();
+  admBroadcastState.editingId=source&&source.effectiveState!=="archived"?source.id:null;
+  const templates=admBroadcastState.templates.map(t=>`<option value="${sanitize(t.key)}">${sanitize(t.label)}</option>`).join("");
+  host.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:7px;margin-bottom:7px;"><div style="color:var(--g);font-size:12px;font-weight:900;">${admBroadcastState.editingId?"تحرير رسالة":"رسالة جديدة"}</div><button class="r-btn" style="background:var(--s2);color:var(--t3);" onclick="admBroadcastCloseComposer()">إلغاء</button></div><label class="adm-bc-label">قالب عربي قابل للتحرير</label><div style="display:flex;gap:6px;"><select id="abc-template" class="a-in" style="margin:0;flex:1;"><option value="">اختر قالبًا (اختياري)</option>${templates}</select><button class="btn btn-ghost btn-sm" onclick="admBroadcastApplyTemplate()">تطبيق</button></div><div class="adm-bc-grid"><div><label class="adm-bc-label">العنوان</label><input id="abc-title" class="a-in" maxlength="140" style="margin:0;"/></div><div><label class="adm-bc-label">الحالة</label><select id="abc-status" class="a-in" style="margin:0;"><option value="draft">مسودة</option><option value="published">نشر / جدولة</option><option value="paused">موقوفة</option></select></div><div><label class="adm-bc-label">نوع الرسالة</label><select id="abc-type" class="a-in" style="margin:0;"><option value="offer">عرض</option><option value="greeting">تهنئة</option><option value="new_feature">ميزة جديدة</option><option value="maintenance">صيانة</option><option value="important">تنبيه مهم</option></select></div><div><label class="adm-bc-label">الجمهور</label><select id="abc-audience" class="a-in" style="margin:0;"><option value="all">الكل</option><option value="guests">الزوار غير المسجلين</option><option value="free">المجانيون</option><option value="vip">VIP</option><option value="expiring">قرب انتهاء اشتراكهم</option><option value="new_users">أول 7 أيام</option></select></div><div><label class="adm-bc-label">الأولوية (الأعلى أولاً)</label><input id="abc-priority" class="a-in" type="number" min="-1000" max="1000" style="margin:0;"/></div><div><label class="adm-bc-label">باقة متغيرات السعر (اختياري)</label><input id="abc-plan" class="a-in" maxlength="40" placeholder="مثل monthly" style="margin:0;"/></div><div><label class="adm-bc-label">البداية · القاهرة</label><input id="abc-start" class="a-in" type="datetime-local" style="margin:0;"/></div><div><label class="adm-bc-label">النهاية · القاهرة (اختياري)</label><input id="abc-end" class="a-in" type="datetime-local" style="margin:0;"/></div></div><label class="adm-bc-label">النص</label><textarea id="abc-content" class="adm-bc-text" placeholder="يدعم **العريض** والقوائم (- بند) والروابط [النص](https://example.com) فقط."></textarea><div class="adm-bc-help">لا يقبل HTML خامًا. المتغيرات المسموح بها: {{name}} {{price}} {{old_price}} {{discount_percent}}؛ السعر لا يظهر إلا من باقة خادم صالحة.</div><div class="adm-bc-grid"><div><label class="adm-bc-label">زر CTA</label><select id="abc-action-kind" class="a-in" onchange="admBroadcastToggleCta()" style="margin:0;"><option value="none">بدون زر</option><option value="link">رابط</option></select></div><div id="abc-action-label-wrap"><label class="adm-bc-label">نص الزر</label><input id="abc-action-label" class="a-in" maxlength="40" style="margin:0;"/></div><div id="abc-action-url-wrap"><label class="adm-bc-label">الرابط</label><input id="abc-action-url" class="a-in" maxlength="500" placeholder="/vip أو https://…" dir="ltr" style="margin:0;"/></div></div><div class="adm-bc-help">الكوبونات غير معروضة هنا لأن redemption في الدفع غير متاح بعد. الروابط الداخلية أو https فقط.</div><label class="adm-bc-label">صورة اختيارية (PNG/JPG/WebP حتى 180KB)</label><input id="abc-image-file" class="a-in" type="file" accept="image/png,image/jpeg,image/webp" onchange="admBroadcastUploadImage(this)" style="margin:0;"/><input id="abc-image-id" type="hidden"/><div id="abc-image-status" class="adm-bc-help"></div><div style="margin-top:10px;padding:9px 10px;background:var(--aud);border:1px solid rgba(245,158,11,.18);border-radius:10px;color:var(--au);font-size:10px;line-height:1.65;">✉️ البريد التسويقي مغلق عمدًا: لا تُرسل أي حملة من هذه الشاشة قبل تشغيل consent موثق وunsubscribe وموافقة تشغيل صريحة.</div><div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:11px;"><button class="btn btn-bl btn-sm" onclick="admBroadcastPreview()">معاينة حقيقية</button><button class="btn btn-g btn-sm" onclick="admBroadcastSave()">${admBroadcastState.editingId?"حفظ التعديل":"حفظ الرسالة"}</button>${admBroadcastState.editingId?`<button class="btn btn-ghost btn-sm" onclick="admBroadcastAction(${safeJsArg(admBroadcastState.editingId)},'test')">تجربة للأدمن فقط</button>`:""}</div><div id="abc-msg" class="adm-bc-help" aria-live="polite"></div><div id="abc-preview" style="margin-top:12px;"></div>`;
+  document.getElementById("abc-title").value=String(item.title||"");document.getElementById("abc-content").value=broadcastAstToMarkdown(item.content);document.getElementById("abc-type").value=["offer","greeting","new_feature","maintenance","important"].includes(item.messageType)?item.messageType:"important";document.getElementById("abc-audience").value=["all","guests","free","vip","expiring","new_users"].includes(item.audience)?item.audience:"all";document.getElementById("abc-status").value=["draft","published","paused"].includes(item.status)?item.status:"draft";document.getElementById("abc-priority").value=String(Number(item.priority)||0);document.getElementById("abc-plan").value=item.variablePlanKey||"";document.getElementById("abc-start").value=cairoDateTimeInput(item.startsAt);document.getElementById("abc-end").value=cairoDateTimeInput(item.endsAt);document.getElementById("abc-image-id").value=item.imageMediaId||"";const act=item.action&&item.action.kind==="link"?item.action:{kind:"none"};document.getElementById("abc-action-kind").value=act.kind;document.getElementById("abc-action-label").value=act.label||"";document.getElementById("abc-action-url").value=act.url||"";if(item.imageUrl){const status=document.getElementById("abc-image-status");status.textContent="الصورة الحالية محفوظة وآمنة.";status.style.color="var(--g)";}admBroadcastToggleCta();
+  if(source&&source.effectiveState==="archived")admBroadcastSetMsg("السجل المؤرشف للعرض فقط؛ استخدم «تكرار» لإنشاء مسودة جديدة.","var(--au)");
+}
+function admBroadcastCloseComposer(){admBroadcastState.editingId=null;const el=document.getElementById("abc-composer");if(el)el.innerHTML=`<div style="color:var(--t4);font-size:11px;">اختر «رسالة جديدة» أو حرّر رسالة من السجل.</div>`;}
+function admBroadcastToggleCta(){const on=vG("abc-action-kind")==="link";["abc-action-label-wrap","abc-action-url-wrap"].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=on?"block":"none";});}
+function admBroadcastApplyTemplate(){const t=admBroadcastState.templates.find(x=>x.key===vG("abc-template"));if(!t){admBroadcastSetMsg("اختر قالبًا أولًا.","var(--au)");return;}document.getElementById("abc-title").value=String(t.title||"");document.getElementById("abc-content").value=String(t.contentMarkdown||"");document.getElementById("abc-type").value=["offer","greeting","new_feature","maintenance","important"].includes(t.messageType)?t.messageType:"greeting";admBroadcastSetMsg("طُبّق القالب؛ راجع الموعد والجمهور قبل الحفظ.","var(--g)");}
+function admBroadcastPayload(){const kind=vG("abc-action-kind");return {title:vG("abc-title"),contentMarkdown:vG("abc-content"),messageType:vG("abc-type"),audience:vG("abc-audience"),priority:Number(vG("abc-priority")||0),status:vG("abc-status"),startsAt:vG("abc-start")||null,endsAt:vG("abc-end")||null,imageMediaId:vG("abc-image-id")||null,variablePlanKey:vG("abc-plan")||null,action:kind==="link"?{kind:"link",label:vG("abc-action-label"),url:vG("abc-action-url")}:{kind:"none"}};}
+async function admBroadcastUploadImage(input){const file=input?.files?.[0];if(!file)return;if(!["image/png","image/jpeg","image/webp"].includes(file.type)||file.size<=0||file.size>180000){admBroadcastSetMsg("اختر PNG أو JPG أو WebP بحجم لا يتجاوز 180KB.","var(--dn)");input.value="";return;}admBroadcastSetMsg("جارٍ رفع الصورة والتحقق من محتواها…","var(--t4)");try{const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file);});const r=await admFetch("/api/admin/broadcasts/media",{method:"POST",body:JSON.stringify({dataUrl})}),j=await r.json();if(!r.ok||j.status!=="ok"||!j.media?.id)throw new Error(j.message||"تعذر رفع الصورة");document.getElementById("abc-image-id").value=j.media.id;admBroadcastSetMsg("✅ رُفعت الصورة وتحقق الخادم من النوع والتوقيع.","var(--g)");}catch(e){admBroadcastSetMsg("⚠️ "+String(e.message||e),"var(--dn)");}}
+function renderAdmBroadcastPreview(message,imageDataUrl){const host=document.getElementById("abc-preview");if(!host)return;host.replaceChildren();const title=document.createElement("div");title.style.cssText="color:var(--t2);font-size:11px;font-weight:800;margin-bottom:7px;";title.textContent="معاينة الخادم · Desktop / Mobile";const grid=document.createElement("div");grid.className="adm-bc-preview-grid";["desktop","mobile"].forEach(kind=>{const frame=document.createElement("div");frame.className=`adm-bc-preview-frame ${kind}`;frame.appendChild(buildBroadcastCard(message,{imageDataUrl,preview:true}));grid.appendChild(frame);});host.append(title,grid);}
+async function admBroadcastPreview(){admBroadcastSetMsg("جارٍ توليد معاينة الخادم…","var(--t4)");try{const r=await admFetch("/api/admin/broadcasts/preview",{method:"POST",body:JSON.stringify(admBroadcastPayload())}),j=await r.json();if(!r.ok||j.status!=="ok"||!j.preview)throw new Error(j.message||"تعذر إنشاء المعاينة");renderAdmBroadcastPreview(j.preview,j.imageDataUrl||null);admBroadcastSetMsg("✅ المعاينة تستخدم تنظيف المحتوى وتسعير الخادم الحالي.","var(--g)");}catch(e){admBroadcastSetMsg("⚠️ "+String(e.message||e),"var(--dn)");}}
+async function admBroadcastSave(){const id=admBroadcastState.editingId;admBroadcastSetMsg("جارٍ الحفظ…","var(--t4)");try{const r=await admFetch(id?`/api/admin/broadcasts/${encodeURIComponent(id)}`:"/api/admin/broadcasts",{method:id?"PUT":"POST",body:JSON.stringify(admBroadcastPayload())}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر الحفظ");showToast(id?"✅ تم تحديث الرسالة":"✅ تم إنشاء الرسالة");admTab("broadcasts");}catch(e){admBroadcastSetMsg("⚠️ "+String(e.message||e),"var(--dn)");}}
+async function admBroadcastAction(id,action){const labels={pause:"إيقاف الرسالة",archive:"أرشفة الرسالة",duplicate:"إنشاء نسخة مسودة",test:"تسجيل تجربة خاصة بالمدير"};if(["pause","archive"].includes(action)&&!confirm(`${labels[action]}؟`))return;try{const r=await admFetch(`/api/admin/broadcasts/${encodeURIComponent(id)}/${action}`,{method:"POST",body:"{}"}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر تنفيذ العملية");showToast(action==="test"?"✅ تجربة خاصة بالمدير فقط — لم يُرسل بريد":action==="duplicate"?"✅ أنشئت مسودة نسخة":"✅ تم التنفيذ");if(action!=="test")admTab("broadcasts");}catch(e){showToast("❌ "+String(e.message||e));}}
 
 async function renderAdmCoupons(el){
   el.innerHTML=`

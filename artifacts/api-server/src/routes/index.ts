@@ -11,6 +11,7 @@ import portfolioRouter from "./portfolio";
 import priceAlertsRouter from "./price-alerts";
 import calculatorsRouter from "./calculators";
 import subscriptionLifecycleRouter from "./subscription-lifecycle";
+import broadcastsRouter from "./broadcasts";
 
 const router: IRouter = Router();
 
@@ -24,6 +25,7 @@ router.use(paymentsRouter);
 router.use(portfolioRouter);
 router.use(priceAlertsRouter);
 router.use(subscriptionLifecycleRouter);
+router.use("/broadcasts", broadcastsRouter);
 router.use(calculatorsRouter);
 router.use(opportunitiesRouter);
 
