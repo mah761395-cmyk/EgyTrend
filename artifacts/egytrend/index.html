@@ -863,6 +863,43 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 /* Admin opportunities form */
 .adm-opp-form{background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:14px;margin-bottom:14px;}
 .adm-opp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+
+/* ─── FIRST-USE ONBOARDING ─── */
+#onboarding-checklist:empty{display:none;}
+.ob-checklist{margin:0 12px 12px;background:linear-gradient(135deg,rgba(16,185,129,.12),rgba(14,165,233,.08));border:1px solid rgba(52,211,153,.23);border-radius:16px;padding:13px;box-shadow:0 10px 26px rgba(0,0,0,.12);}
+.ob-checklist-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px;}
+.ob-checklist-title{color:var(--t1);font-size:13px;font-weight:900;}
+.ob-checklist-copy{color:var(--t4);font-size:10px;line-height:1.55;margin-top:2px;}
+.ob-checklist-progress{flex-shrink:0;color:var(--g);font-size:10px;font-weight:800;background:rgba(16,185,129,.12);border-radius:20px;padding:4px 7px;}
+.ob-progress-track{height:5px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;margin-bottom:9px;}
+.ob-progress-value{height:100%;background:linear-gradient(90deg,var(--g),#34d399);border-radius:inherit;transition:width .25s ease;}
+.ob-task{width:100%;border:0;background:transparent;padding:8px 2px;display:flex;gap:9px;align-items:flex-start;text-align:right;cursor:pointer;font-family:var(--sans);color:inherit;border-top:1px solid rgba(255,255,255,.065);}
+.ob-task:first-of-type{border-top:0;}
+.ob-task:focus-visible,.ob-panel button:focus-visible{outline:2px solid #6ee7b7;outline-offset:3px;}
+.ob-task-mark{width:20px;height:20px;flex:0 0 20px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--b2);color:var(--t5);font-size:11px;margin-top:1px;}
+.ob-task.done .ob-task-mark{background:var(--gd);border-color:rgba(52,211,153,.42);color:var(--g);}
+.ob-task-body{min-width:0;flex:1;}
+.ob-task-title{color:var(--t2);font-size:11px;font-weight:800;line-height:1.45;}
+.ob-task.done .ob-task-title{text-decoration:line-through;color:var(--t4);}
+.ob-task-copy{color:var(--t5);font-size:9.5px;line-height:1.52;margin-top:1px;}
+.ob-task-arrow{color:var(--t5);font-size:13px;padding-top:2px;}
+.ob-tour-backdrop{position:fixed;inset:0;z-index:1200;background:rgba(3,7,18,.76);backdrop-filter:blur(2px);animation:obFade .18s ease;}
+.ob-tour-highlight{position:relative!important;z-index:1201!important;outline:3px solid #34d399!important;outline-offset:5px;border-radius:12px;box-shadow:0 0 0 9999px rgba(3,7,18,.13),0 0 26px rgba(52,211,153,.62)!important;transition:outline .18s ease;}
+.ob-panel{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:1202;width:min(calc(100% - 24px),430px);background:linear-gradient(160deg,#17243a,#101827);border:1px solid rgba(110,231,183,.3);border-radius:20px;padding:15px;box-shadow:0 18px 60px rgba(0,0,0,.56);color:var(--t2);}
+.ob-panel-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+.ob-step-count{color:#86efac;background:rgba(16,185,129,.12);border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;}
+.ob-skip{border:0;background:transparent;color:var(--t4);font:inherit;font-size:11px;cursor:pointer;padding:5px;}
+.ob-panel-icon{font-size:25px;line-height:1;margin-bottom:7px;}
+.ob-panel-title{color:#f0fdf4;font-size:16px;font-weight:900;line-height:1.4;}
+.ob-panel-copy{color:#cbd5e1;font-size:11.5px;line-height:1.72;margin-top:5px;}
+.ob-panel-note{color:#94a3b8;font-size:9.5px;line-height:1.55;margin-top:6px;}
+.ob-panel-actions{display:flex;gap:8px;margin-top:13px;}
+.ob-panel-actions button{font-family:var(--sans);cursor:pointer;border-radius:10px;padding:10px 12px;font-size:11.5px;font-weight:800;}
+.ob-next{border:1px solid rgba(52,211,153,.48);background:var(--g);color:#06281e;flex:1;}
+.ob-back{border:1px solid var(--b2);background:var(--s1);color:var(--t3);min-width:74px;}
+@keyframes obFade{from{opacity:0}to{opacity:1}}
+@media (min-width:700px){.ob-checklist{margin:0 24px 14px;}.ob-panel{bottom:28px;}}
+@media (prefers-reduced-motion:reduce){.ob-tour-backdrop,.ob-progress-value{animation:none;transition:none;}}
 </style>
 </head>
 <body>
@@ -955,6 +992,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
       <div class="row"><div class="ldot loading" id="ldot"></div><span class="stxt" id="stxt">جارٍ التحميل...</span></div>
       <span style="color:var(--t5);font-size:10px;font-family:var(--mono);" id="cnt"></span>
     </div>
+    <div id="onboarding-checklist" aria-live="polite"></div>
     <div onclick="openAIRw()" class="ai-banner">
       <div class="row"><span style="font-size:20px;">🤖</span><div><div style="color:#93c5fd;font-weight:700;font-size:13px;">محرر الأخبار الذكي <span class="bdg bdg-vip" style="font-size:9px;vertical-align:middle;">⭐ VIP</span></div><div style="color:var(--t5);font-size:10.5px;">TL;DR + حقائق واردة + تصنيف وصفي</div></div></div>
       <span style="color:#60a5fa;font-size:16px;">←</span>
@@ -966,7 +1004,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
   <div id="page-markets" class="page hidden mkt-page">
     <!-- Markets header -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-      <div>
+      <div id="markets-tour-anchor">
         <div style="display:flex;align-items:center;gap:7px;">
           <div style="color:var(--t1);font-weight:900;font-size:18px;">📊 الأسواق</div>
           <span id="mkt-data-badge" style="display:inline-flex;align-items:center;gap:4px;background:var(--s1);border:1px solid var(--b1);border-radius:20px;padding:2px 8px;font-size:9.5px;font-weight:700;color:var(--t4);">حالة البيانات</span>
@@ -1561,6 +1599,107 @@ function loadUserScopedData(){
   priceAlertsState={loaded:false,loading:false,error:"",items:[]};
 }
 
+/* ═══════════════════ FIRST-USE ONBOARDING ═══════════════════
+ * The browser renders the tour, but its shown/skipped/completed state and
+ * checklist progress are read from and written to the authenticated API.
+ * It is never stored in localStorage and it never grants any product access. */
+let firstUseState=null,firstUseTourIndex=0,firstUseLoadSeq=0,firstUseAutoTimer=null,firstUseAutoAttempts=0;
+function firstUseEligible(){return Boolean(U&&U.plan!=="admin"&&Number.isInteger(U.id));}
+function firstUseMaybeAutoStart(){
+  if(firstUseState?.tour?.shouldShow!==true||document.getElementById("first-use-tour"))return;
+  /* Respect a server-selected broadcast/trial message instead of stacking two
+   * focus dialogs. Retry briefly after it is likely dismissed. */
+  if(document.getElementById("broadcast-ov")?.classList.contains("open")){if(firstUseAutoAttempts++<8)firstUseAutoTimer=setTimeout(firstUseMaybeAutoStart,1400);return;}
+  void firstUseStartTour();
+}
+function firstUseChecklist(){return Array.isArray(firstUseState?.checklist)?firstUseState.checklist:[];}
+function firstUseFeature(name){return firstUseState?.features&&typeof firstUseState.features==="object"?firstUseState.features[name]||{}:{};}
+function firstUseCompletedCount(){return firstUseChecklist().filter(item=>item?.completed===true).length;}
+function firstUseRemoveTour(){
+  document.getElementById("first-use-tour")?.remove();
+  document.querySelectorAll(".ob-tour-highlight").forEach(el=>el.classList.remove("ob-tour-highlight"));
+}
+function firstUseRenderChecklist(){
+  const host=document.getElementById("onboarding-checklist");if(!host)return;
+  if(!firstUseEligible()||!firstUseState||!Array.isArray(firstUseState.checklist)){host.replaceChildren();return;}
+  const tasks=firstUseChecklist(),done=firstUseCompletedCount();
+  if(!tasks.length){host.replaceChildren();return;}
+  const pct=Math.round((done/tasks.length)*100);
+  host.innerHTML=`<section class="ob-checklist" aria-label="خطوات البداية"><div class="ob-checklist-head"><div><div class="ob-checklist-title">✨ ابدأ بخطوات بسيطة</div><div class="ob-checklist-copy">${done===tasks.length?"اكتملت خطوات البداية — يمكنك إعادة الجولة من حسابك في أي وقت.":"تقدّمك محفوظ لهذا الحساب فقط."}</div></div><div class="ob-checklist-progress">${done}/${tasks.length}</div></div><div class="ob-progress-track" aria-hidden="true"><div class="ob-progress-value" style="width:${pct}%;"></div></div>${tasks.map(item=>{const title=sanitize(String(item?.title||"خطوة البداية"));const copy=sanitize(String(item?.description||""));const action=safeJsArg(String(item?.action||""));const complete=item?.completed===true;const progress=item?.progress&&Number.isFinite(Number(item.progress.current))?` <span style="color:var(--g);font-family:var(--mono);">${Math.max(0,Number(item.progress.current))}/${Math.max(1,Number(item.progress.target)||1)}</span>`:"";return `<button type="button" class="ob-task ${complete?"done":""}" onclick='firstUseChecklistAction(${action})'><span class="ob-task-mark">${complete?"✓":"○"}</span><span class="ob-task-body"><span class="ob-task-title">${title}${progress}</span><span class="ob-task-copy">${copy}</span></span><span class="ob-task-arrow">←</span></button>`;}).join("")}</section>`;
+}
+function firstUseTourSteps(){
+  const steps=[
+    {id:"markets",nav:"markets",target:"#markets-tour-anchor",icon:"📊",title:"تعرّف إلى الأسواق",copy:"شاهد بطاقات الأسواق وحالة المصدر ووقت التحديث. عند غياب المصدر ستظهر الحالة غير المتاحة بدل رقم بديل."},
+    {id:"watchlist",nav:"markets",target:"#mkt-eg",icon:"☆",title:"كوّن قائمة متابعتك",copy:"افتح أي أصل ثم اختر النجمة لإضافته لقائمتك. أضف ثلاثة عناصر لإكمال خطوة البداية."},
+    {id:"notifications",nav:null,target:"#bell-btn",icon:"🔔",title:"اضبط الإشعارات",copy:"من الجرس يمكنك تفعيل إشعارات المتصفح أو إدارة ما يظهر داخل المنصة. يتطلب إشعار السعر ميزة متاحة في حسابك."},
+    {id:"news",nav:"home",target:"#feed",icon:"📰",title:"استكشف الأخبار",copy:"افتح خبرًا للاطلاع على المصدر ووقت النشر المتاحين. الأخبار للاطلاع ولا تمثل توصية استثمارية."},
+  ];
+  const trial=firstUseFeature("freeTrial"),referrals=firstUseFeature("referrals");
+  if(trial.enabled===true||referrals.enabled===true){
+    let title="مزايا الحساب";
+    let copy="استكشف ما هو متاح لحسابك من صفحة الحساب.";
+    if(trial.enabled===true&&referrals.enabled===true){title="التجربة والمزايا";copy=`تعرض صفحة VIP المزايا المتاحة مع باقتك، ويمكنك مراجعة أهلية تجربة VIP لمدة ${Number(trial.durationDays)||7} أيام من حسابك ومشاركة رابط دعوتك من حسابك. لا يبدأ دفع أو تجديد تلقائي.`;}
+    else if(trial.enabled===true){title="جرّب ما يقدمه VIP";copy=`تعرض صفحة VIP المزايا المتاحة مع باقتك، ويمكنك مراجعة أهلية تجربة VIP لمدة ${Number(trial.durationDays)||7} أيام من حسابك. لا يوجد دفع أو تجديد تلقائي.`;}
+    else {title="ادعُ أصدقاءك";copy="برنامج الإحالة مفعّل حاليًا. ستجد رابط دعوتك وشروط البرنامج داخل حسابك.";}
+    steps.push({id:"benefits",nav:"profile",target:"#pbtns",icon:"⭐",title,copy});
+  }
+  return steps;
+}
+function firstUseTarget(step){
+  const target=step?.target?document.querySelector(step.target):null;
+  if(target){target.classList.add("ob-tour-highlight");try{target.scrollIntoView({block:"center",behavior:window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches?"auto":"smooth"});}catch{}}
+  return target;
+}
+function firstUseRenderTour(){
+  firstUseRemoveTour();
+  const steps=firstUseTourSteps();if(!steps.length)return;
+  firstUseTourIndex=Math.max(0,Math.min(firstUseTourIndex,steps.length-1));
+  const step=steps[firstUseTourIndex];
+  if(step.nav)goNav(step.nav,{syncUrl:false});
+  const root=document.createElement("div");root.id="first-use-tour";root.innerHTML=`<div class="ob-tour-backdrop" aria-hidden="true"></div><section class="ob-panel" role="dialog" aria-modal="true" aria-labelledby="ob-tour-title"><div class="ob-panel-top"><span class="ob-step-count">${firstUseTourIndex+1} من ${steps.length}</span><button type="button" class="ob-skip" onclick="firstUseFinishTour('skipped')">تخطي الجولة</button></div><div class="ob-panel-icon" aria-hidden="true">${step.icon}</div><div class="ob-panel-title" id="ob-tour-title">${sanitize(step.title)}</div><div class="ob-panel-copy">${sanitize(step.copy)}</div><div class="ob-panel-note">يمكنك إعادة هذه الجولة من إعدادات الحساب.</div><div class="ob-panel-actions">${firstUseTourIndex>0?'<button type="button" class="ob-back" onclick="firstUseTourBack()">السابق</button>':""}<button type="button" class="ob-next" onclick="firstUseTourNext()">${firstUseTourIndex===0?"ابدأ":firstUseTourIndex===steps.length-1?"إنهاء":"التالي"}</button></div></section>`;
+  document.body.appendChild(root);
+  setTimeout(()=>firstUseTarget(step),30);
+}
+async function firstUseRequest(path,body){
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
+  try{const r=await fetch(path,{method:body===undefined?"GET":"POST",credentials:"same-origin",cache:"no-store",headers:body===undefined?undefined:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body),signal:ctrl.signal});const j=await r.json().catch(()=>null);if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"onboarding_unavailable");return j;}finally{clearTimeout(timer);}
+}
+function firstUseApply(state){if(!state||typeof state!=="object")return;firstUseState=state;firstUseRenderChecklist();}
+function firstUseChecklistLoading(){const host=document.getElementById("onboarding-checklist");if(host&&!firstUseState)host.innerHTML=`<div class="ob-checklist" style="color:var(--t4);font-size:11px;">⏳ جارٍ تحميل خطوات البداية…</div>`;}
+function firstUseChecklistUnavailable(){const host=document.getElementById("onboarding-checklist");if(host)host.innerHTML=`<div class="ob-checklist" style="color:var(--t4);font-size:11px;line-height:1.65;">تعذر تحميل خطوات البداية حاليًا. <button type="button" onclick="loadFirstUseOnboarding()" style="border:0;background:none;color:var(--g);font:inherit;font-weight:800;cursor:pointer;padding:0;">إعادة المحاولة</button></div>`;}
+async function loadFirstUseOnboarding(options={}){
+  if(!firstUseEligible())return null;const seq=++firstUseLoadSeq;firstUseChecklistLoading();
+  try{const state=await firstUseRequest("/api/user/onboarding");if(seq!==firstUseLoadSeq)return null;firstUseApply(state);if(options.auto!==false&&state?.tour?.shouldShow===true&&!document.getElementById("first-use-tour")){firstUseAutoAttempts=0;clearTimeout(firstUseAutoTimer);firstUseAutoTimer=setTimeout(firstUseMaybeAutoStart,900);}return state;}catch{firstUseChecklistUnavailable();return null;}
+}
+async function firstUseStartTour(){
+  if(!firstUseEligible())return;
+  if(!firstUseState){const loaded=await loadFirstUseOnboarding({auto:false});if(!loaded)return;}
+  if(firstUseState?.tour?.shouldShow!==true)return;
+  firstUseTourIndex=0;firstUseRenderTour();
+  try{const state=await firstUseRequest("/api/user/onboarding/tour",{action:"started"});firstUseApply(state);}catch{/* visual tour remains; next login retries only if server did not persist it. */}
+}
+function firstUseTourNext(){const steps=firstUseTourSteps();if(firstUseTourIndex>=steps.length-1){firstUseFinishTour("completed");return;}firstUseTourIndex+=1;firstUseRenderTour();}
+function firstUseTourBack(){firstUseTourIndex=Math.max(0,firstUseTourIndex-1);firstUseRenderTour();}
+async function firstUseFinishTour(action){
+  firstUseRemoveTour();
+  try{const state=await firstUseRequest("/api/user/onboarding/tour",{action});firstUseApply(state);}catch{showToast("⚠️ تعذر حفظ حالة الجولة؛ ستظهر مرة أخرى عند الدخول.");}
+}
+async function firstUseResetTour(){
+  if(!firstUseEligible()){showToast("⚠️ سجّل الدخول بحساب مستخدم أولًا");return;}
+  try{const state=await firstUseRequest("/api/user/onboarding/reset",{});firstUseApply(state);firstUseTourIndex=0;firstUseRenderTour();showToast("✅ بدأت جولة التعريف من جديد");}catch{showToast("⚠️ تعذر إعادة الجولة حاليًا؛ حاول لاحقًا.");}
+}
+async function firstUseReport(event,payload={}){
+  if(!firstUseEligible())return;
+  try{const state=await firstUseRequest("/api/user/onboarding/events",{event,payload});firstUseApply(state);}catch{/* A non-critical checklist event must never interrupt the product action. */}
+}
+function firstUseChecklistAction(action){
+  if(action==="markets"){goNav("markets");return;}
+  if(action==="notifications"){openNotifSettings();return;}
+  if(action==="news"){goNav("home");document.getElementById("feed")?.scrollIntoView({block:"start",behavior:"smooth"});return;}
+  goNav("profile");
+  if(action==="profile_trial")setTimeout(()=>document.getElementById("trial-start-btn")?.scrollIntoView({block:"center",behavior:"smooth"}),150);
+}
+
 /* ═══════════════════ INIT ═══════════════════ */
 document.addEventListener("DOMContentLoaded",async()=>{
   /* Authentication state is verified only with the server's HttpOnly session
@@ -1610,6 +1749,8 @@ function bootApp(){
   openSubscriptionDeepLink();
   queueBroadcastMessage();
   queueTrialMessage();
+  /* Server-backed first-use state decides whether a tour/checklist is shown. */
+  if(firstUseEligible())void loadFirstUseOnboarding();
   if(window.location.pathname==="/calculators")goNav("calculators",{syncUrl:false});
   setInterval(fetchMarketsData,60000);
   setInterval(fetchCalendarData,30*60*1000);
@@ -2446,6 +2587,7 @@ function toggleSave(id){
 /* ═══════════════════ ARTICLE DETAIL ═══════════════════ */
 function openArt(id){
   const a=allArts.find(n=>n.id===id);if(!a)return;
+  void firstUseReport("news_explored",{});
   curArt=a;const isVip=U?.plan==="vip"||U?.plan==="admin";
   const dp=document.getElementById("det");dp.classList.add("open");dp.scrollTop=0;
   const srcColor=safeColor(a.srcColor);
@@ -2625,6 +2767,7 @@ function openMarketSources(){
 function toggleWL(n){
   const i=wl.indexOf(n);if(i>=0)wl.splice(i,1);else wl.push(n);
   DB.s("wl",wl);buildMarkets();showToast(wl.includes(n)?`⭐ تمت إضافة ${n}`:`تمت إزالة ${n}`);updateStats();
+  void firstUseReport("watchlist_progress",{count:wl.length});
 }
 
 /* ═══════════════════ MARKET DETAIL + LICENSED CHARTS ═══════════════════ */
@@ -2889,6 +3032,7 @@ function toggleWLDetail(name){
   if(btn)btn.textContent=wl.includes(name)?"⭐ في المفضلة":"☆ أضف للمفضلة";
   showToast(wl.includes(name)?`⭐ تمت إضافة ${name}`:`تمت إزالة ${name}`);
   buildMarkets();
+  void firstUseReport("watchlist_progress",{count:wl.length});
 }
 async function refreshMktDetail(sec,idx){
   await fetchMarketsData(true);openMarketDetail(sec,idx);
@@ -5065,7 +5209,7 @@ async function startFreeTrialUi(button){
     const r=await fetch("/api/user/trial/start",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:"{}"});
     const j=await r.json().catch(()=>null);
     if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر بدء التجربة");
-    U.trial=j.trial||U.trial;U.plan="vip";U.exp=j.trial?.endsAt||null;renderHdrVip();renderTrialBanner();renderProfile();queueTrialMessage();showToast("✅ بدأت تجربتك لمدة 7 أيام — بلا بيانات دفع أو تجديد تلقائي");
+    U.trial=j.trial||U.trial;U.plan="vip";U.exp=j.trial?.endsAt||null;renderHdrVip();renderTrialBanner();renderProfile();queueTrialMessage();void loadFirstUseOnboarding({auto:false});const trialDays=Number(j.trial?.settings?.durationDays);showToast(`✅ بدأت تجربتك${Number.isInteger(trialDays)&&trialDays>0?` لمدة ${trialDays} يوم`:""} — بلا بيانات دفع أو تجديد تلقائي`);
   }catch(e){showToast("⚠️ "+String(e?.message||"تعذر بدء التجربة"));}
   finally{if(button){button.disabled=false;button.textContent="🎁 ابدأ تجربتك المجانية لمدة 7 أيام";}}
 }
@@ -5266,7 +5410,7 @@ function renderProfile(){
   if(isTrial)btns+=`<button class="prof-btn sub" onclick="openSub()">⭐ اختر باقة بعد التجربة</button>`;
   if(!isVip&&!isTrial)btns+=`<button class="prof-btn sub" onclick="openSub()">⭐ اشترك في VIP الآن</button>`;
   if(isAdm)btns+=`<button class="prof-btn" style="background:var(--gd);border:1px solid rgba(16,185,129,.15);color:var(--g);margin-bottom:9px;" onclick="openAdm()">⚙️ لوحة التحكم</button>`;
-  if(U.phone!=="admin")btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openSetEmail()">✉️ بريد الاسترداد والتنبيهات</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openMarketingEmailSettings()">📬 رسائل تسويقية ${U.marketingEmailOptIn?"· مفعّلة":"· متوقفة"}</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openChangePass()">🔒 تغيير كلمة المرور</button>`;
+  if(U.phone!=="admin")btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openSetEmail()">✉️ بريد الاسترداد والتنبيهات</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openMarketingEmailSettings()">📬 رسائل تسويقية ${U.marketingEmailOptIn?"· مفعّلة":"· متوقفة"}</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openChangePass()">🔒 تغيير كلمة المرور</button><button class="prof-btn" style="background:rgba(16,185,129,.08);border:1px solid rgba(52,211,153,.2);color:var(--g);margin-bottom:9px;" onclick="firstUseResetTour()">🧭 إعادة جولة التعريف</button>`;
   btns+=`<button class="prof-btn out" onclick="logout()">تسجيل الخروج</button>`;
   document.getElementById("pbtns").innerHTML=btns;
   updateStats();
@@ -6696,12 +6840,13 @@ function showPlatNotif(icon,title,body,actionUrl="",actionLabel="جدّد الآ
 }
 
 function requestNotifPermission(){
-  if(!("Notification"in window))return;
-  if(Notification.permission==="default"){
-    Notification.requestPermission().then(p=>{
-      if(p==="granted")showToast("✅ تم تفعيل إشعارات المتصفح");
-    });
-  }
+  if(!("Notification"in window)){showToast("⚠️ إشعارات المتصفح غير مدعومة على هذا الجهاز");return;}
+  if(Notification.permission==="granted"){void firstUseReport("notifications_enabled",{});showToast("✅ إشعارات المتصفح مفعّلة بالفعل");return;}
+  if(Notification.permission==="denied"){showToast("⚠️ الإشعارات محظورة من المتصفح؛ يمكنك تعديلها من إعدادات الجهاز");return;}
+  Notification.requestPermission().then(p=>{
+    if(p==="granted"){void firstUseReport("notifications_enabled",{});showToast("✅ تم تفعيل إشعارات المتصفح");}
+    else if(p==="denied")showToast("⚠️ لم يتم السماح بإشعارات المتصفح");
+  }).catch(()=>showToast("⚠️ تعذر طلب إذن الإشعارات"));
 }
 
 function openNotifSettings(){
@@ -6731,6 +6876,7 @@ function openNotifSettings(){
 
 function toggleNotifPref(key,val){
   const store=getNotifsStore();store.prefs[key]=val;saveNotifsStore(store);
+  if(val===true)void firstUseReport("notifications_enabled",{});
 }
 
 function checkAutoNotifs(){
