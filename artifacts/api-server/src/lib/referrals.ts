@@ -38,6 +38,7 @@ import { parseCairoDateTime, PricingInputError } from "./pricing";
 import { addCairoCalendarDays, cairoParts } from "./subscription-time";
 import { escapeHtml, isSmtpConfigured, sendMail } from "./mailer";
 import { extendFreeTrial } from "./free-trials";
+import { isDuplicateKeyError } from "./dbErrors";
 
 const SETTINGS_ID = "default";
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -310,7 +311,7 @@ export async function createReferralTier(input: ValidReferralTierInput, employee
   try {
     const [created] = await db.insert(referralTiersTable).values({ id: id("reftier"), ...input, createdBy: employeeId, updatedBy: employeeId, createdAt: now, updatedAt: now }).returning();
     return created || null;
-  } catch (error) { if (/unique/i.test(String(error))) return null; throw error; }
+  } catch (error) { if (isDuplicateKeyError(error)) return null; throw error; }
 }
 export async function updateReferralTier(tierId: string, input: ValidReferralTierInput, employeeId: number | null, now = new Date()) {
   const [updated] = await db.update(referralTiersTable).set({ ...input, updatedBy: employeeId, updatedAt: now }).where(and(eq(referralTiersTable.id, tierId), ne(referralTiersTable.status, "archived"))).returning();
@@ -328,7 +329,7 @@ async function allocateReferralCode(userId: number, now: Date): Promise<typeof r
       const [created] = await db.insert(referralCodesTable).values({ id: id("refcode"), code: candidate, kind: "user", ownerUserId: userId, status: "active", createdAt: now, updatedAt: now }).returning();
       if (created) return created;
     } catch (error) {
-      if (!/unique/i.test(String(error))) throw error;
+      if (!isDuplicateKeyError(error)) throw error;
       /* A concurrent dashboard request may already have allocated this user's
        * active code. Return it rather than accidentally creating another. */
       const [active] = await db.select().from(referralCodesTable).where(and(
@@ -432,7 +433,7 @@ export async function attachReferralAtRegistration(input: {
       suspicious, blockedReason, reviewReason, createdAt: now, updatedAt: now,
     });
   } catch (error) {
-    if (/unique/i.test(String(error))) return { attributionId: null, attached: false, referrerUserId: null };
+    if (isDuplicateKeyError(error)) return { attributionId: null, attached: false, referrerUserId: null };
     throw error;
   }
   if (suspicious) {
@@ -523,7 +524,7 @@ async function createInviteePurchaseReward(attribution: typeof referralAttributi
     await db.update(couponsTable).set({ referralRewardId: rewardId }).where(eq(couponsTable.id, coupon.id));
     await addRewardLedger(rewardId, "created", null, "حُجز خصم المدعو تلقائيًا لأول اشتراك", {}, now);
   } catch (error) {
-    if (!/unique/i.test(String(error))) throw error;
+    if (!isDuplicateKeyError(error)) throw error;
   }
 }
 
@@ -582,7 +583,7 @@ async function createReferrerReward(attribution: typeof referralAttributionsTabl
     }).returning();
     if (reward) await addRewardLedger(rewardId, "created", null, holdUntil ? "قيد فترة الانتظار" : "مستحقة للمنح", { event, holdUntil: holdUntil?.toISOString() || null }, now);
   } catch (error) {
-    if (!/unique/i.test(String(error))) throw error;
+    if (!isDuplicateKeyError(error)) throw error;
   }
 }
 
@@ -605,7 +606,7 @@ async function createTierRewards(attribution: typeof referralAttributionsTable.$
         qualificationEvent: "first_paid", idempotencyKey: key, ruleSnapshot: { ...rule, tierThreshold: tier.threshold }, reason: "tier_threshold_reached", createdAt: now, updatedAt: now,
       }).returning();
       if (created) await addRewardLedger(rewardId, "created", null, "بلوغ مستوى الإحالات", { threshold: tier.threshold }, now);
-    } catch (error) { if (!/unique/i.test(String(error))) throw error; }
+    } catch (error) { if (!isDuplicateKeyError(error)) throw error; }
   }
 }
 

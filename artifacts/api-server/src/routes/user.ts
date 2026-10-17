@@ -27,6 +27,7 @@ import { readFreeTrialSettings } from "../lib/trial-settings";
 import { onboardingState, recordOnboardingEvent, resetOnboardingTour, setOnboardingTourAction, type OnboardingEvent, type OnboardingTourAction } from "../lib/onboarding";
 import { validMarketingUnsubscribeToken } from "../lib/marketing-email";
 import { logger } from "../lib/logger";
+import { isDuplicateKeyError } from "../lib/dbErrors";
 import {
   attachReferralAtRegistration,
   decodeReferralCookie,
@@ -670,7 +671,7 @@ router.put("/email", async (req: Request, res: Response) => {
     }
     res.json({ status: "ok", message: "تم حفظ البريد — أرسل رابط التأكيد قبل بدء التجربة المجانية." });
   } catch (error) {
-    if (/unique/i.test(String(error))) {
+    if (isDuplicateKeyError(error)) {
       res.status(409).json({ status: "error", message: "هذا البريد مستخدم في حساب آخر" });
       return;
     }

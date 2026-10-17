@@ -46,6 +46,7 @@ import {
   validateSubscriptionLifecycleSettings,
 } from "../lib/subscription-lifecycle";
 import { parseCairoDateTime } from "../lib/subscription-time";
+import { isDuplicateKeyError } from "../lib/dbErrors";
 import {
   archiveFreeTrialMessageStep,
   createFreeTrialMessageStep,
@@ -707,8 +708,7 @@ router.post("/employees", requireAuth, requireWriteRate, requireRole("super_admi
     await auditLog("create_employee", req.actor, `staff:${emp.id}`, { role: emp.role }, req.ip);
     res.json({ status: "ok", employee: emp });
   } catch (e: unknown) {
-    const msg = String(e);
-    if (msg.includes("unique")) { res.status(409).json({ status: "error", message: "email already exists" }); return; }
+    if (isDuplicateKeyError(e)) { res.status(409).json({ status: "error", message: "email already exists" }); return; }
     logger.error({ err: e }, "employee create error");
     res.status(500).json({ status: "error", message: "server error" });
   }
@@ -1077,8 +1077,7 @@ router.post("/plans", requireAuth, requireWriteRate, requirePricingAccess, async
     res.json({ status: "ok", plan, warnings: base.warnings, pricingVersion: pricingCacheVersion() });
   } catch (e: unknown) {
     if (e instanceof PricingInputError) { res.status(400).json({ status: "error", message: e.message }); return; }
-    const msg = String(e);
-    if (msg.includes("unique")) { res.status(409).json({ status: "error", message: "plan key already exists" }); return; }
+    if (isDuplicateKeyError(e)) { res.status(409).json({ status: "error", message: "plan key already exists" }); return; }
     logger.error({ err: e }, "plan create error");
     res.status(500).json({ status: "error", message: "server error" });
   }
@@ -1247,8 +1246,7 @@ router.post("/coupons", requireAuth, requireWriteRate, requireRole("super_admin"
     await auditLog("create_coupon", req.actor, String(code), { discountType: dtype, discountValue: dval }, req.ip);
     res.json({ status: "ok", coupon });
   } catch (e: unknown) {
-    const msg = String(e);
-    if (msg.includes("unique")) { res.status(409).json({ status: "error", message: "coupon code already exists" }); return; }
+    if (isDuplicateKeyError(e)) { res.status(409).json({ status: "error", message: "coupon code already exists" }); return; }
     logger.error({ err: e }, "coupon create error");
     res.status(500).json({ status: "error", message: "server error" });
   }
@@ -2416,7 +2414,7 @@ router.post("/referrals/special-codes", requireAuth, requireWriteRate, requireRo
     await auditLog("create_referral_special_code", req.actor, `referral-code:${code.id}`, { kind: "special", campaignId: code.campaignId }, req.ip);
     res.status(201).json({ status: "ok", code });
   } catch (error) {
-    if (/unique/i.test(String(error))) { res.status(409).json({ status: "error", message: "الكود مستخدم بالفعل." }); return; }
+    if (isDuplicateKeyError(error)) { res.status(409).json({ status: "error", message: "الكود مستخدم بالفعل." }); return; }
     logger.error({ err: error }, "create special referral code error"); res.status(503).json({ status: "error", message: "تعذر إنشاء الكود الخاص" });
   }
 });

@@ -21,6 +21,7 @@ import {
   userNotificationsTable,
 } from "@workspace/db/schema";
 import { currentUser, getVipEntitlement, normalizeUserPhone } from "../lib/userAuth";
+import { isDuplicateKeyError } from "../lib/dbErrors";
 import {
   buildPaymentPriceSnapshot,
   effectivePriceTemplateVariables,
@@ -438,8 +439,10 @@ router.post("/payments", async (req: Request, res: Response) => {
       message: "تم إرسال طلبك — السعر محفوظ لمدة محدودة وجارٍ مراجعة الدفع",
     });
   } catch (e: unknown) {
-    const msg = String(e);
-    if (msg.includes("payment_requests_tx_normalized_uidx") || msg.includes("unique")) {
+    /* The authoritative duplicate guard is migration 0012's unique index.
+     * Drizzle hides its SQLSTATE on the cause chain, so the raw error text is
+     * never enough to answer 409 instead of a misleading 500. */
+    if (isDuplicateKeyError(e)) {
       res.status(409).json({ status: "error", message: "رقم العملية مستخدم من قبل — كل تحويل له رقم مختلف" });
       return;
     }
