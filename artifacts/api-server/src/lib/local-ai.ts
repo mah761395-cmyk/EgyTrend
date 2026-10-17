@@ -444,7 +444,7 @@ function newsReply(live: { news?: NewsPayload; markets?: MarketsPayload; stocks?
     }
     /* No match → say it honestly instead of dumping unrelated headlines. */
     const lines = [
-      `⚠️ **لا توجد أخبار منشورة حاليًا عن ${label}** في آخر العناوين من ${feeds.length} مصدرًا متاحًا.`, 
+      `⚠️ **لا توجد أخبار منشورة حاليًا عن ${label}** في آخر العناوين من ${feeds.length} مصدرًا متاحًا.`,
       "قد يكون الخبر غير منشور بعد — أو جرّب كلمات بحث مختلفة.",
       "",
       "📰 آخر العناوين للمتابعة:",
@@ -483,7 +483,7 @@ function generalReply(live: { markets?: MarketsPayload }): string {
     "لن أذكر رقمًا أو أقدّم إشارة تداول إذا لم تكن بيانات المصدر الموثّقة متاحة.",
     hasVerifiedQuotes(live.markets)
       ? `\n📊 من المصدر المتاح: EGX30 ${live.markets?.markets?.eg?.[0]?.v || "—"} (${fmtPct(live.markets?.markets?.eg?.[0]?.c || "")})`
-      : "", 
+      : "",
   ].join("\n");
 }
 

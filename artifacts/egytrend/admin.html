@@ -3234,7 +3234,7 @@ function openMarketDetail(sec,idx){
   openAssetDetail({
     instrumentId:m.instrumentId,title:m.n,subtitle:ctx.en,icon:ctx.icon,category:ctx.cat,color,watchName:m.n,up:m.up,
     price:unavailable?"غير متاح حاليًا":m.v,change:unavailable?"—":`${m.up?"▲":"▼"} ${m.c||"—"}`,
-    source:m.source||secMeta.sources||"غير متاح",freshness:`وقت المصدر: ${cairoTimestampLabel(m.asOf)} · ${marketAgeLabel(marketFreshness)} · ${marketStateLabel(unavailable?{...marketFreshness,unavailable:true}:marketFreshness)}`, 
+    source:m.source||secMeta.sources||"غير متاح",freshness:`وقت المصدر: ${cairoTimestampLabel(m.asOf)} · ${marketAgeLabel(marketFreshness)} · ${marketStateLabel(unavailable?{...marketFreshness,unavailable:true}:marketFreshness)}`,
     description:ctx.desc,
     stats:[
       {label:"آخر سعر",value:unavailable?"غير متاح":m.v,style:`color:${color};font-family:var(--mono);font-size:13px;`},
@@ -3403,7 +3403,7 @@ function openStockDetail(sym){
   openAssetDetail({
     instrumentId:s.instrumentId,title:s.sym,subtitle:s.name,icon:isEgx?"🇪🇬":"🌐",category:isEgx?"سهم EGX":"سهم عالمي",color:isEgx?"var(--g)":"var(--bl)",watchName:s.sym,up,
     price:number(s.price),change:up===null?"—":`${up?"▲ ":"▼ "}${change}`,source:s.source||freshness.source||"غير متاح",
-    freshness:`وقت المصدر: ${cairoTimestampLabel(s.ts)} · ${marketAgeLabel(freshness)} · ${marketStateLabel(freshness)}`, 
+    freshness:`وقت المصدر: ${cairoTimestampLabel(s.ts)} · ${marketAgeLabel(freshness)} · ${marketStateLabel(freshness)}`,
     description:`${s.name} — قطاع ${s.sector||"غير محدد"}. يعرض الرسم السجل اليومي المرخّص المتاح فقط، ولا يقدّم توصية تداول.`,
     stats:[
       {label:"آخر سعر",value:number(s.price),style:"color:var(--g);font-family:var(--mono);font-size:13px;"},
