@@ -1,3 +1,5 @@
+import { promises as dns } from "node:dns";
+import { isIP } from "node:net";
 import { Router, type IRouter } from "express";
 import { XMLParser } from "fast-xml-parser";
 import { logger } from "../lib/logger";
@@ -132,6 +134,213 @@ function safeUrl(input: string): string {
   const v = (input || "").trim();
   if (!/^https?:\/\//i.test(v)) return "";
   return v.replace(/["'<>\\)\\]/g, "");
+}
+
+/* ─── RSS outbound-request guard ──────────────────────────────────────────
+ * Feed URLs are editable metadata, so treat them as an SSRF boundary rather
+ * than trusting a URL merely because it came from the source registry. Every
+ * hop is manually followed, revalidated and DNS-resolved before it is fetched.
+ * This blocks localhost, private/link-local/metadata ranges, credentials,
+ * non-standard ports and redirects to an internal target. DNS failures fail
+ * closed; a feed can be unavailable, but it must never become a network probe.
+ */
+type ResolvedAddress = { address: string; family: 4 | 6 };
+type HostResolver = (hostname: string) => Promise<ResolvedAddress[]>;
+type FeedFetch = (input: string, init: RequestInit) => Promise<Response>;
+
+const MAX_FEED_REDIRECTS = 3;
+const MAX_FEED_BYTES = 1_500_000;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const FORBIDDEN_HOST_SUFFIXES = [".localhost", ".local", ".internal", ".lan", ".home"];
+
+const resolveHost: HostResolver = async (hostname) => {
+  const records = await dns.lookup(hostname, { all: true, verbatim: true });
+  return records.filter((record): record is ResolvedAddress => record.family === 4 || record.family === 6);
+};
+
+function isPublicIpv4(address: string): boolean {
+  const parts = address.split(".");
+  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return false;
+  const octets = parts.map(Number);
+  if (octets.some((part) => part < 0 || part > 255)) return false;
+  const [a, b, c] = octets;
+  /* RFC 1918, loopback, link-local, CGNAT, documentation/test ranges,
+   * benchmarking, multicast and future-reserved ranges are all non-public. */
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return false;
+  if (a === 100 && b >= 64 && b <= 127) return false;
+  if (a === 169 && b === 254) return false;
+  if (a === 172 && b >= 16 && b <= 31) return false;
+  if (a === 192 && b === 0 && c === 0) return false;
+  if (a === 192 && b === 0 && c === 2) return false;
+  if (a === 192 && b === 88 && c === 99) return false;
+  if (a === 192 && b === 168) return false;
+  if (a === 198 && (b === 18 || b === 19)) return false;
+  if (a === 198 && b === 51 && c === 100) return false;
+  if (a === 203 && b === 0 && c === 113) return false;
+  return true;
+}
+
+function ipv4TailToGroups(value: string): string | null {
+  const octets = value.split(".");
+  if (octets.length !== 4 || octets.some((part) => !/^\d{1,3}$/.test(part))) return null;
+  const numbers = octets.map(Number);
+  if (numbers.some((part) => part < 0 || part > 255)) return null;
+  return `${((numbers[0]! << 8) | numbers[1]!).toString(16)}:${((numbers[2]! << 8) | numbers[3]!).toString(16)}`;
+}
+
+/** Parses a canonical IPv6 literal into a bigint without performing DNS. */
+function ipv6ToBigInt(input: string): bigint | null {
+  let value = input.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (!value || value.includes("%")) return null;
+  if (value.includes(".")) {
+    const cut = value.lastIndexOf(":");
+    if (cut < 0) return null;
+    const tail = ipv4TailToGroups(value.slice(cut + 1));
+    if (!tail) return null;
+    value = `${value.slice(0, cut)}:${tail}`;
+  }
+  const halves = value.split("::");
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  if (left.some((part) => !/^[0-9a-f]{1,4}$/.test(part)) || right.some((part) => !/^[0-9a-f]{1,4}$/.test(part))) return null;
+  const missing = 8 - left.length - right.length;
+  if ((halves.length === 1 && missing !== 0) || (halves.length === 2 && missing < 1)) return null;
+  const groups = [...left, ...Array(Math.max(0, missing)).fill("0"), ...right];
+  if (groups.length !== 8) return null;
+  return groups.reduce((out, group) => (out << 16n) | BigInt(`0x${group}`), 0n);
+}
+
+function isPublicIpv6(address: string): boolean {
+  const value = ipv6ToBigInt(address);
+  if (value === null || value === 0n || value === 1n) return false;
+  /* IPv4-compatible and IPv4-mapped literals must obey the IPv4 policy. */
+  if (value >> 32n === 0n || value >> 32n === 0xffffn) {
+    const tail = Number(value & 0xffffffffn);
+    return isPublicIpv4([
+      (tail >>> 24) & 255,
+      (tail >>> 16) & 255,
+      (tail >>> 8) & 255,
+      tail & 255,
+    ].join("."));
+  }
+  /* fc00::/7 (ULA), fe80::/10 (link-local), ff00::/8 (multicast),
+   * 2001:db8::/32 (documentation), plus transition/tunnel ranges. */
+  if ((value & (0xfe00n << 112n)) === (0xfc00n << 112n)) return false;
+  if ((value & (0xffc0n << 112n)) === (0xfe80n << 112n)) return false;
+  if ((value >> 120n) === 0xffn) return false;
+  if ((value >> 96n) === 0x20010db8n) return false;
+  if ((value >> 112n) === 0x2002n) return false;
+  if ((value >> 96n) === 0x20010000n) return false;
+  return true;
+}
+
+function isPublicIpAddress(address: string): boolean {
+  const normalized = address.trim().replace(/^\[|\]$/g, "");
+  const family = isIP(normalized);
+  if (family === 4) return isPublicIpv4(normalized);
+  if (family === 6) return isPublicIpv6(normalized);
+  return false;
+}
+
+function forbiddenHostname(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase().replace(/\.$/, "");
+  return !normalized
+    || normalized === "localhost"
+    || normalized === "metadata.google.internal"
+    || FORBIDDEN_HOST_SUFFIXES.some((suffix) => normalized.endsWith(suffix));
+}
+
+function unsafeFeedTarget(): Error {
+  /* Keep the reason stable and non-enumerating: it may be returned in a
+   * public source-health response, so never include URL/host/DNS details. */
+  return new Error("rss_target_not_allowed");
+}
+
+async function assertSafeFeedUrl(input: string, resolver: HostResolver = resolveHost): Promise<URL> {
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    throw unsafeFeedTarget();
+  }
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.port) {
+    throw unsafeFeedTarget();
+  }
+  const hostname = url.hostname.replace(/^\[|\]$/g, "");
+  if (forbiddenHostname(hostname)) throw unsafeFeedTarget();
+  if (isIP(hostname)) {
+    if (!isPublicIpAddress(hostname)) throw unsafeFeedTarget();
+    return url;
+  }
+  let addresses: ResolvedAddress[];
+  try {
+    addresses = await resolver(hostname);
+  } catch {
+    throw unsafeFeedTarget();
+  }
+  /* Require every resolved address to be public. Choosing only the first one
+   * is unsafe on dual-stack hosts, and an empty answer is not fetchable. */
+  if (!addresses.length || addresses.some((record) => !isPublicIpAddress(record.address))) {
+    throw unsafeFeedTarget();
+  }
+  return url;
+}
+
+async function fetchSafeFeed(
+  initialUrl: string,
+  init: RequestInit,
+  resolver: HostResolver = resolveHost,
+  fetchImpl: FeedFetch = fetch as FeedFetch,
+): Promise<Response> {
+  let target = await assertSafeFeedUrl(initialUrl, resolver);
+  for (let redirects = 0; redirects <= MAX_FEED_REDIRECTS; redirects++) {
+    const response = await fetchImpl(target.toString(), { ...init, redirect: "manual" });
+    if (!REDIRECT_STATUSES.has(response.status)) return response;
+    const location = response.headers.get("location");
+    /* A redirect body is irrelevant and may hold a connection open. */
+    void response.body?.cancel().catch(() => undefined);
+    if (!location || redirects === MAX_FEED_REDIRECTS) throw unsafeFeedTarget();
+    try {
+      target = await assertSafeFeedUrl(new URL(location, target).toString(), resolver);
+    } catch {
+      throw unsafeFeedTarget();
+    }
+  }
+  throw unsafeFeedTarget();
+}
+
+async function readFeedText(response: Response): Promise<string> {
+  const declaredLength = Number(response.headers.get("content-length") || "0");
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_FEED_BYTES) {
+    void response.body?.cancel().catch(() => undefined);
+    throw new Error("rss_feed_too_large");
+  }
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_FEED_BYTES) {
+        await reader.cancel();
+        throw new Error("rss_feed_too_large");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(merged);
 }
 
 function pickImage(it: Record<string, unknown>): string | undefined {
@@ -277,7 +486,7 @@ async function fetchSource(src: SourceMeta): Promise<{
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(src.url, {
+    const res = await fetchSafeFeed(src.url, {
       signal: ctrl.signal,
       headers: {
         "User-Agent": UA,
@@ -285,12 +494,12 @@ async function fetchSource(src: SourceMeta): Promise<{
           "application/rss+xml, application/xml, application/atom+xml, text/xml, */*",
         "Accept-Language": "ar,en;q=0.8",
       },
-      redirect: "follow",
     });
     if (!res.ok) {
+      void res.body?.cancel().catch(() => undefined);
       throw new Error(`upstream ${res.status} for ${src.id}`);
     }
-    const xml = await res.text();
+    const xml = await readFeedText(res);
     const items = parseFeed(xml).slice(0, 12);
     const data = { status: "ok" as const, items, meta: src };
     if (items.length > 0) {
@@ -456,7 +665,9 @@ async function buildNewsAgg(): Promise<NewsSnapshot | null> {
       else
         errors.push({
           source: sources[i]?.id || "?",
-          message: (r as PromiseRejectedResult).reason?.message || "error",
+          /* Source health is public; never reflect an upstream redirect URL,
+           * resolver failure, or internal transport detail to a visitor. */
+          message: "upstream_unavailable",
         });
     });
     // Merge admin-authored content as a first-class feed.
@@ -526,7 +737,7 @@ router.get("/news", async (req, res) => {
     logger.warn({ err, source: sourceId }, "failed to fetch news source");
     res.status(502).json({
       status: "error",
-      message: (err as Error).message || "fetch failed",
+      message: "news source unavailable",
       items: [],
     });
   }
@@ -540,6 +751,10 @@ export const __newsTest = {
   newsImportance,
   dedupeAndRankFeeds,
   rankedItemsFromFeeds,
+  isPublicIpAddress,
+  assertSafeFeedUrl,
+  fetchSafeFeed,
+  readFeedText,
 };
 
 export default router;

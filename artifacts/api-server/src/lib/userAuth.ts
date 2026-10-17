@@ -86,18 +86,99 @@ export function currentUser(req: Request): UserClaims | null {
   return verifyUserToken(readSessionCookie(req, USER_SESSION_COOKIE) || bearerToken(req));
 }
 
-export function isAdminToken(req: Request): boolean {
-  const token = readSessionCookie(req, ADMIN_SESSION_COOKIE)
-    || (req.header("x-admin-token") || "").trim()
-    || bearerToken(req);
-  if (!token || !JWT_SECRET) return false;
+export const STAFF_ROLES = ["super_admin", "admin", "editor", "analyst", "support", "marketing"] as const;
+export type StaffRole = typeof STAFF_ROLES[number];
+
+/**
+ * Administrative claims are only a short-lived session hint. Every protected
+ * operation resolves a positive staff ID against the current employee row so
+ * disabling an account or changing its role takes effect immediately instead
+ * of waiting for a previously issued JWT to expire.
+ *
+ * `break_glass` is intentionally explicit and exists only for the configured
+ * password-only bootstrap login. A raw static ADMIN_TOKEN is never accepted.
+ */
+export type AdminClaims = {
+  sub: number;
+  name: string;
+  role: StaffRole;
+  email: string;
+  authSource?: "break_glass";
+};
+
+function isStaffRole(value: unknown): value is StaffRole {
+  return typeof value === "string" && (STAFF_ROLES as readonly string[]).includes(value);
+}
+
+function adminSessionToken(req: Request): string {
+  return readSessionCookie(req, ADMIN_SESSION_COOKIE) || bearerToken(req);
+}
+
+/** Verifies the signed administrative session without trusting its stale role. */
+export function currentAdminClaims(req: Request): AdminClaims | null {
+  const token = adminSessionToken(req);
+  if (!token || !JWT_SECRET) return null;
   try {
     const value = jwt.verify(token, JWT_SECRET);
-    const role = value && typeof value !== "string" ? (value as { role?: string }).role : undefined;
-    return role === "admin" || role === "super_admin";
+    if (!value || typeof value === "string") return null;
+    const raw = value as Partial<AdminClaims>;
+    const sub = Number(raw.sub);
+    if (!Number.isSafeInteger(sub) || sub < 0 || !isStaffRole(raw.role)) return null;
+    if (sub === 0 && raw.authSource !== "break_glass") return null;
+    return {
+      sub,
+      name: typeof raw.name === "string" ? raw.name : "",
+      role: raw.role,
+      email: typeof raw.email === "string" ? raw.email : "",
+      ...(raw.authSource === "break_glass" ? { authSource: "break_glass" as const } : {}),
+    };
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * Returns a server-current staff identity, failing closed on DB failure,
+ * deletion, suspension, role changes, or malformed legacy tokens. The
+ * break-glass session remains explicit and is never a header/API key.
+ */
+export async function currentActiveAdmin(req: Request): Promise<AdminClaims | null> {
+  const claims = currentAdminClaims(req);
+  if (!claims) return null;
+  try {
+    const { db } = await import("@workspace/db");
+    const { employeesTable } = await import("@workspace/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+    /* Break-glass is an emergency bootstrap path, not a permanent parallel
+     * super-admin account. Once the staff directory contains an active
+     * super_admin, both new and already-issued break-glass sessions stop
+     * working immediately. A DB failure is also a deny, never a fallback. */
+    if (claims.sub === 0) {
+      if (claims.authSource !== "break_glass") return null;
+      const [staffSuperAdmin] = await db.select({ id: employeesTable.id })
+        .from(employeesTable)
+        .where(and(eq(employeesTable.role, "super_admin"), eq(employeesTable.status, "active")))
+        .limit(1);
+      return staffSuperAdmin ? null : claims;
+    }
+    const [staff] = await db.select({
+      id: employeesTable.id,
+      name: employeesTable.name,
+      email: employeesTable.email,
+      role: employeesTable.role,
+      status: employeesTable.status,
+    }).from(employeesTable).where(eq(employeesTable.id, claims.sub)).limit(1);
+    if (!staff || staff.status !== "active" || !isStaffRole(staff.role)) return null;
+    return { sub: staff.id, name: staff.name, email: staff.email, role: staff.role };
+  } catch {
+    return null;
+  }
+}
+
+/** Paid-feature bypasses are reserved for active administrator roles only. */
+export async function isActivePrivilegedAdmin(req: Request): Promise<boolean> {
+  const admin = await currentActiveAdmin(req);
+  return admin?.role === "admin" || admin?.role === "super_admin";
 }
 
 export type VipEntitlement = {

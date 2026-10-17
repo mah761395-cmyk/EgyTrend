@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { logger } from "../lib/logger";
-import { currentUser, getVipEntitlement, hasVipFeature, isAdminToken } from "../lib/userAuth";
+import { currentUser, getVipEntitlement, hasVipFeature, isActivePrivilegedAdmin } from "../lib/userAuth";
 import { db } from "@workspace/db";
 import { aiConfigTable, aiUsageTable } from "@workspace/db";
 import { and, eq, gte, sql } from "drizzle-orm";
@@ -57,36 +57,45 @@ type AiReservation = "ok" | "limit" | "unavailable";
 
 async function reserveExternalAiRequest(userId: string, requestType: string, tokensEstimate: number, trialDailyLimit: number | null = null): Promise<AiReservation> {
   try {
-    const since = new Date(Date.now() - AI_BUDGET_WINDOW_MS);
-    const [cfg] = await db.select().from(aiConfigTable).limit(1);
-    /* 0 means disabled, not unlimited. A malformed value is bounded by the
-     * code cap, so neither an outage nor a bad dashboard entry opens spend. */
-    const configured = Number(cfg?.dailyRequestLimit ?? AI_PER_PRINCIPAL_HARD_CAP);
-    const configuredLimit = Number.isFinite(configured)
-      ? Math.max(0, Math.min(Math.floor(configured), AI_PER_PRINCIPAL_HARD_CAP))
-      : AI_PER_PRINCIPAL_HARD_CAP;
-    /* A trial cap is captured server-side at trial start. It can only tighten
-     * the platform-wide per-principal policy, never raise it. */
-    const trialLimit = Number.isInteger(trialDailyLimit)
-      ? Math.max(0, Math.min(Number(trialDailyLimit), AI_PER_PRINCIPAL_HARD_CAP))
-      : null;
-    const perPrincipalLimit = trialLimit === null ? configuredLimit : Math.min(configuredLimit, trialLimit);
-    if (perPrincipalLimit === 0) return "limit";
+    /* `COUNT then INSERT` is otherwise racy across concurrent serverless
+     * invocations: multiple requests can all observe the final remaining slot.
+     * A transaction-scoped PostgreSQL advisory lock serializes this tiny daily
+     * budget decision across all instances without retaining a process-local
+     * lock or trusting a client counter. It releases automatically on commit,
+     * rollback, or connection loss. */
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(843912607)`);
+      const since = new Date(Date.now() - AI_BUDGET_WINDOW_MS);
+      const [cfg] = await tx.select().from(aiConfigTable).limit(1);
+      /* 0 means disabled, not unlimited. A malformed value is bounded by the
+       * code cap, so neither an outage nor a bad dashboard entry opens spend. */
+      const configured = Number(cfg?.dailyRequestLimit ?? AI_PER_PRINCIPAL_HARD_CAP);
+      const configuredLimit = Number.isFinite(configured)
+        ? Math.max(0, Math.min(Math.floor(configured), AI_PER_PRINCIPAL_HARD_CAP))
+        : AI_PER_PRINCIPAL_HARD_CAP;
+      /* A trial cap is captured server-side at trial start. It can only tighten
+       * the platform-wide per-principal policy, never raise it. */
+      const trialLimit = Number.isInteger(trialDailyLimit)
+        ? Math.max(0, Math.min(Number(trialDailyLimit), AI_PER_PRINCIPAL_HARD_CAP))
+        : null;
+      const perPrincipalLimit = trialLimit === null ? configuredLimit : Math.min(configuredLimit, trialLimit);
+      if (perPrincipalLimit === 0) return "limit" as const;
 
-    const [principalUsage] = await db
-      .select({ n: sql<number>`count(*)` })
-      .from(aiUsageTable)
-      .where(and(eq(aiUsageTable.userId, userId), gte(aiUsageTable.createdAt, since)));
-    if (Number(principalUsage?.n || 0) >= perPrincipalLimit) return "limit";
+      const [principalUsage] = await tx
+        .select({ n: sql<number>`count(*)` })
+        .from(aiUsageTable)
+        .where(and(eq(aiUsageTable.userId, userId), gte(aiUsageTable.createdAt, since)));
+      if (Number(principalUsage?.n || 0) >= perPrincipalLimit) return "limit" as const;
 
-    const [globalUsage] = await db
-      .select({ n: sql<number>`count(*)` })
-      .from(aiUsageTable)
-      .where(gte(aiUsageTable.createdAt, since));
-    if (Number(globalUsage?.n || 0) >= AI_GLOBAL_DAILY_HARD_CAP) return "limit";
+      const [globalUsage] = await tx
+        .select({ n: sql<number>`count(*)` })
+        .from(aiUsageTable)
+        .where(gte(aiUsageTable.createdAt, since));
+      if (Number(globalUsage?.n || 0) >= AI_GLOBAL_DAILY_HARD_CAP) return "limit" as const;
 
-    await db.insert(aiUsageTable).values({ userId, requestType, tokensEstimate });
-    return "ok";
+      await tx.insert(aiUsageTable).values({ userId, requestType, tokensEstimate });
+      return "ok" as const;
+    });
   } catch (e) {
     logger.warn({ err: e }, "AI budget reservation unavailable");
     return "unavailable";
@@ -146,7 +155,9 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 router.post("/chat", async (req: Request, res: Response) => {
   const claims = currentUser(req);
-  const isAdmin = isAdminToken(req);
+  // A JWT role claim alone is not enough: this rechecks that the staff row is
+  // active and still privileged before granting an AI/admin bypass.
+  const isAdmin = await isActivePrivilegedAdmin(req);
   const entitlement = !isAdmin ? await getVipEntitlement(claims) : null;
   if (!isAdmin && !(await hasVipFeature(claims, "ai"))) {
     res.status(req.header("authorization") ? 403 : 401).json({ status: "error", message: "VIP subscription required" });
@@ -356,7 +367,7 @@ router.get("/status", async (req: Request, res: Response) => {
     return;
   }
 
-  if (!isAdminToken(req)) {
+  if (!(await isActivePrivilegedAdmin(req))) {
     res.status(403).json({ status: "error", message: "admin authorization required" });
     return;
   }
@@ -383,5 +394,12 @@ router.get("/status", async (req: Request, res: Response) => {
   logger.info({ ok: result.ok, status: result.status, ms: result.latencyMs, model: body.model }, "gemini verify");
   res.json({ ...body, verify: result });
 });
+
+/* Deliberately narrow test seam: no route exposes this reservation primitive.
+ * PostgreSQL advisory-lock contention itself is exercised only against a real
+ * PostgreSQL Preview database; pg-mem has no transaction-scoped advisory lock
+ * implementation, so its isolated regression verifies the important fallback:
+ * a lock/DB failure admits no external AI request. */
+export const __aiTest = { reserveExternalAiRequest };
 
 export default router;

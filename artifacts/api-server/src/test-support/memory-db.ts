@@ -267,6 +267,12 @@ export async function createMemoryDatabase(): Promise<{
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       decided_at timestamp
     );
+    /* Mirrors production migration 0012 for same-reference concurrency
+       regressions. pg-mem supports the exact case-insensitive expression used
+       by the real PostgreSQL index. */
+    CREATE UNIQUE INDEX payment_requests_tx_normalized_uidx
+      ON payment_requests (lower(tx))
+      WHERE tx <> '';
     CREATE TABLE user_notifications (
       id text PRIMARY KEY,
       phone text NOT NULL,

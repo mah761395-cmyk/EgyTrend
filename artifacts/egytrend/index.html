@@ -1018,7 +1018,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       <button type="button" class="landing-outline" onclick="openAuthModal('register')">ابدأ مجاناً <svg class="et-icon" aria-hidden="true"><use href="#i-arrow"></use></svg></button>
     </section>
   </main>
-  <footer class="landing-footer"><span>© 2026 EgyTrend</span><span><a href="/privacy.html" target="_blank">الخصوصية</a><a href="/terms.html" target="_blank">الشروط</a></span></footer>
+  <footer class="landing-footer"><span>© 2026 EgyTrend</span><span><a href="/privacy.html" target="_blank" rel="noopener noreferrer">الخصوصية</a><a href="/terms.html" target="_blank" rel="noopener noreferrer">الشروط</a></span></footer>
 </section>
 
 <!-- ══ AUTH ══ -->
@@ -1070,9 +1070,9 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       </form>
     </div>
 
-    <div style="margin-top:13px;text-align:center;color:var(--t5);font-size:11px;">دعم: <a href="https://wa.me/201008605139" target="_blank" style="color:var(--g);text-decoration:none;">واتساب 01008605139</a></div>
+    <div style="margin-top:13px;text-align:center;color:var(--t5);font-size:11px;">دعم المنصة: <span style="color:var(--t4);">غير متاح حالياً</span></div>
     <div style="margin-top:6px;text-align:center;color:var(--t5);font-size:10px;">
-      <a href="/privacy.html" target="_blank" style="color:var(--t5);text-decoration:none;">سياسة الخصوصية</a> · <a href="/terms.html" target="_blank" style="color:var(--t5);text-decoration:none;">الشروط والأحكام</a>
+      <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style="color:var(--t5);text-decoration:none;">سياسة الخصوصية</a> · <a href="/terms.html" target="_blank" rel="noopener noreferrer" style="color:var(--t5);text-decoration:none;">الشروط والأحكام</a>
     </div>
   </div>
 </div>
@@ -1204,12 +1204,12 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
         <div><div style="color:var(--bl);font-size:20px;font-weight:900;font-family:var(--mono);" id="st-src">0</div><div style="color:var(--t4);font-size:10px;">مصادر</div></div>
       </div>
     </div>
-    <a href="https://wa.me/201008605139?text=مرحباً، أحتاج مساعدة في EgyTrend" target="_blank" style="display:flex;align-items:center;gap:10px;margin-top:12px;background:rgba(37,211,102,.08);border:1px solid rgba(37,211,102,.18);border-radius:14px;padding:13px 15px;text-decoration:none;">
-      <span style="font-size:22px;color:#25d366;display:grid;place-items:center;"><svg class="et-icon"><use href="#i-megaphone"></use></svg></span>
-      <div><div style="color:#25d366;font-weight:800;font-size:13px;">الدعم الفني</div><div style="color:var(--t4);font-size:11px;">واتساب · 01008605139 · ردّ خلال دقائق</div></div>
-    </a>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:12px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.18);border-radius:14px;padding:13px 15px;">
+      <span style="font-size:22px;color:var(--t4);display:grid;place-items:center;"><svg class="et-icon"><use href="#i-megaphone"></use></svg></span>
+      <div><div style="color:var(--t3);font-weight:800;font-size:13px;">الدعم الفني</div><div style="color:var(--t4);font-size:11px;">قناة الدعم غير متاحة حالياً</div></div>
+    </div>
     <div style="margin-top:14px;text-align:center;color:var(--t5);font-size:10px;">
-      <a href="/privacy.html" target="_blank" style="color:var(--t5);text-decoration:none;">سياسة الخصوصية</a> · <a href="/terms.html" target="_blank" style="color:var(--t5);text-decoration:none;">الشروط والأحكام</a>
+      <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style="color:var(--t5);text-decoration:none;">سياسة الخصوصية</a> · <a href="/terms.html" target="_blank" rel="noopener noreferrer" style="color:var(--t5);text-decoration:none;">الشروط والأحكام</a>
     </div>
     <div style="margin-top:4px;text-align:center;color:var(--t5);font-size:10px;">EgyTrend v6.0 © 2026 · "الخلاصة التي تحرك السوق"</div>
   </div>
@@ -1335,7 +1335,6 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
 
 /* AI is proxied via /api/ai/chat (no client-side key). The backend
  * picks the canonical model. Frontend just sends system + messages. */
-const WA = "201008605139";
 
 async function callAI({system, messages, max_tokens=2000, context=null, memory=false}){
   const ctrl = new AbortController();
@@ -3407,7 +3406,7 @@ function renderVIP(){
       <div style="background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(16,185,129,.05));border:1px solid rgba(245,158,11,.2);border-radius:16px;padding:16px;margin-bottom:14px;">
         <div style="color:var(--au);font-weight:800;font-size:13px;margin-bottom:10px;text-align:center;">✨ ما الذي ستحصل عليه؟</div>
         <div style="display:flex;flex-direction:column;gap:6px;">
-          ${["🤖 محادثة تعليمية مع AI على بيانات المنصة المتاحة","📡 ملاحظات سوق وصفية على أسهم EGX","🔍 Stock Screener احترافي بفلاتر متقدمة","💼 ملخص وصفي لمحفظتك","🌅 موجزات صباح وإغلاق وصفية","🔔 تنبيهات أسبقية لأهم الأحداث الاقتصادية","💡 بطاقات متابعة وصفية من بيانات السوق المتاحة","💬 دعم واتساب مباشر"].map(f=>`
+          ${["🤖 محادثة تعليمية مع AI على بيانات المنصة المتاحة","📡 ملاحظات سوق وصفية على أسهم EGX","🔍 Stock Screener احترافي بفلاتر متقدمة","💼 ملخص وصفي لمحفظتك","🌅 موجزات صباح وإغلاق وصفية","🔔 تنبيهات أسبقية لأهم الأحداث الاقتصادية","💡 بطاقات متابعة وصفية من بيانات السوق المتاحة","💬 قناة دعم معتمدة عند توفرها"].map(f=>`
           <div style="display:flex;align-items:flex-start;gap:8px;"><span style="flex-shrink:0;">${f.slice(0,2)}</span><span style="color:var(--t2);font-size:11.5px;">${f.slice(3)}</span></div>`).join("")}
         </div>
       </div>

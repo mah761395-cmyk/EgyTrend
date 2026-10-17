@@ -1,6 +1,6 @@
 # Database migrations
 
-`0001_market_daily_ohlc` through `0011_user_onboarding` are **pending, unexecuted** migrations.
+`0001_market_daily_ohlc` through `0012_payment_tx_idempotency` are **pending, unexecuted** migrations.
 
 They are intentionally SQL files rather than a `drizzle-kit push`: no verified isolated database connection exists in this workspace, and an agent must never change a shared or production database without an approved backup and deployment window.
 
@@ -15,14 +15,21 @@ They are intentionally SQL files rather than a `drizzle-kit push`: no verified i
 - `0009_free_vip_trial` adds the configurable free-VIP trial claim/subscription and its durable message state. It does not enable a trial by itself; the feature remains disabled until an authorized admin enables it.
 - `0010_referral_program` adds configurable referral snapshots, fraud-review signals, reward ledger rows, and automatic referral-coupon metadata. Its rollback drops referral history, so it must only be used after a verified backup and an explicit operator decision to discard that history.
 - `0011_user_onboarding` adds an account-owned tour/checklist record. It contains only product-navigation progress; it never changes a subscription, payment, entitlement, or portfolio/alert record. Its rollback only removes that onboarding state.
+- `0012_payment_tx_idempotency` adds a normalized, case-insensitive unique index for payment transfer references so concurrent application instances cannot create duplicate payment requests. It refuses to guess which pre-existing duplicate is valid; an operator must review those records before running it. Its rollback drops only the index and does not remove payment evidence.
 
 ## Safe execution sequence
 
 1. Point `DATABASE_URL` at a verified **Preview/Test** database only.
 2. Run and verify `node scripts/backup-db.mjs`; retain the backup outside the deployment artifact.
-3. Review the appropriate `up` SQL and execute it through the approved migration runner.
+3. Review **both** paired SQL files. For Preview/Test only, use the guarded runner with an absolute verified backup path, for example:
+   ```bash
+   DATABASE_URL=... node scripts/run-db-migration.mjs \
+     --environment preview --migration 0001_market_daily_ohlc \
+     --direction up --backup /secure/path/egytrend.sql.gz --yes-apply
+   ```
+   The runner refuses `production`, requires a verified `pg_dump` archive, a matching `down` file, and an explicit confirmation. It never prints `DATABASE_URL`.
 4. Run the synthetic lifecycle/history tests and a Preview smoke test.
 5. Reconcile any legacy VIP rows with no expiry before promoting entitlement-only authorization.
-6. Promote only after explicit approval for the production backup, migration, and deployment window.
+6. Promote only after explicit approval for the production backup, migration, and deployment window. The built-in runner intentionally does **not** operate on production; use the approved operator process and record the backup/rollback evidence.
 
 Review every paired `down` script before use. Most preserve a rollback archive or mark added records archived; `0010_referral_program.down.sql` is explicitly destructive to referral history and therefore requires a verified backup and an operator decision. Revert application code first; restore only after investigation.

@@ -20,7 +20,14 @@ import { logger } from "./logger";
 const moduleDir = typeof __dirname === "string"
   ? __dirname
   : path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.resolve(moduleDir, "..", "data");
+/* Bundles live in `<api>/dist` while source-mode tests live in
+ * `<api>/src/lib`; select the first real sibling data directory rather than
+ * watching a non-existent `src/data` path and emitting misleading warnings. */
+const dataDirCandidates = [
+  path.resolve(moduleDir, "..", "data"),
+  path.resolve(moduleDir, "..", "..", "data"),
+];
+const DATA_DIR = dataDirCandidates.find((candidate) => fsSync.existsSync(candidate)) || dataDirCandidates[0]!;
 import embeddedSources from "../../data/sources.json" with { type: "json" };
 import embeddedArticles from "../../data/articles.json" with { type: "json" };
 
@@ -121,6 +128,10 @@ let articlesCache: CustomArticle[] = readJSONSync(
 /* Watch for external edits to the JSON files (e.g. you edit sources.json
  * by hand) so the cache stays fresh without restart. */
 function startWatcher(file: string, onChange: () => void): void {
+  /* Embedded JSON is the deliberate serverless fallback. When no on-disk
+   * copy exists there is nothing to watch, and that is not an operational
+   * warning. */
+  if (!fsSync.existsSync(file)) return;
   try {
     fsSync.watch(file, { persistent: false }, () => {
       // debounce so we coalesce burst events

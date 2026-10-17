@@ -3,7 +3,7 @@ import { logger } from "../lib/logger";
 import {
   ADMIN_SESSION_COOKIE,
   currentUser,
-  readSessionCookie,
+  currentActiveAdmin,
   sessionCookieOptions,
 } from "../lib/userAuth";
 import jwt from "jsonwebtoken";
@@ -105,7 +105,6 @@ const router: IRouter = Router();
 /* ─── Secrets ─── */
 const JWT_SECRET = process.env["SESSION_SECRET"];
 const ADMIN_PASSWORD = process.env["ADMIN_PASSWORD"];
-const LEGACY_TOKEN = process.env["ADMIN_TOKEN"] || "";
 
 /* ─── Brute-force protection on /login ─── */
 const loginAttempts = new Map<string, { count: number; until: number }>();
@@ -180,14 +179,12 @@ function stripHtml(s: string): string {
 }
 
 /* ─── JWT helpers ─── */
-interface JWTPayload { sub: number; name: string; role: string; email: string; }
+interface JWTPayload { sub: number; name: string; role: string; email: string; authSource?: "break_glass"; }
 
-function signToken(payload: JWTPayload): string {
+function signToken(payload: JWTPayload, expiresIn: "24h" | "15m" = "24h"): string {
   if (!JWT_SECRET) throw new Error("SESSION_SECRET is not configured");
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "24h" });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn });
 }
-
-const STAFF_ROLES = new Set(["super_admin", "admin", "editor", "analyst", "support", "marketing"]);
 
 /* Rate limit for authenticated admin WRITE endpoints: 30 mutations / 5 min per IP+identity. */
 const WRITE_RL_MAX = 30;
@@ -201,20 +198,6 @@ function requireWriteRate(req: AuthRequest, res: Response, next: NextFunction) {
     return;
   }
   next();
-}
-
-function verifyToken(token: string): JWTPayload | null {
-  if (!JWT_SECRET) return null;
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    if (typeof decoded === "string") return null;
-    // Reject non-staff tokens (e.g. app-user JWTs with role "user") so a
-    // regular user token can never pass requireAuth on admin endpoints.
-    const role = (decoded as { role?: unknown }).role;
-    if (typeof role !== "string" || !STAFF_ROLES.has(role)) return null;
-    return decoded as unknown as JWTPayload;
-  }
-  catch { return null; }
 }
 
 /* ─── Password helpers ───
@@ -247,35 +230,27 @@ function checkPassword(pw: string, encoded: string): boolean {
 }
 
 /* ─── Auth middleware ─── */
-interface AuthRequest extends Request { actor?: JWTPayload; isLegacyAdmin?: boolean; }
+interface AuthRequest extends Request { actor?: JWTPayload; }
 
-function extractToken(req: Request): string {
-  return readSessionCookie(req, ADMIN_SESSION_COOKIE)
-    || (req.header("x-admin-token") || "").trim()
-    || (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim();
-}
-
-function requireAuth(req: AuthRequest, res: Response, next: NextFunction): void {
-  const token = extractToken(req);
-  if (!token) { res.status(401).json({ status: "error", message: "unauthorized" }); return; }
-
-  // Legacy static token (backward compat for mobile admin flow)
-  if (LEGACY_TOKEN && token === LEGACY_TOKEN) {
-    req.isLegacyAdmin = true;
-    req.actor = { sub: 0, name: "Super Admin", role: "super_admin", email: "admin@egytrend" };
-    next(); return;
+/**
+ * Role/status are reloaded from the employee table on every protected request.
+ * This revokes a disabled/archived employee immediately and prevents an old
+ * JWT role claim from retaining privileges. The only zero-ID identity is the
+ * explicitly signed break-glass password session; raw ADMIN_TOKEN/header
+ * credentials are intentionally not supported.
+ */
+async function requireAuth(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  const actor = await currentActiveAdmin(req);
+  if (!actor) {
+    res.status(401).json({ status: "error", message: "invalid, expired, or inactive admin session" });
+    return;
   }
-
-  // JWT token
-  const payload = verifyToken(token);
-  if (!payload) { res.status(401).json({ status: "error", message: "invalid or expired token" }); return; }
-  req.actor = payload;
+  req.actor = actor;
   next();
 }
 
 function requireRole(...roles: string[]) {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
-    if (req.isLegacyAdmin) { next(); return; }
     if (!req.actor || !roles.includes(req.actor.role)) {
       res.status(403).json({ status: "error", message: "insufficient permissions" });
       return;
@@ -289,7 +264,7 @@ function requireRole(...roles: string[]) {
  * server-checked permission in their current staff row, not in a browser/JWT. */
 const PRICING_MANAGE_PERMISSION = "pricing.manage";
 async function requirePricingAccess(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  if (req.isLegacyAdmin) { next(); return; }
+  if (req.actor?.authSource === "break_glass") { next(); return; }
   if (!req.actor || !Number.isInteger(req.actor.sub) || req.actor.sub <= 0) {
     res.status(403).json({ status: "error", message: "insufficient permissions" });
     return;
@@ -318,7 +293,7 @@ async function requirePricingAccess(req: AuthRequest, res: Response, next: NextF
  * a durable actor ID for its audit entry. */
 interface BroadcastAuthRequest extends AuthRequest { broadcastActorId?: number; }
 async function requireBroadcastAccess(req: BroadcastAuthRequest, res: Response, next: NextFunction): Promise<void> {
-  if (req.isLegacyAdmin || !req.actor || !Number.isInteger(req.actor.sub) || req.actor.sub <= 0) {
+  if (!req.actor || !Number.isInteger(req.actor.sub) || req.actor.sub <= 0) {
     res.status(403).json({ status: "error", message: "يلزم حساب مدير فعّال لإدارة الرسائل العامة" });
     return;
   }
@@ -386,6 +361,7 @@ const ALLOWED_LANG = new Set(["ar", "en"]);
 const ALLOWED_CAT = new Set(["egypt", "global", "stocks", "crypto"]);
 const ID_RX = /^[a-z0-9_-]{2,40}$/i;
 const EMPLOYEE_ROLES = new Set(["super_admin", "admin", "editor", "analyst", "support", "marketing"]);
+const EMPLOYEE_STATUSES = new Set(["active", "disabled", "archived"]);
 
 function validateSource(input: unknown): SourceMeta | { error: string } {
   if (!input || typeof input !== "object") return { error: "body required" };
@@ -445,7 +421,9 @@ router.get("/bootstrap", (_req, res: Response) => {
   });
 });
 
-/* Legacy password login → returns static token */
+/* Employee login is the normal path. The password-only route below is a
+ * short-lived emergency bootstrap session and is disabled once a staff
+ * super_admin exists. */
 router.post("/login", async (req: AuthRequest, res: Response) => {
   const ip = req.ip || "unknown";
 
@@ -504,14 +482,31 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
     res.status(401).json({ status: "error", message: "invalid password" });
     return;
   }
+  try {
+    const [staffSuperAdmin] = await db.select({ id: employeesTable.id })
+      .from(employeesTable)
+      .where(and(eq(employeesTable.role, "super_admin"), eq(employeesTable.status, "active")))
+      .limit(1);
+    if (staffSuperAdmin) {
+      /* Do not leave a second long-lived authority path after bootstrap. */
+      recordLoginFailure(ip);
+      res.status(403).json({ status: "error", message: "use an active employee account" });
+      return;
+    }
+  } catch (error) {
+    logger.error({ err: error }, "break-glass availability check failed");
+    res.status(503).json({ status: "error", message: "admin authentication is temporarily unavailable" });
+    return;
+  }
   clearLoginFailures(ip);
-  const token = LEGACY_TOKEN || signToken({
+  const token = signToken({
     sub: 0,
     name: "Super Admin",
     role: "super_admin",
     email: "admin@egytrend",
-  });
-  res.cookie(ADMIN_SESSION_COOKIE, token, sessionCookieOptions(24 * 60 * 60 * 1000));
+    authSource: "break_glass",
+  }, "15m");
+  res.cookie(ADMIN_SESSION_COOKIE, token, sessionCookieOptions(15 * 60 * 1000));
   res.json({ status: "ok", employee: { id: 0, name: "Super Admin", role: "super_admin", email: "admin@egytrend" } });
 });
 
@@ -722,40 +717,98 @@ router.post("/employees", requireAuth, requireWriteRate, requireRole("super_admi
 router.put("/employees/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
   const { name, role, status, permissions, password } = req.body || {};
-  if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
-  if (role && !EMPLOYEE_ROLES.has(role)) {
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
+  if (role !== undefined && !EMPLOYEE_ROLES.has(String(role))) {
     res.status(400).json({ status: "error", message: "invalid role" });
     return;
   }
-  if (["super_admin", "admin"].includes(role) && req.actor?.role !== "super_admin") {
-    res.status(403).json({ status: "error", message: "only super_admin can set admin roles" });
+  if (status !== undefined && !EMPLOYEE_STATUSES.has(String(status))) {
+    res.status(400).json({ status: "error", message: "invalid employee status" });
     return;
   }
-  if (Array.isArray(permissions) && permissions.includes(PRICING_MANAGE_PERMISSION) && req.actor?.role !== "super_admin") {
-    res.status(403).json({ status: "error", message: "only super_admin can grant pricing permission" });
-    return;
+  try {
+    const [target] = await db.select({ id: employeesTable.id, role: employeesTable.role, status: employeesTable.status })
+      .from(employeesTable).where(eq(employeesTable.id, id)).limit(1);
+    if (!target) { res.status(404).json({ status: "error", message: "employee not found" }); return; }
+
+    /* An ordinary admin may manage operational staff but cannot edit a peer or
+     * a super-admin account (including its password/status), preventing a
+     * lateral account takeover or lock-out. */
+    if (["super_admin", "admin"].includes(target.role) && req.actor?.role !== "super_admin") {
+      res.status(403).json({ status: "error", message: "only super_admin can modify admin accounts" });
+      return;
+    }
+    if (["super_admin", "admin"].includes(String(role)) && req.actor?.role !== "super_admin") {
+      res.status(403).json({ status: "error", message: "only super_admin can set admin roles" });
+      return;
+    }
+    if (id === req.actor?.sub && status !== undefined && String(status) !== "active") {
+      res.status(400).json({ status: "error", message: "cannot disable or archive yourself" });
+      return;
+    }
+    /* DELETE is archival, but role/status edits can also remove the final
+     * recovery-capable employee. Apply the same invariant before any demotion,
+     * disable, or archive of a currently active super_admin. */
+    const removesActiveSuperAdmin = target.role === "super_admin" && target.status === "active"
+      && ((role !== undefined && String(role) !== "super_admin") || (status !== undefined && String(status) !== "active"));
+    if (removesActiveSuperAdmin) {
+      const activeSuperAdmins = await db.select({ count: sql<number>`count(*)` }).from(employeesTable)
+        .where(and(eq(employeesTable.role, "super_admin"), eq(employeesTable.status, "active")));
+      if (Number(activeSuperAdmins[0]?.count || 0) <= 1) {
+        res.status(409).json({ status: "error", message: "cannot remove the last active super_admin" });
+        return;
+      }
+    }
+    if (Array.isArray(permissions) && permissions.includes(PRICING_MANAGE_PERMISSION) && req.actor?.role !== "super_admin") {
+      res.status(403).json({ status: "error", message: "only super_admin can grant pricing permission" });
+      return;
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (name !== undefined) {
+      const normalizedName = String(name).trim();
+      if (!normalizedName) { res.status(400).json({ status: "error", message: "name cannot be empty" }); return; }
+      updates["name"] = normalizedName.slice(0, 100);
+    }
+    if (role !== undefined) updates["role"] = String(role);
+    if (status !== undefined) updates["status"] = String(status);
+    if (permissions !== undefined) updates["permissions"] = Array.isArray(permissions) ? permissions : [];
+    if (password !== undefined) {
+      if (String(password).length < 8) { res.status(400).json({ status: "error", message: "password min 8 chars" }); return; }
+      updates["passwordHash"] = hashPassword(String(password));
+    }
+    await db.update(employeesTable).set(updates as any).where(eq(employeesTable.id, id));
+    await auditLog("update_employee", req.actor, `staff:${id}`, { role: role ?? null, status: status ?? null, passwordChanged: password !== undefined }, req.ip);
+    res.json({ status: "ok" });
+  } catch (error) {
+    logger.error({ err: error }, "employee update error");
+    res.status(500).json({ status: "error", message: "server error" });
   }
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
-  if (name) updates["name"] = String(name).slice(0, 100);
-  if (role) updates["role"] = String(role);
-  if (status) updates["status"] = String(status);
-  if (permissions) updates["permissions"] = permissions;
-  if (password) {
-    if (String(password).length < 8) { res.status(400).json({ status: "error", message: "password min 8 chars" }); return; }
-    updates["passwordHash"] = hashPassword(String(password));
-  }
-  await db.update(employeesTable).set(updates as any).where(eq(employeesTable.id, id));
-  await auditLog("update_employee", req.actor, `staff:${id}`, { role, status, passwordChanged: Boolean(password) }, req.ip);
-  res.json({ status: "ok" });
 });
 
 router.delete("/employees/:id", requireAuth, requireWriteRate, requireRole("super_admin"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
-  if (id === req.actor?.sub) { res.status(400).json({ status: "error", message: "cannot delete yourself" }); return; }
-  await db.delete(employeesTable).where(eq(employeesTable.id, id));
-  await auditLog("delete_employee", req.actor, String(id), {}, req.ip);
-  res.json({ status: "ok" });
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
+  if (id === req.actor?.sub) { res.status(400).json({ status: "error", message: "cannot archive yourself" }); return; }
+  try {
+    const [target] = await db.select({ id: employeesTable.id, role: employeesTable.role, status: employeesTable.status })
+      .from(employeesTable).where(eq(employeesTable.id, id)).limit(1);
+    if (!target || target.status === "archived") { res.status(404).json({ status: "error", message: "employee not found" }); return; }
+    if (target.role === "super_admin" && target.status === "active") {
+      const activeSuperAdmins = await db.select({ count: sql<number>`count(*)` }).from(employeesTable)
+        .where(and(eq(employeesTable.role, "super_admin"), eq(employeesTable.status, "active")));
+      if (Number(activeSuperAdmins[0]?.count || 0) <= 1) {
+        res.status(409).json({ status: "error", message: "cannot archive the last active super_admin" });
+        return;
+      }
+    }
+    await db.update(employeesTable).set({ status: "archived", updatedAt: new Date() }).where(eq(employeesTable.id, id));
+    await auditLog("archive_employee", req.actor, `staff:${id}`, { previousStatus: target.status }, req.ip);
+    res.json({ status: "ok", archived: true });
+  } catch (error) {
+    logger.error({ err: error }, "employee archive error");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
 });
 
 /* ─── Subscription Plans + server-evaluated pricing ─── */
@@ -1217,10 +1270,19 @@ router.put("/coupons/:id", requireAuth, requireWriteRate, requireRole("super_adm
 
 router.delete("/coupons/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
-  await db.delete(couponsTable).where(eq(couponsTable.id, id));
-  await auditLog("delete_coupon", req.actor, String(id), {}, req.ip);
-  res.json({ status: "ok" });
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
+  try {
+    /* Coupon history can be referenced by payments/referrals, so DELETE means
+     * archive: disable future use without removing financial evidence. */
+    const archived = await db.update(couponsTable).set({ isActive: false }).where(eq(couponsTable.id, id))
+      .returning({ id: couponsTable.id });
+    if (!archived.length) { res.status(404).json({ status: "error", message: "coupon not found" }); return; }
+    await auditLog("archive_coupon", req.actor, String(id), {}, req.ip);
+    res.json({ status: "ok", archived: true });
+  } catch (error) {
+    logger.error({ err: error }, "coupon archive error");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
 });
 
 /* Public: validate coupon code */

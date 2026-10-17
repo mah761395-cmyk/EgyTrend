@@ -582,25 +582,42 @@ router.post("/reset-password", async (req: Request, res: Response) => {
     return;
   }
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-  const [row] = await db.select().from(passwordResetsTable)
-    .where(and(eq(passwordResetsTable.tokenHash, tokenHash), isNull(passwordResetsTable.usedAt), gt(passwordResetsTable.expiresAt, new Date())))
-    .limit(1);
-  if (!row) {
-    res.status(400).json({ status: "error", message: "الرابط منتهي أو مستخدم من قبل — اطلب رابطًا جديدًا" });
-    return;
+  const now = new Date();
+  try {
+    /* Claim the single-use token and write the password in one transaction.
+     * The row lock plus `used_at IS NULL` predicate makes concurrent clicks
+     * fail closed instead of allowing two resets to race each other. */
+    const result = await db.transaction(async (tx) => {
+      const [row] = await tx.select().from(passwordResetsTable)
+        .where(and(eq(passwordResetsTable.tokenHash, tokenHash), isNull(passwordResetsTable.usedAt), gt(passwordResetsTable.expiresAt, now)))
+        .for("update").limit(1);
+      if (!row) return "invalid" as const;
+      const [user] = await tx.select({ id: appUsersTable.id }).from(appUsersTable)
+        .where(and(eq(appUsersTable.id, row.userId), eq(appUsersTable.status, "active"))).limit(1);
+      if (!user) return "unavailable" as const;
+      const claimed = await tx.update(passwordResetsTable).set({ usedAt: now })
+        .where(and(eq(passwordResetsTable.id, row.id), isNull(passwordResetsTable.usedAt)))
+        .returning({ id: passwordResetsTable.id });
+      if (!claimed.length) return "invalid" as const;
+      await tx.update(appUsersTable).set({
+        passwordHash: hashUserPassword(password),
+        updatedAt: now,
+      }).where(eq(appUsersTable.id, user.id));
+      return "updated" as const;
+    });
+    if (result === "invalid") {
+      res.status(400).json({ status: "error", message: "الرابط منتهي أو مستخدم من قبل — اطلب رابطًا جديدًا" });
+      return;
+    }
+    if (result === "unavailable") {
+      res.status(400).json({ status: "error", message: "الحساب غير موجود أو موقوف" });
+      return;
+    }
+    res.json({ status: "ok", message: "تم تحديث كلمة المرور — يمكنك تسجيل الدخول الآن" });
+  } catch (error) {
+    logger.error({ err: error }, "password reset transaction failed");
+    res.status(503).json({ status: "error", message: "تعذر تحديث كلمة المرور حاليًا" });
   }
-  const [user] = await db.select().from(appUsersTable)
-    .where(and(eq(appUsersTable.id, row.userId), eq(appUsersTable.status, "active"))).limit(1);
-  if (!user) {
-    res.status(400).json({ status: "error", message: "الحساب غير موجود أو موقوف" });
-    return;
-  }
-  await db.update(appUsersTable).set({
-    passwordHash: hashUserPassword(password),
-    updatedAt: new Date(),
-  }).where(eq(appUsersTable.id, user.id));
-  await db.update(passwordResetsTable).set({ usedAt: new Date() }).where(eq(passwordResetsTable.id, row.id));
-  res.json({ status: "ok", message: "تم تحديث كلمة المرور — يمكنك تسجيل الدخول الآن" });
 });
 
 /* GET /api/user/reset-status?token=...
@@ -638,14 +655,28 @@ router.put("/email", async (req: Request, res: Response) => {
     res.status(409).json({ status: "error", message: "هذا البريد مستخدم في حساب آخر" });
     return;
   }
-  await db.update(appUsersTable).set({
-    email,
-    /* Changing the address invalidates trial eligibility until the new owner
-     * proves control. The old verified timestamp must never follow it. */
-    emailVerifiedAt: null,
-    updatedAt: new Date(),
-  }).where(eq(appUsersTable.id, claims.sub));
-  res.json({ status: "ok", message: "تم حفظ البريد — أرسل رابط التأكيد قبل بدء التجربة المجانية." });
+  try {
+    const updated = await db.update(appUsersTable).set({
+      email,
+      /* Changing the address invalidates trial eligibility until the new owner
+       * proves control. The old verified timestamp must never follow it. */
+      emailVerifiedAt: null,
+      updatedAt: new Date(),
+    }).where(and(eq(appUsersTable.id, claims.sub), eq(appUsersTable.status, "active")))
+      .returning({ id: appUsersTable.id });
+    if (!updated.length) {
+      res.status(401).json({ status: "error", message: "الحساب غير متاح" });
+      return;
+    }
+    res.json({ status: "ok", message: "تم حفظ البريد — أرسل رابط التأكيد قبل بدء التجربة المجانية." });
+  } catch (error) {
+    if (/unique/i.test(String(error))) {
+      res.status(409).json({ status: "error", message: "هذا البريد مستخدم في حساب آخر" });
+      return;
+    }
+    logger.error({ err: error }, "account email update error");
+    res.status(503).json({ status: "error", message: "تعذر حفظ البريد حاليًا" });
+  }
 });
 
 /* Explicit account-level marketing consent. Supplying an email for password

@@ -3,9 +3,8 @@ import { db } from "@workspace/db";
 import { opportunities } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 import crypto from "crypto";
-import jwt from "jsonwebtoken";
 import { logger } from "../lib/logger";
-import { ADMIN_SESSION_COOKIE, currentUser, hasVipFeature, readSessionCookie } from "../lib/userAuth";
+import { currentUser, currentActiveAdmin, hasVipFeature } from "../lib/userAuth";
 import { buildLocalOpportunities, type OppCandidate } from "../lib/opp-engine";
 import { getMarketsSnapshot, getStocksSnapshot, type StockQuote } from "./markets";
 import { getNewsSnapshot } from "./news";
@@ -13,26 +12,18 @@ type StockT = OppCandidate extends never ? never : Parameters<typeof buildLocalO
 
 const router = Router();
 
-const JWT_SECRET = process.env["SESSION_SECRET"];
-const LEGACY_TOKEN = process.env["ADMIN_TOKEN"] || "";
-
-function isAdmin(req: Request): boolean {
-  const token = readSessionCookie(req, ADMIN_SESSION_COOKIE)
-    || (req.header("x-admin-token") || "").trim()
-    || (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return false;
-  if (LEGACY_TOKEN && token === LEGACY_TOKEN) return true;
-  if (!JWT_SECRET) return false;
-  try {
-    const payload = jwt.verify(token, JWT_SECRET) as { role?: string };
-    return payload.role === "admin" || payload.role === "super_admin";
-  } catch {
-    return false;
-  }
+/** Opportunity mutations require an active current administrator; a stale
+ * JWT, static header token, or disabled employee can never publish content. */
+async function isAdmin(req: Request): Promise<boolean> {
+  const admin = await currentActiveAdmin(req);
+  return admin?.role === "admin" || admin?.role === "super_admin";
 }
 
-function requireAuth(req: any, res: any, next: any) {
-  if (!isAdmin(req)) return res.status(401).json({ status: "error", message: "unauthorized" });
+async function requireAuth(req: Request, res: any, next: any): Promise<void> {
+  if (!(await isAdmin(req))) {
+    res.status(401).json({ status: "error", message: "unauthorized" });
+    return;
+  }
   next();
 }
 
@@ -156,7 +147,7 @@ async function buildLiveOpportunityRows(): Promise<Array<Record<string, unknown>
 
 /* ─── GET /api/opportunities ─────────────────────────────────── */
 router.get("/opportunities", async (req, res) => {
-  const admin = isAdmin(req);
+  const admin = await isAdmin(req);
   let vip = false;
   try { vip = await hasVipFeature(currentUser(req), "opportunities"); } catch { /* treat as non-vip */ }
   const mask = (o: any) => (admin || vip || !o.vipOnly ? o : { ...o, details: null });

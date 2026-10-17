@@ -7,7 +7,9 @@ import { eq } from "drizzle-orm";
 import {
   appSettingsTable,
   appUsersTable,
+  couponsTable,
   employeesTable,
+  passwordResetsTable,
   paymentRequestsTable,
   portfolioPositionsTable,
   userPriceAlertsTable,
@@ -966,4 +968,251 @@ test("admin lifecycle dry run is non-mutating and exposes only simulated actions
   assert.ok(Array.isArray(result?.previews));
   const after = await memory.db.select({ count: subscriptionRemindersSentTable.id }).from(subscriptionRemindersSentTable);
   assert.equal(after.length, before.length, "dry run must not write reminder rows");
+});
+
+
+test("admin authorization ignores static headers, revokes disabled staff, and archives records", async () => {
+  const staticHeader = await api("/api/admin/employees", {}, {
+    headers: { "x-admin-token": "not-an-admin-session" },
+  });
+  assert.equal(staticHeader.response.status, 401, "a removed static header must not authorize any admin route");
+
+  const [revocable] = await memory.db.insert(employeesTable).values({
+    name: "Revocable Synthetic Admin",
+    email: "revocable.synthetic@example.test",
+    role: "admin",
+    status: "active",
+    passwordHash: employeePasswordHash("RevocableAdminPass1!"),
+    permissions: [],
+  }).returning();
+  const revokedJar: CookieJar = {};
+  const revokedLogin = await api("/api/admin/login", revokedJar, {
+    method: "POST",
+    body: JSON.stringify({ email: revocable.email, password: "RevocableAdminPass1!" }),
+  });
+  assert.equal(revokedLogin.response.status, 200);
+  assert.equal((await api("/api/admin/session", revokedJar)).response.status, 200);
+  await memory.db.update(employeesTable).set({ status: "disabled", updatedAt: new Date() })
+    .where(eq(employeesTable.id, revocable.id));
+  assert.equal((await api("/api/admin/session", revokedJar)).response.status, 401,
+    "a cookie issued before disablement must be rechecked against the employee row");
+
+  const [superAdmin] = await memory.db.insert(employeesTable).values({
+    name: "Security Test Super Admin",
+    email: "security.superadmin@example.test",
+    role: "super_admin",
+    status: "active",
+    passwordHash: employeePasswordHash("SecuritySuperAdminPass1!"),
+    permissions: ["pricing.manage"],
+  }).returning();
+  const superJar: CookieJar = {};
+  const superLogin = await api("/api/admin/login", superJar, {
+    method: "POST",
+    body: JSON.stringify({ email: superAdmin.email, password: "SecuritySuperAdminPass1!" }),
+  });
+  assert.equal(superLogin.response.status, 200);
+  const staleBreakGlassJar: CookieJar = {
+    value: `et_admin_session=${jwt.sign({
+      sub: 0,
+      name: "Bootstrap",
+      role: "super_admin",
+      email: "bootstrap@example.test",
+      authSource: "break_glass",
+    }, process.env.SESSION_SECRET!, { expiresIn: "15m" })}`,
+  };
+  assert.equal((await api("/api/admin/session", staleBreakGlassJar)).response.status, 401,
+    "an emergency session is revoked as soon as an active staff super_admin exists");
+
+  const employeeCreate = await api("/api/admin/employees", superJar, {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Archive Target",
+      email: "archive.target@example.test",
+      role: "editor",
+      password: "ArchiveTargetPass1!",
+    }),
+  });
+  assert.equal(employeeCreate.response.status, 200);
+  const archivedEmployeeId = Number((employeeCreate.body?.employee as { id?: unknown } | undefined)?.id);
+  assert.ok(Number.isSafeInteger(archivedEmployeeId) && archivedEmployeeId > 0);
+  const employeeArchive = await api(`/api/admin/employees/${archivedEmployeeId}`, superJar, { method: "DELETE" });
+  assert.equal(employeeArchive.response.status, 200);
+  assert.equal(employeeArchive.body?.archived, true);
+  const [archivedEmployee] = await memory.db.select().from(employeesTable)
+    .where(eq(employeesTable.id, archivedEmployeeId));
+  assert.equal(archivedEmployee?.status, "archived", "employee DELETE must preserve the row as an archive");
+
+  const couponCreate = await api("/api/admin/coupons", superJar, {
+    method: "POST",
+    body: JSON.stringify({ code: "ARCHIVE-ONLY", discountType: "percent", discountValue: 10 }),
+  });
+  assert.equal(couponCreate.response.status, 200);
+  const couponId = Number((couponCreate.body?.coupon as { id?: unknown } | undefined)?.id);
+  assert.ok(Number.isSafeInteger(couponId) && couponId > 0);
+  const couponArchive = await api(`/api/admin/coupons/${couponId}`, superJar, { method: "DELETE" });
+  assert.equal(couponArchive.response.status, 200);
+  assert.equal(couponArchive.body?.archived, true);
+  const [archivedCoupon] = await memory.db.select().from(couponsTable).where(eq(couponsTable.id, couponId));
+  assert.equal(archivedCoupon?.isActive, false, "coupon DELETE must disable future use without deleting history");
+});
+
+test("payment routes reject a suspended account and a disabled collection method", async () => {
+  const suspendedJar: CookieJar = {};
+  const suspendedRegistration = await api("/api/user/register", suspendedJar, {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Suspended Payment User",
+      phone: "01055550011",
+      email: "suspended.payment@example.test",
+      password: "SuspendedPaymentPass1!",
+    }),
+  });
+  assert.equal(suspendedRegistration.response.status, 201);
+  const [suspended] = await memory.db.select().from(appUsersTable)
+    .where(eq(appUsersTable.phone, "01055550011"));
+  assert.ok(suspended);
+  const suspendedToken = await paymentPricingToken(suspendedJar, "synthetic-vip");
+  await memory.db.update(appUsersTable).set({ status: "banned", updatedAt: new Date() })
+    .where(eq(appUsersTable.id, suspended!.id));
+  assert.equal((await api("/api/payments/my", suspendedJar)).response.status, 401,
+    "a banned user cannot read payment history through an old session");
+  const suspendedSubmission = await api("/api/payments", suspendedJar, {
+    method: "POST",
+    body: JSON.stringify({
+      planKey: "synthetic-vip",
+      pricingToken: suspendedToken,
+      method: "vodafone",
+      tx: "suspended-payment-attempt",
+      proofImage: "data:image/png;base64,iVBORw0KGgo=",
+    }),
+  });
+  assert.equal(suspendedSubmission.response.status, 401, "a banned user cannot submit a payment through an old session");
+
+  const activeJar: CookieJar = {};
+  const activeRegistration = await api("/api/user/register", activeJar, {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Disabled Method User",
+      phone: "01055550012",
+      email: "disabled.method@example.test",
+      password: "DisabledMethodPass1!",
+    }),
+  });
+  assert.equal(activeRegistration.response.status, 201);
+  const activeToken = await paymentPricingToken(activeJar, "synthetic-vip");
+  try {
+    await memory.db.update(appSettingsTable).set({ value: "0", updatedAt: new Date() })
+      .where(eq(appSettingsTable.key, "payment_vodafone_enabled"));
+    const disabledMethod = await api("/api/payments", activeJar, {
+      method: "POST",
+      body: JSON.stringify({
+        planKey: "synthetic-vip",
+        pricingToken: activeToken,
+        method: "vodafone",
+        tx: "disabled-method-attempt",
+        proofImage: "data:image/png;base64,iVBORw0KGgo=",
+      }),
+    });
+    assert.equal(disabledMethod.response.status, 400, "a wallet disabled after rendering cannot accept a stale client form");
+  } finally {
+    await memory.db.update(appSettingsTable).set({ value: "1", updatedAt: new Date() })
+      .where(eq(appSettingsTable.key, "payment_vodafone_enabled"));
+  }
+});
+
+test("payment transaction references are idempotent across concurrent requests", async () => {
+  const paymentJar: CookieJar = {};
+  const registration = await api("/api/user/register", paymentJar, {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Payment Race User",
+      phone: "01055550014",
+      email: "payment.race@example.test",
+      password: "PaymentRacePass1!",
+    }),
+  });
+  assert.equal(registration.response.status, 201);
+  const pricingToken = await paymentPricingToken(paymentJar, "synthetic-vip");
+  const request = (tx: string) => api("/api/payments", paymentJar, {
+    method: "POST",
+    body: JSON.stringify({
+      planKey: "synthetic-vip",
+      pricingToken,
+      method: "vodafone",
+      tx,
+      proofImage: "data:image/png;base64,iVBORw0KGgo=",
+    }),
+  });
+  const [first, second] = await Promise.all([request("PAYMENT-RACE-001"), request("payment-race-001")]);
+  assert.equal([first.response.status, second.response.status].filter((status) => status === 200).length, 1);
+  assert.equal([first.response.status, second.response.status].filter((status) => status === 409).length, 1,
+    "a repeated reference must be rejected even if its case differs");
+  const stored = await memory.db.select().from(paymentRequestsTable)
+    .where(eq(paymentRequestsTable.phone, "01055550014"));
+  assert.equal(stored.length, 1, "only one request can be created for the transfer reference");
+
+  /* Exercise the DB invariant directly; endpoint pre-checks are deliberately
+   * friendly but the unique index is what protects a multi-instance race. */
+  const direct = await Promise.allSettled([
+    memory.db.insert(paymentRequestsTable).values({
+      id: "direct-tx-race-1", phone: "01055559991", name: "Direct Test", planKey: "synthetic-vip", tx: "CASE-RACE-001",
+    }),
+    memory.db.insert(paymentRequestsTable).values({
+      id: "direct-tx-race-2", phone: "01055559992", name: "Direct Test", planKey: "synthetic-vip", tx: "case-race-001",
+    }),
+  ]);
+  assert.equal(direct.filter((outcome) => outcome.status === "fulfilled").length, 1);
+  assert.equal(direct.filter((outcome) => outcome.status === "rejected").length, 1,
+    "the normalized DB unique index closes a race outside one API process");
+});
+
+test("password-reset links are single-use even when submitted concurrently", async () => {
+  const [user] = await memory.db.insert(appUsersTable).values({
+    phone: "01055550013",
+    name: "Reset Race User",
+    email: "reset.race@example.test",
+    passwordHash: "placeholder-before-reset",
+    status: "active",
+  }).returning();
+  const rawToken = "reset-race-token-for-isolated-test";
+  await memory.db.insert(passwordResetsTable).values({
+    userId: user.id,
+    tokenHash: crypto.createHash("sha256").update(rawToken).digest("hex"),
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+  });
+
+  const [first, second] = await Promise.all([
+    api("/api/user/reset-password", {}, {
+      method: "POST",
+      body: JSON.stringify({ token: rawToken, password: "ResetRaceWinnerOne1!" }),
+    }),
+    api("/api/user/reset-password", {}, {
+      method: "POST",
+      body: JSON.stringify({ token: rawToken, password: "ResetRaceWinnerTwo2!" }),
+    }),
+  ]);
+  const successes = [first, second].filter((result) => result.response.status === 200);
+  assert.equal(successes.length, 1, "only one concurrent request may claim a reset token");
+  const failures = [first, second].filter((result) => result.response.status !== 200);
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0]?.response.status, 400, "the loser receives the ordinary already-used response");
+  const [claimedToken] = await memory.db.select().from(passwordResetsTable)
+    .where(eq(passwordResetsTable.userId, user.id));
+  assert.ok(claimedToken?.usedAt, "the reset token must be durably claimed");
+
+  const loginOne = await api("/api/user/login", {}, {
+    method: "POST",
+    body: JSON.stringify({ phone: user.phone, password: "ResetRaceWinnerOne1!" }),
+  });
+  const loginTwo = await api("/api/user/login", {}, {
+    method: "POST",
+    body: JSON.stringify({ phone: user.phone, password: "ResetRaceWinnerTwo2!" }),
+  });
+  assert.equal([loginOne.response.status, loginTwo.response.status].filter((status) => status === 200).length, 1,
+    "exactly the password from the successful reset may authenticate");
+  const replay = await api("/api/user/reset-password", {}, {
+    method: "POST",
+    body: JSON.stringify({ token: rawToken, password: "ResetRaceReplay3!" }),
+  });
+  assert.equal(replay.response.status, 400, "a claimed token cannot be replayed");
 });

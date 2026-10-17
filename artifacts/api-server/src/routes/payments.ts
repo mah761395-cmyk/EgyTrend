@@ -11,10 +11,11 @@
  * the server's 300kb JSON body limit) — no filesystem, survives DB backups.
  * ═══════════════════════════════════════════════════════════════════════ */
 import { Router, type Request, type Response } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   appSettingsTable,
+  appUsersTable,
   paymentRequestsTable,
   subscriptionPlansTable,
   userNotificationsTable,
@@ -49,13 +50,40 @@ function methodKey(m: string, field: "number" | "instructions") {
   return `payment_${m}_${field}`;
 }
 
+/**
+ * A signed user JWT is only an identity hint. Payment and account-data routes
+ * reload the active account and use canonical server values, so a banned or
+ * archived account cannot submit/view requests through an old cookie.
+ */
+async function currentActivePaymentUser(req: Request) {
+  const claims = currentUser(req);
+  if (!claims || !Number.isSafeInteger(claims.sub) || claims.sub <= 0) return null;
+  const [user] = await db.select({
+    id: appUsersTable.id,
+    phone: appUsersTable.phone,
+    name: appUsersTable.name,
+    plan: appUsersTable.plan,
+    vipExpiresAt: appUsersTable.vipExpiresAt,
+  }).from(appUsersTable).where(and(eq(appUsersTable.id, claims.sub), eq(appUsersTable.status, "active"))).limit(1);
+  if (!user) return null;
+  return {
+    sub: user.id,
+    phone: user.phone,
+    name: user.name,
+    role: "user" as const,
+    plan: user.plan,
+    ...(user.vipExpiresAt ? { vipExpiresAt: user.vipExpiresAt.toISOString() } : {}),
+  };
+}
+
 async function readMethodSettings() {
   const rows = await db.select().from(appSettingsTable);
   const get = (k: string, fb = "") => rows.find((r) => r.key === k)?.value ?? fb;
-  /* A method is user-visible iff the admin enabled it (payment_<m>_enabled != "0")
-   * AND its number/instruction value is non-empty. */
+  /* Payments are fail-closed: a wallet stays hidden and unusable unless an
+   * authorized admin explicitly stores enabled = "1" in addition to a number.
+   * A legacy number by itself must never silently activate collection. */
   const methods = METHODS.filter(
-    (m) => get(methodKey(m, "number")).trim() !== "" && get(`${methodKey(m, "number").replace("_number", "")}_enabled`, "1") !== "0",
+    (m) => get(methodKey(m, "number")).trim() !== "" && get(`${methodKey(m, "number").replace("_number", "")}_enabled`, "0") === "1",
   ).map((m) => ({
     id: m,
     label: METHOD_LABELS[m] ?? m,
@@ -69,7 +97,7 @@ async function readMethodSettings() {
 router.get("/payments/config", async (req: Request, res: Response) => {
   try {
     const methods = await readMethodSettings();
-    const user = currentUser(req);
+    const user = await currentActivePaymentUser(req);
     const rawPlans = await db
       .select()
       .from(subscriptionPlansTable)
@@ -123,7 +151,7 @@ router.get("/payments/config", async (req: Request, res: Response) => {
 
 /* ── My requests: the user's own payment status (auth required) ── */
 router.get("/payments/my", async (req: Request, res: Response) => {
-  const user = currentUser(req);
+  const user = await currentActivePaymentUser(req);
   if (!user) {
     res.status(401).json({ status: "error", message: "login required" });
     return;
@@ -184,7 +212,7 @@ router.get("/payments/my", async (req: Request, res: Response) => {
 /* A small server-calculated banner model. The browser can render it but cannot
  * decide whether a member is entitled to see VIP or choose a different plan. */
 router.get("/subscriptions/banner", async (req: Request, res: Response) => {
-  const user = currentUser(req);
+  const user = await currentActivePaymentUser(req);
   if (!user) {
     res.status(401).json({ status: "error", message: "login required" });
     return;
@@ -230,7 +258,7 @@ const DATA_URL_RE = /^data:image\/(png|jpe?g|webp|gif|bmp);base64,[A-Za-z0-9+/=]
 
 /* ── Submit a payment request (auth required) ── */
 router.post("/payments", async (req: Request, res: Response) => {
-  const user = currentUser(req);
+  const user = await currentActivePaymentUser(req);
   if (!user) {
     res.status(401).json({ status: "error", message: "login required" });
     return;
@@ -277,13 +305,16 @@ router.post("/payments", async (req: Request, res: Response) => {
   /* Duplicate tx check BEFORE the rate limiter: a duplicate is a user mistake
    * (or retry), not fresh load — it must answer 409 instead of 429, and must
    * not consume one of the scarce submission slots (3 / 10 min). */
-  const tx0 = String(b.tx || "").trim().slice(0, 100);
-  if (tx0) {
+  const txKey = tx.toLowerCase();
+  if (txKey) {
     try {
       const [dup0] = await db
         .select({ id: paymentRequestsTable.id })
         .from(paymentRequestsTable)
-        .where(eq(paymentRequestsTable.tx, tx0))
+        /* The matching expression is identical to migration 0012's unique
+         * index. This gives a friendly fast-path response; the index remains
+         * the authoritative race-safe enforcement at INSERT time. */
+        .where(sql`lower(${paymentRequestsTable.tx}) = ${txKey}`)
         .limit(1);
       if (dup0) {
         res.status(409).json({ status: "error", message: "رقم العملية مستخدم من قبل — كل تحويل له رقم مختلف" });
@@ -341,12 +372,13 @@ router.post("/payments", async (req: Request, res: Response) => {
       return;
     }
 
-    /* tx uniqueness — second, authoritative check (DB unique index on
-     * (lower(tx), pay_method) turns any race into a clean 409 below). */
+    /* tx uniqueness — second, authoritative check. Migration 0012 enforces
+     * one trimmed, case-insensitive transfer reference across all methods, so
+     * a concurrent insert becomes a clean 409 below rather than a duplicate. */
     const [dup] = await db
       .select({ id: paymentRequestsTable.id })
       .from(paymentRequestsTable)
-      .where(eq(paymentRequestsTable.tx, tx))
+      .where(sql`lower(${paymentRequestsTable.tx}) = ${txKey}`)
       .limit(1);
     if (dup) {
       res.status(409).json({ status: "error", message: "رقم العملية مستخدم من قبل — كل تحويل له رقم مختلف" });
@@ -407,7 +439,7 @@ router.post("/payments", async (req: Request, res: Response) => {
     });
   } catch (e: unknown) {
     const msg = String(e);
-    if (msg.includes("payment_requests_tx_method_uidx") || msg.includes("unique")) {
+    if (msg.includes("payment_requests_tx_normalized_uidx") || msg.includes("unique")) {
       res.status(409).json({ status: "error", message: "رقم العملية مستخدم من قبل — كل تحويل له رقم مختلف" });
       return;
     }
@@ -420,7 +452,7 @@ router.post("/payments", async (req: Request, res: Response) => {
  * Server-side rows (inserted by admin decisions); the client tracks which
  * ids it has already shown (pay_notifs_seen_v1). */
 router.get("/payments/notifications", async (req: Request, res: Response) => {
-  const user = currentUser(req);
+  const user = await currentActivePaymentUser(req);
   if (!user) {
     res.status(401).json({ status: "error", message: "login required" });
     return;

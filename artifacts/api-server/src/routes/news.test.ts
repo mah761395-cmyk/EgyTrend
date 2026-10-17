@@ -34,6 +34,69 @@ test("news parser limits syndicated snippets and does not fabricate publish time
   assert.equal(item.pubDate, "");
 });
 
+test("RSS outbound guard blocks loopback, private DNS, credentials and non-public IPv6", async () => {
+  for (const address of [
+    "127.0.0.1",
+    "10.0.0.8",
+    "169.254.169.254",
+    "100.64.0.1",
+    "192.168.1.7",
+    "::1",
+    "fc00::1",
+    "fe80::1",
+    "::ffff:127.0.0.1",
+  ]) {
+    assert.equal(__newsTest.isPublicIpAddress(address), false, `${address} must not be a feed target`);
+  }
+  assert.equal(__newsTest.isPublicIpAddress("1.1.1.1"), true);
+  assert.equal(__newsTest.isPublicIpAddress("2606:4700:4700::1111"), true);
+
+  await assert.rejects(() => __newsTest.assertSafeFeedUrl("http://127.0.0.1:8080/feed"), /rss_target_not_allowed/);
+  await assert.rejects(() => __newsTest.assertSafeFeedUrl("https://user:pass@example.test/feed"), /rss_target_not_allowed/);
+  await assert.rejects(
+    () => __newsTest.assertSafeFeedUrl("https://feed.example.test/rss", async () => [{ address: "10.1.2.3", family: 4 }]),
+    /rss_target_not_allowed/,
+  );
+  const publicUrl = await __newsTest.assertSafeFeedUrl(
+    "https://feed.example.test/rss",
+    async () => [{ address: "93.184.216.34", family: 4 }],
+  );
+  assert.equal(publicUrl.hostname, "feed.example.test");
+});
+
+test("RSS redirects are manually revalidated before a second request", async () => {
+  const resolver = async () => [{ address: "93.184.216.34", family: 4 as const }];
+  const unsafeVisits: string[] = [];
+  await assert.rejects(
+    () => __newsTest.fetchSafeFeed(
+      "https://feed.example.test/rss",
+      {},
+      resolver,
+      async (url) => {
+        unsafeVisits.push(url);
+        return new Response("", { status: 302, headers: { location: "http://127.0.0.1/admin" } });
+      },
+    ),
+    /rss_target_not_allowed/,
+  );
+  assert.deepEqual(unsafeVisits, ["https://feed.example.test/rss"], "the internal redirect must never be fetched");
+
+  const safeVisits: string[] = [];
+  const response = await __newsTest.fetchSafeFeed(
+    "https://feed.example.test/rss",
+    {},
+    resolver,
+    async (url) => {
+      safeVisits.push(url);
+      return safeVisits.length === 1
+        ? new Response("", { status: 302, headers: { location: "/next.xml" } })
+        : new Response("<rss/>", { status: 200, headers: { "content-type": "application/rss+xml" } });
+    },
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(safeVisits, ["https://feed.example.test/rss", "https://feed.example.test/next.xml"]);
+});
+
 test("news deduplication and server ranking keep one copy and prioritize urgent headlines", () => {
   const feeds = [
     {
