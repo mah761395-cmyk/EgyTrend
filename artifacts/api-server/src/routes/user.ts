@@ -24,6 +24,7 @@ import {
   startFreeTrial,
 } from "../lib/free-trials";
 import { readFreeTrialSettings } from "../lib/trial-settings";
+import { onboardingState, recordOnboardingEvent, resetOnboardingTour, setOnboardingTourAction, type OnboardingEvent, type OnboardingTourAction } from "../lib/onboarding";
 import { validMarketingUnsubscribeToken } from "../lib/marketing-email";
 import { logger } from "../lib/logger";
 import {
@@ -212,6 +213,74 @@ router.get("/me", async (req: Request, res: Response) => {
     freeTrialAccountStatus(user.id),
   ]);
   res.json({ status: "ok", user: publicUser(user, entitlement), subscription: publicSubscription(entitlement), trial });
+});
+
+/* ═══════════ FIRST-USE ONBOARDING (authenticated account only) ═══════════ */
+router.get("/onboarding", async (req: Request, res: Response) => {
+  const claims = currentUser(req);
+  if (!claims) { res.status(401).json({ status: "error", message: "login required" }); return; }
+  try {
+    const onboarding = await onboardingState(claims.sub, new Date());
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    res.json({ status: "ok", ...onboarding });
+  } catch (error) {
+    logger.error({ err: error }, "onboarding state error");
+    res.status(503).json({ status: "error", message: "تعذر تحميل خطوات البداية حاليًا" });
+  }
+});
+
+router.post("/onboarding/tour", async (req: Request, res: Response) => {
+  const claims = currentUser(req);
+  if (!claims) { res.status(401).json({ status: "error", message: "login required" }); return; }
+  const action = String(req.body?.action || "");
+  if (!(["started", "completed", "skipped"] as const).includes(action as OnboardingTourAction)) {
+    res.status(400).json({ status: "error", message: "إجراء الجولة غير صالح" }); return;
+  }
+  try {
+    const onboarding = await setOnboardingTourAction(claims.sub, action as OnboardingTourAction, new Date());
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    res.json({ status: "ok", ...onboarding });
+  } catch (error) {
+    logger.error({ err: error }, "onboarding tour update error");
+    res.status(503).json({ status: "error", message: "تعذر حفظ حالة الجولة حاليًا" });
+  }
+});
+
+router.post("/onboarding/reset", async (req: Request, res: Response) => {
+  const claims = currentUser(req);
+  if (!claims) { res.status(401).json({ status: "error", message: "login required" }); return; }
+  if (rateLimitHit(`onboarding-reset:${claims.sub}`, 6, 15 * 60 * 1000)) {
+    res.status(429).json({ status: "error", message: "محاولات كثيرة — حاول لاحقًا" }); return;
+  }
+  try {
+    const onboarding = await resetOnboardingTour(claims.sub, new Date());
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    res.json({ status: "ok", ...onboarding });
+  } catch (error) {
+    logger.error({ err: error }, "onboarding reset error");
+    res.status(503).json({ status: "error", message: "تعذر إعادة الجولة حاليًا" });
+  }
+});
+
+router.post("/onboarding/events", async (req: Request, res: Response) => {
+  const claims = currentUser(req);
+  if (!claims) { res.status(401).json({ status: "error", message: "login required" }); return; }
+  const event = String(req.body?.event || "");
+  if (!(["watchlist_progress", "notifications_enabled", "news_explored"] as const).includes(event as OnboardingEvent)) {
+    res.status(400).json({ status: "error", message: "حدث البداية غير صالح" }); return;
+  }
+  if (rateLimitHit(`onboarding-event:${claims.sub}`, 60, 10 * 60 * 1000)) {
+    res.status(429).json({ status: "error", message: "محاولات كثيرة — حاول لاحقًا" }); return;
+  }
+  try {
+    const onboarding = await recordOnboardingEvent(claims.sub, event as OnboardingEvent, req.body?.payload, new Date());
+    if (!onboarding) { res.status(400).json({ status: "error", message: "بيانات تقدم قائمة المتابعة غير صالحة" }); return; }
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    res.json({ status: "ok", ...onboarding });
+  } catch (error) {
+    logger.error({ err: error }, "onboarding event error");
+    res.status(503).json({ status: "error", message: "تعذر حفظ تقدم البداية حاليًا" });
+  }
 });
 
 /* ═══════════ REFERRAL DASHBOARD (authenticated account only) ═══════════ */
