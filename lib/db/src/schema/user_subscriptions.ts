@@ -15,10 +15,15 @@ export const userSubscriptionsTable = pgTable("user_subscriptions", {
   planNameAr: text("plan_name_ar").notNull(),
   planDurationMonths: integer("plan_duration_months").notNull(),
   planFeatures: jsonb("plan_features").$type<string[]>().notNull().default([]),
-  /** active | cancelled | expired. Expiry is also checked at read time. */
+  /** active | grace | cancelled | expired. Expiry is also checked at read time. */
   status: text("status").notNull().default("active"),
-  startsAt: timestamp("starts_at").notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
+  /** A fresh opaque value per paid term, used to deduplicate reminders safely across renewals. */
+  cycleId: text("cycle_id").notNull(),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  /** Stored in UTC: monthly terms are exactly 30 × 24 hours, never calendar-month arithmetic. */
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  /** Access may remain during this admin-configured period; null means no grace period. */
+  graceEndsAt: timestamp("grace_ends_at", { withTimezone: true }),
   /** Last approved request that extended this entitlement; payment history lives separately. */
   paymentRequestId: text("payment_request_id"),
   /** payment | legacy_backfill | admin_revocation, never a client-supplied value. */

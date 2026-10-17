@@ -1,6 +1,6 @@
 # Database migrations
 
-`0001_market_daily_ohlc` through `0006_user_calculator_scenarios` are **pending, unexecuted** migrations.
+`0001_market_daily_ohlc` through `0007_subscription_lifecycle` are **pending, unexecuted** migrations.
 
 They are intentionally SQL files rather than a `drizzle-kit push`: no verified isolated database connection exists in this workspace, and an agent must never change a shared or production database without an approved backup and deployment window.
 
@@ -10,6 +10,7 @@ They are intentionally SQL files rather than a `drizzle-kit push`: no verified i
 - `0004_user_price_alerts` stores server-evaluated price/daily-change rules and their trigger provenance. Evaluation is inert until an approved server-to-server scheduler supplies `CRON_SECRET`; it ignores end-of-day, unknown, or stale quotes and sends email only to the alert owner's recorded address.
 - `0005_subscription_plan_pricing` adds server-evaluated base/offer pricing, audience targeting, immutable payment-price snapshots and reversible pricing history. It never rewrites an existing payment request, subscription, or plan price; the rollback archives new offer/history tables and retains financial snapshot columns.
 - `0006_user_calculator_scenarios` adds saved VIP calculator scenarios and explicit save/copy/export activity. Input/result JSON is server-validated and size bounded; a scenario is archived rather than deleted. Its rollback marks records archived and leaves the additive tables in place, so no financial scenario is destroyed.
+- `0007_subscription_lifecycle` normalizes entitlement instants to UTC, gives each paid term a fresh cycle id, adds an optional per-term grace endpoint, server-authored notification CTAs, durable reminder/outbox state, and immutable lifecycle metric events. The only conversion interprets existing subscription timestamps as the API's documented UTC values; it does not manufacture expiry dates. Its rollback archives the new reminder/event tables and deliberately retains added columns and UTC semantics.
 
 ## Safe execution sequence
 

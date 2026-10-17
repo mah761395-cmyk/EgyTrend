@@ -16,6 +16,9 @@ import {
   opportunities,
   planPriceOffersTable,
   subscriptionPlansTable,
+  subscriptionLifecycleEventsTable,
+  subscriptionRemindersSentTable,
+  userNotificationsTable,
   userSubscriptionsTable,
 } from "@workspace/db/schema";
 import { createMemoryDatabase } from "../test-support/memory-db";
@@ -412,6 +415,7 @@ test("VIP calculator runtime, persistence and direct asset access are server-gat
     planDurationMonths: 1,
     planFeatures: [],
     status: "active",
+    cycleId: "cycle-calculator-vip-test",
     startsAt: now,
     expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
     source: "test",
@@ -679,4 +683,282 @@ test("price-alert evaluator requires a fresh source-backed quote and honors pric
   assert.equal(quoteEligibleForAlert(quote, now), true);
   assert.equal(quoteEligibleForAlert({ ...quote, freshness: "end-of-day" }, now), false);
   assert.equal(quoteEligibleForAlert({ ...quote, ts: now - 25 * 60_000 }, now), false);
+});
+
+test("subscription lifecycle uses one Cairo calendar reminder per threshold and retains locked user data", async () => {
+  const {
+    calculateApprovedSubscriptionEnd,
+    runSubscriptionLifecycle,
+    saveSubscriptionLifecycleSettings,
+  } = await import("../lib/subscription-lifecycle");
+  const { getVipEntitlement } = await import("../lib/userAuth");
+  const day0 = new Date("2026-01-01T10:00:00.000Z");
+  const day30 = calculateApprovedSubscriptionEnd(day0, 1);
+  assert.equal(day30.getTime() - day0.getTime(), 30 * 24 * 60 * 60 * 1000, "monthly entitlement is exactly 30 elapsed UTC days");
+
+  const [user] = await memory.db.insert(appUsersTable).values({
+    phone: "01077770001",
+    name: "Lifecycle Synthetic User",
+    email: "lifecycle.synthetic@example.test",
+    passwordHash: "test-only-hash",
+    plan: "vip",
+    vipExpiresAt: day30,
+    status: "active",
+    createdAt: day0,
+    updatedAt: day0,
+  }).returning();
+  await memory.db.insert(userSubscriptionsTable).values({
+    id: "sub-lifecycle-synthetic",
+    userId: user.id,
+    planKey: "synthetic-vip",
+    planNameAr: "باقة دورة الحياة",
+    planDurationMonths: 1,
+    planFeatures: ["MA و RSI", "تنبيهات VIP"],
+    status: "active",
+    cycleId: "cycle-lifecycle-0",
+    startsAt: day0,
+    expiresAt: day30,
+    graceEndsAt: null,
+    source: "test",
+    createdAt: day0,
+    updatedAt: day0,
+  });
+  /* Entitlement expiry must not archive/delete private rows. */
+  await memory.db.insert(portfolioPositionsTable).values({
+    id: "portfolio-lifecycle-retained",
+    userId: user.id,
+    instrumentId: "stock:egx:SYN",
+    symbol: "SYN",
+    quantity: 7,
+    averageCost: "12.500000",
+    currency: "EGP",
+    status: "active",
+    createdAt: day0,
+    updatedAt: day0,
+  });
+  await memory.db.insert(userCalculatorScenariosTable).values({
+    id: "scenario-lifecycle-retained",
+    userId: user.id,
+    calculatorKey: "pl",
+    name: "سيناريو محفوظ",
+    inputs: { buyPrice: 10 },
+    result: { net: 20 },
+    status: "active",
+    createdAt: day0,
+    updatedAt: day0,
+  });
+
+  await saveSubscriptionLifecycleSettings({ graceDays: 0, winbackMarketingEnabled: true }, day0);
+  const sent: string[] = [];
+  const fakeMailer = async (_to: string, subject: string) => {
+    sent.push(subject);
+    return { delivered: true as const };
+  };
+  const runAt = async (days: number) => runSubscriptionLifecycle({
+    now: new Date(day0.getTime() + days * 24 * 60 * 60 * 1000),
+    mailer: fakeMailer,
+  });
+
+  for (const [days, expected] of [[23, "monthly_7d"], [27, "monthly_3d"], [29, "monthly_1d"], [30, "expiry"], [33, "winback_3d"]] as const) {
+    const result = await runAt(days);
+    assert.equal(result.queued, 1, `day ${days} reserves exactly one ${expected} message`);
+    assert.equal(result.inAppDelivered, 1, `day ${days} internal delivery is independent of e-mail`);
+    assert.equal(result.emailSent, 1, `day ${days} e-mail is delivered through its own outbox attempt`);
+  }
+  const duplicateDay23 = await runAt(23);
+  assert.equal(duplicateDay23.queued, 0, "a repeated scheduler invocation cannot reserve a duplicate reminder");
+
+  const reminderRows = await memory.db.select().from(subscriptionRemindersSentTable)
+    .where(eq(subscriptionRemindersSentTable.subscriptionCycleId, "cycle-lifecycle-0"));
+  assert.deepEqual(reminderRows.map((row) => row.reminderType).sort(), [
+    "expiry", "monthly_1d", "monthly_3d", "monthly_7d", "winback_3d",
+  ]);
+  assert.equal(new Set(reminderRows.map((row) => row.id)).size, 5);
+  assert.equal(sent.length, 5, "the duplicate execution does not e-mail the member again");
+
+  const [afterExpiry] = await memory.db.select().from(appUsersTable).where(eq(appUsersTable.id, user.id));
+  assert.equal(afterExpiry?.plan, "free", "the lifecycle expiry projects the account back to Free");
+  const entitlementAfterExpiry = await getVipEntitlement({ sub: user.id }, new Date(day30.getTime() + 1));
+  assert.equal(entitlementAfterExpiry.active, false, "authorization fails closed immediately after the term ends");
+  const [retainedPosition] = await memory.db.select().from(portfolioPositionsTable).where(eq(portfolioPositionsTable.id, "portfolio-lifecycle-retained"));
+  const [retainedScenario] = await memory.db.select().from(userCalculatorScenariosTable).where(eq(userCalculatorScenariosTable.id, "scenario-lifecycle-retained"));
+  assert.equal(retainedPosition?.status, "active");
+  assert.equal(retainedScenario?.status, "active");
+  const inAppRows = await memory.db.select().from(userNotificationsTable).where(eq(userNotificationsTable.phone, user.phone));
+  assert.equal(inAppRows.filter((row) => row.kind === "subscription").length, 5);
+  assert.ok(inAppRows.some((row) => row.actionUrl === "/vip?plan=synthetic-vip&renew=1"), "in-app CTA preserves the chosen renewal plan");
+});
+
+test("approved pre-expiry renewal starts from current end, rotates cycle, and cancels pending prior reminders", async () => {
+  const { calculateApprovedSubscriptionEnd } = await import("../lib/subscription-lifecycle");
+  const day0 = new Date("2026-02-01T10:00:00.000Z");
+  const day25 = new Date(day0.getTime() + 25 * 24 * 60 * 60 * 1000);
+  const oldEnd = calculateApprovedSubscriptionEnd(day0, 1);
+  const [user] = await memory.db.insert(appUsersTable).values({
+    phone: "01077770002",
+    name: "Renewal Synthetic User",
+    email: "renewal.synthetic@example.test",
+    passwordHash: "test-only-hash",
+    plan: "vip",
+    vipExpiresAt: oldEnd,
+    status: "active",
+    createdAt: day0,
+    updatedAt: day0,
+  }).returning();
+  await memory.db.insert(userSubscriptionsTable).values({
+    id: "sub-renewal-synthetic",
+    userId: user.id,
+    planKey: "synthetic-vip",
+    planNameAr: "باقة التجديد",
+    planDurationMonths: 1,
+    planFeatures: [],
+    status: "active",
+    cycleId: "cycle-renewal-old",
+    startsAt: day0,
+    expiresAt: oldEnd,
+    graceEndsAt: null,
+    source: "test",
+    createdAt: day0,
+    updatedAt: day0,
+  });
+  await memory.db.insert(subscriptionRemindersSentTable).values({
+    id: "reminder-renewal-old-pending",
+    subscriptionId: "sub-renewal-synthetic",
+    subscriptionCycleId: "cycle-renewal-old",
+    userId: user.id,
+    reminderType: "monthly_3d",
+    reminderClass: "transactional",
+    targetEndsAt: oldEnd,
+    deliveryStatus: "queued",
+    content: {
+      title: "تذكير قديم",
+      body: "لا ينبغي تسليمه بعد التجديد",
+      actionUrl: "/vip?plan=synthetic-vip&renew=1",
+      actionLabel: "جدّد الآن",
+      emailSubject: "قديم",
+      emailHtml: "<p>قديم</p>",
+      transactional: true,
+    },
+    emailStatus: "pending",
+    emailAttempts: 0,
+    emailNextAttemptAt: day25,
+    createdAt: day25,
+    updatedAt: day25,
+  });
+  await memory.db.insert(paymentRequestsTable).values({
+    id: "req-renewal-day-25",
+    phone: user.phone,
+    name: user.name,
+    planKey: "synthetic-vip",
+    payMethod: "vodafone",
+    price: 137,
+    tx: "renewal-day-25-transaction",
+    status: "pending",
+    createdAt: day25,
+    updatedAt: day25,
+  });
+
+  const adminJar: CookieJar = {};
+  const login = await api("/api/admin/login", adminJar, {
+    method: "POST",
+    body: JSON.stringify({ email: "admin.synthetic@example.test", password: "SyntheticAdminPass1!" }),
+  });
+  assert.equal(login.response.status, 200);
+  (globalThis as typeof globalThis & { __egytrendTestClock?: Date }).__egytrendTestClock = day25;
+  try {
+    const approval = await api("/api/admin/requests/req-renewal-day-25", adminJar, {
+      method: "PUT",
+      body: JSON.stringify({ status: "approved" }),
+    });
+    assert.equal(approval.response.status, 200, approval.raw);
+  } finally {
+    delete (globalThis as typeof globalThis & { __egytrendTestClock?: Date }).__egytrendTestClock;
+  }
+
+  const [renewed] = await memory.db.select().from(userSubscriptionsTable).where(eq(userSubscriptionsTable.userId, user.id));
+  assert.equal(renewed?.startsAt.getTime(), day0.getTime(), "pre-expiry renewal preserves the current term start");
+  assert.equal(renewed?.expiresAt.getTime(), day0.getTime() + 60 * 24 * 60 * 60 * 1000, "day-25 renewal ends exactly on day 60");
+  assert.notEqual(renewed?.cycleId, "cycle-renewal-old", "each renewal receives a fresh cycle id");
+  const [cancelled] = await memory.db.select().from(subscriptionRemindersSentTable)
+    .where(eq(subscriptionRemindersSentTable.id, "reminder-renewal-old-pending"));
+  assert.equal(cancelled?.deliveryStatus, "cancelled");
+  assert.equal(cancelled?.emailStatus, "cancelled");
+  const events = await memory.db.select().from(subscriptionLifecycleEventsTable)
+    .where(eq(subscriptionLifecycleEventsTable.subscriptionCycleId, renewed!.cycleId));
+  assert.equal(events.some((event) => event.eventType === "renewed"), true);
+});
+
+test("Cairo scheduling compares local calendar dates through the DST transition", async () => {
+  const { cairoCalendarDaysUntil, cairoParts, cairoWallClockToUtc } = await import("../lib/subscription-time");
+  const before = cairoWallClockToUtc({ year: 2026, month: 4, day: 23, hour: 23, minute: 30, second: 0 });
+  const after = cairoWallClockToUtc({ year: 2026, month: 4, day: 25, hour: 0, minute: 30, second: 0 });
+  assert.equal(cairoParts(before).day, 23);
+  assert.equal(cairoParts(after).day, 25);
+  assert.equal(cairoCalendarDaysUntil(after, before), 2, "a Cairo DST hour change cannot skip a reminder calendar day");
+  const skippedMidnight = cairoWallClockToUtc({ year: 2026, month: 4, day: 24, hour: 0, minute: 0, second: 0 });
+  assert.equal(cairoParts(skippedMidnight).day, 24, "a skipped Cairo wall time normalizes forward, never to the prior date");
+});
+
+test("subscription email outbox records a terminal failure only after three bounded attempts", async () => {
+  const { calculateApprovedSubscriptionEnd, listSubscriptionEmailFailures, runSubscriptionLifecycle } = await import("../lib/subscription-lifecycle");
+  const day0 = new Date("2026-03-01T09:00:00.000Z");
+  const end = calculateApprovedSubscriptionEnd(day0, 1);
+  const [user] = await memory.db.insert(appUsersTable).values({
+    phone: "01077770003",
+    name: "Email Retry Synthetic User",
+    email: "email.retry.synthetic@example.test",
+    passwordHash: "test-only-hash",
+    plan: "vip",
+    vipExpiresAt: end,
+    status: "active",
+    createdAt: day0,
+    updatedAt: day0,
+  }).returning();
+  await memory.db.insert(userSubscriptionsTable).values({
+    id: "sub-email-retry",
+    userId: user.id,
+    planKey: "synthetic-vip",
+    planNameAr: "باقة البريد",
+    planDurationMonths: 1,
+    planFeatures: [],
+    status: "active",
+    cycleId: "cycle-email-retry",
+    startsAt: day0,
+    expiresAt: end,
+    source: "test",
+    createdAt: day0,
+    updatedAt: day0,
+  });
+  const failMailer = async () => ({ delivered: false as const, error: "send_failed" as const });
+  const first = new Date(day0.getTime() + 23 * 24 * 60 * 60 * 1000);
+  await runSubscriptionLifecycle({ now: first, mailer: failMailer });
+  await runSubscriptionLifecycle({ now: new Date(first.getTime() + 5 * 60 * 1000), mailer: failMailer });
+  await runSubscriptionLifecycle({ now: new Date(first.getTime() + 35 * 60 * 1000), mailer: failMailer });
+  const [row] = await memory.db.select().from(subscriptionRemindersSentTable)
+    .where(eq(subscriptionRemindersSentTable.subscriptionCycleId, "cycle-email-retry"));
+  assert.equal(row?.emailAttempts, 3);
+  assert.equal(row?.emailStatus, "failed");
+  const failures = await listSubscriptionEmailFailures();
+  assert.equal(failures.some((failure) => failure.reminderId === row?.id && failure.emailStatus === "failed"), true);
+});
+
+test("admin lifecycle dry run is non-mutating and exposes only simulated actions", async () => {
+  const adminJar: CookieJar = {};
+  const login = await api("/api/admin/login", adminJar, {
+    method: "POST",
+    body: JSON.stringify({ email: "admin.synthetic@example.test", password: "SyntheticAdminPass1!" }),
+  });
+  assert.equal(login.response.status, 200);
+  const before = await memory.db.select({ count: subscriptionRemindersSentTable.id }).from(subscriptionRemindersSentTable);
+  const dry = await api("/api/admin/subscriptions/dry-run", adminJar, {
+    method: "POST",
+    body: JSON.stringify({ at: "2026-03-24T11:00" }),
+  });
+  assert.equal(dry.response.status, 200);
+  assert.equal(dry.body?.status, "ok");
+  const result = dry.body?.result as { dryRun?: boolean; previews?: unknown[] } | undefined;
+  assert.equal(result?.dryRun, true);
+  assert.ok(Array.isArray(result?.previews));
+  const after = await memory.db.select({ count: subscriptionRemindersSentTable.id }).from(subscriptionRemindersSentTable);
+  assert.equal(after.length, before.length, "dry run must not write reminder rows");
 });

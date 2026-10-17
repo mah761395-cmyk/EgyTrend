@@ -75,6 +75,11 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .ibtn:hover{background:var(--s2);color:var(--t2);}
 .vip-cta{background:linear-gradient(135deg,var(--au2),var(--au));border:none;border-radius:9px;padding:5px 12px;color:#000;font-size:11px;font-weight:900;cursor:pointer;font-family:var(--sans);}
 .vip-hdr-badge{background:var(--aud);border:1px solid rgba(245,158,11,.25);border-radius:9px;padding:5px 10px;color:var(--au);font-size:11px;font-weight:800;}
+#sub-renewal-banner{display:none;align-items:center;justify-content:space-between;gap:9px;padding:8px 12px;background:linear-gradient(90deg,rgba(245,158,11,.17),rgba(16,185,129,.08));border-top:1px solid rgba(245,158,11,.22);color:var(--t2);font-size:10.5px;line-height:1.55;}
+#sub-renewal-banner.show{display:flex;}
+#sub-renewal-banner .sub-banner-copy{min-width:0;flex:1;}
+#sub-renewal-banner .sub-banner-title{font-weight:900;color:var(--au);font-size:11px;}
+#sub-renewal-banner .sub-banner-action{flex-shrink:0;border:0;border-radius:8px;background:var(--au);color:#17110a;font-family:var(--sans);font-size:10.5px;font-weight:900;padding:7px 10px;cursor:pointer;}
 #search-bar{padding:0 14px 10px;display:none;}
 #search-bar.open{display:block;}
 #search-in{width:100%;padding:10px 14px;background:var(--s1);border:1px solid var(--b2);border-radius:11px;color:var(--t1);font-size:13px;outline:none;font-family:var(--sans);direction:rtl;}
@@ -910,6 +915,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
         <div id="vip-hdr"></div>
       </div>
     </div>
+    <div id="sub-renewal-banner" role="status" aria-live="polite"></div>
     <div id="search-bar"><input id="search-in" class="a-in" placeholder="ابحث في الأخبار..." oninput="onSearch()" dir="rtl" style="margin-bottom:0;"/></div>
   </div>
 
@@ -1136,6 +1142,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
     <button class="adm-tab" data-tab="articles" onclick="admTab('articles')">📰 الأخبار</button>
     <button class="adm-tab" data-tab="sources" onclick="admTab('sources')">🔗 المصادر</button>
     <button class="adm-tab" data-tab="plans" onclick="admTab('plans')">💎 الاشتراكات</button>
+    <button class="adm-tab" data-tab="lifecycle" onclick="admTab('lifecycle')">⏰ التجديدات</button>
     <button class="adm-tab" data-tab="coupons" onclick="admTab('coupons')">🎟️ الكوبونات</button>
     <button class="adm-tab" data-tab="employees" onclick="admTab('employees')">👨‍💼 الموظفون</button>
     <button class="adm-tab" data-tab="aiconfig" onclick="admTab('aiconfig')">🤖 إدارة AI</button>
@@ -1559,12 +1566,15 @@ function bootApp(){
   updateBellBadge();
   checkAutoNotifs();
   startPayNotifPolling();
+  loadSubscriptionBanner();
+  openSubscriptionDeepLink();
   if(window.location.pathname==="/calculators")goNav("calculators",{syncUrl:false});
   setInterval(fetchMarketsData,60000);
   setInterval(fetchCalendarData,30*60*1000);
   setInterval(()=>fetchAllNews(true), 5*60*1000);
   setInterval(fetchStocksData, 3*60*1000);
   setInterval(fetchUsStocksData, 5*60*1000);
+  setInterval(loadSubscriptionBanner, 15*60*1000);
 }
 
 /* ─── Bounded backend requests: no browser call can leave a view loading forever. */
@@ -4430,8 +4440,32 @@ const SUB_METHOD_META={vodafone:{emoji:"🔴",label:"فودافون كاش"},ora
 function SUB_M(){const arr=Array.isArray(SUB_METHODS)?SUB_METHODS:[];return arr.find(m=>m.id===SUB_METHOD)||null;}
 function payMethodLabel(id){const m=SUB_METHOD_META[id];return m?m.emoji+" "+m.label:(id||"غير متاح");}
 let payProofData=null, payProofName="";
-function openSub(){
-  subStep=1;selPlan="";SUB_METHOD="";payProofData=null;payProofName="";
+function normalizedSubscriptionAction(value){
+  const raw=String(value||"").trim();
+  if(!/^\/(?!\/)[a-zA-Z0-9_?=&%./-]{1,300}$/.test(raw))return null;
+  try{
+    const u=new URL(raw,location.origin);
+    if(u.origin!==location.origin||u.pathname!=="/vip")return null;
+    const plan=String(u.searchParams.get("plan")||"").trim();
+    if(plan&&!/^[a-z0-9_-]{1,40}$/i.test(plan))return null;
+    return {url:`/vip?plan=${encodeURIComponent(plan)}&renew=1`,plan};
+  }catch{return null;}
+}
+function openSubscriptionAction(actionUrl){
+  const action=normalizedSubscriptionAction(actionUrl);
+  if(!action){showToast("⚠️ رابط التجديد غير متاح حاليًا");return;}
+  closeNotifPanel();goNav("vip",{syncUrl:false});openSub(action.plan);
+}
+function openSubscriptionDeepLink(){
+  if(!U||U.plan==="admin")return;
+  const action=normalizedSubscriptionAction(`${location.pathname}${location.search}`);
+  if(!action||new URLSearchParams(location.search).get("renew")!=="1")return;
+  history.replaceState({},"",location.pathname==="/vip"?"/":"/");
+  setTimeout(()=>openSubscriptionAction(action.url),0);
+}
+function openSub(preselectedPlan=""){
+  const requested=typeof preselectedPlan==="string"&&/^[a-z0-9_-]{1,40}$/i.test(preselectedPlan)?preselectedPlan:"";
+  subStep=1;selPlan=requested;SUB_METHOD="";payProofData=null;payProofName="";
   /* Never reuse a price, wallet, or method from an earlier response. */
   SUB_PLANS=null;SUB_METHODS=null;SUB_CONFIG_STATE="loading";SUB_CONFIG_ERROR="";
   renderSub();document.getElementById("sub-ov").classList.add("open");loadSubConfig();
@@ -4441,6 +4475,27 @@ function closeSub(){document.getElementById("sub-ov").classList.remove("open");i
  * every time the payment modal closed. It simply empties the status card so
  * the next open re-fetches fresh state via loadPayStatus(). */
 function clearPayStatus(){const el=document.getElementById("pay-status-card");if(el)el.innerHTML="";}
+let subscriptionBannerLoading=false;
+async function loadSubscriptionBanner(){
+  const el=document.getElementById("sub-renewal-banner");
+  if(!el)return;
+  if(!U||U.plan==="admin"){el.classList.remove("show");el.innerHTML="";return;}
+  if(subscriptionBannerLoading)return;
+  subscriptionBannerLoading=true;
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch("/api/subscriptions/banner",{credentials:"same-origin",cache:"no-store",signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    const action=normalizedSubscriptionAction(j?.actionUrl);
+    if(!r.ok||!j||j.status!=="ok"||j.visible!==true||!action){el.classList.remove("show");el.innerHTML="";return;}
+    const body=String(j.body||"").slice(0,500);
+    el.innerHTML=`<div class="sub-banner-copy"><div class="sub-banner-title">⏰ تذكير بالتجديد</div><div>${sanitize(body)}</div></div><button class="sub-banner-action" onclick='openSubscriptionAction(${safeJsArg(action.url)})'>${sanitize(String(j.actionLabel||"جدّد الآن").slice(0,40))}</button>`;
+    el.classList.add("show");
+  }catch{
+    /* No guessed date or stale banner when the server cannot verify the term. */
+    el.classList.remove("show");el.innerHTML="";
+  }finally{clearTimeout(timer);subscriptionBannerLoading=false;}
+}
 function subPlans(){return SUB_PLANS||{};}
 let SUB_COUNTDOWN_TIMER=null;
 let SUB_COUNTDOWN_REFRESHING=false;
@@ -4734,7 +4789,7 @@ async function loadPayStatus(){
 }
 function subscriptionDateLabel(value){
   const d=new Date(value||"");
-  return Number.isFinite(d.getTime())?d.toLocaleDateString("ar-EG",{year:"numeric",month:"long",day:"numeric"}):"غير متاح";
+  return Number.isFinite(d.getTime())?d.toLocaleDateString("ar-EG",{timeZone:"Africa/Cairo",year:"numeric",month:"long",day:"numeric"}):"غير متاح";
 }
 function subscriptionDaysLeft(value){
   const d=new Date(value||"");
@@ -4766,16 +4821,16 @@ async function loadMySubscription(){
     syncSubscriptionView(sub);
     const active=sub.active===true;
     const days=subscriptionDaysLeft(sub.expiresAt);
-    const status=sub.status==="cancelled"?"تم إيقافه":sub.status==="expired"?"منتهي":active?"نشط":"غير نشط";
-    const statusColor=active?"var(--g)":sub.status==="cancelled"?"var(--dn)":"var(--au)";
+    const status=sub.status==="cancelled"?"تم إيقافه":sub.status==="expired"?"منتهي":sub.status==="grace"?"فترة سماح":active?"نشط":"غير نشط";
+    const statusColor=sub.status==="grace"?"var(--au)":active?"var(--g)":sub.status==="cancelled"?"var(--dn)":"var(--au)";
     const requests=Array.isArray(j.requests)?j.requests.slice(0,10):[];
     body.innerHTML=`
       <div style="background:${active?"var(--gd)":"var(--s1)"};border:1px solid ${active?"rgba(16,185,129,.25)":"var(--b1)"};border-radius:15px;padding:14px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div><div style="color:var(--t4);font-size:10px;">حالة الاشتراك</div><div style="color:${statusColor};font-weight:900;font-size:17px;margin-top:2px;">${status}</div></div><span style="font-size:22px;">${active?"⭐":"📋"}</span></div>
         <div style="margin-top:9px;color:var(--t2);font-size:12px;">الباقة: <b>${sanitize(sub.planNameAr||sub.planKey||"غير متاح")}</b></div>
-        ${active?`<div style="color:var(--t4);font-size:11px;margin-top:4px;">تنتهي في: ${subscriptionDateLabel(sub.expiresAt)}${days!==null?` · متبقّي ${days} يوم`:""}</div>`:`<div style="color:var(--t4);font-size:11px;margin-top:4px;">لا توجد صلاحية VIP فعالة في الخادم الآن.</div>`}
+        ${active?`<div style="color:var(--t4);font-size:11px;margin-top:4px;">تنتهي في: ${subscriptionDateLabel(sub.endsAt||sub.expiresAt)}${days!==null?` · متبقّي ${days} يوم`:""}</div>${sub.status==="grace"&&sub.graceEndsAt?`<div style="color:var(--au);font-size:10px;margin-top:4px;">فترة السماح حتى: ${subscriptionDateLabel(sub.graceEndsAt)}</div>`:""}`:`<div style="color:var(--t4);font-size:11px;margin-top:4px;">لا توجد صلاحية VIP فعالة في الخادم الآن. بياناتك المحفوظة لا تُحذف وتعود عند التجديد.</div>`}
         ${Array.isArray(sub.planFeatures)&&sub.planFeatures.length?`<div style="color:var(--t4);font-size:10px;line-height:1.65;margin-top:8px;">${sub.planFeatures.slice(0,8).map(f=>`✓ ${sanitize(f)}`).join("<br/>")}</div>`:""}
-        <button class="btn btn-au btn-full" style="margin-top:12px;padding:10px;font-size:12px;" onclick="closeMySubscription();openSub()">${active?"🔄 تجديد باقة / إضافة مدة":"⭐ عرض الباقات وطلب اشتراك"}</button>
+        <button class="btn btn-au btn-full" style="margin-top:12px;padding:10px;font-size:12px;" onclick='closeMySubscription();openSub(${safeJsArg(String(sub.planKey||""))})'>${active?"🔄 تجديد باقة / إضافة مدة":"⭐ عرض الباقات وطلب اشتراك"}</button>
       </div>
       <div style="color:var(--t2);font-weight:800;font-size:13px;margin:0 0 8px;">سجل الدفعات</div>
       ${requests.length?`<div style="display:flex;flex-direction:column;gap:7px;">${requests.map(req=>{const st=subscriptionRequestState(String(req.status||"pending"));const price=Number(req.price);return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:10px 11px;display:flex;justify-content:space-between;gap:8px;align-items:center;"><div><div style="color:var(--t2);font-size:11.5px;font-weight:700;">${sanitize(req.planKey||"باقة")}${Number.isFinite(price)?` · ${price} ج`:""}</div><div style="color:var(--t5);font-size:9.5px;margin-top:3px;">${subscriptionDateLabel(req.createdAt)} · ${sanitize(payMethodLabel(String(req.method||"")))}</div></div><span style="background:${st.b};color:${st.c};border-radius:8px;padding:3px 7px;font-size:9.5px;font-weight:800;white-space:nowrap;">${st.label}</span></div>`;}).join("")}</div>`:`<div class="empty" style="padding:14px;">لا يوجد سجل دفعات لهذا الحساب حتى الآن.</div>`}
@@ -4954,14 +5009,14 @@ async function renderAdmStats(){
   ].map(s=>`<div class="astat"><div class="astat-v" style="color:${s.c};">${s.v}</div><div class="astat-l">${s.l}</div></div>`).join("");
 }
 
-const ADM_TABS=["dash","users","reqs","articles","sources","plans","coupons","employees","aiconfig","audit"];
+const ADM_TABS=["dash","users","reqs","articles","sources","plans","lifecycle","coupons","employees","aiconfig","audit"];
 
 function admTab(tab){
   document.querySelectorAll(".adm-tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===tab));
   const el=document.getElementById("adm-body");
   el.innerHTML=`<div class="empty"><div style="font-size:22px;margin-bottom:8px;">⏳</div><div>جارٍ التحميل...</div></div>`;
   const fns={dash:renderAdmDash,users:renderAdmUsers,reqs:renderAdmReqs,articles:renderAdmArticles,
-    sources:renderAdmSources,plans:renderAdmPlans,coupons:renderAdmCoupons,
+    sources:renderAdmSources,plans:renderAdmPlans,lifecycle:renderAdmLifecycle,coupons:renderAdmCoupons,
     employees:renderAdmEmployees,aiconfig:renderAdmAIConfig,audit:renderAdmAudit,opps:renderAdmOpps};
   if(fns[tab]) fns[tab](el);
 }
@@ -5528,6 +5583,58 @@ async function archiveAdmPlan(id,name){
 }
 
 /* ─── Coupons ─── */
+function lifecycleAdminDate(value,withTime=false){
+  const d=new Date(value||"");if(!Number.isFinite(d.getTime()))return "غير متاح";
+  return d.toLocaleString("ar-EG",{timeZone:"Africa/Cairo",year:"numeric",month:"short",day:"numeric",...(withTime?{hour:"2-digit",minute:"2-digit"}:{})});
+}
+function lifecycleEmailHealth(item){
+  const v=String(item||"none");
+  return v==="failed"?aBadge("فشل البريد","var(--dnd)","var(--dn)"):v==="unavailable"?aBadge("البريد غير متاح","var(--aud)","var(--au)"):v==="retrying"?aBadge("إعادة محاولة","#1e3a5f","#93c5fd"):v==="healthy"?aBadge("البريد سليم","var(--gd)","var(--g)"):aBadge("لا توجد رسالة بعد","var(--s1)","var(--t4)");
+}
+async function renderAdmLifecycle(el){
+  el.innerHTML=`<div class="empty"><div class="sp sp-au sp-md" style="margin:0 auto 10px;"></div><div>جارٍ تحميل دورة حياة الاشتراكات من الخادم...</div></div>`;
+  try{
+    const [summaryR,expiringR,settingsR,failuresR]=await Promise.all([
+      admFetch("/api/admin/subscriptions/summary"),admFetch("/api/admin/subscriptions/expiring"),
+      admFetch("/api/admin/subscriptions/settings"),admFetch("/api/admin/subscriptions/email-failures?limit=30"),
+    ]);
+    const [summaryJ,expiringJ,settingsJ,failuresJ]=await Promise.all([summaryR.json(),expiringR.json(),settingsR.json(),failuresR.json()]);
+    if(!summaryR.ok||summaryJ.status!=="ok")throw new Error(summaryJ.message||"تعذر تحميل ملخص الاشتراكات");
+    const summary=summaryJ.summary||{},expiring=expiringR.ok&&expiringJ.status==="ok"&&Array.isArray(expiringJ.subscriptions)?expiringJ.subscriptions:[];
+    const settings=settingsR.ok&&settingsJ.status==="ok"&&settingsJ.settings?settingsJ.settings:{graceDays:0,winbackMarketingEnabled:false};
+    const failures=failuresR.ok&&failuresJ.status==="ok"&&Array.isArray(failuresJ.failures)?failuresJ.failures:[];
+    const renewalRate=summary.renewalRate!==null&&summary.renewalRate!==undefined&&Number.isFinite(Number(summary.renewalRate))?`${Number(summary.renewalRate)}%`:"غير متاح حاليًا";
+    const expected=summary.expectedRenewalRevenue!==null&&summary.expectedRenewalRevenue!==undefined&&Number.isFinite(Number(summary.expectedRenewalRevenue))?`${Number(summary.expectedRenewalRevenue).toLocaleString("ar-EG")} ج`:"غير متاح حاليًا";
+    el.innerHTML=`
+      <div style="color:var(--t4);font-size:10px;line-height:1.65;margin-bottom:11px;">المصدر: دورة حياة الاشتراك على الخادم · آخر حساب: ${lifecycleAdminDate(summary.asOf,true)} بتوقيت القاهرة. قيمة التجديد المتوقعة تقدير من أسعار الباقات النشطة الحالية وليست إيرادًا محققًا.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:17px;">
+        ${aCard("تنتهي خلال 7 أيام",Number(summary.expiringWithin7Days)||0,"#f59e0b")}
+        ${aCard("منتهية هذا الشهر",Number(summary.expiredThisMonth)||0,"#ef4444")}
+        ${aCard("معدل التجديد",renewalRate,"#10b981","تجديدات مقابل انتهاء مسجل")}
+        ${aCard("قيمة تجديد متوقعة",expected,"#60a5fa","أسعار خادم حالية")}
+        ${aCard("مشكلات البريد",Number(summary.emailFailures)||0,"#c084fc")}
+      </div>
+      ${aSection("⚙️ سياسة الانتهاء والتنبيهات",`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:12px;"><div style="color:var(--t4);font-size:10.5px;line-height:1.75;margin-bottom:10px;">فترة السماح الافتراضية صفر. التعديل يطبق على الاشتراكات التي تعتمد لاحقًا؛ لا يحذف أي بيانات. رسائل الانتهاء المعاملاتية لا تتوقف. رسالة «وحشتنا» بعد 3 أيام تسويقية ويمكن إيقافها. لا يُعرض كوبون حتى يُربط استرداده بالدفع فعليًا.</div><div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;"><label style="color:var(--t3);font-size:11px;">فترة السماح (أيام)<input id="alc-grace" class="a-in" type="number" min="0" max="31" value="${Number(settings.graceDays)||0}" style="margin-top:4px;width:100%;"/></label><label style="display:flex;gap:6px;align-items:center;color:var(--t3);font-size:11px;margin-top:18px;"><input id="alc-winback" type="checkbox" ${settings.winbackMarketingEnabled?"checked":""}/> فعّل «وحشتنا»</label></div><button class="btn btn-g" style="margin-top:9px;padding:8px 13px;font-size:11px;" onclick="saveAdmLifecycleSettings()">حفظ سياسة الانتهاء</button><div id="alc-settings-msg" style="font-size:10px;margin-top:7px;"></div></div>`)}
+      ${aSection("🧪 Dry run بدون إرسال",`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:12px;"><div style="color:var(--t4);font-size:10.5px;line-height:1.65;margin-bottom:8px;">المحاكاة لا تغيّر صلاحية ولا تنشئ إشعارًا أو بريدًا. التاريخ يفسر بتوقيت القاهرة إن لم يحمل UTC.</div><div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;"><input id="alc-dry-at" class="a-in" type="datetime-local" value="${cairoDateTimeInput(summary.asOf)}" style="margin:0;flex:1;min-width:180px;"/><button class="btn btn-ghost" style="padding:8px 13px;font-size:11px;" onclick="runAdmLifecycleDryRun()">شغّل المحاكاة</button></div><div id="alc-dry-result" style="margin-top:9px;"></div></div>`)}
+      ${aSection("⏰ اشتراكات تنتهي خلال 7 أيام",expiring.length?`<div style="display:flex;flex-direction:column;gap:7px;">${expiring.map(s=>`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:10px 11px;display:flex;gap:9px;justify-content:space-between;align-items:center;flex-wrap:wrap;"><div style="min-width:0;flex:1;"><div style="color:var(--t2);font-size:12px;font-weight:800;">${sanitize(s.name||"مستخدم")} <span style="color:var(--t5);font-family:var(--mono);font-weight:400;">${sanitize(s.phone||"")}</span></div><div style="color:var(--t4);font-size:10px;margin-top:3px;">${sanitize(s.planNameAr||s.planKey||"باقة")} · ينتهي ${lifecycleAdminDate(s.endsAt)} · متبقّي ${Number(s.daysUntilExpiry)} يوم</div>${s.graceEndsAt?`<div style="color:var(--au);font-size:9.5px;margin-top:2px;">سماح حتى ${lifecycleAdminDate(s.graceEndsAt)}</div>`:""}</div><div style="display:flex;align-items:center;gap:6px;">${lifecycleEmailHealth(s.emailHealth)}<button class="r-btn" style="font-size:10px;" onclick='sendAdmManualReminder(${safeJsArg(s.subscriptionId)})'>إرسال تذكير يدوي</button></div></div>`).join("")}</div>`:`<div class="empty" style="padding:16px;">لا توجد اشتراكات تنتهي خلال 7 أيام حاليًا.</div>`)}
+      ${aSection("✉️ فشل/تعذر البريد",failures.length?`<div style="display:flex;flex-direction:column;gap:6px;">${failures.map(f=>`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:9px 10px;"><div style="display:flex;justify-content:space-between;gap:8px;"><div style="color:var(--t2);font-size:11px;font-weight:700;">${sanitize(f.name||"مستخدم")} · ${sanitize(f.planNameAr||"")}</div>${lifecycleEmailHealth(f.emailStatus==="failed"?"failed":"unavailable")}</div><div style="color:var(--t4);font-size:9.5px;margin-top:3px;">${sanitize(f.reminderType||"")} · محاولة ${Number(f.emailAttempts)||0}/3 · ${sanitize(f.emailLastError||"غير متاح")} · ${lifecycleAdminDate(f.createdAt,true)}</div></div>`).join("")}</div>`:`<div class="empty" style="padding:16px;">لا توجد رسائل فاشلة أو غير متاحة حاليًا.</div>`)}
+    `;
+  }catch(e){el.innerHTML=`<div class="empty" style="padding:25px;"><div style="color:var(--dn);font-weight:800;">تعذر تحميل دورة حياة الاشتراكات</div><div style="color:var(--t4);font-size:10.5px;margin-top:5px;">${sanitize(String(e.message||e))}</div><button class="btn btn-ghost" style="margin-top:10px;padding:8px 13px;" onclick="admTab('lifecycle')">↻ إعادة المحاولة</button></div>`;}
+}
+async function saveAdmLifecycleSettings(){
+  const graceDays=Number(vG("alc-grace"));const winbackMarketingEnabled=Boolean(document.getElementById("alc-winback")?.checked);const msg=document.getElementById("alc-settings-msg");
+  if(!Number.isInteger(graceDays)||graceDays<0||graceDays>31){if(msg){msg.style.color="var(--dn)";msg.textContent="أدخل فترة سماح من 0 إلى 31 يومًا.";}return;}
+  try{const r=await admFetch("/api/admin/subscriptions/settings",{method:"PUT",body:JSON.stringify({graceDays,winbackMarketingEnabled})}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر الحفظ");if(msg){msg.style.color="var(--g)";msg.textContent="تم الحفظ. لا تتغير دورات سارية بأثر رجعي.";}showToast("✅ تم حفظ سياسة الانتهاء");}catch(e){if(msg){msg.style.color="var(--dn)";msg.textContent="⚠️ "+String(e.message||e);}else showToast("❌ "+String(e.message||e));}
+}
+async function runAdmLifecycleDryRun(){
+  const target=document.getElementById("alc-dry-result"),at=vG("alc-dry-at");if(target)target.innerHTML=`<div style="color:var(--t4);font-size:10px;">جارٍ المحاكاة بدون إرسال...</div>`;
+  try{const r=await admFetch("/api/admin/subscriptions/dry-run",{method:"POST",body:JSON.stringify({at})}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر تنفيذ المحاكاة");const out=j.result||{},items=Array.isArray(out.previews)?out.previews:[];if(target)target.innerHTML=`<div style="color:var(--t4);font-size:10px;margin-bottom:5px;">تمت المحاكاة عند ${lifecycleAdminDate(out.now,true)} · فُحص ${Number(out.inspected)||0} · سيتغير إلى سماح ${Number(out.transitionedToGrace)||0} / منتهي ${Number(out.transitionedToExpired)||0}</div>${items.length?`<div style="display:grid;gap:4px;">${items.map(x=>`<div style="background:var(--ink);border:1px solid var(--b1);border-radius:8px;padding:7px;color:var(--t3);font-size:10px;">${sanitize(x.title||"")} · ${sanitize(x.reminderType||"")} · ${Number(x.daysUntilExpiry)} يوم</div>`).join("")}</div>`:`<div style="color:var(--t4);font-size:10px;">لا يوجد تنبيه مستحق في المحاكاة.</div>`}`;}catch(e){if(target)target.innerHTML=`<div style="color:var(--dn);font-size:10px;">⚠️ ${sanitize(String(e.message||e))}</div>`;}
+}
+async function sendAdmManualReminder(id){
+  if(!confirm("إرسال تذكير واحد لهذه الدورة؟ لن يُكرر تلقائيًا من هذا الزر."))return;
+  try{const r=await admFetch(`/api/admin/subscriptions/${encodeURIComponent(id)}/manual-reminder`,{method:"POST",body:"{}"}),j=await r.json();if(!r.ok||j.status!=="ok")throw new Error(j.message||"تعذر إنشاء التذكير");const d=j.delivery||{};const emailState=Number(d.emailSent)>0?"وأُرسل البريد":Number(d.emailUnavailable)>0?"وتعذر البريد (ظاهر في القائمة)":"والبريد قيد إعادة المحاولة";showToast(`✅ أُنشئ الإشعار داخل المنصة ${emailState}`);admTab("lifecycle");}catch(e){showToast("❌ "+String(e.message||e));}
+}
+
 async function renderAdmCoupons(el){
   el.innerHTML=`
     <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:13px;margin-bottom:14px;">
@@ -5926,8 +6033,10 @@ function normalizeNotifItem(raw){
   const nav=String(n.link||"");
   const link=nav.startsWith("nav:")&&NOTIF_NAVS.has(nav.slice(4))?nav:"";
   const ts=Number(n.ts);
+  const action=normalizedSubscriptionAction(n.actionUrl);
   return {
-    id,type,link,
+    id,type,link,actionUrl:action?.url||"",
+    actionLabel:String(n.actionLabel||"جدّد الآن").slice(0,40),
     title:String(n.title||"").slice(0,300),body:String(n.body||"").slice(0,1000),
     icon:String(n.icon||"🔔").slice(0,16),read:n.read===true,
     ts:Number.isFinite(ts)&&ts>0?ts:Date.now(),
@@ -5946,12 +6055,12 @@ function saveNotifsStore(s){
   DB.s(NOTIF_KEY,normalized);
 }
 
-function addNotif(type,title,body,link="",icon="🔔"){
+function addNotif(type,title,body,link="",icon="🔔",actionUrl="",actionLabel="جدّد الآن"){
   const store=getNotifsStore();
   const safeType=NOTIF_TYPES.has(String(type))?String(type):"news";
   if(!store.prefs[safeType]&&safeType!=="sub")return;
   const id=Date.now()+"_"+Math.random().toString(36).slice(2,6);
-  const item=normalizeNotifItem({id,type:safeType,title,body,link,icon,read:false,ts:Date.now()});
+  const item=normalizeNotifItem({id,type:safeType,title,body,link,icon,actionUrl,actionLabel,read:false,ts:Date.now()});
   if(!item)return;
   store.items.unshift(item);
   if(store.items.length>50)store.items=store.items.slice(0,50);
@@ -5986,11 +6095,12 @@ function renderNotifList(){
   if(!store.items.length){el.innerHTML=`<div class="notif-empty">📭<br/>لا توجد إشعارات بعد</div>`;return;}
   el.innerHTML=store.items.map(n=>{
     const ago=timeAgoNotif(n.ts);
-    return`<div class="notif-item${n.read?"":" unread"}" onclick='clickNotif(${safeJsArg(n.id)},${safeJsArg(n.link)})'>
+    return`<div class="notif-item${n.read?"":" unread"}" onclick='clickNotif(${safeJsArg(n.id)},${safeJsArg(n.link)},${safeJsArg(n.actionUrl)})'>
       <div class="notif-icon">${sanitize(n.icon)}</div>
       <div class="notif-body">
         <div class="notif-ntitle">${sanitize(n.title)}</div>
         <div class="notif-ntext">${sanitize(n.body)}</div>
+        ${n.actionUrl?`<button class="btn btn-au" style="padding:5px 9px;font-size:10px;margin-top:7px;" onclick='event.stopPropagation();clickNotif(${safeJsArg(n.id)},"",${safeJsArg(n.actionUrl)})'>${sanitize(n.actionLabel||"جدّد الآن")}</button>`:""}
         <div class="notif-time">${sanitize(ago)}</div>
       </div>
       ${n.read?"":"<div class='notif-dot'></div>"}
@@ -5998,13 +6108,14 @@ function renderNotifList(){
   }).join("");
 }
 
-function clickNotif(id,link){
+function clickNotif(id,link,actionUrl=""){
   const store=getNotifsStore();
   const n=store.items.find(x=>x.id===id);if(n){n.read=true;}
   store.unread=store.items.filter(x=>!x.read).length;
   saveNotifsStore(store);
   updateBellBadge();
   renderNotifList();
+  if(actionUrl){openSubscriptionAction(actionUrl);return;}
   if(link&&link.startsWith("nav:")){closeNotifPanel();goNav(link.replace("nav:",""));}
 }
 
@@ -6029,8 +6140,9 @@ function tryBrowserNotif(title,body){
 }
 
 /* ═══════════════════ IN-PLATFORM SERVER NOTIFICATIONS ═══════════════════
-   Polls only the current user's server rows: payment decisions and verified
-   price-alert triggers become a toast + bell without trusting local storage. */
+   Polls only the current user's server rows: payment decisions, subscription
+   lifecycle reminders, and verified price-alert triggers become a toast + bell
+   without trusting local storage. */
 const PAY_NOTIF_SEEN_KEY="pay_notifs_seen_v1";
 let payNotifTimer=null;
 function payNotifsSeen(){return DB.g(PAY_NOTIF_SEEN_KEY,[]);}
@@ -6047,8 +6159,9 @@ async function pollPayNotifs(){
       if(fresh.length){
         for(const n of fresh){
           const kind=n.type==="price_alert"?"price":"sub";
-          addNotif(kind,n.title,n.body,"nav:vip",n.icon|| (kind==="price"?"🔔":"💰"));
-          showPlatNotif(n.icon|| (kind==="price"?"🔔":"💰"),n.title,n.body);
+          const action=normalizedSubscriptionAction(n.actionUrl);
+          addNotif(kind,n.title,n.body,action?"":"nav:vip",n.icon|| (kind==="price"?"🔔":"💰"),action?.url||"",n.actionLabel||"جدّد الآن");
+          showPlatNotif(n.icon|| (kind==="price"?"🔔":"💰"),n.title,n.body,action?.url||"",n.actionLabel||"جدّد الآن");
         }
         markPayNotifsSeen(j.notifications.map(n=>n.id));
         loadPayStatus();
@@ -6060,11 +6173,12 @@ function startPayNotifPolling(){
   if(payNotifTimer)return;
   pollPayNotifs().finally(()=>{payNotifTimer=setInterval(pollPayNotifs,15000);});
 }
-function showPlatNotif(icon,title,body){
+function showPlatNotif(icon,title,body,actionUrl="",actionLabel="جدّد الآن"){
   try{
     const old=document.querySelector(".plat-notif");if(old)old.remove();
     const el=document.createElement("div");el.className="plat-notif";
-    el.innerHTML=`<span class="pn-emoji">${icon}</span><span><div class="pn-title">${sanitize(String(title))}</div><div class="pn-body">${sanitize(String(body))}</div></span><button class="pn-x" onclick="this.parentElement.remove()">✕</button>`;
+    const action=normalizedSubscriptionAction(actionUrl);
+    el.innerHTML=`<span class="pn-emoji">${sanitize(String(icon))}</span><span><div class="pn-title">${sanitize(String(title))}</div><div class="pn-body">${sanitize(String(body))}</div>${action?`<button class="btn btn-au" style="padding:5px 9px;font-size:10px;margin-top:6px;" onclick='openSubscriptionAction(${safeJsArg(action.url)});this.closest(".plat-notif").remove()'>${sanitize(String(actionLabel).slice(0,40))}</button>`:""}</span><button class="pn-x" onclick="this.parentElement.remove()">✕</button>`;
     document.body.appendChild(el);
     setTimeout(()=>{el.style.transition="opacity .4s";el.style.opacity="0";setTimeout(()=>el.remove(),420);},8000);
   }catch(e){}

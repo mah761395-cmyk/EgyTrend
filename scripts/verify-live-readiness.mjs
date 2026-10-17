@@ -265,9 +265,9 @@ if (fullNonPayment) {
     "SMTP_FROM must contain a non-placeholder sender address.",
   );
   check(
-    "alerts-cron-secret",
+    "protected-scheduler-cron-secret",
     hasSafeSecret("CRON_SECRET", 24),
-    "CRON_SECRET is required before enabling price-alert jobs.",
+    "CRON_SECRET is required before enabling price-alert or subscription-lifecycle jobs.",
   );
 
   const snapshotsEnabled = value("MARKET_SNAPSHOT_WRITES_ENABLED") === "true";

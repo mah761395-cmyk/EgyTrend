@@ -10,6 +10,7 @@ import paymentsRouter from "./payments";
 import portfolioRouter from "./portfolio";
 import priceAlertsRouter from "./price-alerts";
 import calculatorsRouter from "./calculators";
+import subscriptionLifecycleRouter from "./subscription-lifecycle";
 
 const router: IRouter = Router();
 
@@ -22,6 +23,7 @@ router.use("/user", userRouter);
 router.use(paymentsRouter);
 router.use(portfolioRouter);
 router.use(priceAlertsRouter);
+router.use(subscriptionLifecycleRouter);
 router.use(calculatorsRouter);
 router.use(opportunitiesRouter);
 

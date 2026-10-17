@@ -51,8 +51,10 @@
 
 - مصدر الصلاحية واحد: `artifacts/api-server/src/lib/userAuth.ts` → `hasVip(claims)`.
 - كل gates الحالية (AI، details VIP، MA/RSI/history، opportunities) تستعمل `hasVip()` على السيرفر؛ JWT أو localStorage لا يمنحان صلاحية.
-- جدول `user_subscriptions` يحتفظ بـ snapshot الباقة (الاسم/المدة/المزايا) وتاريخ البداية/الانتهاء وحالة entitlement.
-- موافقة الدفع تكتب subscription + projection legacy داخل transaction، وتجديد دفع لاحق يضيف المدة بدل إعادة البداية.
+- جدول `user_subscriptions` يحتفظ بـ snapshot الباقة (الاسم/المدة/المزايا) وتاريخ البداية/الانتهاء وحالة entitlement. أضيف محليًا في `0007` لكل دورة `cycle_id` و`grace_ends_at`؛ الانتهاء UTC ومدة الشهر **30×24 ساعة** لا `setMonth()`.
+- موافقة الدفع تكتب subscription + projection legacy داخل transaction، وتجديد قبل الانتهاء يضيف المدة من `expires_at` الحالي، وبعده يبدأ من لحظة الاعتماد. التجديد يبدّل cycle ويلغي delivery queued/pending للدورة السابقة دون محو history وصل للمستخدم.
+- محرك lifecycle المحلي (`subscription-lifecycle.ts`) يحجز monthly 7/3/1/expiry/+3 winback وannual 30/14/7/1/expiry بصيغة Cairo DST-safe، مع in-app CTA إلى الباقة المختارة وemail outbox مستقل (3 محاولات للفشل الفعلي). ينتهي access عند instant الانتهاء من `hasVip()` حتى لو Cron تأخر، وتبقى البيانات محفوظة ومقفولة.
+- `SUBSCRIPTION_LIFECYCLE_HANDOVER.md` هو مرجع cron/grace/admin/dry-run وقرار Vercel؛ لا يوجد Cron أو secret أو migration منفذ بعد.
 - `app_users.plan/vip_expires_at` الآن compatibility bridge فقط؛ للـ legacy users ذوي expiry معروف يوجد backfill في migration. لا يُخترع expiry لمن ليس له تاريخ مسجل.
 - الباقات العامة تقرأ السعر/المدة/المزايا من إعدادات السيرفر. تعديل باقة جديدة لا يغير snapshot مشترك حالي.
 - حذف الباقة من لوحة الإدارة أصبح archive (`isActive=false`) وليس delete.
@@ -104,6 +106,7 @@
 | `0004_user_price_alerts` | قواعد تنبيهات السعر/النسبة وprovenance trigger. |
 | `0005_subscription_plan_pricing` | عروض أسعار server-side/targeting/history وsnapshot طلب الدفع/مدة تثبيت السعر. |
 | `0006_user_calculator_scenarios` | سيناريوهات حاسبات VIP وسجل save/copy/PDF export؛ archive-only rollback. |
+| `0007_subscription_lifecycle` | cycle/grace UTC، reminders outbox/CTA، lifecycle events؛ rollback archive-only. |
 
 كل ملف `down.sql` غير مدمر: يحتفظ بـrollback archive أو يعلّم السجلات archived بدل الحذف. تفاصيل التسلسل في `lib/db/migrations/README.md`.
 
@@ -134,8 +137,8 @@ node --check /tmp/egytrend-calculator-math.mjs
 node --check /tmp/egytrend-calculator-runtime.mjs
 ```
 
-- API: **36/36 tests passed** باستخدام `pg-mem` synthetic فقط، بلا `DATABASE_URL` حقيقية.
-- suite تغطي: lifecycle دفع/entitlement/renewal، rejection of stale VIP JWT، server portfolio CRUD/archive، alerts CRUD/archive، وسلامة evaluator أمام quote stale/EOD، وتسعير الباقات (بداية/نهاية العرض، targeting، رفض old price غير صالح، snapshot، تجاهل مبلغ المتصفح، ورفض موظف بلا permission)، ومعادلات الحاسبات وحماية free/VIP المباشرة للـruntime/math/save/history/PDF export.
+- API: **41/41 tests passed** باستخدام `pg-mem` synthetic فقط، بلا `DATABASE_URL` حقيقية.
+- suite تغطي: lifecycle دفع/entitlement/renewal، rejection of stale VIP JWT، server portfolio CRUD/archive، alerts CRUD/archive، وسلامة evaluator أمام quote stale/EOD، وتسعير الباقات (بداية/نهاية العرض، targeting، رفض old price غير صالح، snapshot، تجاهل مبلغ المتصفح، ورفض موظف بلا permission)، ومعادلات الحاسبات وحماية free/VIP المباشرة للـruntime/math/save/history/PDF export. أضيفت fake-clock coverage لدورة الاشتراك: day 23/27/29/30/33، cron مكرر بلا duplicate، 30 يوم UTC، renewal day 25 → day 60 وإلغاء pending، بقاء البيانات مع Free، DST Cairo، 3 محاولات البريد وdry-run غير المعدّل.
 - تضاف تغطية Twelve الحالية: منع الطلب عند غياب contract reference، منع `real-time` عند delay صفر دون acknowledgement، حجب EGX حتى approval/reference مستقلين، ومنع تلخيص errors من تسريب API key أو request URL.
 - تحذيران `dataStore watch ENOENT` أثناء tests بسبب مسارات JSON غير موجودة داخل test harness؛ ليسا فشلًا ولا كتابة على DB.
 - `preflight:live:full` نجح على environment اصطناعية كاملة فقط، ورفض map EGX بلا acknowledgement/reference خاصين به كما هو مقصود؛ لم تُستخدم أي credentials حقيقية. تفاصيل النتيجة والشروط في `LIVE_READINESS.md`.
@@ -152,7 +155,7 @@ node --check /tmp/egytrend-calculator-runtime.mjs
 
 - لا provider مدفوع/credentials أو market license معتمدة.
 - لا Preview DB حقيقية، backup، migration أو deploy.
-- لا scheduler للـ price alerts ولا SMTP test delivery.
+- لا scheduler للـ price alerts أو lifecycle ولا SMTP test delivery؛ code/outbox موجود محليًا فقط.
 - لا payment integration حقيقية أو external payment call.
 - لا email morning digest؛ يجب ربطه بمصدر أخبار/سوق approved وسcheduler معتمد أولًا.
 - watchlists/alerts/browser preference القديمة الأخرى ما زالت UI preferences محلية وليست source مالية موثوقة؛ لا تستخدمها للخادم كصلاحية أو رصيد.

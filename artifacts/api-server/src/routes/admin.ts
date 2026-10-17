@@ -17,8 +17,9 @@ import { db } from "@workspace/db";
 import {
   employeesTable, subscriptionPlansTable, couponsTable, auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable, appUsersTable, userNotificationsTable,
   userSubscriptionsTable, appSettingsTable, planPriceOffersTable, planPriceChangeLogsTable,
+  subscriptionLifecycleEventsTable, subscriptionRemindersSentTable,
 } from "@workspace/db";
-import { eq, desc, and, gte, lte, like, or, sql, isNull } from "drizzle-orm";
+import { eq, desc, and, gte, lte, like, or, sql, isNull, inArray } from "drizzle-orm";
 import {
   getEffectivePrice,
   getPaymentPriceLockHours,
@@ -31,6 +32,20 @@ import {
   validatePricePresentation,
   type ValidatedOfferInput,
 } from "../lib/pricing";
+import {
+  calculateApprovedSubscriptionEnd,
+  calculateSubscriptionGraceEnd,
+  createSubscriptionCycleId,
+  listExpiringSubscriptions,
+  listSubscriptionEmailFailures,
+  queueManualSubscriptionReminder,
+  readSubscriptionLifecycleSettings,
+  runSubscriptionLifecycle,
+  saveSubscriptionLifecycleSettings,
+  subscriptionAdminSummary,
+  validateSubscriptionLifecycleSettings,
+} from "../lib/subscription-lifecycle";
+import { parseCairoDateTime } from "../lib/subscription-time";
 
 const router: IRouter = Router();
 
@@ -1354,6 +1369,15 @@ class PaymentDecisionError extends Error {
   }
 }
 
+/** A scoped test clock keeps production approval time authoritative while
+ * allowing lifecycle regression tests to exercise exact renewal boundaries. */
+function paymentDecisionNow(): Date {
+  const injected = process.env.NODE_ENV === "test"
+    ? (globalThis as typeof globalThis & { __egytrendTestClock?: Date }).__egytrendTestClock
+    : undefined;
+  return injected instanceof Date && Number.isFinite(injected.getTime()) ? new Date(injected) : new Date();
+}
+
 router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = String(req.params["id"] || "").trim();
   const requestedStatus = req.body?.status === "approved" ? "approved"
@@ -1366,6 +1390,11 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
   }
 
   try {
+    /* Lifecycle settings are server-owned and default safely to zero grace.
+     * They are read before the approval transaction, then snapshotted into the
+     * new entitlement's grace_ends_at so a later settings edit cannot rewrite
+     * a term the customer already bought. */
+    const lifecycleSettings = await readSubscriptionLifecycleSettings();
     /* The status change and VIP activation are one transaction. A locked
      * request row prevents two admin clicks from extending the same payment
      * twice, and validation happens before the request is marked approved. */
@@ -1387,7 +1416,7 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
 
       let planNameAr = existing.planKey;
       if (requestedStatus === "approved") {
-        const now = new Date();
+        const now = paymentDecisionNow();
         /* New-format requests reserve their immutable server price only for
          * the configured window. Mark an overdue pending request expired in
          * the same transaction; its snapshot remains auditable. */
@@ -1437,34 +1466,68 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
           throw new PaymentDecisionError(409, "تعذر تفعيل الاشتراك؛ راجع الخطة وحالة الحساب قبل الموافقة");
         }
         const [currentSubscription] = await tx.select({
+          id: userSubscriptionsTable.id,
+          cycleId: userSubscriptionsTable.cycleId,
           startsAt: userSubscriptionsTable.startsAt,
           expiresAt: userSubscriptionsTable.expiresAt,
           status: userSubscriptionsTable.status,
         }).from(userSubscriptionsTable).where(eq(userSubscriptionsTable.userId, user.id)).limit(1);
 
         planNameAr = activationPlan.nameAr;
-        /* The subscription table is the entitlement source. The legacy fields
-         * are considered only when extending a user that predates the backfill.
-         * They are then kept as a compatibility projection for rollback. */
-        const existingExpiry = currentSubscription?.status === "active" && currentSubscription.expiresAt > now
+        /* A paid renewal before the term ends stacks from the current expiry.
+         * A post-expiry (including grace-period) approval starts from approval
+         * time, as required; monthly arithmetic is exactly 30 elapsed days. */
+        const extendsCurrentTerm = currentSubscription?.status === "active" && currentSubscription.expiresAt > now;
+        const extendsLegacyProjection = !currentSubscription && user.plan === "vip" && user.vipExpiresAt && user.vipExpiresAt > now;
+        const existingExpiry = extendsCurrentTerm
           ? currentSubscription.expiresAt
-          : user.plan === "vip" && user.vipExpiresAt && user.vipExpiresAt > now
-            ? user.vipExpiresAt
+          : extendsLegacyProjection
+            ? user.vipExpiresAt!
             : now;
-        const expires = new Date(existingExpiry);
-        expires.setMonth(expires.getMonth() + activationPlan.durationMonths);
-        const startsAt = currentSubscription?.startsAt || now;
+        const expires = calculateApprovedSubscriptionEnd(existingExpiry, activationPlan.durationMonths);
+        const startsAt = extendsCurrentTerm ? currentSubscription.startsAt : now;
+        const subscriptionId = currentSubscription?.id || `sub-${user.id}`;
+        const cycleId = createSubscriptionCycleId(user.id, existing.id);
+        const graceEndsAt = calculateSubscriptionGraceEnd(expires, lifecycleSettings.graceDays);
+        const isRenewal = Boolean(currentSubscription || extendsLegacyProjection);
+
+        /* The prior current row is overwritten, so cancel only undelivered or
+         * still-pending deliveries from its old cycle inside this same payment
+         * transaction. Already-visible in-app history stays visible. */
+        if (currentSubscription?.cycleId) {
+          await tx.update(subscriptionRemindersSentTable).set({
+            emailStatus: "cancelled",
+            emailNextAttemptAt: null,
+            cancelledAt: now,
+            updatedAt: now,
+          }).where(and(
+            eq(subscriptionRemindersSentTable.subscriptionCycleId, currentSubscription.cycleId),
+            inArray(subscriptionRemindersSentTable.emailStatus, ["pending", "sending"]),
+          ));
+          await tx.update(subscriptionRemindersSentTable).set({
+            deliveryStatus: "cancelled",
+            emailStatus: "cancelled",
+            emailNextAttemptAt: null,
+            cancelledAt: now,
+            updatedAt: now,
+          }).where(and(
+            eq(subscriptionRemindersSentTable.subscriptionCycleId, currentSubscription.cycleId),
+            eq(subscriptionRemindersSentTable.deliveryStatus, "queued"),
+          ));
+        }
 
         await tx.insert(userSubscriptionsTable).values({
-          id: `sub-${user.id}`,
+          id: subscriptionId,
           userId: user.id,
           planKey: activationPlan.key,
           planNameAr: activationPlan.nameAr,
           planDurationMonths: activationPlan.durationMonths,
           planFeatures: activationPlan.features,
           status: "active",
+          cycleId,
           startsAt,
           expiresAt: expires,
+          graceEndsAt,
           paymentRequestId: existing.id,
           source: "payment",
           cancelledAt: null,
@@ -1478,14 +1541,27 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
             planDurationMonths: activationPlan.durationMonths,
             planFeatures: activationPlan.features,
             status: "active",
+            cycleId,
             startsAt,
             expiresAt: expires,
+            graceEndsAt,
             paymentRequestId: existing.id,
             source: "payment",
             cancelledAt: null,
             updatedAt: now,
           },
         });
+        await tx.insert(subscriptionLifecycleEventsTable).values({
+          id: `subevent-${existing.id}`,
+          userId: user.id,
+          subscriptionId,
+          subscriptionCycleId: cycleId,
+          eventType: isRenewal ? "renewed" : "activated",
+          relatedCycleId: currentSubscription?.cycleId || null,
+          planKey: activationPlan.key,
+          occurredAt: now,
+          createdAt: now,
+        }).onConflictDoNothing();
         await tx.update(appUsersTable).set({
           /* Compatibility projection only. New server authorization reads
            * user_subscriptions through hasVip(). */
@@ -1551,6 +1627,131 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
     }
     logger.error({ err: e }, "payment request update error");
     res.status(500).json({ status: "error", message: "server error" });
+  }
+});
+
+/* ════════════════════════════════════════════
+   SUBSCRIPTION LIFECYCLE — staff visibility and safe controls
+════════════════════════════════════════════ */
+router.get("/subscriptions/summary", requireAuth, requireRole("super_admin", "admin", "support"), async (_req: Request, res: Response) => {
+  try {
+    const summary = await subscriptionAdminSummary(new Date());
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({ status: "ok", summary });
+  } catch (error) {
+    logger.error({ err: error }, "subscription summary error");
+    res.status(503).json({ status: "error", message: "إحصاءات الاشتراكات غير متاحة حاليًا" });
+  }
+});
+
+router.get("/subscriptions/expiring", requireAuth, requireRole("super_admin", "admin", "support"), async (_req: Request, res: Response) => {
+  try {
+    const subscriptions = await listExpiringSubscriptions(new Date());
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({ status: "ok", subscriptions, asOf: new Date().toISOString(), timezone: "Africa/Cairo" });
+  } catch (error) {
+    logger.error({ err: error }, "expiring subscriptions list error");
+    res.status(503).json({ status: "error", message: "قائمة الاشتراكات غير متاحة حاليًا" });
+  }
+});
+
+router.get("/subscriptions/email-failures", requireAuth, requireRole("super_admin", "admin", "support"), async (req: Request, res: Response) => {
+  try {
+    const raw = Number(req.query["limit"] || 100);
+    const failures = await listSubscriptionEmailFailures(Number.isInteger(raw) ? raw : 100);
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.json({ status: "ok", failures, asOf: new Date().toISOString() });
+  } catch (error) {
+    logger.error({ err: error }, "subscription email failures list error");
+    res.status(503).json({ status: "error", message: "حالة البريد غير متاحة حاليًا" });
+  }
+});
+
+router.get("/subscriptions/settings", requireAuth, requireRole("super_admin", "admin", "support"), async (_req: Request, res: Response) => {
+  try {
+    const settings = await readSubscriptionLifecycleSettings();
+    res.json({
+      status: "ok",
+      settings,
+      note: "تُطبّق فترة السماح على الاشتراكات التي تُعتمد بعد هذا التعديل. رسائل الانتهاء المعاملاتية لا تتعطل؛ خيار وحشتنا تسويقي ويمكن إيقافه.",
+    });
+  } catch (error) {
+    logger.error({ err: error }, "subscription settings read error");
+    res.status(503).json({ status: "error", message: "إعدادات الاشتراك غير متاحة حاليًا" });
+  }
+});
+
+router.put("/subscriptions/settings", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const settings = validateSubscriptionLifecycleSettings(req.body);
+  if (!settings) {
+    res.status(400).json({ status: "error", message: "إعدادات الاشتراك غير صالحة: فترة السماح من 0 إلى 31 يومًا وخيار التسويق منطقي." });
+    return;
+  }
+  try {
+    await saveSubscriptionLifecycleSettings(settings, new Date());
+    await auditLog("update_subscription_lifecycle_settings", req.actor, "subscription-lifecycle", {
+      graceDays: settings.graceDays,
+      winbackMarketingEnabled: settings.winbackMarketingEnabled,
+    }, req.ip);
+    res.json({ status: "ok", settings });
+  } catch (error) {
+    logger.error({ err: error }, "subscription settings update error");
+    res.status(503).json({ status: "error", message: "تعذر حفظ إعدادات الاشتراك" });
+  }
+});
+
+/* No state transition, notification, or e-mail is performed by this route. */
+router.post("/subscriptions/dry-run", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "support"), async (req: AuthRequest, res: Response) => {
+  const supplied = typeof req.body?.at === "string" ? req.body.at : "";
+  const simulatedAt = supplied ? parseCairoDateTime(supplied) : new Date();
+  if (!simulatedAt) {
+    res.status(400).json({ status: "error", message: "استخدم تاريخًا صالحًا (Cairo datetime أو ISO UTC)." });
+    return;
+  }
+  try {
+    const result = await runSubscriptionLifecycle({ now: simulatedAt, dryRun: true });
+    await auditLog("dry_run_subscription_lifecycle", req.actor, "subscription-lifecycle", {
+      at: result.now,
+      inspected: result.inspected,
+      wouldQueue: result.previews.length,
+    }, req.ip);
+    res.json({ status: "ok", result });
+  } catch (error) {
+    logger.error({ err: error }, "subscription dry run error");
+    res.status(503).json({ status: "error", message: "تعذر تنفيذ المحاكاة حاليًا" });
+  }
+});
+
+router.post("/subscriptions/:id/manual-reminder", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const subscriptionId = String(req.params["id"] || "").trim().slice(0, 120);
+  if (!subscriptionId) {
+    res.status(400).json({ status: "error", message: "معرف الاشتراك مطلوب" });
+    return;
+  }
+  try {
+    const outcome = await queueManualSubscriptionReminder(subscriptionId, new Date());
+    if (outcome.status === "not_found") {
+      res.status(404).json({ status: "error", message: "الاشتراك غير موجود" });
+      return;
+    }
+    if (outcome.status === "not_eligible") {
+      res.status(422).json({ status: "error", message: "التذكير اليدوي متاح فقط لاشتراك نشط ينتهي خلال 7 أيام" });
+      return;
+    }
+    if (outcome.status === "already_queued") {
+      res.status(409).json({ status: "error", message: "أُنشئ تذكير يدوي لهذه الدورة بالفعل؛ لا يمكن تكراره" });
+      return;
+    }
+    await auditLog("manual_subscription_reminder", req.actor, `subscription:${subscriptionId}`, {
+      inAppDelivered: outcome.result?.inAppDelivered || 0,
+      emailSent: outcome.result?.emailSent || 0,
+      emailRetrying: outcome.result?.emailRetrying || 0,
+      emailUnavailable: outcome.result?.emailUnavailable || 0,
+    }, req.ip);
+    res.json({ status: "ok", delivery: outcome.result });
+  } catch (error) {
+    logger.error({ err: error }, "manual subscription reminder error");
+    res.status(503).json({ status: "error", message: "تعذر إنشاء التذكير اليدوي حاليًا" });
   }
 });
 

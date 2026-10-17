@@ -30,6 +30,7 @@ import {
 } from "../lib/pricing";
 import { logger } from "../lib/logger";
 import { checkPayRateLimit } from "./admin";
+import { cairoCalendarDaysUntil, formatCairoDate } from "../lib/subscription-time";
 
 const router: Router = Router();
 
@@ -144,11 +145,54 @@ router.get("/payments/my", async (req: Request, res: Response) => {
         planNameAr: entitlement.planNameAr,
         planFeatures: entitlement.planFeatures,
         expiresAt: entitlement.expiresAt?.toISOString() || null,
+        endsAt: entitlement.expiresAt?.toISOString() || null,
+        graceEndsAt: entitlement.graceEndsAt?.toISOString() || null,
+        renewalState: entitlement.status,
       },
     });
   } catch (e) {
     logger.error({ err: e }, "payments my error");
     res.status(500).json({ status: "error", message: "server error" });
+  }
+});
+
+/* A small server-calculated banner model. The browser can render it but cannot
+ * decide whether a member is entitled to see VIP or choose a different plan. */
+router.get("/subscriptions/banner", async (req: Request, res: Response) => {
+  const user = currentUser(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
+  try {
+    const entitlement = await getVipEntitlement(user);
+    const now = new Date();
+    const endsAt = entitlement.expiresAt;
+    const daysUntilExpiry = endsAt ? cairoCalendarDaysUntil(endsAt, now) : null;
+    /* The retention banner is only for the final three local Cairo dates of
+     * an active paid term, not a client-side plan guess or post-expiry grace. */
+    if (!entitlement.active || entitlement.status !== "active" || !endsAt || daysUntilExpiry === null || daysUntilExpiry < 0 || daysUntilExpiry > 3 || !entitlement.planKey) {
+      res.setHeader("Cache-Control", "private, no-store, max-age=0");
+      res.json({ status: "ok", visible: false, asOf: now.toISOString() });
+      return;
+    }
+    const actionUrl = `/vip?plan=${encodeURIComponent(entitlement.planKey)}&renew=1`;
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    res.json({
+      status: "ok",
+      visible: true,
+      daysUntilExpiry,
+      endsAt: endsAt.toISOString(),
+      endsOn: formatCairoDate(endsAt),
+      planKey: entitlement.planKey,
+      body: `ينتهي اشتراكك يوم ${formatCairoDate(endsAt)}. بعد الانتهاء يعود الحساب للخطة المجانية وتبقى قوائمك ومحفظتك وتنبيهاتك وسيناريوهاتك محفوظة لكنها مقفولة حتى التجديد.`,
+      actionUrl,
+      actionLabel: "جدّد الآن",
+      asOf: now.toISOString(),
+    });
+  } catch (error) {
+    logger.error({ err: error }, "subscription banner error");
+    res.status(503).json({ status: "error", message: "حالة الاشتراك غير متاحة حاليًا" });
   }
 });
 
@@ -338,22 +382,32 @@ router.get("/payments/notifications", async (req: Request, res: Response) => {
         kind: userNotificationsTable.kind,
         title: userNotificationsTable.title,
         body: userNotificationsTable.body,
+        actionUrl: userNotificationsTable.actionUrl,
+        actionLabel: userNotificationsTable.actionLabel,
         createdAt: userNotificationsTable.createdAt,
       })
       .from(userNotificationsTable)
       .where(eq(userNotificationsTable.phone, user.phone))
       .orderBy(desc(userNotificationsTable.createdAt))
       .limit(20);
-    /* Client contract: type = approved|rejected, notes = reason for rejection. */
-    const notifications = rows.map((r) => ({
-      id: r.id,
+    /* Client contract: type = approved|rejected, notes = reason for rejection.
+     * CTA values are constrained again at the response edge so even an
+     * unexpected stored value can never become an open redirect in the UI. */
+    const safeAction = (value: string | null) => value && /^\/(?!\/)[a-zA-Z0-9_?=&%./-]{1,300}$/.test(value) ? value : null;
+    const notifications = rows.map((r) => {
+      const actionUrl = safeAction(r.actionUrl);
+      return {
+        id: r.id,
         type: r.kind === "payment_approved" ? "approved" : r.kind === "payment_rejected" ? "rejected" : r.kind === "price_alert" ? "price_alert" : r.kind,
         title: r.title,
-      body: r.body,
-      notes: r.kind === "payment_rejected" ? r.body.replace(/^تم رفض طلب الدفع\. السبب:\s*/, "") : "",
-      icon: r.kind === "payment_approved" ? "🎉" : "📋",
-      createdAt: r.createdAt,
-    }));
+        body: r.body,
+        notes: r.kind === "payment_rejected" ? r.body.replace(/^تم رفض طلب الدفع\. السبب:\s*/, "") : "",
+        icon: r.kind === "payment_approved" ? "🎉" : r.kind === "subscription" ? "⏰" : "📋",
+        actionUrl,
+        actionLabel: actionUrl && r.actionLabel ? r.actionLabel.slice(0, 40) : null,
+        createdAt: r.createdAt,
+      };
+    });
     res.json({ status: "ok", notifications });
   } catch (e) {
     logger.error({ err: e }, "user notifications error");

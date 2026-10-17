@@ -108,8 +108,9 @@ export type VipEntitlement = {
   planKey: string | null;
   planNameAr: string | null;
   planFeatures: string[];
-  status: "active" | "cancelled" | "expired" | "none";
+  status: "active" | "grace" | "cancelled" | "expired" | "none";
   expiresAt: Date | null;
+  graceEndsAt: Date | null;
 };
 
 const NO_VIP: VipEntitlement = {
@@ -120,15 +121,16 @@ const NO_VIP: VipEntitlement = {
   planFeatures: [],
   status: "none",
   expiresAt: null,
+  graceEndsAt: null,
 };
 
-function legacyEntitlement(row: { plan: string; vipExpiresAt: Date | null }): VipEntitlement {
+function legacyEntitlement(row: { plan: string; vipExpiresAt: Date | null }, now = new Date()): VipEntitlement {
   if (row.plan !== "vip") return NO_VIP;
   /* Compatibility bridge for users that predate 0002. It is deliberately
    * server-side, never based on the JWT, and will disappear only after every
    * legacy record has been reconciled. A missing historic expiry is preserved
    * rather than silently inventing an expiry or breaking a paid user. */
-  const active = !row.vipExpiresAt || row.vipExpiresAt.getTime() > Date.now();
+  const active = !row.vipExpiresAt || row.vipExpiresAt.getTime() > now.getTime();
   return {
     active,
     source: "legacy",
@@ -137,6 +139,7 @@ function legacyEntitlement(row: { plan: string; vipExpiresAt: Date | null }): Vi
     planFeatures: [],
     status: active ? "active" : "expired",
     expiresAt: row.vipExpiresAt,
+    graceEndsAt: null,
   };
 }
 
@@ -153,8 +156,9 @@ function subscriptionTableMissing(error: unknown): boolean {
  * documented migration bridge for accounts that have not been backfilled.
  * JWT `plan` / browser state never grants access.
  */
-export async function getVipEntitlement(claims: Pick<UserClaims, "sub"> | null): Promise<VipEntitlement> {
+export async function getVipEntitlement(claims: Pick<UserClaims, "sub"> | null, now = new Date()): Promise<VipEntitlement> {
   if (!claims || !Number.isInteger(claims.sub) || claims.sub <= 0) return NO_VIP;
+  if (!Number.isFinite(now.getTime())) return NO_VIP;
   const { db } = await import("@workspace/db");
   const { appUsersTable, userSubscriptionsTable } = await import("@workspace/db/schema");
   const { and, eq } = await import("drizzle-orm");
@@ -174,6 +178,7 @@ export async function getVipEntitlement(claims: Pick<UserClaims, "sub"> | null):
         planFeatures: userSubscriptionsTable.planFeatures,
         status: userSubscriptionsTable.status,
         expiresAt: userSubscriptionsTable.expiresAt,
+        graceEndsAt: userSubscriptionsTable.graceEndsAt,
       })
       .from(userSubscriptionsTable)
       .where(eq(userSubscriptionsTable.userId, claims.sub))
@@ -181,15 +186,20 @@ export async function getVipEntitlement(claims: Pick<UserClaims, "sub"> | null):
 
     if (subscription) {
       const expiresAt = subscription.expiresAt;
-      const active = subscription.status === "active" && expiresAt.getTime() > Date.now();
+      const paidActive = subscription.status === "active" && expiresAt.getTime() > now.getTime();
+      const graceActive = (subscription.status === "active" || subscription.status === "grace")
+        && expiresAt.getTime() <= now.getTime()
+        && Boolean(subscription.graceEndsAt && subscription.graceEndsAt.getTime() > now.getTime());
+      const active = paidActive || graceActive;
       return {
         active,
         source: "subscription",
         planKey: subscription.planKey,
         planNameAr: subscription.planNameAr,
         planFeatures: Array.isArray(subscription.planFeatures) ? subscription.planFeatures : [],
-        status: active ? "active" : subscription.status === "active" ? "expired" : subscription.status === "cancelled" ? "cancelled" : "expired",
+        status: paidActive ? "active" : graceActive ? "grace" : subscription.status === "cancelled" ? "cancelled" : "expired",
         expiresAt,
+        graceEndsAt: subscription.graceEndsAt,
       };
     }
   } catch (error) {
@@ -197,10 +207,10 @@ export async function getVipEntitlement(claims: Pick<UserClaims, "sub"> | null):
      * makes rollback/old Preview environments safe without treating any other
      * database failure as a VIP grant. */
     if (!subscriptionTableMissing(error)) throw error;
-    return legacyEntitlement(user);
+    return legacyEntitlement(user, now);
   }
 
-  return legacyEntitlement(user);
+  return legacyEntitlement(user, now);
 }
 
 /** The one authorization predicate used by every paid API/content gate. */

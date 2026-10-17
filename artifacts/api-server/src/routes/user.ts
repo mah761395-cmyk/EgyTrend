@@ -58,6 +58,10 @@ function publicSubscription(entitlement: VipEntitlement) {
     planNameAr: entitlement.planNameAr,
     planFeatures: entitlement.planFeatures,
     expiresAt: entitlement.expiresAt?.toISOString() || null,
+    /** Clear lifecycle names for new clients; expiresAt remains backward compatible. */
+    endsAt: entitlement.expiresAt?.toISOString() || null,
+    graceEndsAt: entitlement.graceEndsAt?.toISOString() || null,
+    renewalState: entitlement.status,
     /* Compatibility is visible to the account only as neutral state; the
      * browser still never determines authorization. */
     source: entitlement.source,

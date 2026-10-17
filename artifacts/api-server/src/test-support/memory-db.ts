@@ -145,8 +145,10 @@ export async function createMemoryDatabase(): Promise<{
       plan_duration_months integer NOT NULL,
       plan_features jsonb NOT NULL DEFAULT '[]'::jsonb,
       status text NOT NULL DEFAULT 'active',
+      cycle_id text NOT NULL UNIQUE,
       starts_at timestamp NOT NULL,
       expires_at timestamp NOT NULL,
+      grace_ends_at timestamp,
       payment_request_id text,
       source text NOT NULL DEFAULT 'payment',
       cancelled_at timestamp,
@@ -242,9 +244,50 @@ export async function createMemoryDatabase(): Promise<{
       kind text NOT NULL DEFAULT 'info',
       title text NOT NULL,
       body text NOT NULL,
+      action_url text,
+      action_label text,
       read_at timestamp,
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE reminders_sent (
+      id text PRIMARY KEY,
+      subscription_id text NOT NULL REFERENCES user_subscriptions(id),
+      subscription_cycle_id text NOT NULL,
+      user_id integer NOT NULL REFERENCES app_users(id),
+      reminder_type text NOT NULL,
+      reminder_class text NOT NULL DEFAULT 'transactional',
+      target_ends_at timestamp NOT NULL,
+      delivery_status text NOT NULL DEFAULT 'queued',
+      content jsonb NOT NULL,
+      in_app_notification_id text,
+      in_app_sent_at timestamp,
+      email_status text NOT NULL DEFAULT 'pending',
+      email_attempts integer NOT NULL DEFAULT 0,
+      email_next_attempt_at timestamp,
+      email_claim_token text,
+      email_claimed_at timestamp,
+      email_sent_at timestamp,
+      email_last_error text,
+      cancelled_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(subscription_cycle_id, reminder_type)
+    );
+    CREATE INDEX subscription_reminders_sent_delivery_idx ON reminders_sent(delivery_status, target_ends_at);
+    CREATE INDEX subscription_reminders_sent_email_idx ON reminders_sent(email_status, email_next_attempt_at);
+    CREATE TABLE subscription_lifecycle_events (
+      id text PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES app_users(id),
+      subscription_id text NOT NULL REFERENCES user_subscriptions(id),
+      subscription_cycle_id text NOT NULL,
+      event_type text NOT NULL,
+      related_cycle_id text,
+      plan_key text NOT NULL,
+      occurred_at timestamp NOT NULL,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(subscription_cycle_id, event_type)
+    );
+    CREATE INDEX subscription_lifecycle_events_type_at_idx ON subscription_lifecycle_events(event_type, occurred_at);
     CREATE TABLE app_settings (
       key text PRIMARY KEY,
       value text NOT NULL,
