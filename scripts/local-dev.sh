@@ -10,21 +10,50 @@ export MSYS2_ENV_CONV_EXCL="*"
 export MSYS_NO_PATHCONV=1
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BUN="/c/Users/TBARK/AppData/Local/Programs/@codebufffreebuff-desktop/resources/bun/bun.exe"
-PG_BIN="/c/Users/TBARK/pg16/bin"
-PG_DATA="/c/Users/TBARK/pg16-data"
+# Prefer a caller-supplied runtime. If none is supplied, use Bun or Node from
+# PATH. Never commit a machine-specific executable path here.
+RUNTIME="${RUNTIME_BIN:-${BUN_BIN:-}}"
+if [ -z "$RUNTIME" ]; then
+  RUNTIME="$(command -v bun 2>/dev/null || command -v node 2>/dev/null || true)"
+fi
+if [ -z "$RUNTIME" ]; then
+  echo "[dev] Bun or Node is required (or set RUNTIME_BIN/BUN_BIN)." >&2
+  exit 1
+fi
+
+# Never launch even a local authenticated API with a checked-in/default signing
+# key. Supply a unique development-only value through the shell or secret
+# manager; do not paste it into this script, a commit, or a log.
+if [ -z "${SESSION_SECRET:-}" ]; then
+  echo "[dev] SESSION_SECRET is required (use a unique development-only value)." >&2
+  exit 1
+fi
+
+# PostgreSQL startup is optional and intentionally machine-configured. When
+# PG_BIN and PG_DATA are absent, the script leaves an already-running local DB
+# alone rather than embedding a personal filesystem path.
+PG_BIN="${PG_BIN:-}"
+PG_DATA="${PG_DATA:-}"
 LOG_DIR="$ROOT/.local-logs"
 mkdir -p "$LOG_DIR"
 
-export PATH="$PG_BIN:$PATH"
-
-# 1. PostgreSQL
-if ! "$PG_BIN/pg_ctl.exe" -D "$PG_DATA" status >/dev/null 2>&1; then
-  echo "[dev] starting PostgreSQL..."
-  "$PG_BIN/pg_ctl.exe" -D "$PG_DATA" -l "$PG_DATA/server.log" -o "-p 5432" start >/dev/null 2>&1
-  sleep 2
+# 1. PostgreSQL (only when the caller explicitly supplies local control paths)
+if [ -n "$PG_BIN" ] && [ -n "$PG_DATA" ]; then
+  if [ -x "$PG_BIN/pg_ctl.exe" ]; then PG_CTL="$PG_BIN/pg_ctl.exe"; else PG_CTL="$PG_BIN/pg_ctl"; fi
+  if [ ! -x "$PG_CTL" ]; then
+    echo "[dev] PG_BIN does not contain pg_ctl: $PG_BIN" >&2
+    exit 1
+  fi
+  export PATH="$PG_BIN:$PATH"
+  if ! "$PG_CTL" -D "$PG_DATA" status >/dev/null 2>&1; then
+    echo "[dev] starting PostgreSQL..."
+    "$PG_CTL" -D "$PG_DATA" -l "$PG_DATA/server.log" -o "-p 5432" start >/dev/null 2>&1
+    sleep 2
+  fi
+  echo "[dev] PostgreSQL: $( "$PG_CTL" -D "$PG_DATA" status >/dev/null 2>&1 && echo running || echo DOWN )"
+else
+  echo "[dev] PostgreSQL startup not managed; using the configured/local DATABASE_URL. Set PG_BIN and PG_DATA only to manage a local instance."
 fi
-echo "[dev] PostgreSQL: $( "$PG_BIN/pg_ctl.exe" -D "$PG_DATA" status >/dev/null 2>&1 && echo running || echo DOWN )"
 
 # 2. API server (kill previous instance if any)
 if [ -f "$LOG_DIR/api.pid" ] && kill -0 "$(cat "$LOG_DIR/api.pid")" 2>/dev/null; then
@@ -32,12 +61,11 @@ if [ -f "$LOG_DIR/api.pid" ] && kill -0 "$(cat "$LOG_DIR/api.pid")" 2>/dev/null;
 else
   echo "[dev] starting API server on :8080 ..."
   (cd "$ROOT/artifacts/api-server" && \
-    PORT=8080 \
-    DATABASE_URL="postgres://postgres@localhost:5432/egytrend" \
-    SESSION_SECRET="${SESSION_SECRET:-local-dev-secret}" \
-    ADMIN_PASSWORD="${ADMIN_PASSWORD:-egytrend2026}" \
-    NODE_ENV=development \
-    nohup "$BUN" --enable-source-maps dist/index.mjs > "$LOG_DIR/api.log" 2>&1 < /dev/null &
+    export PORT=8080 DATABASE_URL="postgres://postgres@localhost:5432/egytrend" SESSION_SECRET NODE_ENV=development && \
+    # `ADMIN_PASSWORD` is optional and only enables the short-lived break-glass
+    # bootstrap route. Normal local testing uses an employee account instead.
+    if [ -n "${ADMIN_PASSWORD:-}" ]; then export ADMIN_PASSWORD; else unset ADMIN_PASSWORD; fi && \
+    nohup "$RUNTIME" --enable-source-maps dist/index.mjs > "$LOG_DIR/api.log" 2>&1 < /dev/null &
     echo $! > "$LOG_DIR/api.pid")
   sleep 2
 fi
@@ -49,7 +77,7 @@ else
   echo "[dev] starting Vite dev server on :3000 ..."
   (cd "$ROOT/artifacts/egytrend" && \
     PORT=3000 BASE_PATH="/" API_PROXY_TARGET="http://localhost:8080" \
-    nohup "$BUN" node_modules/vite/bin/vite.js --config vite.config.ts > "$LOG_DIR/web.log" 2>&1 < /dev/null &
+    nohup "$RUNTIME" node_modules/vite/bin/vite.js --config vite.config.ts > "$LOG_DIR/web.log" 2>&1 < /dev/null &
     echo $! > "$LOG_DIR/web.pid")
   sleep 4
 fi

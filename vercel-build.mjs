@@ -10,7 +10,8 @@
  *   2. pnpm install --frozen-lockfile (root install covers all workspaces)
  *   3. pnpm run build → typecheck + libs + api-server esbuild bundle + SPA
  *   4. sanity-check the two outputs Vercel will serve:
- *        artifacts/egytrend/dist/public/index.html      (static SPA)
+ *        artifacts/egytrend/dist/public/index.html      (public static entry)
+ *        artifacts/egytrend/dist/public/admin.html      (isolated admin entry)
  *        artifacts/api-server/dist/index-bridge.mjs     (serverless API entry)
  */
 import { spawnSync } from "node:child_process";
@@ -66,10 +67,12 @@ run("pnpm", ["install", "--frozen-lockfile"]);
  *    already alive via corepack — the fallbacks in package.json cover the rest) */
 run("pnpm", ["run", "build"]);
 
-/* 4. the two artifacts Vercel actually serves must exist */
-const spa = path.join(root, "artifacts", "egytrend", "dist", "public", "index.html");
+/* 4. every static/serverless entry Vercel serves must exist */
+const publicEntry = path.join(root, "artifacts", "egytrend", "dist", "public", "index.html");
+const adminEntry = path.join(root, "artifacts", "egytrend", "dist", "public", "admin.html");
 const api = path.join(root, "artifacts", "api-server", "dist", "index-bridge.mjs");
-if (!fs.existsSync(spa)) fail(`missing SPA output: ${path.relative(root, spa)}`);
+if (!fs.existsSync(publicEntry)) fail(`missing public entry: ${path.relative(root, publicEntry)}`);
+if (!fs.existsSync(adminEntry)) fail(`missing admin entry: ${path.relative(root, adminEntry)}`);
 if (!fs.existsSync(api)) fail(`missing API bridge bundle: ${path.relative(root, api)}`);
 
-console.log("\n✔ EgyTrend build complete — SPA + API bridge ready for Vercel");
+console.log("\n✔ EgyTrend build complete — public + admin entries and API bridge ready for Vercel");
