@@ -3,11 +3,18 @@ import { logger } from "./logger";
 import { sqlStateOf } from "./dbErrors";
 import { migrationChecksum, plannedObjects, quoteIdent } from "./db-migration-plan";
 import {
+  MIGRATION_LEDGER,
+  ensureLedger,
+  ledgerExists,
+  readLedger,
+  reportFromLedger,
+  type Queryable,
+} from "./db-migration-ledger";
+import {
   MIGRATION_IDS,
   autoMigrateEnabled,
   emptyMigrationReport,
   setMigrationReport,
-  type AppliedMigration,
   type DriftedObject,
   type MigrationReport,
 } from "./db-migration-state";
@@ -51,21 +58,11 @@ export const SQL_MIGRATIONS: readonly SqlMigration[] = MIGRATION_IDS.map((id) =>
   return { id, sql };
 });
 
-/** Ledger shared with scripts/run-db-migration.mjs so a manual run and an
- * automatic run never disagree about what has already been applied. */
-export const MIGRATION_LEDGER = "_egytrend_schema_migrations";
 const MIGRATION_LOCK_ID = 843912608;
 const SNAPSHOT_PREFIX = "egytrend_backup_";
-
-type Queryable = { query: (text: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> };
-
-type LedgerRow = {
-  migration_id: string;
-  applied_at: Date | string;
-  applied_by: string;
-  backup_schema: string | null;
-  missing_before: DriftedObject[] | null;
-};
+/** How long a boot waits for another instance that is migrating right now. */
+const LOCK_ATTEMPTS = 4;
+const LOCK_RETRY_MS = 3000;
 
 function errorParts(error: unknown): { code: string; message: string } {
   if (!error || typeof error !== "object") return { code: "unknown", message: "unknown migration error" };
@@ -75,42 +72,6 @@ function errorParts(error: unknown): { code: string; message: string } {
     /* The SQL comes from a reviewed file in this repository, so its diagnostic
      * message (object or constraint names) is safe and useful to report. */
     message: typeof candidate.message === "string" ? candidate.message.slice(0, 300) : "unknown migration error",
-  };
-}
-
-async function ledgerExists(client: Queryable): Promise<boolean> {
-  const result = await client.query(`SELECT to_regclass($1) IS NOT NULL AS present`, [`public.${MIGRATION_LEDGER}`]);
-  return Boolean(result.rows[0]?.present);
-}
-
-async function ensureLedger(client: Queryable): Promise<void> {
-  await client.query(`CREATE TABLE IF NOT EXISTS ${MIGRATION_LEDGER} (
-    migration_id text PRIMARY KEY,
-    applied_at timestamptz NOT NULL DEFAULT now(),
-    applied_by text NOT NULL DEFAULT 'api-boot'
-  )`);
-  /* Rows written by scripts/run-db-migration.mjs stay valid: the evidence
-   * columns are additive and nullable. */
-  await client.query(`ALTER TABLE ${MIGRATION_LEDGER} ADD COLUMN IF NOT EXISTS backup_schema text`);
-  await client.query(`ALTER TABLE ${MIGRATION_LEDGER} ADD COLUMN IF NOT EXISTS missing_before jsonb`);
-  await client.query(`ALTER TABLE ${MIGRATION_LEDGER} ADD COLUMN IF NOT EXISTS checksum text`);
-}
-
-async function readLedger(client: Queryable): Promise<LedgerRow[]> {
-  const result = await client.query(
-    `SELECT migration_id, applied_at, applied_by, backup_schema, missing_before
-       FROM ${MIGRATION_LEDGER} ORDER BY migration_id`,
-  );
-  return result.rows as unknown as LedgerRow[];
-}
-
-function toApplied(row: LedgerRow): AppliedMigration {
-  return {
-    id: row.migration_id,
-    appliedAt: row.applied_at instanceof Date ? row.applied_at.toISOString() : String(row.applied_at),
-    appliedBy: row.applied_by,
-    backupSchema: row.backup_schema ?? null,
-    missingBefore: Array.isArray(row.missing_before) ? row.missing_before : [],
   };
 }
 
@@ -175,7 +136,8 @@ async function snapshotPublicTables(client: Queryable, drift: DriftedObject[]): 
  *   • a full snapshot of the public schema is taken before the first change;
  *   • every applied migration is recorded in the shared ledger together with
  *     the exact objects it had to create, so drift stays provable;
- *   • one advisory lock stops concurrent instances from racing;
+ *   • one advisory lock stops concurrent instances from racing, and a boot
+ *     waits briefly for a sibling that is already migrating;
  *   • a failing migration is recorded and never prevents the API from booting;
  *   • DB_AUTO_MIGRATE=off makes the runner a read-only reporter.
  */
@@ -192,14 +154,10 @@ export async function runStartupMigrations(): Promise<MigrationReport> {
 
   const client = await pool.connect();
   try {
-    const applied = (await ledgerExists(client)) ? await readLedger(client) : [];
-    report.applied = applied.map(toApplied);
-    report.backupSchema = [...report.applied].reverse().find((row) => row.backupSchema)?.backupSchema ?? null;
-    const recorded = new Set(applied.map((row) => row.migration_id));
-    report.pending = MIGRATION_IDS.filter((id) => !recorded.has(id));
+    const rows = (await ledgerExists(client)) ? await readLedger(client) : [];
+    Object.assign(report, reportFromLedger(rows), { checkedAt: report.checkedAt, live: false });
 
     if (!report.pending.length) {
-      report.ready = true;
       setMigrationReport(report);
       return report;
     }
@@ -210,8 +168,25 @@ export async function runStartupMigrations(): Promise<MigrationReport> {
       return report;
     }
 
-    const lock = await client.query(`SELECT pg_try_advisory_lock($1) AS acquired`, [MIGRATION_LOCK_ID]);
-    if (!lock.rows[0]?.acquired) {
+    /* Wait briefly for another instance that is migrating right now: it is
+     * normal for several instances to boot together on a fresh deployment, and
+     * the winner usually finishes in seconds. */
+    let acquired = false;
+    for (let attempt = 0; attempt < LOCK_ATTEMPTS && !acquired; attempt += 1) {
+      const lock = await client.query(`SELECT pg_try_advisory_lock($1) AS acquired`, [MIGRATION_LOCK_ID]);
+      acquired = Boolean(lock.rows[0]?.acquired);
+      if (acquired) break;
+      if (await ledgerExists(client)) {
+        const meanwhile = reportFromLedger(await readLedger(client));
+        if (meanwhile.ready) {
+          Object.assign(report, meanwhile);
+          setMigrationReport(report);
+          return report;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
+    }
+    if (!acquired) {
       report.error = "another instance is applying migrations";
       logger.warn({ pending: report.pending }, "database migration lock is held by another instance");
       setMigrationReport(report);
@@ -227,8 +202,8 @@ export async function runStartupMigrations(): Promise<MigrationReport> {
       const recordedNow = new Set((await readLedger(client)).map((row) => row.migration_id));
       const remaining = SQL_MIGRATIONS.filter((migration) => !recordedNow.has(migration.id));
       if (!remaining.length) {
-        report.ready = true;
         report.pending = [];
+        report.ready = true;
         setMigrationReport(report);
         return report;
       }

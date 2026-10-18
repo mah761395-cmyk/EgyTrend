@@ -29,6 +29,8 @@ export type MigrationReport = {
   backupSchema: string | null;
   checkedAt: string | null;
   error: string | null;
+  /** True when the report was read from the ledger on demand (not at boot). */
+  live?: boolean;
 };
 
 /** Reviewed migration order — mirrored by lib/db/migrations/*.up.sql. */
@@ -75,6 +77,7 @@ export function emptyMigrationReport(): MigrationReport {
     backupSchema: null,
     checkedAt: null,
     error: null,
+    live: false,
   };
 }
 
