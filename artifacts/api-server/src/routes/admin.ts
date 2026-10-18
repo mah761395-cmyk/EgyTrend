@@ -107,6 +107,17 @@ const router: IRouter = Router();
 const JWT_SECRET = process.env["SESSION_SECRET"];
 const ADMIN_PASSWORD = process.env["ADMIN_PASSWORD"];
 
+/* Operator recovery switch for the password-only break-glass session.
+ *
+ * Secure default: once a real active super_admin employee exists, the
+ * password-only path stays closed so the staff account remains the single
+ * authority. A locked-out operator (unknown staff password) can temporarily
+ * set ADMIN_BREAK_GLASS=on, sign in with ADMIN_PASSWORD, reset the staff
+ * password from the panel, and turn the flag off again. It is read from the
+ * environment on every boot and is never a stored credential. */
+const ADMIN_BREAK_GLASS =
+  String(process.env["ADMIN_BREAK_GLASS"] ?? "off").trim().toLowerCase() === "on";
+
 /* ─── Brute-force protection on /login ─── */
 const loginAttempts = new Map<string, { count: number; until: number }>();
 const MAX_LOGIN_ATTEMPTS = 10;
@@ -483,32 +494,61 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
     res.status(401).json({ status: "error", message: "invalid password" });
     return;
   }
+  let staffSuperAdmin: { id: number; name: string; role: string; email: string } | null = null;
   try {
-    const [staffSuperAdmin] = await db.select({ id: employeesTable.id })
+    const [active] = await db.select({
+      id: employeesTable.id,
+      name: employeesTable.name,
+      role: employeesTable.role,
+      email: employeesTable.email,
+    })
       .from(employeesTable)
       .where(and(eq(employeesTable.role, "super_admin"), eq(employeesTable.status, "active")))
       .limit(1);
-    if (staffSuperAdmin) {
-      /* Do not leave a second long-lived authority path after bootstrap. */
-      recordLoginFailure(ip);
-      res.status(403).json({ status: "error", message: "use an active employee account" });
-      return;
-    }
+    staffSuperAdmin = active ?? null;
   } catch (error) {
     logger.error({ err: error }, "break-glass availability check failed");
     res.status(503).json({ status: "error", message: "admin authentication is temporarily unavailable" });
     return;
   }
+  if (staffSuperAdmin && !ADMIN_BREAK_GLASS) {
+    /* Do not leave a second long-lived authority path after bootstrap. */
+    recordLoginFailure(ip);
+    logger.warn(
+      { staffId: staffSuperAdmin.id },
+      "password-only admin login blocked because an active super_admin exists (set ADMIN_BREAK_GLASS=on for operator recovery)",
+    );
+    res.status(403).json({ status: "error", message: "use an active employee account" });
+    return;
+  }
   clearLoginFailures(ip);
-  const token = signToken({
-    sub: 0,
-    name: "Super Admin",
-    role: "super_admin",
-    email: "admin@egytrend",
-    authSource: "break_glass",
-  }, "15m");
+  /* Recovery session. When a real super_admin row exists it IS the identity:
+   * the authority and the audit trail come from that account, so recovery
+   * never invents a parallel admin. Only during bootstrap (no staff row yet)
+   * does the explicit zero-ID break-glass identity apply. */
+  const identity: JWTPayload = staffSuperAdmin
+    ? {
+        sub: staffSuperAdmin.id,
+        name: staffSuperAdmin.name,
+        role: staffSuperAdmin.role,
+        email: staffSuperAdmin.email,
+        authSource: "break_glass",
+      }
+    : {
+        sub: 0,
+        name: "Super Admin",
+        role: "super_admin",
+        email: "admin@egytrend",
+        authSource: "break_glass",
+      };
+  await auditLog("login", identity, `break_glass:${identity.sub}`, { recovery: true }, req.ip);
+  const token = signToken(identity, "15m");
   res.cookie(ADMIN_SESSION_COOKIE, token, sessionCookieOptions(15 * 60 * 1000));
-  res.json({ status: "ok", employee: { id: 0, name: "Super Admin", role: "super_admin", email: "admin@egytrend" } });
+  res.json({
+    status: "ok",
+    breakGlass: true,
+    employee: { id: identity.sub, name: identity.name, role: identity.role, email: identity.email },
+  });
 });
 
 router.post("/logout", (_req: Request, res: Response) => {

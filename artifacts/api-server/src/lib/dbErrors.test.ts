@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DrizzleQueryError } from "drizzle-orm";
-import { isDuplicateKeyError } from "./dbErrors";
+import { isDuplicateKeyError, sqlStateOf } from "./dbErrors";
 
 /** The shape node-postgres throws for a violated unique index. */
 function postgresUniqueViolation(indexName: string): Error {
@@ -50,4 +50,16 @@ test("non-Error values and self-referencing cause chains fail closed", () => {
   const cyclic = new Error("boom") as Error & { cause?: unknown };
   cyclic.cause = cyclic;
   assert.equal(isDuplicateKeyError(cyclic), false);
+});
+
+test("the SQLSTATE of a wrapped query failure is reported without its message", () => {
+  /* 42703 = undefined_column: the class of failure production hit when
+   * app_users lagged the deployed schema. Only the code is surfaced. */
+  const driver = new Error('column "email_verified_at" does not exist') as Error & { code?: string };
+  driver.code = "42703";
+  const wrapped = new DrizzleQueryError('select "email_verified_at" from "app_users"', [], driver);
+  assert.equal(sqlStateOf(wrapped), "42703");
+  assert.equal(sqlStateOf(driver), "42703");
+  assert.equal(sqlStateOf(new Error("no code here")), null);
+  assert.equal(sqlStateOf(null), null);
 });

@@ -20,6 +20,28 @@ const DUPLICATE_MESSAGE = /duplicate key|unique constraint|unique violation|uniq
 /** Wrapped chains deeper than this are not inspected (defensive bound). */
 const MAX_CAUSE_DEPTH = 5;
 
+/** SQLSTATE shape: five alphanumeric characters, e.g. 23505 or 42703. */
+const SQLSTATE = /^[0-9A-Z]{5}$/;
+
+/**
+ * The SQLSTATE code anywhere on the wrapped cause chain, or null.
+ *
+ * Codes are safe to log (they name the failure class — `42703` is
+ * `undefined_column`) whereas driver messages can embed SQL text and values,
+ * which the logger deliberately strips.
+ */
+export function sqlStateOf(error: unknown): string | null {
+  let current: unknown = error;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
+    if (!current || typeof current !== "object") return null;
+    const { code, cause } = current as { code?: unknown; cause?: unknown };
+    if (typeof code === "string" && SQLSTATE.test(code)) return code;
+    if (cause === current) return null; // self-referencing chain: stop, never loop
+    current = cause;
+  }
+  return null;
+}
+
 export function isDuplicateKeyError(error: unknown): boolean {
   let current: unknown = error;
   for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {

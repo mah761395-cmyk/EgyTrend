@@ -106,6 +106,12 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
     ],
+    /* Reviewed database migrations are imported as text and inlined into the
+     * bundle, so the deployed function always carries the exact SQL that was
+     * reviewed in the repository (no runtime file access on Vercel). */
+    loader: {
+      ".sql": "text",
+    },
     // Source maps make the serverless artifact substantially larger and are
     // not required at runtime. Opt in locally only when diagnosing a build.
     sourcemap: process.env["GENERATE_SOURCEMAP"] === "true" ? "linked" : false,

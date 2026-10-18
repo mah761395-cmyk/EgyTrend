@@ -44,6 +44,26 @@ loadEnvFiles();
 const { default: app } = await import("./app");
 const { logger } = await import("./lib/logger");
 
+/* ── Schema readiness (shared boot step) ───────────────────────────────────
+ * The reviewed migrations under lib/db/migrations are applied here, before the
+ * first request is served, on BOTH the long-running and the serverless entry.
+ * A database that lagged the code used to answer HTTP 500 on /api/user/login
+ * because the API queried columns that did not exist; booting now guarantees
+ * the schema the code is about to query. The runner never throws: a failure is
+ * recorded in the ledger/report and surfaced by GET /api/health/db. */
+try {
+  const { runStartupMigrations } = await import("./lib/db-migrations");
+  const migrationReport = await runStartupMigrations();
+  if (migrationReport.pending.length) {
+    logger.warn(
+      { pending: migrationReport.pending, failed: migrationReport.failed },
+      "database schema is still behind after the boot migration check",
+    );
+  }
+} catch (err) {
+  logger.error({ err }, "database migration boot step failed");
+}
+
 /* ── Dual-mode entry ───────────────────────────────────────────────────────
  * Long-running mode (local dev / VPS): bind a port + own the DB backup.
  * On Vercel (serverless) the platform sets VERCEL=1: instead of listening,

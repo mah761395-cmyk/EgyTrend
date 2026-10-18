@@ -1,6 +1,31 @@
 # Database migrations
 
-`0001_market_daily_ohlc` through `0012_payment_tx_idempotency` are **pending, unexecuted** migrations.
+## How these are applied today
+
+The API checks the `_egytrend_schema_migrations` ledger at boot and applies any
+reviewed `*.up.sql` that is not recorded yet, in file order:
+
+- a full snapshot of the `public` schema is copied to `egytrend_backup_<UTC>`
+  **before** the first change (restore with `INSERT INTO public.<table> SELECT *
+  FROM "egytrend_backup_<UTC>".<table>`);
+- each applied migration is recorded with its `checksum` and `missing_before`
+  (the objects the database was actually missing), so drift stays provable;
+- a PostgreSQL advisory lock (`843912608`) keeps concurrent instances from
+  racing, and a failure is recorded and reported instead of crashing boot;
+- `GET /api/health/db` reports `ready`, `pending`, `applied`, `failed` and the
+  snapshot schema name;
+- `DB_AUTO_MIGRATE=off` turns the runner into a read-only reporter.
+
+This exists because deploying code whose required columns did not exist made
+`POST /api/user/login` fail with an unhandled SQL error (HTTP 500).
+`drizzle-kit push` is still never used, and nothing here drops tables or rows.
+
+The manual, Preview/Test-only runner below remains available for a deliberate
+single-migration run with an operator-supplied backup file.
+
+## Pending migrations
+
+`0001_market_daily_ohlc` through `0012_payment_tx_idempotency` were **pending, unexecuted** migrations at the time of writing.
 
 They are intentionally SQL files rather than a `drizzle-kit push`: no verified isolated database connection exists in this workspace, and an agent must never change a shared or production database without an approved backup and deployment window.
 

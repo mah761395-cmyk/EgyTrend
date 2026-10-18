@@ -1,9 +1,10 @@
-import express, { type Express } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { sqlStateOf } from "./lib/dbErrors";
 import {
   allowedOriginsFromEnv,
   applyApiSecurityHeaders,
@@ -60,5 +61,26 @@ app.use(express.urlencoded({ extended: true, limit: "300kb" }));
 app.use(cookieParser());
 
 app.use("/api", router);
+
+/* Terminal error handler.
+ *
+ * Without it, a rejected async route (for example a SQL error from a database
+ * whose schema lags the code) fell through to Express's default handler, which
+ * answers an HTML "Internal Server Error" page with HTTP 500 — no JSON body
+ * for the SPA and nothing operationally useful in the logs. Every unexpected
+ * failure now answers the same JSON shape the API uses everywhere else, and
+ * the cause is logged server-side without leaking it to the caller. */
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  if (err instanceof Error && /origin not allowed/i.test(err.message)) {
+    res.status(403).json({ status: "error", message: "origin not allowed" });
+    return;
+  }
+  /* The SQLSTATE names the failure class (for example 42703 =
+   * undefined_column) without exposing SQL text or row values. A drift-related
+   * 500 previously logged only {"type":"Error"}, which hid the cause. */
+  logger.error({ err, sqlState: sqlStateOf(err) }, "unhandled request error");
+  if (res.headersSent) return;
+  res.status(500).json({ status: "error", message: "internal error" });
+});
 
 export default app;
