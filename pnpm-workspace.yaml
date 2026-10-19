@@ -67,11 +67,15 @@ catalog:
 
 autoInstallPeers: false
 
-onlyBuiltDependencies:
-  - '@swc/core'
-  - esbuild
-  - msw
-  - unrs-resolver
+# pnpm v11+ replaced onlyBuiltDependencies/ignoredBuiltDependencies with
+# `allowBuilds` (a name -> true map). The legacy keys are ignored by pnpm 12,
+# so esbuild appeared unapproved and `pnpm install` failed with
+# ERR_PNPM_IGNORED_BUILDS — which broke every Vercel build.
+allowBuilds:
+  '@swc/core': true
+  esbuild: true
+  msw: true
+  unrs-resolver: true
 
 overrides:
   # replit uses linux-x64 only, we can exclude all other platforms
@@ -172,9 +176,12 @@ overrides:
   "brace-expansion": "^2.1.4"
 
 # esbuild's postinstall only downloads/validates the platform binary, which
-# already ships as an optional dependency (@esbuild/win32-x64 etc.). Skipping
-# it is safe on any OS — and required where no Node shim exists (this machine
-# runs pnpm through Freebuff's bundled bun). Vercel's Linux build uses
-# @esbuild/linux-x64 the same way.
-ignoredBuiltDependencies:
-  - esbuild
+# already ships as an optional dependency (@esbuild/linux-x64 etc.).
+#
+# IMPORTANT (pnpm 12): esbuild must NOT be listed under
+# `ignoredBuiltDependencies` — pnpm 12 treats an ignored build script as a
+# hard install error (ERR_PNPM_IGNORED_BUILDS) and fails `pnpm install`,
+# which broke Vercel builds. esbuild is approved via `onlyBuiltDependencies`
+# above instead, so install succeeds on every platform (local Windows and
+# Vercel's Linux builder both resolve the platform binary from the matching
+# @esbuild/<platform> optional dependency).
