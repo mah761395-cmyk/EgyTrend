@@ -110,6 +110,12 @@ CREATE TABLE IF NOT EXISTS payment_requests (
   tx text NOT NULL,
   status text NOT NULL DEFAULT 'pending',
   notes text,
+  -- Payment proof (data URL + original name) and the admin decision time.
+  -- These three columns were missing from this mirror, so a database created
+  -- from it returned 500 on the admin payments tab (column does not exist).
+  proof_image text,
+  proof_name text,
+  decided_at timestamp,
   created_at timestamp NOT NULL DEFAULT now(),
   updated_at timestamp NOT NULL DEFAULT now()
 );

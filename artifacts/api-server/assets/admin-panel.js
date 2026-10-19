@@ -34,6 +34,9 @@
     open: function () {
       mountAdminPanel();
       document.getElementById("adm").classList.add("open");
+      /* Probe the session once so the UI knows which tabs the logged-in staff
+       * member may open (fine-grained permissions can narrow the role). */
+      await admFetchSession();
       renderAdmStats();
       admTab("dash");
     },
@@ -50,7 +53,7 @@
    ADMIN DASHBOARD — FULL PRODUCTION SYSTEM
 ══════════════════════════════════════════════════════════════ */
 
-function openAdm(){document.getElementById("adm").classList.add("open");renderAdmStats();admTab("dash");}
+async async function openAdm(){document.getElementById("adm").classList.add("open");await admFetchSession();renderAdmStats();admTab("dash");}
 function closeAdm(){document.getElementById("adm").classList.remove("open");}
 
 async function renderAdmStats(){
@@ -65,8 +68,50 @@ async function renderAdmStats(){
 
 const ADM_TABS=["dash","users","reqs","articles","sources","plans","coupons","employees","aiconfig","audit"];
 
-function admTab(tab){
+/* Permission store — populated by /me on panel open. A null list means the
+ * role alone decides (backward compatible). */
+const ADM_PERMISSION_STORE={permission:"granted",permissions:null};
+
+async function admFetchSession(repo){
+  /* /api/admin/me must run with the staff cookie; it returns the actor and
+   * the effective permission list for every sensitive read route. */
+  try{
+    const r=await fetch("/api/admin/me",{credentials:"same-origin"});
+    if(!r.ok) return;
+    const j=await r.json();
+    if(j.status!=="ok") return;
+    const perms=j.permissions;
+    const isSuperAdmin=j.actor?.role==="super_admin";
+    ADM_PERMISSION_STORE.permission=isSuperAdmin?"granted":(Array.isArray(perms)?perms:[]).length?"denied":"granted";
+    ADM_PERMISSION_STORE.permissions=isSuperAdmin?[...ADM_PERMISSIONS]:(Array.isArray(perms)?perms:[]);
+    /* One page can hold many sensitive reads; a rejection on the previously
+     * loaded tab is already handled by admTab(), so prune the visible tabs. */
+    Object.keys(ADM_TAB_PERMS).forEach(k=>{
+      const t=document.querySelector(`.adm-tab[data-tab="${k}"]`);
+      if(t&&ADM_TAB_PERMS[k]!==null&&ADM_PERMISSION_STORE.permissions&&!ADM_PERMISSION_STORE.permissions.includes(ADM_TAB_PERMS[k])) {
+        t.style.display="none";
+      } else {
+        t.style.display="";
+      }
+    });
+  }catch{
+    /* offline / panel not ready yet — treat as unrestricted, the server will
+     * still 403 on any sensitive read. */
+  }
+}
+
+async function admTab(tab){
   document.querySelectorAll(".adm-tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===tab));
+  if(tab!=="dash"){
+    const perm=ADM_TAB_PERMS[tab];
+    if(perm!==null&&ADM_PERMISSION_STORE.permission==="denied"&&ADM_PERMISSION_STORE.permissions&&!ADM_PERMISSION_STORE.permissions.includes(perm)){
+      /* The requested tab needs a permission the user no longer has — silently
+elevate to the overview instead of a 403 everywhere. */
+      const fallback=Object.entries(ADM_TAB_PERMS).find(([,p])=>!p||ADM_PERMISSION_STORE.permissions.includes(p));
+      if(fallback) tab=fallback[0];
+      else return; // truly locked out: overview has no sensitive data
+    }
+  }
   const el=document.getElementById("adm-body");
   el.innerHTML=`<div class="empty"><div style="font-size:22px;margin-bottom:8px;">⏳</div><div>جارٍ التحميل...</div></div>`;
   const fns={dash:renderAdmDash,users:renderAdmUsers,reqs:renderAdmReqs,articles:renderAdmArticles,
@@ -618,6 +663,40 @@ async function delAdmCoupon(id,code){
 const ROLE_LABELS={"super_admin":"سوبر أدمن","admin":"أدمن","editor":"محرر","analyst":"محلل","support":"دعم فني","marketing":"تسويق"};
 const ROLE_COLORS={"super_admin":"#8b5cf6","admin":"#ef4444","editor":"#10b981","analyst":"#3b82f6","support":"#f59e0b","marketing":"#ec4899"};
 
+/* Fine-grained employee permissions (enforced server-side on every admin
+ * request). An empty selection means "whatever the role allows"; a non-empty
+ * selection narrows it. super_admin is never restricted. */
+const ADM_PERM_OPTS=[
+  {k:"users",l:"👥 المستخدمون"},
+  {k:"payments",l:"💰 الدفعات"},
+  {k:"content",l:"📰 الأخبار والمصادر"},
+  {k:"plans",l:"💎 الاشتراكات"},
+  {k:"coupons",l:"🎟️ الكوبونات"},
+  {k:"employees",l:"👨‍💼 الموظفون"},
+  {k:"ai",l:"🤖 إدارة AI"},
+  {k:"settings",l:"⚙️ إعدادات الدفع"},
+  {k:"audit",l:"📋 سجل العمليات"},
+  {k:"opportunities",l:"💡 الفرص"},
+];
+const PERM_LABELS=Object.fromEntries(ADM_PERM_OPTS.map(p=>[p.k,p.l]));
+
+/* Tab → permission required to show it (empty list = role decides only, like
+ * the server). The server never over-restricts: employees without a list see
+ * every tab their role allows. */
+const ADM_TAB_PERMS={
+  dash: null,        // overview — always visible to any staff
+  users: "users",
+  reqs: "payments",
+  articles: "content",
+  sources: "content",
+  plans: "plans",
+  coupons: "coupons",
+  employees: "employees",
+  aiconfig: "ai",
+  audit: "audit",
+  opps: "opportunities",
+};
+
 async function renderAdmEmployees(el){
   el.innerHTML=`
     <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:13px;margin-bottom:14px;">
@@ -630,6 +709,10 @@ async function renderAdmEmployees(el){
         ]),
         aIn("aemp-pass","كلمة المرور (8+ أحرف)","type='password' minlength='8'")
       )}
+      <div style="color:var(--t4);font-size:10px;font-weight:700;margin:10px 0 6px;">🔐 صلاحيات مفصّلة — اتركها فارغة لمنح كل صلاحيات الدور</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px;">
+        ${ADM_PERM_OPTS.map(p=>`<label class="a-in" style="display:flex;align-items:center;gap:4px;width:auto;font-size:10.5px;color:var(--t3);padding:5px 8px;cursor:pointer;"><input type="checkbox" class="aemp-perm" value="${p.k}"/> ${p.l}</label>`).join("")}
+      </div>
       ${aBtn("إضافة الموظف ✓","saveAdmEmployee()")}
     </div>
     <div id="aemp-list"><div class="empty"><div style="font-size:24px;">⏳</div></div></div>`;
@@ -659,10 +742,12 @@ async function loadAdmEmployees(){
             <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px;">
               ${aBadge(ROLE_LABELS[emp.role]||emp.role,ROLE_COLORS[emp.role]+"22",ROLE_COLORS[emp.role]||"#fff")}
               ${emp.status==="active"?aBadge("نشط","var(--gd)","var(--g)"):aBadge("معطّل","var(--dnd)","var(--dn)")}
+              ${(Array.isArray(emp.permissions)&&emp.permissions.length)?emp.permissions.map(p=>aBadge(PERM_LABELS[p]||p,"var(--s2)","var(--t3)")).join(""):""}
             </div>
             ${emp.lastLogin?`<div style="color:var(--t5);font-size:9px;margin-top:5px;font-family:var(--mono);">آخر دخول: ${new Date(emp.lastLogin).toLocaleString("ar-EG")}</div>`:""}
           </div>
           <div style="display:flex;flex-direction:column;gap:5px;">
+            <button class="r-btn" style="font-size:10px;" onclick="editAdmEmployeePerms(${emp.id},'${sanitize(emp.name)}',${JSON.stringify(Array.isArray(emp.permissions)?emp.permissions:[]).replace(/"/g,"&quot;")})">🔐 صلاحيات</button>
             <button class="r-btn" style="font-size:10px;background:${emp.status==="active"?"var(--dnd)":"var(--gd)"};color:${emp.status==="active"?"var(--dn)":"var(--g)"};" onclick="toggleAdmEmployee(${emp.id},'${emp.status==="active"?"inactive":"active"}')">${emp.status==="active"?"تعطيل":"تفعيل"}</button>
             <button class="r-btn rej" style="font-size:10px;" onclick="delAdmEmployee(${emp.id},'${sanitize(emp.name)}')">حذف</button>
           </div>
@@ -673,6 +758,8 @@ async function loadAdmEmployees(){
 
 async function saveAdmEmployee(){
   const body={name:vG("aemp-name"),email:vG("aemp-email"),role:vG("aemp-role"),password:vG("aemp-pass")};
+  /* Selected fine-grained permissions (empty array = role defaults). */
+  body.permissions=[...document.querySelectorAll(".aemp-perm:checked")].map(i=>i.value);
   if(!body.name||!body.email||!body.password){showToast("❌ يرجى ملء جميع الحقول");return;}
   try{
     const r=await admFetch("/api/admin/employees",{method:"POST",body:JSON.stringify(body)});
@@ -680,6 +767,38 @@ async function saveAdmEmployee(){
     if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الإضافة"));return;}
     showToast("✅ تم إضافة الموظف");
     ["aemp-name","aemp-email","aemp-pass"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+    document.querySelectorAll(".aemp-perm").forEach(c=>{c.checked=false;});
+    await loadAdmEmployees();
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+/* Edit an existing employee's fine-grained permissions (server enforces them
+ * on every request, so this takes effect immediately). */
+function editAdmEmployeePerms(id,name,current){
+  const cur=new Set(Array.isArray(current)?current:[]);
+  const ov=document.createElement("div");
+  ov.id="aemp-perm-ov";
+  ov.style.cssText="position:fixed;inset:0;z-index:900;background:rgba(3,7,18,.92);display:flex;align-items:center;justify-content:center;padding:16px;";
+  ov.innerHTML=`<div style="background:var(--ink2);border:1px solid var(--b1);border-radius:16px;padding:16px;max-width:440px;width:100%;max-height:85vh;overflow-y:auto;">
+    <div style="color:var(--t2);font-weight:800;font-size:13px;margin-bottom:4px;">🔐 صلاحيات ${sanitize(name)}</div>
+    <div style="color:var(--t5);font-size:10px;line-height:1.8;margin-bottom:10px;">اتركها كلها فارغة لمنح كل صلاحيات الدور. عند تحديد أي صلاحية يصبح الموظف مقيّداً بها فقط (يتحقق منها السيرفر في كل طلب).</div>
+    ${ADM_PERM_OPTS.map(p=>`<label style="display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px solid var(--b1);color:var(--t3);font-size:12px;cursor:pointer;"><input type="checkbox" class="aemp-perm-e" value="${p.k}" ${cur.has(p.k)?"checked":""}/> ${p.l}</label>`).join("")}
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn btn-g btn-sm" style="flex:1;padding:10px;" onclick="saveAdmEmployeePerms(${id})">💾 حفظ</button>
+      <button class="btn btn-sm" style="flex:1;padding:10px;background:var(--s1);color:var(--t4);" onclick="document.getElementById('aemp-perm-ov').remove()">إلغاء</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+
+async function saveAdmEmployeePerms(id){
+  const permissions=[...document.querySelectorAll(".aemp-perm-e:checked")].map(i=>i.value);
+  try{
+    const r=await admFetch(`/api/admin/employees/${id}`,{method:"PUT",body:JSON.stringify({permissions})});
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
+    document.getElementById("aemp-perm-ov")?.remove();
+    showToast("✅ تم تحديث الصلاحيات");
     await loadAdmEmployees();
   }catch(e){showToast("❌ "+String(e.message||e));}
 }

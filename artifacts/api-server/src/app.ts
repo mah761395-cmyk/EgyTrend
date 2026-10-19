@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
@@ -50,5 +50,18 @@ app.use(express.urlencoded({ extended: true, limit: "300kb" }));
 app.use(requireSameOrigin);
 
 app.use("/api", router);
+
+/* Terminal error handler. A rejected CORS origin throws inside the cors
+ * middleware: answering a clean 403 JSON is both correct and quieter than
+ * Express's default HTML error page (which can expose a stack trace). Any
+ * other unhandled error becomes an opaque 500 — never a stack to the client. */
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  if (err instanceof Error && /origin not allowed/i.test(err.message)) {
+    res.status(403).json({ status: "error", message: "origin not allowed" });
+    return;
+  }
+  logger.error({ err }, "unhandled request error");
+  res.status(500).json({ status: "error", message: "internal error" });
+});
 
 export default app;

@@ -10,13 +10,19 @@ import {
   listSources, upsertSource, deleteSource,
   listCustomArticles, upsertCustomArticle, deleteCustomArticle,
   type SourceMeta, type CustomArticle,
-} from "../lib/dataStore";
-import { db } from "@workspace/db";
+} from "../lib/dataStore";import { db } from "@workspace/db";
 import {
-  employeesTable, subscriptionPlansTable, couponsTable,   auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable, appUsersTable, userNotificationsTable,
+  employeesTable, subscriptionPlansTable, couponsTable,
+  auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable, appUsersTable, userNotificationsTable,
   appSettingsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, like, or, sql } from "drizzle-orm";
+import {
+  checkEmployeePermission,
+  normalizePermissions,
+  effectivePermissions,
+  type AdminPermission,
+} from "../lib/adminPerms";
 
 const router: IRouter = Router();
 
@@ -199,6 +205,36 @@ function requireRole(...roles: string[]) {
         "admin role check denied",
       );
       res.status(403).json({ status: "error", message: "insufficient permissions" });
+      return;
+    }
+    next();
+  };
+}
+
+/* Fine-grained employee permissions. See lib/adminPerms for the full contract.
+ * The list is read from the employee row on every request so a revocation
+ * takes effect immediately (the JWT only carries the role). super_admin is
+ * never restricted. A failed lookup responds 503. */
+function requirePermission(permission: AdminPermission) {
+  return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+    const actor = req.actor;
+    if (!actor) {
+      res.status(401).json({ status: "error", message: "unauthorized" });
+      return;
+    }
+    if (actor.role === "super_admin") {
+      next();
+      return;
+    }
+    const decision = await checkEmployeePermission(actor, permission);
+    if (decision === "denied") {
+      logger.warn({ actor: actor.email, role: actor.role, need: permission, path: req.path }, "employee permission denied");
+      res.status(403).json({ status: "error", message: `missing permission: ${permission}` });
+      return;
+    }
+    if (decision === "error") {
+      logger.error({ actor: actor.email }, "permission check unavailable");
+      res.status(503).json({ status: "error", message: "permission check unavailable" });
       return;
     }
     next();
@@ -422,6 +458,11 @@ router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
       email: req.actor?.email ?? "",
       role: req.actor?.role ?? "",
     },
+    /* Effective permission list: super_admin never restricted; staff see the
+     * list stored on their employee row, or the empty list when the role
+     * alone already decides (no narrowing). A lookup failure answers null so
+     * the UI keeps working (the server still 403s on any sensitive read). */
+    permissions: await effectivePermissions(req.actor),
   });
 });
 
@@ -510,11 +551,11 @@ router.get("/stats", requireAuth, async (req: AuthRequest, res: Response) => {
 });
 
 /* ─── Sources (existing, enhanced) ─── */
-router.get("/sources", requireAuth, (_req, res: Response) => {
+router.get("/sources", requireAuth, requirePermission("content"), (_req, res: Response) => {
   res.json({ status: "ok", sources: listSources() });
 });
 
-router.post("/sources", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {
+router.post("/sources", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), requirePermission("content"), async (req: AuthRequest, res: Response) => {
   const v = validateSource(req.body);
   if ("error" in v) { res.status(400).json({ status: "error", message: v.error }); return; }
   await upsertSource(v);
@@ -523,7 +564,7 @@ router.post("/sources", requireAuth, requireWriteRate, requireRole("super_admin"
   res.json({ status: "ok", source: v });
 });
 
-router.delete("/sources/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.delete("/sources/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), requirePermission("content"), async (req: AuthRequest, res: Response) => {
   const id = String(req.params["id"] || "");
   const ok = await deleteSource(id);
   if (!ok) { res.status(404).json({ status: "error", message: "not found" }); return; }
@@ -533,11 +574,11 @@ router.delete("/sources/:id", requireAuth, requireWriteRate, requireRole("super_
 });
 
 /* ─── Articles (enhanced with audit) ─── */
-router.get("/articles", requireAuth, (_req, res: Response) => {
+router.get("/articles", requireAuth, requirePermission("content"), (_req, res: Response) => {
   res.json({ status: "ok", articles: listCustomArticles() });
 });
 
-router.post("/articles", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {
+router.post("/articles", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), requirePermission("content"), async (req: AuthRequest, res: Response) => {
   const v = validateArticle(req.body);
   if ("error" in v) { res.status(400).json({ status: "error", message: v.error }); return; }
   await upsertCustomArticle(v);
@@ -546,7 +587,7 @@ router.post("/articles", requireAuth, requireWriteRate, requireRole("super_admin
   res.json({ status: "ok", article: v });
 });
 
-router.delete("/articles/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {
+router.delete("/articles/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), requirePermission("content"), async (req: AuthRequest, res: Response) => {
   const id = String(req.params["id"] || "");
   const ok = await deleteCustomArticle(id);
   if (!ok) { res.status(404).json({ status: "error", message: "not found" }); return; }
@@ -556,7 +597,7 @@ router.delete("/articles/:id", requireAuth, requireWriteRate, requireRole("super
 });
 
 /* ─── Employees ─── */
-router.get("/employees", requireAuth, requireRole("super_admin", "admin"), async (_req, res: Response) => {
+router.get("/employees", requireAuth, requireRole("super_admin", "admin"), requirePermission("employees"), async (_req, res: Response) => {
   const employees = await db.select({
     id: employeesTable.id, name: employeesTable.name, email: employeesTable.email,
     role: employeesTable.role, status: employeesTable.status,
@@ -566,7 +607,7 @@ router.get("/employees", requireAuth, requireRole("super_admin", "admin"), async
   res.json({ status: "ok", employees });
 });
 
-router.post("/employees", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.post("/employees", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), requirePermission("employees"), async (req: AuthRequest, res: Response) => {
   const { name, email, role, password, permissions } = req.body || {};
   if (!name || !email || !role || !password) {
     res.status(400).json({ status: "error", message: "name, email, role, password required" });
@@ -591,7 +632,7 @@ router.post("/employees", requireAuth, requireWriteRate, requireRole("super_admi
       email: String(email).toLowerCase().trim(),
       role: String(role),
       passwordHash: hashPassword(String(password)),
-      permissions: Array.isArray(permissions) ? permissions : [],
+      permissions: normalizePermissions(permissions),
       status: "active",
     }).returning({ id: employeesTable.id, name: employeesTable.name, email: employeesTable.email, role: employeesTable.role });
     await auditLog("create_employee", req.actor, String(email), { name, role }, req.ip);
@@ -603,7 +644,7 @@ router.post("/employees", requireAuth, requireWriteRate, requireRole("super_admi
   }
 });
 
-router.put("/employees/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.put("/employees/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), requirePermission("employees"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
   const { name, role, status, permissions, password } = req.body || {};
   if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
@@ -619,7 +660,7 @@ router.put("/employees/:id", requireAuth, requireWriteRate, requireRole("super_a
   if (name) updates["name"] = String(name).slice(0, 100);
   if (role) updates["role"] = String(role);
   if (status) updates["status"] = String(status);
-  if (permissions) updates["permissions"] = permissions;
+  if (permissions !== undefined) updates["permissions"] = normalizePermissions(permissions);
   if (password) {
     if (String(password).length < 8) { res.status(400).json({ status: "error", message: "password min 8 chars" }); return; }
     updates["passwordHash"] = hashPassword(String(password));
@@ -639,12 +680,12 @@ router.delete("/employees/:id", requireAuth, requireWriteRate, requireRole("supe
 });
 
 /* ─── Subscription Plans ─── */
-router.get("/plans", requireAuth, async (_req, res: Response) => {
+router.get("/plans", requireAuth, requirePermission("plans"), async (_req, res: Response) => {
   const plans = await db.select().from(subscriptionPlansTable).orderBy(subscriptionPlansTable.price);
   res.json({ status: "ok", plans });
 });
 
-router.post("/plans", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.post("/plans", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), requirePermission("plans"), async (req: AuthRequest, res: Response) => {
   const { key, nameAr, price, durationMonths, features, badge } = req.body || {};
   if (!key || !nameAr || price === undefined || !durationMonths) {
     res.status(400).json({ status: "error", message: "key, nameAr, price, durationMonths required" });
@@ -670,7 +711,7 @@ router.post("/plans", requireAuth, requireWriteRate, requireRole("super_admin", 
   }
 });
 
-router.put("/plans/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.put("/plans/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), requirePermission("plans"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
   if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
   const { nameAr, price, durationMonths, features, isActive, badge } = req.body || {};
@@ -686,7 +727,7 @@ router.put("/plans/:id", requireAuth, requireWriteRate, requireRole("super_admin
   res.json({ status: "ok" });
 });
 
-router.delete("/plans/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.delete("/plans/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), requirePermission("plans"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
   if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
   await db.delete(subscriptionPlansTable).where(eq(subscriptionPlansTable.id, id));
@@ -695,12 +736,12 @@ router.delete("/plans/:id", requireAuth, requireWriteRate, requireRole("super_ad
 });
 
 /* ─── Coupons ─── */
-router.get("/coupons", requireAuth, requireRole("super_admin", "admin", "marketing"), async (_req, res: Response) => {
+router.get("/coupons", requireAuth, requireRole("super_admin", "admin", "marketing"), requirePermission("coupons"), async (_req, res: Response) => {
   const coupons = await db.select().from(couponsTable).orderBy(desc(couponsTable.createdAt));
   res.json({ status: "ok", coupons });
 });
 
-router.post("/coupons", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "marketing"), async (req: AuthRequest, res: Response) => {
+router.post("/coupons", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "marketing"), requirePermission("coupons"), async (req: AuthRequest, res: Response) => {
   const { code, discountType, discountValue, maxUses, startsAt, expiresAt } = req.body || {};
   if (!code || discountValue === undefined) {
     res.status(400).json({ status: "error", message: "code and discountValue required" });
@@ -734,7 +775,7 @@ router.post("/coupons", requireAuth, requireWriteRate, requireRole("super_admin"
   }
 });
 
-router.put("/coupons/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "marketing"), async (req: AuthRequest, res: Response) => {
+router.put("/coupons/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "marketing"), requirePermission("coupons"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
   if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
   const { isActive, maxUses, expiresAt } = req.body || {};
@@ -748,7 +789,7 @@ router.put("/coupons/:id", requireAuth, requireWriteRate, requireRole("super_adm
   res.json({ status: "ok" });
 });
 
-router.delete("/coupons/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.delete("/coupons/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), requirePermission("coupons"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params["id"]);
   if (isNaN(id)) { res.status(400).json({ status: "error", message: "invalid id" }); return; }
   await db.delete(couponsTable).where(eq(couponsTable.id, id));
@@ -779,13 +820,13 @@ router.post("/coupons/validate", requireAuth, async (req: AuthRequest, res: Resp
 });
 
 /* ─── AI Config ─── */
-router.get("/ai-config", requireAuth, async (_req, res: Response) => {
+router.get("/ai-config", requireAuth, requirePermission("ai"), async (_req, res: Response) => {
   await ensureAiConfig();
   const [cfg] = await db.select().from(aiConfigTable).limit(1);
   res.json({ status: "ok", config: cfg });
 });
 
-router.put("/ai-config", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.put("/ai-config", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), requirePermission("ai"), async (req: AuthRequest, res: Response) => {
   await ensureAiConfig();
   const { analyzerEnabled, summaryEnabled, rewriterEnabled, dailyRequestLimit } = req.body || {};
   const updates: Record<string, unknown> = { updatedAt: new Date(), updatedBy: req.actor?.name ?? "admin" };
@@ -798,7 +839,7 @@ router.put("/ai-config", requireAuth, requireWriteRate, requireRole("super_admin
   res.json({ status: "ok" });
 });
 
-router.get("/ai-usage", requireAuth, requireRole("super_admin", "admin", "analyst"), async (req: Request, res: Response) => {
+router.get("/ai-usage", requireAuth, requireRole("super_admin", "admin", "analyst"), requirePermission("ai"), async (req: Request, res: Response) => {
   const days = Math.min(90, Math.max(1, Number(req.query["days"] || 30)));
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -826,7 +867,7 @@ router.get("/ai-usage", requireAuth, requireRole("super_admin", "admin", "analys
 });
 
 /* ─── Audit Logs ─── */
-router.get("/audit-logs", requireAuth, requireRole("super_admin", "admin"), async (req: Request, res: Response) => {
+router.get("/audit-logs", requireAuth, requireRole("super_admin", "admin"), requirePermission("audit"), async (req: Request, res: Response) => {
   const page = Math.max(0, Number(req.query["page"] || 0));
   const limit = Math.min(100, Math.max(10, Number(req.query["limit"] || 50)));
   const search = String(req.query["search"] || "").trim();
@@ -848,7 +889,7 @@ router.get("/audit-logs", requireAuth, requireRole("super_admin", "admin"), asyn
 });
 
 /* ─── User Management (via localStorage sync) ─── */
-router.get("/users", requireAuth, requireRole("super_admin", "admin", "support"), async (req: Request, res: Response) => {
+router.get("/users", requireAuth, requireRole("super_admin", "admin", "support"), requirePermission("users"), async (req: Request, res: Response) => {
   const users = await db.select({
     id: appUsersTable.id,
     phone: appUsersTable.phone,
@@ -861,7 +902,7 @@ router.get("/users", requireAuth, requireRole("super_admin", "admin", "support")
   res.json({ status: "ok", users });
 });
 
-router.post("/users/action", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "support"), async (req: AuthRequest, res: Response) => {
+router.post("/users/action", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "support"), requirePermission("users"), async (req: AuthRequest, res: Response) => {
   const { action, phone, name, reason } = req.body || {};
   const validActions = ["ban_user", "unban_user", "upgrade_vip", "downgrade_vip"];
   if (!validActions.includes(String(action))) {
@@ -956,7 +997,7 @@ router.post("/requests", async (req: Request, res: Response) => {
 });
 
 /* Protected: list all payment requests */
-router.get("/requests", requireAuth, requireRole("super_admin", "admin", "support"), async (req: AuthRequest, res: Response) => {
+router.get("/requests", requireAuth, requireRole("super_admin", "admin", "support"), requirePermission("payments"), async (req: AuthRequest, res: Response) => {
   try {
     const statusFilter = String(req.query["status"] || "").trim();
     let rows;
@@ -991,7 +1032,7 @@ router.get("/requests", requireAuth, requireRole("super_admin", "admin", "suppor
 });
 
 /* Protected: approve or reject a request */
-router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), requirePermission("payments"), async (req: AuthRequest, res: Response) => {
   const id = String(req.params["id"] || "").trim();
   const { status, notes } = req.body || {};
   if (!["approved", "rejected"].includes(String(status))) {
@@ -1087,7 +1128,7 @@ const PAYMENT_SETTING_KEYS = [
 ];
 
 /* Read current payment settings (super_admin/admin/support). */
-router.get("/settings/payment", requireAuth, requireRole("super_admin", "admin", "support"), async (_req, res: Response) => {
+router.get("/settings/payment", requireAuth, requireRole("super_admin", "admin", "support"), requirePermission("settings"), async (_req, res: Response) => {
   try {
     const rows = await db.select().from(appSettingsTable);
     const out: Record<string, string> = {};
@@ -1102,7 +1143,7 @@ router.get("/settings/payment", requireAuth, requireRole("super_admin", "admin",
 });
 
 /* Update payment settings (super_admin/admin). */
-router.put("/settings/payment", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+router.put("/settings/payment", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), requirePermission("settings"), async (req: AuthRequest, res: Response) => {
   const b = (req.body || {}) as Record<string, unknown>;
   const updates: Array<[string, string]> = [];
   for (const m of PAY_METHODS) {
@@ -1163,7 +1204,7 @@ router.put("/settings/payment", requireAuth, requireWriteRate, requireRole("supe
    Users poll /api/user/notifications (payments.ts). Decisions made here
    (approve/reject) insert a row; polling surfaces it with the bell badge.
 ════════════════════════════════════════════ */
-router.get("/user-notifications", requireAuth, requireRole("super_admin", "admin", "support"), async (req: AuthRequest, res: Response) => {
+router.get("/user-notifications", requireAuth, requireRole("super_admin", "admin", "support"), requirePermission("payments"), async (req: AuthRequest, res: Response) => {
   try {
     const phone = String(req.query["phone"] || "").trim();
     if (!phone) {

@@ -1121,7 +1121,16 @@ async function callAI({system, messages, max_tokens=2000, context=null, memory=f
     });
     if(!r.ok){
       const d = await r.json().catch(()=>({}));
-      if(r.status===429) throw new Error("rate_limit");
+      /* A 429 has two very different causes: the short per-IP throttle or the
+       * user's daily AI budget. Flattening both into "rate_limit" hid the
+       * daily-limit message entirely (the user was told to wait a minute for a
+       * limit that only resets tomorrow). Keep the server's reason. */
+      if(r.status===429){
+        const code=(d&&d.message)||"rate_limit";
+        const err=new Error(code==="ai_daily_limit"?"ai_daily_limit":"rate_limit");
+        err.status=429;
+        throw err;
+      }
       if(r.status===504) throw new Error("timeout");
       const err=new Error(d.message||"HTTP "+r.status);
       err.status=r.status;
@@ -3889,9 +3898,8 @@ async function submitPay(){
   if(btn){btn.disabled=true;btn.textContent="⏳ جارٍ الإرسال...";}
   try{
     const headers={"Content-Type":"application/json"};
-    const userTok=DB.g("userTok","");
-    if(userTok)headers.Authorization="Bearer "+userTok;
-    const response=await fetch("/api/payments",{method:"POST",headers,body:JSON.stringify({planKey:selPlan,method:SUB_METHOD,tx,proofImage:payProofData,proofName:payProofName})});
+    /* Session comes from the httpOnly cookie — no bearer token in JS. */
+    const response=await fetch("/api/payments",{method:"POST",headers,credentials:"same-origin",body:JSON.stringify({planKey:selPlan,method:SUB_METHOD,tx,proofImage:payProofData,proofName:payProofName})});
     const result=await response.json().catch(()=>null);
     if(!response.ok||!result||result.status!=="ok") throw new Error((result&&result.message)||"تعذر إرسال الطلب");
     payProofData=null;payProofName="";
@@ -3905,11 +3913,10 @@ async function submitPay(){
 /* ─── حالة طلب الدفع (تظهر في صفحة VIP) ─── */
 async function loadPayStatus(){
   const el=document.getElementById("pay-status-card");if(!el)return;
-  const userTok=DB.g("userTok","");
-  if(!userTok){el.innerHTML="";return;}
+  if(!U){el.innerHTML="";return;}
   el.innerHTML=`<div class="empty" style="padding:13px;"><div style="font-size:18px;">⏳</div><div style="font-size:11px;">جارٍ تحميل حالة الطلب...</div></div>`;
   try{
-    const r=await fetch("/api/payments/my",{headers:{Authorization:"Bearer "+userTok}});
+    const r=await fetch("/api/payments/my",{credentials:"same-origin"});
     const j=await r.json().catch(()=>null);
     if(!j||j.status!=="ok"){el.innerHTML="";return;}
     const reqs=j.requests||[];
@@ -4032,8 +4039,7 @@ async function doChangePass(){
    if(nw.length<8){showErr("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل");return;}
   if(nw!==con){showErr("كلمات المرور غير متطابقة");return;}
    try{
-     const token=DB.g("userTok","");
-     const r=await fetch("/api/user/password",{method:"PUT",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({currentPassword:cur,newPassword:nw})});
+     const r=await fetch("/api/user/password",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({currentPassword:cur,newPassword:nw})});
      const d=await r.json().catch(()=>({}));
      if(!r.ok||d.status!=="ok"){showErr(d.message==="current password is incorrect"?"كلمة المرور الحالية غير صحيحة":d.message||"تعذر تغيير كلمة المرور");return;}
    }catch{showErr("تعذر الاتصال بالخادم");return;}
@@ -4160,8 +4166,8 @@ function payNotifsSeen(){return DB.g(PAY_NOTIF_SEEN_KEY,[]);}
 function markPayNotifsSeen(ids){DB.s(PAY_NOTIF_SEEN_KEY,ids);}
 async function pollPayNotifs(){
   try{
-    const tok=DB.g("userTok","");if(!tok)return;
-    const r=await fetch("/api/payments/notifications",{headers:{Authorization:"Bearer "+tok}});
+    if(!U)return; /* only a signed-in session has payment notifications */
+    const r=await fetch("/api/payments/notifications",{credentials:"same-origin"});
     const j=await r.json().catch(()=>null);
     if(!j||j.status!=="ok"||!Array.isArray(j.notifications))return;
     if(j.notifications.length){
@@ -4305,13 +4311,12 @@ async function loadOpps(force=false){
   // The local snapshot (U.plan) may be stale — e.g. VIP was activated
   // after this login. Re-check with the server once before gating.
   if(!isVip){
-    const tok2=DB.g("userTok","");
-    if(tok2){
+    if(U){
       try{
-        const mr=await fetch("/api/user/me",{headers:{Authorization:"Bearer "+tok2}});
+        const mr=await fetch("/api/user/me",{credentials:"same-origin"});
         const md=await mr.json();
         if(mr.ok&&md.status==="ok"&&md.user){
-          U=md.user;DB.s("s",U);
+          U=md.user;ensureUserScope(U.phone);
           if(U.plan==="vip"||U.plan==="admin"){renderHdrVip();return loadOpps(force);}
         }
       }catch{}
@@ -4338,10 +4343,8 @@ async function loadOpps(force=false){
   const el=document.getElementById("opps-list");if(!el)return;
   if(force||oppsData.length===0)el.innerHTML=`<div style="padding:20px;text-align:center;"><div class="sp sp-g"></div></div>`;
   try{
-    const oppHeaders={};
-    const userTok=DB.g("userTok","");
-    if(userTok)oppHeaders.Authorization="Bearer "+userTok;
-    const r=await fetch("/api/opportunities",{headers:oppHeaders});
+    /* The session cookie decides whether VIP-only details come back. */
+    const r=await fetch("/api/opportunities",{credentials:"same-origin"});
     if(!r.ok)throw new Error("server");
     const d=await r.json();
     oppsData=(d.opportunities||[]).filter(o=>o.status!=="deleted"&&o.status!=="closed");
