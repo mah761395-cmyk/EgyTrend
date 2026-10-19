@@ -1,0 +1,103 @@
+# EgyTrend — scheduled data-layer monitor.
+#
+# Runs the same contract checker the tests pin down
+# (scripts/check-data-layer.mjs) against production every 30 minutes:
+#   BROKEN  → opens (or reuses) a GitHub issue carrying the failing checks
+#   healthy → closes that issue automatically
+#
+# Why: on 2026-10-18/19 production served HTTP 200 everywhere while news and
+# markets carried zero data ("no_approved_sources") for ~20 hours; uptime pings
+# stayed green. This watches the data, not the status code.
+#
+# Scheduled workflows only run from the default branch, which is why this lives
+# on main even when production is served from another branch.
+name: data-layer-monitor
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check production data layer
+        id: check
+        continue-on-error: true
+        env:
+          DATA_CHECK_JSON: data-layer-report.json
+        run: node scripts/check-data-layer.mjs https://egy-trend.vercel.app
+
+      - name: Read report
+        if: always()
+        id: report
+        run: |
+          if [ -f data-layer-report.json ]; then
+            {
+              echo 'json<<EOF'
+              cat data-layer-report.json
+              echo 'EOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo 'json={}' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open or close the incident issue
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          REPORT_JSON: ${{ steps.report.outputs.json }}
+        with:
+          script: |
+            const TITLE = "⚠️ EgyTrend data layer broken — news/markets empty";
+            const { owner, repo } = context.repo;
+            const outcome = process.env.CHECK_OUTCOME;
+            const report = process.env.REPORT_JSON || "{}";
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner, repo, state: "open", labels: "data-monitor",
+            });
+            const existing = open.find((i) => i.title === TITLE);
+
+            if (outcome === "success") {
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: existing.number,
+                  body: "✅ data layer healthy again on production — closing automatically.",
+                });
+                await github.rest.issues.update({ owner, repo, issue_number: existing.number, state: "closed" });
+                core.info("closed the data-layer incident issue");
+              } else {
+                core.info("data layer healthy");
+              }
+              return;
+            }
+
+            const body = [
+              "Automated monitor: EgyTrend production is serving HTTP 200 with no news/markets data.",
+              "",
+              "Checker report:",
+              "```json",
+              report,
+              "```",
+              "",
+              "Restore path: Vercel → egy-trend → Deployments → promote the last healthy deployment",
+              "(see RESTORE-2026-10-19.md in the repository).",
+            ].join("\n");
+
+            if (existing) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
+            } else {
+              await github.rest.issues.create({
+                owner, repo, title: TITLE, body, labels: ["data-monitor"],
+              });
+            }
+            core.setFailed("data layer is broken on production");
