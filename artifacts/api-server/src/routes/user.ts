@@ -426,7 +426,7 @@ router.post("/email-verification/confirm", async (req: Request, res: Response) =
       trialStarted: trial?.reason === "started",
       trialReason: trial?.reason || null,
       message: trial?.reason === "started"
-        ? "تم تأكيد بريدك وبدأت تجربتك المجانية لمدة 7 أيام."
+        ? `تم تأكيد بريدك وبدأت تجربتك المجانية لمدة ${Number(settings.durationDays)} أيام.`
         : "تم تأكيد بريدك الإلكتروني بنجاح.",
     });
   } catch (error) {
@@ -453,7 +453,13 @@ router.post("/trial/start", async (req: Request, res: Response) => {
     const trial = await freeTrialAccountStatus(claims.sub);
     try { await recordReferralEvent({ userId: claims.sub, event: "trial_started", now: new Date() }); }
     catch (referralError) { logger.error({ err: referralError }, "referral event after trial start failed"); }
-    res.json({ status: "ok", trial, message: "بدأت تجربتك المجانية لمدة 7 أيام. لا توجد بيانات دفع أو خصم أو تجديد تلقائي." });
+    /* The configured duration, never a hardcoded 7: the operator may change it. */
+    const durationDays = Number(trial.settings.durationDays);
+    res.json({
+      status: "ok",
+      trial,
+      message: `بدأت تجربتك المجانية لمدة ${Number.isInteger(durationDays) && durationDays > 0 ? durationDays : 7} أيام. لا توجد بيانات دفع أو خصم أو تجديد تلقائي.`,
+    });
   } catch (error) {
     logger.error({ err: error }, "free trial self-start error");
     res.status(503).json({ status: "error", message: "تعذر بدء التجربة حاليًا" });

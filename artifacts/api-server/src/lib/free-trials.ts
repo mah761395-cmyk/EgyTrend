@@ -275,7 +275,7 @@ const DEFAULT_STEPS: Array<Omit<FreeTrialMessageStep, "createdAt" | "updatedAt" 
   {
     id: "trial-step-welcome", timing: "after_start", offsetDays: 0, channels: ["in_app"],
     titleTemplate: "أهلًا {{name}} في تجربة VIP المجانية ✨",
-    bodyTemplate: "بدأت تجربتك المجانية لمدة 7 أيام. استكشف مزايا VIP، ولا توجد أي بيانات دفع أو خصم أو تجديد تلقائي.",
+    bodyTemplate: "بدأت تجربتك المجانية لمدة {{days_left}} يومًا. استكشف مزايا VIP، ولا توجد أي بيانات دفع أو خصم أو تجديد تلقائي.",
     messageType: "greeting", actionLabel: "عرض الباقات", actionPlanKey: null, couponCode: null,
     emailMarketing: false, status: "active", version: 1,
   },
