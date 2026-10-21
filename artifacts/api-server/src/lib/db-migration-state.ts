@@ -47,6 +47,7 @@ export const MIGRATION_IDS: readonly string[] = [
   "0010_referral_program",
   "0011_user_onboarding",
   "0012_payment_tx_idempotency",
+  "0013_vip_onboarding_tour",
 ];
 
 /** Set once the boot runner has checked the database. */

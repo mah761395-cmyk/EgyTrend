@@ -861,6 +861,10 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .ob-back{border:1px solid var(--b2);background:var(--s1);color:var(--t3);min-width:74px;}
 @keyframes obFade{from{opacity:0}to{opacity:1}}
 @media (min-width:700px){.ob-checklist{margin:0 24px 14px;}.ob-panel{bottom:28px;}}
+.ob-panel-vip{border-color:rgba(251,191,36,.42);background:linear-gradient(160deg,#241c10,#141008);}
+.ob-panel-vip .ob-step-count{color:#fde68a;background:rgba(245,158,11,.14);}
+.ob-panel-vip .ob-panel-title{color:#fef3c7;}
+.ob-panel-vip .ob-next{border-color:rgba(251,191,36,.5);background:#f59e0b;color:#2a1c04;}
 @media (prefers-reduced-motion:reduce){.ob-tour-backdrop,.ob-progress-value{animation:none;transition:none;}}
 
 
@@ -1110,7 +1114,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       <span style="color:var(--t5);font-size:10px;font-family:var(--mono);" id="cnt"></span>
     </div>
     <div id="onboarding-checklist" aria-live="polite"></div>
-    <button type="button" onclick="openAIRw()" class="ai-banner">
+    <button type="button" id="ai-tour-anchor" onclick="openAIRw()" class="ai-banner">
       <span class="ai-banner-icon"><svg class="et-icon"><use href="#i-spark"></use></svg></span>
       <span class="row"><span><span style="color:#93c5fd;font-weight:700;font-size:13px;display:block;">محرر الأخبار الذكي <span class="bdg bdg-vip" style="font-size:9px;vertical-align:middle;">VIP</span></span><span style="color:var(--t5);font-size:10.5px;display:block;">TL;DR + حقائق واردة + تصنيف وصفي</span></span></span>
       <svg class="et-icon ai-banner-arrow" aria-hidden="true"><use href="#i-arrow"></use></svg>
@@ -1153,7 +1157,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
   <div id="page-opps" class="page hidden">
     <div class="opps-page">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div>
+        <div id="opps-tour-anchor">
           <div style="display:flex;align-items:center;gap:7px;">
             <div class="page-title"><svg class="et-icon"><use href="#i-bulb"></use></svg> عناصر متابعة السوق</div>
             <span id="opps-live-badge" style="display:none;background:var(--s1);border:1px solid var(--b1);border-radius:20px;padding:2px 8px;font-size:9.5px;font-weight:700;color:var(--t4);letter-spacing:.3px;">بيانات متاحة</span>
@@ -1204,7 +1208,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
         <div><div style="color:var(--bl);font-size:20px;font-weight:900;font-family:var(--mono);" id="st-src">0</div><div style="color:var(--t4);font-size:10px;">مصادر</div></div>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;margin-top:12px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.18);border-radius:14px;padding:13px 15px;">
+    <div id="help-tour-anchor" style="display:flex;align-items:center;gap:10px;margin-top:12px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.18);border-radius:14px;padding:13px 15px;">
       <span style="font-size:22px;color:var(--t4);display:grid;place-items:center;"><svg class="et-icon"><use href="#i-megaphone"></use></svg></span>
       <div><div style="color:var(--t3);font-weight:800;font-size:13px;">الدعم الفني</div><div style="color:var(--t4);font-size:11px;">قناة الدعم غير متاحة حالياً</div></div>
     </div>
@@ -1750,26 +1754,35 @@ function loadUserScopedData(){
   priceAlertsState={loaded:false,loading:false,error:"",items:[]};
 }
 
-/* ═══════════════════ FIRST-USE ONBOARDING ═══════════════════
- * The browser renders the tour, but its shown/skipped/completed state and
+/* ═══════════════════ GUIDED TOURS (platform + VIP) ═══════════════════
+ * The browser renders the tours, but their shown/skipped/completed state and
  * checklist progress are read from and written to the authenticated API.
- * It is never stored in localStorage and it never grants any product access. */
-let firstUseState=null,firstUseTourIndex=0,firstUseLoadSeq=0,firstUseAutoTimer=null,firstUseAutoAttempts=0;
+ * It is never stored in localStorage and it never grants any product access.
+ * Two independent tours: `user` (platform intro for a new account) and `vip`
+ * (a separate welcome shown once when the account first holds an active VIP
+ * entitlement). The VIP tour takes auto-start priority and never chains back
+ * into the platform tour during the same visit. */
+let firstUseState=null,firstUseLoadSeq=0,firstUseAutoTimer=null,firstUseAutoAttempts=0;
+let activeTour=null;
+let tourAutoSuppressed={};
 function firstUseEligible(){return Boolean(U&&U.plan!=="admin"&&Number.isInteger(U.id));}
 function firstUseMaybeAutoStart(){
-  if(firstUseState?.tour?.shouldShow!==true||document.getElementById("first-use-tour"))return;
+  if(!firstUseEligible()||activeTour||document.getElementById("first-use-tour"))return;
   /* Respect a server-selected broadcast/trial message instead of stacking two
    * focus dialogs. Retry briefly after it is likely dismissed. */
   if(document.getElementById("broadcast-ov")?.classList.contains("open")){if(firstUseAutoAttempts++<8)firstUseAutoTimer=setTimeout(firstUseMaybeAutoStart,1400);return;}
-  void firstUseStartTour();
+  const vipPending=firstUseState?.vipTour?.shouldShow===true;
+  const userPending=firstUseState?.tour?.shouldShow===true;
+  /* A first-time VIP gets the VIP tour; the platform tour is not replayed
+   * afterwards without need — it stays pending for a later visit. */
+  if(vipPending){tourStart("vip",vipTourSteps());return;}
+  if(userPending&&!tourAutoSuppressed.user)tourStart("user",platformTourSteps());
 }
 function firstUseChecklist(){return Array.isArray(firstUseState?.checklist)?firstUseState.checklist:[];}
 function firstUseFeature(name){return firstUseState?.features&&typeof firstUseState.features==="object"?firstUseState.features[name]||{}:{};}
+function firstUseVip(){return firstUseState?.vip&&typeof firstUseState.vip==="object"?firstUseState.vip:{};}
 function firstUseCompletedCount(){return firstUseChecklist().filter(item=>item?.completed===true).length;}
-function firstUseRemoveTour(){
-  document.getElementById("first-use-tour")?.remove();
-  document.querySelectorAll(".ob-tour-highlight").forEach(el=>el.classList.remove("ob-tour-highlight"));
-}
+function firstUseRemoveTour(){tourRemove();}
 function firstUseRenderChecklist(){
   const host=document.getElementById("onboarding-checklist");if(!host)return;
   if(!firstUseEligible()||!firstUseState||!Array.isArray(firstUseState.checklist)){host.replaceChildren();return;}
@@ -1778,66 +1791,116 @@ function firstUseRenderChecklist(){
   const pct=Math.round((done/tasks.length)*100);
   host.innerHTML=`<section class="ob-checklist" aria-label="خطوات البداية"><div class="ob-checklist-head"><div><div class="ob-checklist-title">✨ ابدأ بخطوات بسيطة</div><div class="ob-checklist-copy">${done===tasks.length?"اكتملت خطوات البداية — يمكنك إعادة الجولة من حسابك في أي وقت.":"تقدّمك محفوظ لهذا الحساب فقط."}</div></div><div class="ob-checklist-progress">${done}/${tasks.length}</div></div><div class="ob-progress-track" aria-hidden="true"><div class="ob-progress-value" style="width:${pct}%;"></div></div>${tasks.map(item=>{const title=sanitize(String(item?.title||"خطوة البداية"));const copy=sanitize(String(item?.description||""));const action=safeJsArg(String(item?.action||""));const complete=item?.completed===true;const progress=item?.progress&&Number.isFinite(Number(item.progress.current))?` <span style="color:var(--g);font-family:var(--mono);">${Math.max(0,Number(item.progress.current))}/${Math.max(1,Number(item.progress.target)||1)}</span>`:"";return `<button type="button" class="ob-task ${complete?"done":""}" onclick='firstUseChecklistAction(${action})'><span class="ob-task-mark">${complete?"✓":"○"}</span><span class="ob-task-body"><span class="ob-task-title">${title}${progress}</span><span class="ob-task-copy">${copy}</span></span><span class="ob-task-arrow">←</span></button>`;}).join("")}</section>`;
 }
-function firstUseTourSteps(){
+/* Platform tour: every step points at a real, existing UI element. */
+function platformTourSteps(){
   const steps=[
-    {id:"markets",nav:"markets",target:"#markets-tour-anchor",icon:"chart",title:"تعرّف إلى الأسواق",copy:"شاهد بطاقات الأسواق وحالة المصدر ووقت التحديث. عند غياب المصدر ستظهر الحالة غير المتاحة بدل رقم بديل."},
-    {id:"watchlist",nav:"markets",target:"#mkt-eg",icon:"star",title:"كوّن قائمة متابعتك",copy:"افتح أي أصل ثم اختر النجمة لإضافته لقائمتك. أضف ثلاثة عناصر لإكمال خطوة البداية."},
-    {id:"notifications",nav:null,target:"#bell-btn",icon:"bell",title:"اضبط الإشعارات",copy:"من الجرس يمكنك تفعيل إشعارات المتصفح أو إدارة ما يظهر داخل المنصة. يتطلب إشعار السعر ميزة متاحة في حسابك."},
-    {id:"news",nav:"home",target:"#feed",icon:"source",title:"استكشف الأخبار",copy:"افتح خبرًا للاطلاع على المصدر ووقت النشر المتاحين. الأخبار للاطلاع ولا تمثل توصية استثمارية."},
+    {id:"home",nav:"home",target:"#bnav",icon:"home",title:"الرئيسية والتنقل",copy:"هذه صفحتك الرئيسية: شريط الأسواق العلوي، شريط الحالة، وآخر الأخبار. من الشريط السفلي تتنقل بين الرئيسية والأسواق وVIP والفرص وحسابك، ومن جرس الإشعارات في الأعلى تفتح آخر التنبيهات."},
+    {id:"news",nav:"home",target:"#feed",icon:"source",title:"الأخبار",copy:"افتح أي خبر للاطلاع على مصدره ووقت نشره والتحليلات المتاحة له. الأخبار للاطلاع ولا تمثل توصية استثمارية."},
+    {id:"markets",nav:"markets",target:"#markets-tour-anchor",icon:"chart",title:"الأسواق",copy:"تابع الأسواق المصرية والعالمية والسلع والكريبتو مع حالة المصدر ووقت التحديث — وعند تعذّر المصدر تظهر «غير متاح حاليًا» بدل رقم بديل. افتح أي أصل لشارته، ثم اختر النجمة ⭐ لإضافته إلى قائمة متابعتك."},
+    {id:"opps",nav:"opps",target:"#opps-tour-anchor",icon:"bulb",title:"الفرص وعناصر متابعة السوق",copy:"صفحة الفرص تلخّص عناصر السوق بحسب النوع والسوق، وكل عنصر يبيّن مصدره ووقت تحديثه عند توافره — دون توصيات أو عوائد معدّة."},
+    {id:"ai",nav:"home",target:"#ai-tour-anchor",icon:"spark",title:"المساعد الذكي",copy:"محرر الأخبار الذكي يلخّص الخبر ويستخرج الحقائق ويصنّفه تصنيفًا وصفيًا، والمساعد الكامل (المستشار) وأدوات التحليل متاحان لأعضاء VIP من تبويب VIP."},
+    {id:"benefits",nav:"profile",target:"#pbtns",icon:"star",title:"خدمات VIP وكيفية الوصول",copy:"صفحة VIP تعرض الباقات والمزايا الفعلية كما يحددها الخادم."},
+    {id:"help",nav:"profile",target:"#help-tour-anchor",icon:"settings",title:"الإعدادات والمساعدة",copy:"من صفحة حسابك: بريد الاسترداد، تغيير كلمة المرور، إدارة إشعارات المتصفح، وروابط الخصوصية والشروط والأحكام. يمكنك إعادة جولة التعريف في أي وقت من زر «إعادة جولة التعريف» هنا."}
   ];
   const trial=firstUseFeature("freeTrial"),referrals=firstUseFeature("referrals");
   if(trial.enabled===true||referrals.enabled===true){
-    let title="مزايا الحساب";
-    let copy="استكشف ما هو متاح لحسابك من صفحة الحساب.";
-    if(trial.enabled===true&&referrals.enabled===true){title="التجربة والمزايا";copy=`تعرض صفحة VIP المزايا المتاحة مع باقتك، ويمكنك مراجعة أهلية تجربة VIP لمدة ${Number(trial.durationDays)||7} أيام من حسابك ومشاركة رابط دعوتك من حسابك. لا يبدأ دفع أو تجديد تلقائي.`;}
-    else if(trial.enabled===true){title="جرّب ما يقدمه VIP";copy=`تعرض صفحة VIP المزايا المتاحة مع باقتك، ويمكنك مراجعة أهلية تجربة VIP لمدة ${Number(trial.durationDays)||7} أيام من حسابك. لا يوجد دفع أو تجديد تلقائي.`;}
-    else {title="ادعُ أصدقاءك";copy="برنامج الإحالة مفعّل حاليًا. ستجد رابط دعوتك وشروط البرنامج داخل حسابك.";}
-    steps.push({id:"benefits",nav:"profile",target:"#pbtns",icon:"star",title,copy});
+    let extra=" تعرض صفحة حسابك أيضًا";
+    if(trial.enabled===true)extra+=` أهلية تجربة VIP لمدة ${Number(trial.durationDays)||7} أيام إن كانت متاحة لك — بلا دفع أو خصم أو تجديد تلقائي`;
+    if(referrals.enabled===true)extra+=`${trial.enabled===true?" و":""} رابط دعوتك وشروط برنامج الإحالة`;
+    extra+=".";
+    steps[5].copy+=extra;
   }
   return steps;
 }
-function firstUseTarget(step){
+/* VIP tour: only the features the server says this account may actually open. */
+function vipTourSteps(){
+  const f=firstUseState?.vipFeatures&&typeof firstUseState.vipFeatures==="object"?firstUseState.vipFeatures:{};
+  const on=k=>f[k]===true;
+  const steps=[{id:"welcome",nav:"vip",tab:"home",target:"#vtabs-bar",icon:"star",title:"مرحبًا بك في مزايا VIP",copy:"اشتراكك فعّال الآن. هذه الجولة تعرّضك على المزايا المتاحة لحسابك حاليًا — كل خطوة تفتح صفحتها مباشرة، والخطوات تُعرض فقط للمزايا المشمولة في اشتراكك."}];
+  if(on("calculators"))steps.push({id:"calc",nav:"calculators",target:"#calculators-el",icon:"chart",title:"حاسبة المستثمر ورسومها البيانية",copy:"أدخل رأس المال والمساهمة الشهرية والمدة والعائد المتوقع لترى القيمة النهائية، مع رسم نمو الاستثمار ورسم المساهمات مقابل الأرباح ومقارنة السيناريوهات — والنتيجة تُحسب من مدخلاتك لحظيًا وفق افتراضات معلنة."});
+  if(on("portfolio"))steps.push({id:"portfolio",nav:"vip",tab:"port",target:"#vip-body",icon:"star",title:"المحفظة والرسوم البيانية",copy:"أضف أسهمك وتابع قيمتها الحالية والربح والخسارة لكل سهم وإجمالًا، مع عرض أداء المحفظة والبيانات المتاحة لكل سهم."});
+  if(on("indicators"))steps.push({id:"analysis",nav:"vip",tab:"stk",target:"#vip-body",icon:"chart",title:"أدوات التحليل الفني",copy:"افتح أي سهم من الأسواق لرؤية مؤشرات VIP: متوسط MA(20) و RSI(14) فوق الشارت، واستخدم تبويب «تحليل AI» و Sceener لفرز السهم بحسب معاييرك."});
+  if(on("ai"))steps.push({id:"assistant",nav:"vip",tab:"ai",target:"#vip-body",icon:"spark",title:"المستشار الذكي",copy:"اسأل عن السوق أو عن سهم بعينه واحصل على إجابة مبنية على البيانات المتاحة — مع حدود استخدام عادل محسوب لحسابك."});
+  if(on("opportunities"))steps.push({id:"opps",nav:"vip",tab:"opps",target:"#vip-body",icon:"bulb",title:"الفرص داخل VIP",copy:"نفس عناصر متابعة السوق مع تصفية أدق حسب النوع والسوق، واحفظ العناصر التي تهمك للمراجعة لاحقًا."});
+  steps.push({id:"markets",nav:"vip",tab:"mkt",target:"#vip-body",icon:"chart",title:"الأسواق والتقارير",copy:"متابعة الأسواق مع بيانات المصدر ووقت التحديث، وتبويب «التقارير» يعرض ملخص أحداث السوق وأداء محفظتك عندما تكون البيانات متاحة."});
+  if(on("priceAlerts"))steps.push({id:"alerts",nav:"vip",tab:"alerts",target:"#vip-body",icon:"bell",title:"التنبيهات",copy:"أنشئ تنبيهات سعر لأسهمك؛ يصلك التنبيه داخل المنصة عندما يتحقق الشرط بحسب البيانات المتاحة ووقتها."});
+  steps.push({id:"manage",nav:"vip",tab:"set",target:"#vip-body",icon:"settings",title:"إدارة اشتراكك",copy:"تبويب الإعدادات يدير متابعتك وتفضيلاتك، وصفحة «اشتراكي» في حسابك تعرض حالة الاشتراك وموعد الانتهاء — والتجديد اختياري بطلب جديد."});
+  return steps;
+}
+function tourRemove(){
+  document.getElementById("first-use-tour")?.remove();
+  document.querySelectorAll(".ob-tour-highlight").forEach(el=>el.classList.remove("ob-tour-highlight"));
+}
+function tourHighlight(step){
   const target=step?.target?document.querySelector(step.target):null;
   if(target){target.classList.add("ob-tour-highlight");try{target.scrollIntoView({block:"center",behavior:window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches?"auto":"smooth"});}catch{}}
   return target;
 }
-function firstUseRenderTour(){
-  firstUseRemoveTour();
-  const steps=firstUseTourSteps();if(!steps.length)return;
-  firstUseTourIndex=Math.max(0,Math.min(firstUseTourIndex,steps.length-1));
-  const step=steps[firstUseTourIndex];
+function tourGoTo(step){
   if(step.nav)goNav(step.nav,{syncUrl:false});
-  const root=document.createElement("div");root.id="first-use-tour";root.innerHTML=`<div class="ob-tour-backdrop" aria-hidden="true"></div><section class="ob-panel" role="dialog" aria-modal="true" aria-labelledby="ob-tour-title"><div class="ob-panel-top"><span class="ob-step-count">${firstUseTourIndex+1} من ${steps.length}</span><button type="button" class="ob-skip" onclick="firstUseFinishTour('skipped')">تخطي الجولة</button></div><div class="ob-panel-icon" aria-hidden="true">${uiIcon(step.icon)}</div><div class="ob-panel-title" id="ob-tour-title">${sanitize(step.title)}</div><div class="ob-panel-copy">${sanitize(step.copy)}</div><div class="ob-panel-note">يمكنك إعادة هذه الجولة من إعدادات الحساب.</div><div class="ob-panel-actions">${firstUseTourIndex>0?'<button type="button" class="ob-back" onclick="firstUseTourBack()">السابق</button>':""}<button type="button" class="ob-next" onclick="firstUseTourNext()">${firstUseTourIndex===0?"ابدأ":firstUseTourIndex===steps.length-1?"إنهاء":"التالي"}</button></div></section>`;
+  if(step.tab&&typeof switchVipTab==="function")switchVipTab(step.tab,true);
+}
+function tourRender(){
+  tourRemove();
+  const tour=activeTour;if(!tour||!tour.steps.length)return;
+  tour.index=Math.max(0,Math.min(tour.index,tour.steps.length-1));
+  const step=tour.steps[tour.index];
+  tourGoTo(step);
+  const vip=tour.kind==="vip";
+  const root=document.createElement("div");root.id="first-use-tour";root.dataset.tour=tour.kind;
+  root.innerHTML=`<div class="ob-tour-backdrop" aria-hidden="true"></div><section class="ob-panel${vip?" ob-panel-vip":""}" role="dialog" aria-modal="true" aria-labelledby="ob-tour-title"><div class="ob-panel-top"><span class="ob-step-count">${vip?"جولة VIP · ":""}${tour.index+1} من ${tour.steps.length}</span><button type="button" class="ob-skip" onclick="tourFinish('skipped')">تخطي الجولة</button></div><div class="ob-panel-icon" aria-hidden="true">${uiIcon(step.icon)}</div><div class="ob-panel-title" id="ob-tour-title">${sanitize(step.title)}</div><div class="ob-panel-copy">${sanitize(step.copy)}</div><div class="ob-panel-note">${vip?"يمكنك إعادة جولة مزايا VIP من حسابك أو من إعدادات VIP في أي وقت.":"يمكنك إعادة هذه الجولة من إعدادات الحساب في أي وقت."}</div><div class="ob-panel-actions">${tour.index>0?'<button type="button" class="ob-back" onclick="tourBack()">السابق</button>':""}<button type="button" class="ob-next" onclick="tourNext()">${tour.index===0?"ابدأ":tour.index===tour.steps.length-1?"إنهاء":"التالي"}</button></div></section>`;
   document.body.appendChild(root);
-  setTimeout(()=>firstUseTarget(step),30);
+  setTimeout(()=>tourHighlight(step),30);
 }
 async function firstUseRequest(path,body){
   const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
   try{const r=await fetch(path,{method:body===undefined?"GET":"POST",credentials:"same-origin",cache:"no-store",headers:body===undefined?undefined:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body),signal:ctrl.signal});const j=await r.json().catch(()=>null);if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"onboarding_unavailable");return j;}finally{clearTimeout(timer);}
 }
-function firstUseApply(state){if(!state||typeof state!=="object")return;firstUseState=state;firstUseRenderChecklist();}
+function firstUseApply(state){
+  if(!state||typeof state!=="object")return;firstUseState=state;firstUseRenderChecklist();
+  /* Replay buttons (VIP state included) live in the profile/settings screens;
+   * refresh them when the freshest server state arrives. */
+  if(!document.getElementById("page-profile")?.classList.contains("hidden")&&typeof renderProfile==="function")renderProfile();
+}
 function firstUseChecklistLoading(){const host=document.getElementById("onboarding-checklist");if(host&&!firstUseState)host.innerHTML=`<div class="ob-checklist ob-skeleton" aria-label="جارٍ تحميل خطوات البداية"><span class="sk sk-line lg"></span><span class="sk sk-line md"></span><span class="sk sk-line"></span></div>`;}
 function firstUseChecklistUnavailable(){const host=document.getElementById("onboarding-checklist");if(host)host.innerHTML=`<div class="ob-checklist" style="color:var(--t4);font-size:11px;line-height:1.65;">تعذر تحميل خطوات البداية حاليًا. <button type="button" onclick="loadFirstUseOnboarding()" style="border:0;background:none;color:var(--g);font:inherit;font-weight:800;cursor:pointer;padding:0;">إعادة المحاولة</button></div>`;}
 async function loadFirstUseOnboarding(options={}){
+  /* The tour is never load-blocking: any failure leaves the product fully
+   * usable and only hides the onboarding card behind a retry link. */
   if(!firstUseEligible())return null;const seq=++firstUseLoadSeq;firstUseChecklistLoading();
-  try{const state=await firstUseRequest("/api/user/onboarding");if(seq!==firstUseLoadSeq)return null;firstUseApply(state);if(options.auto!==false&&state?.tour?.shouldShow===true&&!document.getElementById("first-use-tour")){firstUseAutoAttempts=0;clearTimeout(firstUseAutoTimer);firstUseAutoTimer=setTimeout(firstUseMaybeAutoStart,900);}return state;}catch{firstUseChecklistUnavailable();return null;}
+  try{const state=await firstUseRequest("/api/user/onboarding");if(seq!==firstUseLoadSeq)return null;firstUseApply(state);if(options.auto!==false&&((state?.vipTour?.shouldShow===true)||(state?.tour?.shouldShow===true))&&!document.getElementById("first-use-tour")){firstUseAutoAttempts=0;clearTimeout(firstUseAutoTimer);firstUseAutoTimer=setTimeout(firstUseMaybeAutoStart,900);}return state;}catch{firstUseChecklistUnavailable();return null;}
 }
+function tourStart(kind,steps){
+  if(!firstUseEligible()||!steps.length)return;
+  activeTour={kind,steps,index:0};tourRender();
+  firstUseRequest("/api/user/onboarding/tour",{action:"started",tour:kind}).then(state=>firstUseApply(state)).catch(()=>{/* the visual tour remains; the next visit retries only what the server did not persist */});
+}
+function tourNext(){const tour=activeTour;if(!tour)return;if(tour.index>=tour.steps.length-1){tourFinish("completed");return;}tour.index+=1;tourRender();}
+function tourBack(){if(!activeTour)return;activeTour.index=Math.max(0,activeTour.index-1);tourRender();}
+async function tourFinish(action){
+  const kind=activeTour?.kind||"user";activeTour=null;tourRemove();
+  /* Finishing the VIP tour must not chain into the platform tour in the same
+   * visit; the platform tour stays pending for a later visit if never seen. */
+  if(kind==="vip")tourAutoSuppressed.user=true;
+  try{const state=await firstUseRequest("/api/user/onboarding/tour",{action,tour:kind});firstUseApply(state);}catch{showToast("⚠️ تعذر حفظ حالة الجولة؛ ستظهر مرة أخرى عند الدخول.");}
+}
+document.addEventListener("keydown",event=>{if(event.key==="Escape"&&activeTour){event.preventDefault();tourFinish("skipped");}});
 async function firstUseStartTour(){
-  if(!firstUseEligible())return;
+  if(!firstUseEligible()){showToast("⚠️ سجّل الدخول بحساب مستخدم أولًا");return;}
   if(!firstUseState){const loaded=await loadFirstUseOnboarding({auto:false});if(!loaded)return;}
-  if(firstUseState?.tour?.shouldShow!==true)return;
-  firstUseTourIndex=0;firstUseRenderTour();
-  try{const state=await firstUseRequest("/api/user/onboarding/tour",{action:"started"});firstUseApply(state);}catch{/* visual tour remains; next login retries only if server did not persist it. */}
+  tourStart("user",platformTourSteps());
 }
-function firstUseTourNext(){const steps=firstUseTourSteps();if(firstUseTourIndex>=steps.length-1){firstUseFinishTour("completed");return;}firstUseTourIndex+=1;firstUseRenderTour();}
-function firstUseTourBack(){firstUseTourIndex=Math.max(0,firstUseTourIndex-1);firstUseRenderTour();}
-async function firstUseFinishTour(action){
-  firstUseRemoveTour();
-  try{const state=await firstUseRequest("/api/user/onboarding/tour",{action});firstUseApply(state);}catch{showToast("⚠️ تعذر حفظ حالة الجولة؛ ستظهر مرة أخرى عند الدخول.");}
+async function vipTourReplay(){
+  if(!firstUseEligible()){showToast("⚠️ سجّل الدخول بحساب مستخدم أولًا");return;}
+  if(!firstUseState){const loaded=await loadFirstUseOnboarding({auto:false});if(!loaded)return;}
+  if(firstUseVip().active!==true){showToast("⚠️ جولة مزايا VIP متاحة لأصحاب الاشتراك الفعّال فقط");return;}
+  try{const state=await firstUseRequest("/api/user/onboarding/reset",{tour:"vip"});firstUseApply(state);}catch{/* the replay continues even if persisting the reset fails */}
+  tourStart("vip",vipTourSteps());
 }
 async function firstUseResetTour(){
   if(!firstUseEligible()){showToast("⚠️ سجّل الدخول بحساب مستخدم أولًا");return;}
-  try{const state=await firstUseRequest("/api/user/onboarding/reset",{});firstUseApply(state);firstUseTourIndex=0;firstUseRenderTour();showToast("✅ بدأت جولة التعريف من جديد");}catch{showToast("⚠️ تعذر إعادة الجولة حاليًا؛ حاول لاحقًا.");}
+  try{const state=await firstUseRequest("/api/user/onboarding/reset",{});firstUseApply(state);}catch{/* the replay continues even if persisting the reset fails */}
+  tourStart("user",platformTourSteps());showToast("✅ بدأت جولة التعريف من جديد");
 }
 async function firstUseReport(event,payload={}){
   if(!firstUseEligible())return;
@@ -1850,7 +1913,6 @@ function firstUseChecklistAction(action){
   goNav("profile");
   if(action==="profile_trial")setTimeout(()=>document.getElementById("trial-start-btn")?.scrollIntoView({block:"center",behavior:"smooth"}),150);
 }
-
 
 /* ═══════════════════ GUEST LANDING + AUTH MODAL ═══════════════════ */
 function openAuthModal(mode="login"){
@@ -1871,6 +1933,558 @@ function showGuestLanding(){
   if(main)main.style.display="none";
   if(landing){landing.hidden=false;landing.removeAttribute("aria-hidden");}
   if(auth){auth.classList.remove("open");auth.setAttribute("aria-hidden","true");}
+}
+
+
+/* ═══════════════════ NAVIGATION ═══════════════════ */
+function goNav(id,options={}){
+  const target=["home","markets","vip","opps","profile","calculators"].includes(id)?id:"home";
+  ["home","markets","vip","opps","profile","calculators"].forEach(n=>{
+    document.getElementById(`page-${n}`).classList.toggle("hidden",n!==target);
+    document.getElementById(`nb-${n}`)?.classList.toggle("active",n===target);
+  });
+  if(target==="vip")renderVIP();
+  if(target==="profile")renderProfile();
+  if(target==="markets"){buildMarkets();buildCalendar();}
+  if(target==="home") clearNotifs();
+  if(target==="opps") loadOpps();
+  if(target==="calculators")renderCalculatorsPage();
+  if(options.syncUrl!==false&&window.history&&window.history.pushState){
+    const wanted=target==="calculators"?"/calculators":"/";
+    if(window.location.pathname!==wanted)window.history.pushState({nav:target},"",wanted);
+  }
+  closeNotifPanel();
+}
+window.addEventListener("popstate",()=>goNav(window.location.pathname==="/calculators"?"calculators":"home",{syncUrl:false}));
+
+/* ═══════════════════ NOTIFICATION SYSTEM ═══════════════════ */
+const NOTIF_KEY="notifs_v1";
+let notifOpen=false;
+
+const NOTIF_TYPES=new Set(["news","opps","calendar","sub","price"]);
+const NOTIF_NAVS=new Set(["home","markets","vip","opps","profile"]);
+function normalizeNotifItem(raw){
+  if(!raw||typeof raw!=="object")return null;
+  const n=raw;
+  const id=String(n.id||"").trim();
+  if(!/^[a-z0-9_-]{1,80}$/i.test(id))return null;
+  const type=NOTIF_TYPES.has(String(n.type))?String(n.type):"news";
+  const nav=String(n.link||"");
+  const link=nav.startsWith("nav:")&&NOTIF_NAVS.has(nav.slice(4))?nav:"";
+  const ts=Number(n.ts);
+  const action=normalizedSubscriptionAction(n.actionUrl);
+  return {
+    id,type,link,actionUrl:action?.url||"",
+    actionLabel:String(n.actionLabel||"جدّد الآن").slice(0,40),
+    title:String(n.title||"").slice(0,300),body:String(n.body||"").slice(0,1000),
+    icon:String(n.icon||"🔔").slice(0,16),read:n.read===true,
+    ts:Number.isFinite(ts)&&ts>0?ts:Date.now(),
+  };
+}
+function getNotifsStore(){
+  const raw=DB.g(NOTIF_KEY,{});
+  const prefsRaw=raw&&typeof raw==="object"&&raw.prefs&&typeof raw.prefs==="object"?raw.prefs:{};
+  const prefs=Object.fromEntries([...NOTIF_TYPES].map(type=>[type,prefsRaw[type]!==false]));
+  const items=Array.isArray(raw?.items)?raw.items.map(normalizeNotifItem).filter(Boolean).slice(0,50):[];
+  return {items,unread:items.filter(n=>!n.read).length,prefs};
+}
+function saveNotifsStore(s){
+  const normalized={items:Array.isArray(s?.items)?s.items.map(normalizeNotifItem).filter(Boolean).slice(0,50):[],prefs:s?.prefs||{}};
+  normalized.unread=normalized.items.filter(n=>!n.read).length;
+  DB.s(NOTIF_KEY,normalized);
+}
+
+function addNotif(type,title,body,link="",icon="🔔",actionUrl="",actionLabel="جدّد الآن"){
+  const store=getNotifsStore();
+  const safeType=NOTIF_TYPES.has(String(type))?String(type):"news";
+  if(!store.prefs[safeType]&&safeType!=="sub")return;
+  const id=Date.now()+"_"+Math.random().toString(36).slice(2,6);
+  const item=normalizeNotifItem({id,type:safeType,title,body,link,icon,actionUrl,actionLabel,read:false,ts:Date.now()});
+  if(!item)return;
+  store.items.unshift(item);
+  if(store.items.length>50)store.items=store.items.slice(0,50);
+  store.unread=store.items.filter(n=>!n.read).length;
+  saveNotifsStore(store);
+  updateBellBadge();
+  if(notifOpen)renderNotifList();
+  if(store.prefs[safeType]!==false)tryBrowserNotif(item.title,item.body);
+}
+
+function updateBellBadge(){
+  const store=getNotifsStore();
+  const b=document.getElementById("bell-badge");if(!b)return;
+  if(store.unread>0){b.textContent=store.unread>9?"9+":store.unread;b.classList.add("show");}
+  else{b.classList.remove("show");}
+}
+
+function toggleNotifPanel(){
+  const p=document.getElementById("notif-panel");
+  notifOpen=!notifOpen;
+  p.classList.toggle("open",notifOpen);
+  if(notifOpen)renderNotifList();
+}
+function closeNotifPanel(){
+  notifOpen=false;
+  document.getElementById("notif-panel")?.classList.remove("open");
+}
+
+function renderNotifList(){
+  const store=getNotifsStore();
+  const el=document.getElementById("notif-list");if(!el)return;
+  if(!store.items.length){el.innerHTML=`<div class="notif-empty">📭<br/>لا توجد إشعارات بعد</div>`;return;}
+  el.innerHTML=store.items.map(n=>{
+    const ago=timeAgoNotif(n.ts);
+    return`<div class="notif-item${n.read?"":" unread"}" onclick='clickNotif(${safeJsArg(n.id)},${safeJsArg(n.link)},${safeJsArg(n.actionUrl)})'>
+      <div class="notif-icon">${sanitize(n.icon)}</div>
+      <div class="notif-body">
+        <div class="notif-ntitle">${sanitize(n.title)}</div>
+        <div class="notif-ntext">${sanitize(n.body)}</div>
+        ${n.actionUrl?`<button class="btn btn-au" style="padding:5px 9px;font-size:10px;margin-top:7px;" onclick='event.stopPropagation();clickNotif(${safeJsArg(n.id)},"",${safeJsArg(n.actionUrl)})'>${sanitize(n.actionLabel||"جدّد الآن")}</button>`:""}
+        <div class="notif-time">${sanitize(ago)}</div>
+      </div>
+      ${n.read?"":"<div class='notif-dot'></div>"}
+    </div>`;
+  }).join("");
+}
+
+function clickNotif(id,link,actionUrl=""){
+  const store=getNotifsStore();
+  const n=store.items.find(x=>x.id===id);if(n){n.read=true;}
+  store.unread=store.items.filter(x=>!x.read).length;
+  saveNotifsStore(store);
+  updateBellBadge();
+  renderNotifList();
+  if(actionUrl){openSubscriptionAction(actionUrl);return;}
+  if(link&&link.startsWith("nav:")){closeNotifPanel();goNav(link.replace("nav:",""));}
+}
+
+function markAllNotifsRead(){
+  const store=getNotifsStore();
+  store.items.forEach(n=>n.read=true);store.unread=0;
+  saveNotifsStore(store);
+  updateBellBadge();
+  renderNotifList();
+}
+
+function timeAgoNotif(ts){
+  const d=Math.floor((Date.now()-ts)/1000);
+  if(d<60)return"الآن";if(d<3600)return`منذ ${Math.floor(d/60)} دقيقة`;
+  if(d<86400)return`منذ ${Math.floor(d/3600)} ساعة`;
+  return`منذ ${Math.floor(d/86400)} يوم`;
+}
+
+function tryBrowserNotif(title,body){
+  if(!("Notification"in window)||Notification.permission!=="granted")return;
+  try{new Notification("EgyTrend — "+title,{body,icon:"/favicon.ico"});}catch(e){}
+}
+
+/* ═══════════════════ IN-PLATFORM SERVER NOTIFICATIONS ═══════════════════
+   Polls only the current user's server rows: payment decisions, subscription
+   lifecycle reminders, and verified price-alert triggers become a toast + bell
+   without trusting local storage. */
+const PAY_NOTIF_SEEN_KEY="pay_notifs_seen_v1";
+let payNotifTimer=null;
+function payNotifsSeen(){return DB.g(PAY_NOTIF_SEEN_KEY,[]);}
+function markPayNotifsSeen(ids){DB.s(PAY_NOTIF_SEEN_KEY,ids);}
+async function pollPayNotifs(){
+  try{
+    if(!U||U.plan==="admin")return;
+    const r=await fetch("/api/payments/notifications",{credentials:"same-origin"});
+    const j=await r.json().catch(()=>null);
+    if(!j||j.status!=="ok"||!Array.isArray(j.notifications))return;
+    if(j.notifications.length){
+      const seen=new Set(payNotifsSeen());
+      const fresh=j.notifications.filter(n=>!seen.has(n.id));
+      if(fresh.length){
+        for(const n of fresh){
+          const kind=n.type==="price_alert"?"price":"sub";
+          const action=normalizedSubscriptionAction(n.actionUrl);
+          addNotif(kind,n.title,n.body,action?"":"nav:vip",n.icon|| (kind==="price"?"🔔":"💰"),action?.url||"",n.actionLabel||"جدّد الآن");
+          showPlatNotif(n.icon|| (kind==="price"?"🔔":"💰"),n.title,n.body,action?.url||"",n.actionLabel||"جدّد الآن");
+        }
+        markPayNotifsSeen(j.notifications.map(n=>n.id));
+        loadPayStatus();
+      }
+    }
+  }catch(e){}
+}
+function startPayNotifPolling(){
+  if(payNotifTimer)return;
+  pollPayNotifs().finally(()=>{payNotifTimer=setInterval(pollPayNotifs,15000);});
+}
+function showPlatNotif(icon,title,body,actionUrl="",actionLabel="جدّد الآن"){
+  try{
+    const old=document.querySelector(".plat-notif");if(old)old.remove();
+    const el=document.createElement("div");el.className="plat-notif";
+    const action=normalizedSubscriptionAction(actionUrl);
+    el.innerHTML=`<span class="pn-emoji">${sanitize(String(icon))}</span><span><div class="pn-title">${sanitize(String(title))}</div><div class="pn-body">${sanitize(String(body))}</div>${action?`<button class="btn btn-au" style="padding:5px 9px;font-size:10px;margin-top:6px;" onclick='openSubscriptionAction(${safeJsArg(action.url)});this.closest(".plat-notif").remove()'>${sanitize(String(actionLabel).slice(0,40))}</button>`:""}</span><button class="pn-x" onclick="this.parentElement.remove()">✕</button>`;
+    document.body.appendChild(el);
+    setTimeout(()=>{el.style.transition="opacity .4s";el.style.opacity="0";setTimeout(()=>el.remove(),420);},8000);
+  }catch(e){}
+}
+
+function requestNotifPermission(){
+  if(!("Notification"in window)){showToast("⚠️ إشعارات المتصفح غير مدعومة على هذا الجهاز");return;}
+  if(Notification.permission==="granted"){void firstUseReport("notifications_enabled",{});showToast("✅ إشعارات المتصفح مفعّلة بالفعل");return;}
+  if(Notification.permission==="denied"){showToast("⚠️ الإشعارات محظورة من المتصفح؛ يمكنك تعديلها من إعدادات الجهاز");return;}
+  Notification.requestPermission().then(p=>{
+    if(p==="granted"){void firstUseReport("notifications_enabled",{});showToast("✅ تم تفعيل إشعارات المتصفح");}
+    else if(p==="denied")showToast("⚠️ لم يتم السماح بإشعارات المتصفح");
+  }).catch(()=>showToast("⚠️ تعذر طلب إذن الإشعارات"));
+}
+
+function openNotifSettings(){
+  const store=getNotifsStore();
+  const labels={news:"📰 أخبار عاجلة",opps:"💡 عناصر متابعة جديدة",calendar:"📅 التقويم الاقتصادي",sub:"⭐ تجديد الاشتراك"};
+  const ov=document.createElement("div");ov.id="notif-set-ov";
+  ov.style.cssText="position:fixed;inset:0;z-index:700;background:rgba(3,7,18,.92);display:flex;align-items:flex-end;";
+  ov.innerHTML=`<div style="width:100%;max-width:430px;margin:0 auto;background:var(--ink2);border-radius:22px 22px 0 0;padding:20px 18px 30px;">
+    <div style="color:var(--t2);font-weight:800;font-size:15px;margin-bottom:16px;">⚙️ إعدادات الإشعارات</div>
+    ${Object.entries(labels).map(([k,l])=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--b1);">
+      <div style="color:var(--t2);font-size:13px;">${l}</div>
+      <label style="position:relative;width:40px;height:22px;cursor:pointer;">
+        <input type="checkbox" ${store.prefs[k]?"checked":""} onchange="toggleNotifPref('${k}',this.checked)" style="opacity:0;width:0;height:0;"/>
+        <span style="position:absolute;inset:0;background:${store.prefs[k]?"var(--g)":"var(--s2)"};border-radius:11px;transition:background .2s;"></span>
+        <span style="position:absolute;top:2px;${store.prefs[k]?"left":"right"}:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:all .2s;"></span>
+      </label>
+    </div>`).join("")}
+    <div style="margin-top:14px;padding:10px;background:var(--bld);border-radius:10px;cursor:pointer;" onclick="requestNotifPermission()">
+      <div style="color:#93c5fd;font-size:12px;font-weight:700;">🔔 تفعيل إشعارات المتصفح</div>
+      <div style="color:var(--t4);font-size:10.5px;margin-top:2px;">تلقّ إشعارات داخل المنصة أثناء استخدامك</div>
+    </div>
+    <button onclick="document.getElementById('notif-set-ov').remove()" style="width:100%;margin-top:14px;background:none;border:none;color:var(--t4);font-size:12px;cursor:pointer;font-family:var(--sans);">إغلاق</button>
+  </div>`;
+  document.body.appendChild(ov);
+}
+
+function toggleNotifPref(key,val){
+  const store=getNotifsStore();store.prefs[key]=val;saveNotifsStore(store);
+  if(val===true)void firstUseReport("notifications_enabled",{});
+}
+
+function checkAutoNotifs(){
+  if(!U)return;
+  const isVip=U.plan==="vip"||U.plan==="admin";
+  if(isVip&&U.exp&&U.plan!=="admin"){
+    const daysLeft=Math.ceil((new Date(U.exp)-new Date())/(1000*60*60*24));
+    if(daysLeft<=7&&daysLeft>=0){
+      const key="sub_exp_notif_"+U.phone;
+      const last=localStorage.getItem(key);
+      if(!last||Date.now()-parseInt(last)>86400000){
+        addNotif("sub","تجديد الاشتراك القادم",`باقي ${daysLeft} يوم فقط على انتهاء اشتراكك VIP — جدّد الآن للاستمرار.`,"nav:profile","⭐");
+        localStorage.setItem(key,Date.now().toString());
+      }
+    }
+    if(daysLeft<0){
+      const key="sub_exp_end_"+U.phone;
+      if(!localStorage.getItem(key)){
+        addNotif("sub","انتهى اشتراكك VIP","انتهى اشتراكك في EgyTrend. جدّد الآن للاستمرار في استخدام مزايا VIP.","nav:profile","🔔");
+        localStorage.setItem(key,Date.now().toString());
+      }
+    }
+  }
+}
+
+function checkCalendarNotifs(events){
+  if(!events||!events.length)return;
+  const now=new Date();
+  events.slice(0,5).forEach(ev=>{
+    if(!ev.date)return;
+    const evDate=new Date(ev.date);
+    const diff=Math.floor((evDate-now)/(1000*60));
+    if(diff>=0&&diff<=120){
+      const key="cal_notif_"+ev.date+"_"+(ev.name||"").slice(0,10);
+      if(!localStorage.getItem(key)){
+        addNotif("calendar","حدث اقتصادي قادم",`${ev.name||"حدث"}${ev.currency?" ("+ev.currency+")":""} · خلال ${diff} دقيقة`,"nav:markets","📅");
+        localStorage.setItem(key,"1");
+      }
+    }
+  });
+}
+
+function notifyBreakingNews(articles){
+  if(!articles||!articles.length)return;
+  const store=getNotifsStore();if(!store.prefs.news)return;
+  const breakingKey="breaking_notif_last";
+  const lastTs=parseInt(localStorage.getItem(breakingKey)||"0");
+  const fresh=articles.filter(a=>a.impact>=4&&a.ts&&a.ts>lastTs&&a.ts>Date.now()-3600000);
+  if(!fresh.length)return;
+  const top=fresh[0];
+  addNotif("news","⚡ خبر عاجل",top.title||"خبر جديد ذو تأثير عالٍ","","🚨");
+  localStorage.setItem(breakingKey,Date.now().toString());
+}
+
+/* ═══════════════════ OPPORTUNITIES ═══════════════════ */
+let oppsData=[];let oppFilters={type:"all",market:"all"};let oppsRefreshTimer=null;
+
+const OPP_TYPES={
+  stock:    {l:"أسهم",     c:"#10b981",bg:"rgba(16,185,129,.12)"},
+  bond:     {l:"سندات",    c:"#64748b",bg:"rgba(100,116,139,.12)"},
+  crypto:   {l:"كريبتو",  c:"#f59e0b",bg:"rgba(245,158,11,.12)"},
+  commodity:{l:"سلع",     c:"#fbbf24",bg:"rgba(251,191,36,.12)"},
+  realestate:{l:"عقارات", c:"#3b82f6",bg:"rgba(59,130,246,.12)"},
+  etf:      {l:"ETF",     c:"#06b6d4",bg:"rgba(6,182,212,.12)"},
+  fund:     {l:"صندوق",   c:"#8b5cf6",bg:"rgba(139,92,246,.12)"},
+  ipo:      {l:"اكتتاب",  c:"#ec4899",bg:"rgba(236,72,153,.12)"},
+};
+const OPP_MARKETS={egypt:"🇪🇬",us:"🇺🇸",gulf:"🌙",crypto:"₿",global:"🌐"};
+const RISK_LABELS={1:"منخفضة جداً",2:"منخفضة",3:"متوسطة",4:"عالية",5:"عالية جداً"};
+const RISK_COLORS=["#22c55e","#84cc16","#f59e0b","#f97316","#ef4444"];
+
+/* Parse the stable provenance header that automatic cards retain in the
+ * legacy details field after persistence. Manual cards cannot gain an
+ * automatic-source label merely by having ordinary prose in their details. */
+function autoObservationProvenance(details){
+  const text=typeof details==="string"?details:"";
+  const sourceMatch=text.match(/^المصدر:\s*([^\r\n]{1,160})/m);
+  const timeMatch=text.match(/^وقت المصدر \(UTC\):\s*([^\r\n]{1,80})/m);
+  const source=sourceMatch?sourceMatch[1].trim():null;
+  const timestamp=timeMatch?Date.parse(timeMatch[1].trim()):NaN;
+  return {source:source||null,sourceAsOf:Number.isFinite(timestamp)?timestamp:null};
+}
+
+/* Normalize API data before any opportunity renderer sees it. Rendering still
+ * encodes text at the sink, but bounded/whitelisted fields also prevent a
+ * malformed response from becoming a CSS class, an inline handler argument or
+ * a misleading UI state. */
+function normalizeOpportunity(raw){
+  if(!raw||typeof raw!=="object")return null;
+  const o=raw;
+  const id=String(o.id||"").trim();
+  const title=String(o.title||"").trim().slice(0,300);
+  const summary=String(o.summary||"").trim().slice(0,1500);
+  if(!/^[a-z0-9_-]{1,50}$/i.test(id)||!title||!summary)return null;
+  const type=Object.prototype.hasOwnProperty.call(OPP_TYPES,String(o.type))?String(o.type):"stock";
+  const market=Object.prototype.hasOwnProperty.call(OPP_MARKETS,String(o.market))?String(o.market):"egypt";
+  const status=["active","coming","closed"].includes(String(o.status))?String(o.status):"active";
+  const risk=Math.min(5,Math.max(1,Math.round(Number(o.riskLevel)||3)));
+  const text=(v,max)=>v==null?null:String(v).trim().slice(0,max)||null;
+  const details=text(o.details,8000);
+  const autoObservation=/^\[AUTO\]/.test(String(o.sector||""))||o.autoObservation===true||String(o.source||"")==="live";
+  const persistedProvenance=autoObservation?autoObservationProvenance(details):{source:null,sourceAsOf:null};
+  const rawSource=text(o.source,160);
+  const rawSourceTime=typeof o.sourceAsOf==="number"?o.sourceAsOf:Date.parse(String(o.sourceAsOf||""));
+  const sourceAsOf=Number.isFinite(rawSourceTime)&&rawSourceTime>=Date.UTC(2000,0,1)?rawSourceTime:persistedProvenance.sourceAsOf;
+  return {
+    id,title,summary,type,market,status,riskLevel:risk,
+    details,expectedReturn:text(o.expectedReturn,100),
+    sector:text(o.sector,100),duration:text(o.duration,100),deadline:text(o.deadline,100),
+    featured:o.featured===true,vipOnly:o.vipOnly===true,
+    createdAt:text(o.createdAt,64),updatedAt:text(o.updatedAt,64),
+    source:rawSource&&rawSource!=="live"?rawSource:persistedProvenance.source,
+    sourceAsOf:Number.isFinite(sourceAsOf)?sourceAsOf:null,
+    autoObservation,
+  };
+}
+
+function opportunitySourceMeta(o){
+  if(!o?.autoObservation)return "";
+  const source=o.source?sanitize(o.source):"غير متاح";
+  const time=Number.isFinite(o.sourceAsOf)
+    ?new Intl.DateTimeFormat("ar-EG",{timeZone:"Africa/Cairo",year:"numeric",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(o.sourceAsOf))
+    :"غير متاح";
+  return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1);color:var(--t4);font-size:10px;line-height:1.7;">📡 المصدر: ${source}<br/>🕐 وقت المصدر: ${sanitize(time)}</div>`;
+}
+
+async function loadOpps(force=false){
+  const isVip=U?.plan==="vip"||U?.plan==="admin";
+
+  // The server cookie is the authority for subscription state. Re-check once
+  // because an approval can happen after the current page loaded.
+  if(!isVip){
+    if(U){
+      try{
+        const mr=await fetch("/api/user/me",{credentials:"same-origin"});
+        const md=await mr.json().catch(()=>({}));
+        if(mr.ok&&md.status==="ok"&&md.user){
+          setCurrentUser(md.user);
+          if(U.plan==="vip"||U.plan==="admin"){renderHdrVip();return loadOpps(force);}
+        }
+      }catch{}
+    }
+    const wrapper=document.getElementById("page-opps");
+    if(wrapper){
+      wrapper.querySelector(".opps-page").innerHTML=`
+        <div style="display:flex;flex-direction:column;align-items:center;padding:28px 16px 40px;text-align:center;">
+          <div style="font-size:48px;margin-bottom:10px;">💡</div>
+          <div style="color:var(--au);font-weight:900;font-size:20px;margin-bottom:6px;">عناصر متابعة السوق</div>
+          <div style="color:var(--t3);font-size:13px;margin-bottom:18px;">بطاقات وصفية بمصدرها عند توافره — دون توصيات</div>
+          <div style="background:var(--s1);border:1px solid var(--b1);border-radius:18px;padding:18px;width:100%;max-width:360px;margin-bottom:20px;text-align:right;">
+            <div style="color:var(--au);font-weight:800;font-size:13px;margin-bottom:14px;text-align:center;">ما الذي ستحصل عليه ⭐</div>
+            ${["📈 عناصر سوق متاحة للمراجعة مع المصدر","🏛️ معلومات أدوات الدين عند توافر مصدر موثّق","₿ تغطية كريبتو عند توافر الحقوق والبيانات","🥇 معلومات السلع عند توافرها","🏢 معلومات عقارات وصناديق مع توثيق المصدر","📊 قوائم عالمية بحسب حقوق العرض","🤖 كل عنصر يبيّن مصدره ووقت تحديثه عند توافره","🔔 لا يظهر عنصر عند غياب البيانات الموثّقة"].map(f=>`
+              <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:9px;font-size:12px;color:var(--t2);">${f}</div>`).join("")}
+          </div>
+          <button class="btn btn-au btn-full" style="max-width:360px;padding:14px;font-size:14px;font-weight:800;" onclick="goNav('vip')">⭐ اشترك في VIP للاطلاع على عناصر المتابعة</button>
+          <div style="margin-top:10px;color:var(--t4);font-size:12px;">💬 قناة الدعم غير متاحة حالياً</div>
+        </div>`;
+    }
+    return;
+  }
+
+  const el=document.getElementById("opps-list");if(!el)return;
+  if(force||oppsData.length===0)el.innerHTML=`<div style="padding:20px;text-align:center;"><div class="sp sp-g"></div></div>`;
+  try{
+    const r=await fetch("/api/opportunities",{credentials:"same-origin"});
+    if(!r.ok)throw new Error("server");
+    const d=await r.json();
+    oppsData=(Array.isArray(d.opportunities)?d.opportunities:[])
+      .map(normalizeOpportunity)
+      .filter(Boolean)
+      .filter(o=>o.status!=="closed");
+    const newCount=DB.g("opps_seen_count",0);
+    if(oppsData.length>newCount){
+      const diff=oppsData.length-newCount;
+      if(newCount>0){
+        const newest=oppsData.slice(0,diff);
+        newest.forEach(o=>addNotif("opps","عنصر متابعة سوق جديد",o.title,"nav:opps","💡"));
+      }
+      DB.s("opps_seen_count",oppsData.length);
+      const badge=document.getElementById("nb-opps-badge");
+      if(badge&&diff>0&&newCount>0){badge.textContent=diff>9?"9+":diff;badge.style.display="flex";}
+    }
+    const liveBadge=document.getElementById("opps-live-badge");
+    const lastUpd=document.getElementById("opps-last-updated");
+    if(liveBadge){liveBadge.style.display="inline-flex";liveBadge.textContent="بيانات متاحة";}
+    if(lastUpd){
+      const latestSource=[...oppsData].map(item=>Number(item.sourceAsOf)).filter(Number.isFinite).sort((a,b)=>b-a)[0];
+      lastUpd.textContent=Number.isFinite(latestSource)
+        ?`${oppsData.length} عنصر · أحدث وقت مصدر: ${new Intl.DateTimeFormat("ar-EG",{timeZone:"Africa/Cairo",hour:"2-digit",minute:"2-digit",day:"numeric",month:"short"}).format(new Date(latestSource))}`
+        :`${oppsData.length} عنصر · وقت المصدر غير متاح`;
+    }
+  }catch(e){
+    const lastUpd=document.getElementById("opps-last-updated");
+    if(lastUpd)lastUpd.textContent="تعذر التحديث — لا توجد بيانات بديلة";
+    if(oppsData.length===0){el.innerHTML=`<div class="notif-empty">⚠️<br/>تعذر تحميل الفرص<br/><button class="btn btn-g btn-sm" style="margin-top:10px;" onclick="loadOpps(true)">إعادة المحاولة</button></div>`;return;}
+  }
+  renderOpps();
+  vipDataPulse();
+  if(oppsRefreshTimer)clearTimeout(oppsRefreshTimer);
+  oppsRefreshTimer=setTimeout(()=>loadOpps(false),15*60*1000);
+}
+
+function setOppFilter(dim,val,btn){
+  oppFilters[dim]=val;
+  const row=document.getElementById(dim==="type"?"opp-type-filters":"opp-market-filters");
+  if(row)row.querySelectorAll(".opp-filter").forEach(b=>b.classList.toggle("active",b===btn));
+  renderOpps();
+}
+
+function renderOpps(){
+  const el=document.getElementById("opps-list");if(!el)return;
+  const isVip=U?.plan==="vip"||U?.plan==="admin";
+  let list=oppsData;
+  if(oppFilters.type!=="all")list=list.filter(o=>o.type===oppFilters.type);
+  if(oppFilters.market!=="all")list=list.filter(o=>o.market===oppFilters.market);
+  if(!list.length){
+    el.innerHTML=`<div class="notif-empty">💡<br/>لا توجد عناصر متابعة في هذه الفئة حالياً<br/><div style="font-size:10px;margin-top:6px;">تحقق لاحقاً؛ قناة الدعم ستظهر بعد تفعيلها</div></div>`;
+    return;
+  }
+  const saved=DB.g("saved_opps",[]);
+  const marketNames={egypt:"🇪🇬 مصر",us:"🇺🇸 أمريكا",gulf:"🌙 الخليج",crypto:"₿ كريبتو",global:"🌐 عالمي"};
+  el.innerHTML=list.map(o=>{
+    const t=OPP_TYPES[o.type]||OPP_TYPES.stock;
+    const locked=o.vipOnly&&!isVip;
+    const rColor=RISK_COLORS[(o.riskLevel||3)-1]||RISK_COLORS[2];
+    const rLabel=RISK_LABELS[o.riskLevel||3]||RISK_LABELS[3];
+    const isSaved=saved.includes(o.id);
+    const daysLeft=o.deadline?Math.ceil((new Date(o.deadline)-new Date())/(1000*60*60*24)):null;
+    const ageHrs=o.createdAt?Math.floor((Date.now()-new Date(o.createdAt))/(1000*3600)):999;
+    const isNew=Number.isFinite(ageHrs)&&ageHrs>=0&&ageHrs<48;
+    const sectorClean=String(o.sector||"").replace(/^\[AUTO\]\s*/,"").replace(/^\[AI\]\s*/,"");
+    const autoObservation=o.autoObservation===true;
+    const id=safeJsArg(o.id);
+    return`<div class="opp-card${o.featured&&!autoObservation?" featured":""}${locked?" vip-locked":""}" onclick='openOppDetail(${id})'>
+      <div class="opp-top">
+        <div class="opp-badges">
+          <span class="opp-type-badge" style="color:${t.c};background:${t.bg};">${sanitize(t.l)}</span>
+          <span class="opp-market-badge" style="background:var(--s2);color:var(--t3);">${sanitize(marketNames[o.market]||"غير محدد")}</span>
+          ${!autoObservation&&isNew?`<span class="opp-type-badge" style="color:#22c55e;background:rgba(34,197,94,.12);">🟢 جديدة</span>`:""}
+          ${!autoObservation&&o.featured?`<span class="opp-type-badge" style="color:#f59e0b;background:rgba(245,158,11,.12);">⭐ مميزة</span>`:""}
+          ${o.vipOnly?`<span class="opp-type-badge" style="color:#a78bfa;background:rgba(139,92,246,.12);">VIP</span>`:""}
+          ${autoObservation?`<span class="opp-type-badge" style="color:#93c5fd;background:rgba(59,130,246,.12);">لقطة وصفية</span>`:""}
+        </div>
+        ${locked?`<span style="font-size:18px;">🔒</span>`:""}
+      </div>
+      <div class="opp-title">${sanitize(o.title)}</div>
+      ${locked?`<div class="opp-vip-lock" onclick="event.stopPropagation();goNav('vip')"><span style="color:var(--au);font-weight:800;font-size:12px;">⭐ اشترك في VIP لرؤية تفاصيل هذا العنصر</span></div>`:
+      `<div class="opp-summary">${sanitize(o.summary)}</div>
+      <div class="opp-meta">
+        ${sectorClean?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${sanitize(sectorClean)}</div></div>`:""}
+        ${!autoObservation&&o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">المدة المعلنة</div><div class="opp-meta-val">${sanitize(o.duration)}</div></div>`:""}
+        ${!autoObservation?`<div class="opp-meta-item">
+          <div class="opp-meta-label">درجة المخاطرة المعلنة</div>
+          <div><div class="opp-risk">${[1,2,3,4,5].map(i=>`<div class="opp-risk-dot" style="background:${i<=(o.riskLevel||3)?rColor:"var(--b2)"};"></div>`).join("")}</div>
+          <div style="color:${rColor};font-size:9px;margin-top:2px;">${rLabel}</div></div>
+        </div>`:""}
+      </div>
+      ${!autoObservation&&daysLeft!==null&&Number.isFinite(daysLeft)?`<div class="opp-deadline">⏰ ${daysLeft<=0?"آخر يوم":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>`:""}
+      ${autoObservation?opportunitySourceMeta(o):""}`}
+      <div class="opp-actions">
+        <button class="btn btn-sm" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);" onclick='event.stopPropagation();toggleSaveOpp(${id},this)'>${isSaved?"🔖 محفوظة":"📌 حفظ"}</button>
+        ${!locked?`<button class="btn btn-g btn-sm" onclick='event.stopPropagation();openOppDetail(${id})'>التفاصيل ←</button>`:""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function toggleSaveOpp(id,btn){
+  const saved=DB.g("saved_opps",[]);
+  const idx=saved.indexOf(id);
+  if(idx>=0){saved.splice(idx,1);btn.textContent="📌 حفظ";showToast("تمت إزالة الفرصة");}
+  else{saved.push(id);btn.textContent="🔖 محفوظة";showToast("✅ تم حفظ الفرصة");}
+  DB.s("saved_opps",saved);
+}
+
+function openOppDetail(id){
+  const o=oppsData.find(x=>x.id===id);if(!o)return;
+  const isVip=U?.plan==="vip"||U?.plan==="admin";
+  const locked=o.vipOnly&&!isVip;
+  const t=OPP_TYPES[o.type]||OPP_TYPES.stock;
+  const rColor=RISK_COLORS[(o.riskLevel||3)-1]||RISK_COLORS[2];
+  const rLabel=RISK_LABELS[o.riskLevel||3]||RISK_LABELS[3];
+  const autoObservation=o.autoObservation===true;
+  const sectorClean=String(o.sector||"").replace(/^\[(?:AUTO|AI)\]\s*/,"");
+  const daysLeft=o.deadline?Math.ceil((new Date(o.deadline)-new Date())/(1000*60*60*24)):null;
+  const idArg=safeJsArg(o.id);
+  const ov=document.createElement("div");ov.id="opp-detail-ov";
+  ov.style.cssText="position:fixed;inset:0;z-index:650;background:rgba(3,7,18,.95);overflow-y:auto;";
+  ov.innerHTML=`<div style="max-width:430px;margin:0 auto;padding:20px 16px 60px;">
+    <button onclick="document.getElementById('opp-detail-ov').remove()" style="background:none;border:none;color:var(--t3);font-size:14px;cursor:pointer;margin-bottom:16px;display:flex;align-items:center;gap:5px;font-family:var(--sans);">← رجوع</button>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+      <span class="opp-type-badge" style="color:${t.c};background:${t.bg};font-size:11px;padding:3px 10px;">${sanitize(t.l)}</span>
+      ${o.vipOnly?`<span class="opp-type-badge" style="color:#a78bfa;background:rgba(139,92,246,.12);font-size:11px;padding:3px 10px;">VIP فقط</span>`:""}
+      ${!autoObservation&&o.featured?`<span class="opp-type-badge" style="color:#f59e0b;background:rgba(245,158,11,.12);font-size:11px;padding:3px 10px;">⭐ مميزة</span>`:""}
+      ${autoObservation?`<span class="opp-type-badge" style="color:#93c5fd;background:rgba(59,130,246,.12);font-size:11px;padding:3px 10px;">لقطة وصفية</span>`:""}
+    </div>
+    <h2 style="color:var(--t1);font-size:20px;font-weight:900;line-height:1.4;margin-bottom:12px;">${sanitize(o.title)}</h2>
+    ${locked?`<div style="text-align:center;padding:30px;background:var(--aud);border-radius:16px;cursor:pointer;" onclick="document.getElementById('opp-detail-ov').remove();goNav('vip')"><div style="font-size:40px;margin-bottom:8px;">⭐</div><div style="color:var(--au);font-weight:800;font-size:15px;">${autoObservation?"هذا العنصر الوصفي لأعضاء VIP فقط":"هذا العنصر لأعضاء VIP فقط"}</div><div style="color:var(--t4);font-size:12px;margin-top:5px;">اشترك الآن للوصول الكامل</div></div>`
+    :`<p style="color:var(--t2);font-size:13.5px;line-height:1.8;margin-bottom:18px;direction:rtl;">${sanitize(o.summary)}</p>
+    ${autoObservation?`${sectorClean?`<div style="display:grid;grid-template-columns:1fr;gap:9px;margin-bottom:10px;"><div class="opp-meta-item"><div class="opp-meta-label">الفئة</div><div class="opp-meta-val">${sanitize(sectorClean)}</div></div></div>`:""}${opportunitySourceMeta(o)}`:`<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px;">
+      ${o.sector?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${sanitize(o.sector.replace(/^\[AI\]\s*/,""))}</div></div>`:""}
+      ${o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">المدة المعلنة</div><div class="opp-meta-val">${sanitize(o.duration)}</div></div>`:""}
+      <div class="opp-meta-item">
+        <div class="opp-meta-label">درجة المخاطرة المعلنة</div>
+        <div><div class="opp-risk">${[1,2,3,4,5].map(i=>`<div class="opp-risk-dot" style="background:${i<=(o.riskLevel||3)?rColor:"var(--b2)"};width:10px;height:10px;"></div>`).join("")}</div>
+        <div style="color:${rColor};font-size:10px;margin-top:3px;">${rLabel}</div></div>
+      </div>
+    </div>
+    ${daysLeft!==null&&Number.isFinite(daysLeft)?`<div style="background:var(--dnd);border:1px solid rgba(239,68,68,.2);border-radius:11px;padding:11px;margin-bottom:14px;display:flex;align-items:center;gap:8px;"><span style="font-size:18px;">⏰</span><div><div style="color:var(--dn);font-weight:700;font-size:12.5px;">${daysLeft<=0?"آخر يوم للاكتتاب":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>${o.deadline?`<div style="color:var(--t4);font-size:10.5px;">الموعد النهائي: ${sanitize(o.deadline)}</div>`:""}</div></div>`:""}`}
+    ${o.details?`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:15px;margin-bottom:16px;"><div style="color:var(--g);font-size:11px;font-weight:700;margin-bottom:8px;">📋 تفاصيل إضافية</div><div style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;">${sanitize(o.details)}</div></div>`:""}
+    <div style="display:flex;gap:8px;margin-top:6px;">
+      <button class="btn btn-g btn-full" style="padding:13px;" onclick='toggleSaveOppFromDetail(${idArg},this)'>📌 حفظ الفرصة</button>
+      <div class="btn btn-full" style="padding:13px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.18);color:var(--t4);text-align:center;cursor:default;">💬 الدعم غير متاح حالياً</div>
+    </div>`}
+  </div>`;
+  document.body.appendChild(ov);
+}
+
+function toggleSaveOppFromDetail(id,btn){
+  const saved=DB.g("saved_opps",[]);
+  const idx=saved.indexOf(id);
+  if(idx>=0){saved.splice(idx,1);btn.textContent="📌 حفظ الفرصة";showToast("تمت إزالة الفرصة");}
+  else{saved.push(id);btn.textContent="🔖 محفوظة ✓";showToast("✅ تم حفظ الفرصة");}
+  DB.s("saved_opps",saved);
 }
 
 /* ═══════════════════ INIT ═══════════════════ */
@@ -4460,6 +5074,12 @@ function vBuildSet(b){
       ${savedOpps.length?`<button onclick="DB.s('saved_opps',[]);renderVipTab();showToast('تم مسح الفرص المحفوظة')" style="background:var(--dnd);border:none;border-radius:7px;padding:3px 9px;color:var(--dn);font-size:10px;cursor:pointer;">مسح الكل</button>`:""}</div>
     </div>
 
+    ${vSect("🧭","جولة مزايا VIP")}
+    <div class="vbox">
+      <button class="btn btn-full" style="padding:9px;font-size:12px;background:linear-gradient(135deg,rgba(245,158,11,.16),rgba(217,119,6,.08));border:1px solid rgba(251,191,36,.3);color:#fcd34d;" onclick="vipTourReplay()">⭐ أعد جولة مزايا VIP</button>
+      <div style="color:var(--t5);font-size:9.5px;margin-top:7px;">تعرض الجولة فقط المزايا المتاحة فعليًا ضمن اشتراكك الحالي.</div>
+    </div>
+
     ${vSect("🗑️","منطقة الخطر")}
     <div class="vbox">
       <button class="btn btn-full" style="padding:9px;font-size:11.5px;background:var(--dnd);color:var(--dn);border:none;border-radius:10px;margin-bottom:7px;" onclick="vClearChat()">مسح سجل محادثة AI</button>
@@ -5371,7 +5991,7 @@ async function startFreeTrialUi(button){
     const r=await fetch("/api/user/trial/start",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:"{}"});
     const j=await r.json().catch(()=>null);
     if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر بدء التجربة");
-    U.trial=j.trial||U.trial;U.plan="vip";U.exp=j.trial?.endsAt||null;renderHdrVip();renderTrialBanner();renderProfile();queueTrialMessage();void loadFirstUseOnboarding({auto:false});const trialDays=Number(j.trial?.settings?.durationDays);showToast(`✅ بدأت تجربتك${Number.isInteger(trialDays)&&trialDays>0?` لمدة ${trialDays} يوم`:""} — بلا بيانات دفع أو تجديد تلقائي`);
+    U.trial=j.trial||U.trial;U.plan="vip";U.exp=j.trial?.endsAt||null;renderHdrVip();renderTrialBanner();renderProfile();queueTrialMessage();void loadFirstUseOnboarding();const trialDays=Number(j.trial?.settings?.durationDays);showToast(`✅ بدأت تجربتك${Number.isInteger(trialDays)&&trialDays>0?` لمدة ${trialDays} يوم`:""} — بلا بيانات دفع أو تجديد تلقائي`);
   }catch(e){showToast("⚠️ "+String(e?.message||"تعذر بدء التجربة"));}
   finally{if(button){button.disabled=false;button.textContent="🎁 ابدأ تجربتك المجانية لمدة 7 أيام";}}
 }
@@ -5573,6 +6193,7 @@ function renderProfile(){
   if(!isVip&&!isTrial)btns+=`<button class="prof-btn sub icon-label" onclick="openSub()">${uiIcon("star")} اشترك في VIP الآن</button>`;
   if(isAdm)btns+=`<button class="prof-btn icon-label" style="background:var(--gd);border:1px solid rgba(16,185,129,.15);color:var(--g);margin-bottom:9px;" onclick="openAdm()">${uiIcon("settings")} لوحة التحكم</button>`;
   if(U.phone!=="admin")btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openSetEmail()">✉️ بريد الاسترداد والتنبيهات</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openMarketingEmailSettings()">📬 رسائل تسويقية ${U.marketingEmailOptIn?"· مفعّلة":"· متوقفة"}</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openChangePass()">🔒 تغيير كلمة المرور</button><button class="prof-btn" style="background:rgba(16,185,129,.08);border:1px solid rgba(52,211,153,.2);color:var(--g);margin-bottom:9px;" onclick="firstUseResetTour()">🧭 إعادة جولة التعريف</button>`;
+  if(U.phone!=="admin"&&firstUseVip().active===true)btns+=`<button class="prof-btn" style="background:linear-gradient(135deg,rgba(245,158,11,.14),rgba(217,119,6,.08));border:1px solid rgba(251,191,36,.32);color:#fcd34d;margin-bottom:9px;" onclick="vipTourReplay()">⭐ إعادة جولة مزايا VIP</button>`;
   btns+=`<button class="prof-btn out" onclick="logout()">تسجيل الخروج</button>`;
   document.getElementById("pbtns").innerHTML=btns;
   updateStats();

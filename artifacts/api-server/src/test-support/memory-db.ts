@@ -86,6 +86,11 @@ export async function createMemoryDatabase(): Promise<{
       watchlist_completed_at timestamp,
       notifications_enabled_at timestamp,
       news_explored_at timestamp,
+      vip_tour_version integer NOT NULL DEFAULT 0,
+      vip_tour_status text NOT NULL DEFAULT 'new',
+      vip_tour_started_at timestamp,
+      vip_tour_completed_at timestamp,
+      vip_tour_skipped_at timestamp,
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
     );

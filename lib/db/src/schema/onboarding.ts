@@ -21,6 +21,15 @@ export const userOnboardingTable = pgTable("user_onboarding", {
   watchlistCompletedAt: timestamp("watchlist_completed_at", { withTimezone: true }),
   notificationsEnabledAt: timestamp("notifications_enabled_at", { withTimezone: true }),
   newsExploredAt: timestamp("news_explored_at", { withTimezone: true }),
+  /* ── VIP tour: shown once when an account first holds an active VIP
+   * entitlement. 0 means the current VIP tour was never acknowledged, so the
+   * account sees it on the next VIP-active state; acking stores the version. */
+  vipTourVersion: integer("vip_tour_version").notNull().default(0),
+  /** new | completed | skipped; validated by the API, not the browser. */
+  vipTourStatus: text("vip_tour_status").notNull().default("new"),
+  vipTourStartedAt: timestamp("vip_tour_started_at", { withTimezone: true }),
+  vipTourCompletedAt: timestamp("vip_tour_completed_at", { withTimezone: true }),
+  vipTourSkippedAt: timestamp("vip_tour_skipped_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

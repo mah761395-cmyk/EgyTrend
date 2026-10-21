@@ -3,11 +3,18 @@ import { userOnboardingTable, userPriceAlertsTable } from "@workspace/db/schema"
 import { db } from "@workspace/db";
 import { freeTrialAccountStatus } from "./free-trials";
 import { readReferralSettings } from "./referrals";
+import { getVipEntitlement } from "./userAuth";
+import { scopeAllows } from "./trial-settings";
 
 export const ONBOARDING_TOUR_VERSION = 1;
+/** Bump to replay the VIP tour for every VIP account that already acked an older one. */
+export const VIP_ONBOARDING_TOUR_VERSION = 1;
 
 export type OnboardingEvent = "watchlist_progress" | "notifications_enabled" | "news_explored";
 export type OnboardingTourAction = "started" | "completed" | "skipped";
+/** `user` is the general platform tour; `vip` is the VIP welcome tour. */
+export type OnboardingTourKind = "user" | "vip";
+export type OnboardingResetTarget = OnboardingTourKind;
 
 type OnboardingRecord = typeof userOnboardingTable.$inferSelect;
 
@@ -47,16 +54,54 @@ function trialChecklistState(trial: Awaited<ReturnType<typeof freeTrialAccountSt
   return { id: "free_trial", title: "ابدأ تجربتك المجانية", description, completed, action, available: trial.canStart };
 }
 
+/** The VIP features this account may actually open, using the same scope
+ * predicate as the server gates (`hasVipFeature`). The browser uses this only
+ * to avoid advertising a tour step for a feature the server would refuse. */
+function vipFeatureProjection(entitlement: Awaited<ReturnType<typeof getVipEntitlement>>) {
+  const allowed = (feature: string): boolean => {
+    if (!entitlement.active) return false;
+    if (entitlement.subscriptionType !== "trial") return true;
+    return scopeAllows(entitlement.trialFeatureScope, feature);
+  };
+  return {
+    portfolio: allowed("portfolio"),
+    priceAlerts: allowed("price_alerts"),
+    calculators: allowed("calculators"),
+    ai: allowed("ai"),
+    opportunities: allowed("opportunities"),
+    indicators: allowed("indicators"),
+    /* Markets, reports and subscription management ship inside the VIP area
+     * itself and are not individually scoped features. */
+    markets: entitlement.active,
+    reports: entitlement.active,
+  };
+}
+
+function vipTourState(record: OnboardingRecord, entitlement: Awaited<ReturnType<typeof getVipEntitlement>>) {
+  const acked = record.vipTourVersion >= VIP_ONBOARDING_TOUR_VERSION
+    && ["completed", "skipped"].includes(record.vipTourStatus);
+  return {
+    version: record.vipTourVersion,
+    status: record.vipTourStatus,
+    /* Shown once per VIP tour version, and only while VIP is actually active. */
+    shouldShow: entitlement.active && !acked,
+    startedAt: iso(record.vipTourStartedAt),
+    completedAt: iso(record.vipTourCompletedAt),
+    skippedAt: iso(record.vipTourSkippedAt),
+  };
+}
+
 /** All values are derived from durable account state or conservative UI events;
  * none of them controls permissions, billing, or a VIP entitlement. */
 export async function onboardingState(userId: number, now = new Date()) {
   const record = await ensureOnboardingRecord(userId, now);
-  const [trial, referralSettings, alertRows] = await Promise.all([
+  const [trial, referralSettings, alertRows, entitlement] = await Promise.all([
     freeTrialAccountStatus(userId, now),
     readReferralSettings(),
     db.select({ count: sql<number>`count(*)` }).from(userPriceAlertsTable).where(and(
       eq(userPriceAlertsTable.userId, userId), eq(userPriceAlertsTable.status, "active"),
     )),
+    getVipEntitlement({ sub: userId }, now),
   ]);
   const activeAlerts = Number(alertRows[0]?.count || 0);
   const watchlistCount = Math.max(0, Math.min(3, Number(record.watchlistCount || 0)));
@@ -96,6 +141,14 @@ export async function onboardingState(userId: number, now = new Date()) {
       completedAt: iso(record.tourCompletedAt),
       skippedAt: iso(record.tourSkippedAt),
     },
+    vip: {
+      active: entitlement.active,
+      planNameAr: entitlement.planNameAr,
+      subscriptionType: entitlement.subscriptionType,
+      expiresAt: iso(entitlement.expiresAt),
+    },
+    vipTour: vipTourState(record, entitlement),
+    vipFeatures: vipFeatureProjection(entitlement),
     features: {
       freeTrial: {
         enabled: trial.settings.enabled,
@@ -110,8 +163,31 @@ export async function onboardingState(userId: number, now = new Date()) {
   };
 }
 
-export async function setOnboardingTourAction(userId: number, action: OnboardingTourAction, now = new Date()) {
+export async function setOnboardingTourAction(
+  userId: number,
+  action: OnboardingTourAction,
+  now = new Date(),
+  tour: OnboardingTourKind = "user",
+) {
   const record = await ensureOnboardingRecord(userId, now);
+  if (tour === "vip") {
+    if (action === "started") {
+      await db.update(userOnboardingTable).set({
+        vipTourStartedAt: record.vipTourStartedAt || now, updatedAt: now,
+      }).where(eq(userOnboardingTable.userId, userId));
+    } else if (action === "completed") {
+      await db.update(userOnboardingTable).set({
+        vipTourVersion: VIP_ONBOARDING_TOUR_VERSION, vipTourStatus: "completed",
+        vipTourCompletedAt: now, vipTourSkippedAt: null, updatedAt: now,
+      }).where(eq(userOnboardingTable.userId, userId));
+    } else {
+      await db.update(userOnboardingTable).set({
+        vipTourVersion: VIP_ONBOARDING_TOUR_VERSION, vipTourStatus: "skipped",
+        vipTourSkippedAt: now, vipTourCompletedAt: null, updatedAt: now,
+      }).where(eq(userOnboardingTable.userId, userId));
+    }
+    return onboardingState(userId, now);
+  }
   if (action === "started") {
     await db.update(userOnboardingTable).set({
       tourStartedAt: record.tourStartedAt || now,
@@ -129,18 +205,29 @@ export async function setOnboardingTourAction(userId: number, action: Onboarding
   return onboardingState(userId, now);
 }
 
-/** Replays the guided tour only. Completed real actions stay visible in the
- * checklist, so reset cannot fabricate progress or erase user data. */
-export async function resetOnboardingTour(userId: number, now = new Date()) {
+/** Replays the requested guided tour only. Completed real actions stay visible
+ * in the checklist, so reset cannot fabricate progress or erase user data. */
+export async function resetOnboardingTour(
+  userId: number,
+  now = new Date(),
+  tour: OnboardingResetTarget = "user",
+) {
   await ensureOnboardingRecord(userId, now);
-  await db.update(userOnboardingTable).set({
-    tourVersion: ONBOARDING_TOUR_VERSION,
-    tourStatus: "new",
-    tourStartedAt: null,
-    tourCompletedAt: null,
-    tourSkippedAt: null,
-    updatedAt: now,
-  }).where(eq(userOnboardingTable.userId, userId));
+  if (tour === "vip") {
+    await db.update(userOnboardingTable).set({
+      vipTourVersion: 0, vipTourStatus: "new", vipTourStartedAt: null,
+      vipTourCompletedAt: null, vipTourSkippedAt: null, updatedAt: now,
+    }).where(eq(userOnboardingTable.userId, userId));
+  } else {
+    await db.update(userOnboardingTable).set({
+      tourVersion: ONBOARDING_TOUR_VERSION,
+      tourStatus: "new",
+      tourStartedAt: null,
+      tourCompletedAt: null,
+      tourSkippedAt: null,
+      updatedAt: now,
+    }).where(eq(userOnboardingTable.userId, userId));
+  }
   return onboardingState(userId, now);
 }
 

@@ -903,6 +903,10 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .ob-back{border:1px solid var(--b2);background:var(--s1);color:var(--t3);min-width:74px;}
 @keyframes obFade{from{opacity:0}to{opacity:1}}
 @media (min-width:700px){.ob-checklist{margin:0 24px 14px;}.ob-panel{bottom:28px;}}
+.ob-panel-vip{border-color:rgba(251,191,36,.42);background:linear-gradient(160deg,#241c10,#141008);}
+.ob-panel-vip .ob-step-count{color:#fde68a;background:rgba(245,158,11,.14);}
+.ob-panel-vip .ob-panel-title{color:#fef3c7;}
+.ob-panel-vip .ob-next{border-color:rgba(251,191,36,.5);background:#f59e0b;color:#2a1c04;}
 @media (prefers-reduced-motion:reduce){.ob-tour-backdrop,.ob-progress-value{animation:none;transition:none;}}
 
 
@@ -1116,7 +1120,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       <span style="color:var(--t5);font-size:10px;font-family:var(--mono);" id="cnt"></span>
     </div>
     <div id="onboarding-checklist" aria-live="polite"></div>
-    <button type="button" onclick="openAIRw()" class="ai-banner">
+    <button type="button" id="ai-tour-anchor" onclick="openAIRw()" class="ai-banner">
       <span class="ai-banner-icon"><svg class="et-icon"><use href="#i-spark"></use></svg></span>
       <span class="row"><span><span style="color:#93c5fd;font-weight:700;font-size:13px;display:block;">محرر الأخبار الذكي <span class="bdg bdg-vip" style="font-size:9px;vertical-align:middle;">VIP</span></span><span style="color:var(--t5);font-size:10.5px;display:block;">TL;DR + حقائق واردة + تصنيف وصفي</span></span></span>
       <svg class="et-icon ai-banner-arrow" aria-hidden="true"><use href="#i-arrow"></use></svg>
@@ -1159,7 +1163,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
   <div id="page-opps" class="page hidden">
     <div class="opps-page">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div>
+        <div id="opps-tour-anchor">
           <div style="display:flex;align-items:center;gap:7px;">
             <div class="page-title"><svg class="et-icon"><use href="#i-bulb"></use></svg> عناصر متابعة السوق</div>
             <span id="opps-live-badge" style="display:none;background:var(--s1);border:1px solid var(--b1);border-radius:20px;padding:2px 8px;font-size:9.5px;font-weight:700;color:var(--t4);letter-spacing:.3px;">بيانات متاحة</span>
@@ -1210,7 +1214,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
         <div><div style="color:var(--bl);font-size:20px;font-weight:900;font-family:var(--mono);" id="st-src">0</div><div style="color:var(--t4);font-size:10px;">مصادر</div></div>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;margin-top:12px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.18);border-radius:14px;padding:13px 15px;">
+    <div id="help-tour-anchor" style="display:flex;align-items:center;gap:10px;margin-top:12px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.18);border-radius:14px;padding:13px 15px;">
       <span style="font-size:22px;color:var(--t4);display:grid;place-items:center;"><svg class="et-icon"><use href="#i-megaphone"></use></svg></span>
       <div><div style="color:var(--t3);font-weight:800;font-size:13px;">الدعم الفني</div><div style="color:var(--t4);font-size:11px;">قناة الدعم غير متاحة حالياً</div></div>
     </div>
@@ -1781,26 +1785,35 @@ function loadUserScopedData(){
   priceAlertsState={loaded:false,loading:false,error:"",items:[]};
 }
 
-/* ═══════════════════ FIRST-USE ONBOARDING ═══════════════════
- * The browser renders the tour, but its shown/skipped/completed state and
+/* ═══════════════════ GUIDED TOURS (platform + VIP) ═══════════════════
+ * The browser renders the tours, but their shown/skipped/completed state and
  * checklist progress are read from and written to the authenticated API.
- * It is never stored in localStorage and it never grants any product access. */
-let firstUseState=null,firstUseTourIndex=0,firstUseLoadSeq=0,firstUseAutoTimer=null,firstUseAutoAttempts=0;
+ * It is never stored in localStorage and it never grants any product access.
+ * Two independent tours: `user` (platform intro for a new account) and `vip`
+ * (a separate welcome shown once when the account first holds an active VIP
+ * entitlement). The VIP tour takes auto-start priority and never chains back
+ * into the platform tour during the same visit. */
+let firstUseState=null,firstUseLoadSeq=0,firstUseAutoTimer=null,firstUseAutoAttempts=0;
+let activeTour=null;
+let tourAutoSuppressed={};
 function firstUseEligible(){return Boolean(U&&U.plan!=="admin"&&Number.isInteger(U.id));}
 function firstUseMaybeAutoStart(){
-  if(firstUseState?.tour?.shouldShow!==true||document.getElementById("first-use-tour"))return;
+  if(!firstUseEligible()||activeTour||document.getElementById("first-use-tour"))return;
   /* Respect a server-selected broadcast/trial message instead of stacking two
    * focus dialogs. Retry briefly after it is likely dismissed. */
   if(document.getElementById("broadcast-ov")?.classList.contains("open")){if(firstUseAutoAttempts++<8)firstUseAutoTimer=setTimeout(firstUseMaybeAutoStart,1400);return;}
-  void firstUseStartTour();
+  const vipPending=firstUseState?.vipTour?.shouldShow===true;
+  const userPending=firstUseState?.tour?.shouldShow===true;
+  /* A first-time VIP gets the VIP tour; the platform tour is not replayed
+   * afterwards without need — it stays pending for a later visit. */
+  if(vipPending){tourStart("vip",vipTourSteps());return;}
+  if(userPending&&!tourAutoSuppressed.user)tourStart("user",platformTourSteps());
 }
 function firstUseChecklist(){return Array.isArray(firstUseState?.checklist)?firstUseState.checklist:[];}
 function firstUseFeature(name){return firstUseState?.features&&typeof firstUseState.features==="object"?firstUseState.features[name]||{}:{};}
+function firstUseVip(){return firstUseState?.vip&&typeof firstUseState.vip==="object"?firstUseState.vip:{};}
 function firstUseCompletedCount(){return firstUseChecklist().filter(item=>item?.completed===true).length;}
-function firstUseRemoveTour(){
-  document.getElementById("first-use-tour")?.remove();
-  document.querySelectorAll(".ob-tour-highlight").forEach(el=>el.classList.remove("ob-tour-highlight"));
-}
+function firstUseRemoveTour(){tourRemove();}
 function firstUseRenderChecklist(){
   const host=document.getElementById("onboarding-checklist");if(!host)return;
   if(!firstUseEligible()||!firstUseState||!Array.isArray(firstUseState.checklist)){host.replaceChildren();return;}
@@ -1809,66 +1822,116 @@ function firstUseRenderChecklist(){
   const pct=Math.round((done/tasks.length)*100);
   host.innerHTML=`<section class="ob-checklist" aria-label="خطوات البداية"><div class="ob-checklist-head"><div><div class="ob-checklist-title">✨ ابدأ بخطوات بسيطة</div><div class="ob-checklist-copy">${done===tasks.length?"اكتملت خطوات البداية — يمكنك إعادة الجولة من حسابك في أي وقت.":"تقدّمك محفوظ لهذا الحساب فقط."}</div></div><div class="ob-checklist-progress">${done}/${tasks.length}</div></div><div class="ob-progress-track" aria-hidden="true"><div class="ob-progress-value" style="width:${pct}%;"></div></div>${tasks.map(item=>{const title=sanitize(String(item?.title||"خطوة البداية"));const copy=sanitize(String(item?.description||""));const action=safeJsArg(String(item?.action||""));const complete=item?.completed===true;const progress=item?.progress&&Number.isFinite(Number(item.progress.current))?` <span style="color:var(--g);font-family:var(--mono);">${Math.max(0,Number(item.progress.current))}/${Math.max(1,Number(item.progress.target)||1)}</span>`:"";return `<button type="button" class="ob-task ${complete?"done":""}" onclick='firstUseChecklistAction(${action})'><span class="ob-task-mark">${complete?"✓":"○"}</span><span class="ob-task-body"><span class="ob-task-title">${title}${progress}</span><span class="ob-task-copy">${copy}</span></span><span class="ob-task-arrow">←</span></button>`;}).join("")}</section>`;
 }
-function firstUseTourSteps(){
+/* Platform tour: every step points at a real, existing UI element. */
+function platformTourSteps(){
   const steps=[
-    {id:"markets",nav:"markets",target:"#markets-tour-anchor",icon:"chart",title:"تعرّف إلى الأسواق",copy:"شاهد بطاقات الأسواق وحالة المصدر ووقت التحديث. عند غياب المصدر ستظهر الحالة غير المتاحة بدل رقم بديل."},
-    {id:"watchlist",nav:"markets",target:"#mkt-eg",icon:"star",title:"كوّن قائمة متابعتك",copy:"افتح أي أصل ثم اختر النجمة لإضافته لقائمتك. أضف ثلاثة عناصر لإكمال خطوة البداية."},
-    {id:"notifications",nav:null,target:"#bell-btn",icon:"bell",title:"اضبط الإشعارات",copy:"من الجرس يمكنك تفعيل إشعارات المتصفح أو إدارة ما يظهر داخل المنصة. يتطلب إشعار السعر ميزة متاحة في حسابك."},
-    {id:"news",nav:"home",target:"#feed",icon:"source",title:"استكشف الأخبار",copy:"افتح خبرًا للاطلاع على المصدر ووقت النشر المتاحين. الأخبار للاطلاع ولا تمثل توصية استثمارية."},
+    {id:"home",nav:"home",target:"#bnav",icon:"home",title:"الرئيسية والتنقل",copy:"هذه صفحتك الرئيسية: شريط الأسواق العلوي، شريط الحالة، وآخر الأخبار. من الشريط السفلي تتنقل بين الرئيسية والأسواق وVIP والفرص وحسابك، ومن جرس الإشعارات في الأعلى تفتح آخر التنبيهات."},
+    {id:"news",nav:"home",target:"#feed",icon:"source",title:"الأخبار",copy:"افتح أي خبر للاطلاع على مصدره ووقت نشره والتحليلات المتاحة له. الأخبار للاطلاع ولا تمثل توصية استثمارية."},
+    {id:"markets",nav:"markets",target:"#markets-tour-anchor",icon:"chart",title:"الأسواق",copy:"تابع الأسواق المصرية والعالمية والسلع والكريبتو مع حالة المصدر ووقت التحديث — وعند تعذّر المصدر تظهر «غير متاح حاليًا» بدل رقم بديل. افتح أي أصل لشارته، ثم اختر النجمة ⭐ لإضافته إلى قائمة متابعتك."},
+    {id:"opps",nav:"opps",target:"#opps-tour-anchor",icon:"bulb",title:"الفرص وعناصر متابعة السوق",copy:"صفحة الفرص تلخّص عناصر السوق بحسب النوع والسوق، وكل عنصر يبيّن مصدره ووقت تحديثه عند توافره — دون توصيات أو عوائد معدّة."},
+    {id:"ai",nav:"home",target:"#ai-tour-anchor",icon:"spark",title:"المساعد الذكي",copy:"محرر الأخبار الذكي يلخّص الخبر ويستخرج الحقائق ويصنّفه تصنيفًا وصفيًا، والمساعد الكامل (المستشار) وأدوات التحليل متاحان لأعضاء VIP من تبويب VIP."},
+    {id:"benefits",nav:"profile",target:"#pbtns",icon:"star",title:"خدمات VIP وكيفية الوصول",copy:"صفحة VIP تعرض الباقات والمزايا الفعلية كما يحددها الخادم."},
+    {id:"help",nav:"profile",target:"#help-tour-anchor",icon:"settings",title:"الإعدادات والمساعدة",copy:"من صفحة حسابك: بريد الاسترداد، تغيير كلمة المرور، إدارة إشعارات المتصفح، وروابط الخصوصية والشروط والأحكام. يمكنك إعادة جولة التعريف في أي وقت من زر «إعادة جولة التعريف» هنا."}
   ];
   const trial=firstUseFeature("freeTrial"),referrals=firstUseFeature("referrals");
   if(trial.enabled===true||referrals.enabled===true){
-    let title="مزايا الحساب";
-    let copy="استكشف ما هو متاح لحسابك من صفحة الحساب.";
-    if(trial.enabled===true&&referrals.enabled===true){title="التجربة والمزايا";copy=`تعرض صفحة VIP المزايا المتاحة مع باقتك، ويمكنك مراجعة أهلية تجربة VIP لمدة ${Number(trial.durationDays)||7} أيام من حسابك ومشاركة رابط دعوتك من حسابك. لا يبدأ دفع أو تجديد تلقائي.`;}
-    else if(trial.enabled===true){title="جرّب ما يقدمه VIP";copy=`تعرض صفحة VIP المزايا المتاحة مع باقتك، ويمكنك مراجعة أهلية تجربة VIP لمدة ${Number(trial.durationDays)||7} أيام من حسابك. لا يوجد دفع أو تجديد تلقائي.`;}
-    else {title="ادعُ أصدقاءك";copy="برنامج الإحالة مفعّل حاليًا. ستجد رابط دعوتك وشروط البرنامج داخل حسابك.";}
-    steps.push({id:"benefits",nav:"profile",target:"#pbtns",icon:"star",title,copy});
+    let extra=" تعرض صفحة حسابك أيضًا";
+    if(trial.enabled===true)extra+=` أهلية تجربة VIP لمدة ${Number(trial.durationDays)||7} أيام إن كانت متاحة لك — بلا دفع أو خصم أو تجديد تلقائي`;
+    if(referrals.enabled===true)extra+=`${trial.enabled===true?" و":""} رابط دعوتك وشروط برنامج الإحالة`;
+    extra+=".";
+    steps[5].copy+=extra;
   }
   return steps;
 }
-function firstUseTarget(step){
+/* VIP tour: only the features the server says this account may actually open. */
+function vipTourSteps(){
+  const f=firstUseState?.vipFeatures&&typeof firstUseState.vipFeatures==="object"?firstUseState.vipFeatures:{};
+  const on=k=>f[k]===true;
+  const steps=[{id:"welcome",nav:"vip",tab:"home",target:"#vtabs-bar",icon:"star",title:"مرحبًا بك في مزايا VIP",copy:"اشتراكك فعّال الآن. هذه الجولة تعرّضك على المزايا المتاحة لحسابك حاليًا — كل خطوة تفتح صفحتها مباشرة، والخطوات تُعرض فقط للمزايا المشمولة في اشتراكك."}];
+  if(on("calculators"))steps.push({id:"calc",nav:"calculators",target:"#calculators-el",icon:"chart",title:"حاسبة المستثمر ورسومها البيانية",copy:"أدخل رأس المال والمساهمة الشهرية والمدة والعائد المتوقع لترى القيمة النهائية، مع رسم نمو الاستثمار ورسم المساهمات مقابل الأرباح ومقارنة السيناريوهات — والنتيجة تُحسب من مدخلاتك لحظيًا وفق افتراضات معلنة."});
+  if(on("portfolio"))steps.push({id:"portfolio",nav:"vip",tab:"port",target:"#vip-body",icon:"star",title:"المحفظة والرسوم البيانية",copy:"أضف أسهمك وتابع قيمتها الحالية والربح والخسارة لكل سهم وإجمالًا، مع عرض أداء المحفظة والبيانات المتاحة لكل سهم."});
+  if(on("indicators"))steps.push({id:"analysis",nav:"vip",tab:"stk",target:"#vip-body",icon:"chart",title:"أدوات التحليل الفني",copy:"افتح أي سهم من الأسواق لرؤية مؤشرات VIP: متوسط MA(20) و RSI(14) فوق الشارت، واستخدم تبويب «تحليل AI» و Sceener لفرز السهم بحسب معاييرك."});
+  if(on("ai"))steps.push({id:"assistant",nav:"vip",tab:"ai",target:"#vip-body",icon:"spark",title:"المستشار الذكي",copy:"اسأل عن السوق أو عن سهم بعينه واحصل على إجابة مبنية على البيانات المتاحة — مع حدود استخدام عادل محسوب لحسابك."});
+  if(on("opportunities"))steps.push({id:"opps",nav:"vip",tab:"opps",target:"#vip-body",icon:"bulb",title:"الفرص داخل VIP",copy:"نفس عناصر متابعة السوق مع تصفية أدق حسب النوع والسوق، واحفظ العناصر التي تهمك للمراجعة لاحقًا."});
+  steps.push({id:"markets",nav:"vip",tab:"mkt",target:"#vip-body",icon:"chart",title:"الأسواق والتقارير",copy:"متابعة الأسواق مع بيانات المصدر ووقت التحديث، وتبويب «التقارير» يعرض ملخص أحداث السوق وأداء محفظتك عندما تكون البيانات متاحة."});
+  if(on("priceAlerts"))steps.push({id:"alerts",nav:"vip",tab:"alerts",target:"#vip-body",icon:"bell",title:"التنبيهات",copy:"أنشئ تنبيهات سعر لأسهمك؛ يصلك التنبيه داخل المنصة عندما يتحقق الشرط بحسب البيانات المتاحة ووقتها."});
+  steps.push({id:"manage",nav:"vip",tab:"set",target:"#vip-body",icon:"settings",title:"إدارة اشتراكك",copy:"تبويب الإعدادات يدير متابعتك وتفضيلاتك، وصفحة «اشتراكي» في حسابك تعرض حالة الاشتراك وموعد الانتهاء — والتجديد اختياري بطلب جديد."});
+  return steps;
+}
+function tourRemove(){
+  document.getElementById("first-use-tour")?.remove();
+  document.querySelectorAll(".ob-tour-highlight").forEach(el=>el.classList.remove("ob-tour-highlight"));
+}
+function tourHighlight(step){
   const target=step?.target?document.querySelector(step.target):null;
   if(target){target.classList.add("ob-tour-highlight");try{target.scrollIntoView({block:"center",behavior:window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches?"auto":"smooth"});}catch{}}
   return target;
 }
-function firstUseRenderTour(){
-  firstUseRemoveTour();
-  const steps=firstUseTourSteps();if(!steps.length)return;
-  firstUseTourIndex=Math.max(0,Math.min(firstUseTourIndex,steps.length-1));
-  const step=steps[firstUseTourIndex];
+function tourGoTo(step){
   if(step.nav)goNav(step.nav,{syncUrl:false});
-  const root=document.createElement("div");root.id="first-use-tour";root.innerHTML=`<div class="ob-tour-backdrop" aria-hidden="true"></div><section class="ob-panel" role="dialog" aria-modal="true" aria-labelledby="ob-tour-title"><div class="ob-panel-top"><span class="ob-step-count">${firstUseTourIndex+1} من ${steps.length}</span><button type="button" class="ob-skip" onclick="firstUseFinishTour('skipped')">تخطي الجولة</button></div><div class="ob-panel-icon" aria-hidden="true">${uiIcon(step.icon)}</div><div class="ob-panel-title" id="ob-tour-title">${sanitize(step.title)}</div><div class="ob-panel-copy">${sanitize(step.copy)}</div><div class="ob-panel-note">يمكنك إعادة هذه الجولة من إعدادات الحساب.</div><div class="ob-panel-actions">${firstUseTourIndex>0?'<button type="button" class="ob-back" onclick="firstUseTourBack()">السابق</button>':""}<button type="button" class="ob-next" onclick="firstUseTourNext()">${firstUseTourIndex===0?"ابدأ":firstUseTourIndex===steps.length-1?"إنهاء":"التالي"}</button></div></section>`;
+  if(step.tab&&typeof switchVipTab==="function")switchVipTab(step.tab,true);
+}
+function tourRender(){
+  tourRemove();
+  const tour=activeTour;if(!tour||!tour.steps.length)return;
+  tour.index=Math.max(0,Math.min(tour.index,tour.steps.length-1));
+  const step=tour.steps[tour.index];
+  tourGoTo(step);
+  const vip=tour.kind==="vip";
+  const root=document.createElement("div");root.id="first-use-tour";root.dataset.tour=tour.kind;
+  root.innerHTML=`<div class="ob-tour-backdrop" aria-hidden="true"></div><section class="ob-panel${vip?" ob-panel-vip":""}" role="dialog" aria-modal="true" aria-labelledby="ob-tour-title"><div class="ob-panel-top"><span class="ob-step-count">${vip?"جولة VIP · ":""}${tour.index+1} من ${tour.steps.length}</span><button type="button" class="ob-skip" onclick="tourFinish('skipped')">تخطي الجولة</button></div><div class="ob-panel-icon" aria-hidden="true">${uiIcon(step.icon)}</div><div class="ob-panel-title" id="ob-tour-title">${sanitize(step.title)}</div><div class="ob-panel-copy">${sanitize(step.copy)}</div><div class="ob-panel-note">${vip?"يمكنك إعادة جولة مزايا VIP من حسابك أو من إعدادات VIP في أي وقت.":"يمكنك إعادة هذه الجولة من إعدادات الحساب في أي وقت."}</div><div class="ob-panel-actions">${tour.index>0?'<button type="button" class="ob-back" onclick="tourBack()">السابق</button>':""}<button type="button" class="ob-next" onclick="tourNext()">${tour.index===0?"ابدأ":tour.index===tour.steps.length-1?"إنهاء":"التالي"}</button></div></section>`;
   document.body.appendChild(root);
-  setTimeout(()=>firstUseTarget(step),30);
+  setTimeout(()=>tourHighlight(step),30);
 }
 async function firstUseRequest(path,body){
   const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
   try{const r=await fetch(path,{method:body===undefined?"GET":"POST",credentials:"same-origin",cache:"no-store",headers:body===undefined?undefined:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body),signal:ctrl.signal});const j=await r.json().catch(()=>null);if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"onboarding_unavailable");return j;}finally{clearTimeout(timer);}
 }
-function firstUseApply(state){if(!state||typeof state!=="object")return;firstUseState=state;firstUseRenderChecklist();}
+function firstUseApply(state){
+  if(!state||typeof state!=="object")return;firstUseState=state;firstUseRenderChecklist();
+  /* Replay buttons (VIP state included) live in the profile/settings screens;
+   * refresh them when the freshest server state arrives. */
+  if(!document.getElementById("page-profile")?.classList.contains("hidden")&&typeof renderProfile==="function")renderProfile();
+}
 function firstUseChecklistLoading(){const host=document.getElementById("onboarding-checklist");if(host&&!firstUseState)host.innerHTML=`<div class="ob-checklist ob-skeleton" aria-label="جارٍ تحميل خطوات البداية"><span class="sk sk-line lg"></span><span class="sk sk-line md"></span><span class="sk sk-line"></span></div>`;}
 function firstUseChecklistUnavailable(){const host=document.getElementById("onboarding-checklist");if(host)host.innerHTML=`<div class="ob-checklist" style="color:var(--t4);font-size:11px;line-height:1.65;">تعذر تحميل خطوات البداية حاليًا. <button type="button" onclick="loadFirstUseOnboarding()" style="border:0;background:none;color:var(--g);font:inherit;font-weight:800;cursor:pointer;padding:0;">إعادة المحاولة</button></div>`;}
 async function loadFirstUseOnboarding(options={}){
+  /* The tour is never load-blocking: any failure leaves the product fully
+   * usable and only hides the onboarding card behind a retry link. */
   if(!firstUseEligible())return null;const seq=++firstUseLoadSeq;firstUseChecklistLoading();
-  try{const state=await firstUseRequest("/api/user/onboarding");if(seq!==firstUseLoadSeq)return null;firstUseApply(state);if(options.auto!==false&&state?.tour?.shouldShow===true&&!document.getElementById("first-use-tour")){firstUseAutoAttempts=0;clearTimeout(firstUseAutoTimer);firstUseAutoTimer=setTimeout(firstUseMaybeAutoStart,900);}return state;}catch{firstUseChecklistUnavailable();return null;}
+  try{const state=await firstUseRequest("/api/user/onboarding");if(seq!==firstUseLoadSeq)return null;firstUseApply(state);if(options.auto!==false&&((state?.vipTour?.shouldShow===true)||(state?.tour?.shouldShow===true))&&!document.getElementById("first-use-tour")){firstUseAutoAttempts=0;clearTimeout(firstUseAutoTimer);firstUseAutoTimer=setTimeout(firstUseMaybeAutoStart,900);}return state;}catch{firstUseChecklistUnavailable();return null;}
 }
+function tourStart(kind,steps){
+  if(!firstUseEligible()||!steps.length)return;
+  activeTour={kind,steps,index:0};tourRender();
+  firstUseRequest("/api/user/onboarding/tour",{action:"started",tour:kind}).then(state=>firstUseApply(state)).catch(()=>{/* the visual tour remains; the next visit retries only what the server did not persist */});
+}
+function tourNext(){const tour=activeTour;if(!tour)return;if(tour.index>=tour.steps.length-1){tourFinish("completed");return;}tour.index+=1;tourRender();}
+function tourBack(){if(!activeTour)return;activeTour.index=Math.max(0,activeTour.index-1);tourRender();}
+async function tourFinish(action){
+  const kind=activeTour?.kind||"user";activeTour=null;tourRemove();
+  /* Finishing the VIP tour must not chain into the platform tour in the same
+   * visit; the platform tour stays pending for a later visit if never seen. */
+  if(kind==="vip")tourAutoSuppressed.user=true;
+  try{const state=await firstUseRequest("/api/user/onboarding/tour",{action,tour:kind});firstUseApply(state);}catch{showToast("⚠️ تعذر حفظ حالة الجولة؛ ستظهر مرة أخرى عند الدخول.");}
+}
+document.addEventListener("keydown",event=>{if(event.key==="Escape"&&activeTour){event.preventDefault();tourFinish("skipped");}});
 async function firstUseStartTour(){
-  if(!firstUseEligible())return;
+  if(!firstUseEligible()){showToast("⚠️ سجّل الدخول بحساب مستخدم أولًا");return;}
   if(!firstUseState){const loaded=await loadFirstUseOnboarding({auto:false});if(!loaded)return;}
-  if(firstUseState?.tour?.shouldShow!==true)return;
-  firstUseTourIndex=0;firstUseRenderTour();
-  try{const state=await firstUseRequest("/api/user/onboarding/tour",{action:"started"});firstUseApply(state);}catch{/* visual tour remains; next login retries only if server did not persist it. */}
+  tourStart("user",platformTourSteps());
 }
-function firstUseTourNext(){const steps=firstUseTourSteps();if(firstUseTourIndex>=steps.length-1){firstUseFinishTour("completed");return;}firstUseTourIndex+=1;firstUseRenderTour();}
-function firstUseTourBack(){firstUseTourIndex=Math.max(0,firstUseTourIndex-1);firstUseRenderTour();}
-async function firstUseFinishTour(action){
-  firstUseRemoveTour();
-  try{const state=await firstUseRequest("/api/user/onboarding/tour",{action});firstUseApply(state);}catch{showToast("⚠️ تعذر حفظ حالة الجولة؛ ستظهر مرة أخرى عند الدخول.");}
+async function vipTourReplay(){
+  if(!firstUseEligible()){showToast("⚠️ سجّل الدخول بحساب مستخدم أولًا");return;}
+  if(!firstUseState){const loaded=await loadFirstUseOnboarding({auto:false});if(!loaded)return;}
+  if(firstUseVip().active!==true){showToast("⚠️ جولة مزايا VIP متاحة لأصحاب الاشتراك الفعّال فقط");return;}
+  try{const state=await firstUseRequest("/api/user/onboarding/reset",{tour:"vip"});firstUseApply(state);}catch{/* the replay continues even if persisting the reset fails */}
+  tourStart("vip",vipTourSteps());
 }
 async function firstUseResetTour(){
   if(!firstUseEligible()){showToast("⚠️ سجّل الدخول بحساب مستخدم أولًا");return;}
-  try{const state=await firstUseRequest("/api/user/onboarding/reset",{});firstUseApply(state);firstUseTourIndex=0;firstUseRenderTour();showToast("✅ بدأت جولة التعريف من جديد");}catch{showToast("⚠️ تعذر إعادة الجولة حاليًا؛ حاول لاحقًا.");}
+  try{const state=await firstUseRequest("/api/user/onboarding/reset",{});firstUseApply(state);}catch{/* the replay continues even if persisting the reset fails */}
+  tourStart("user",platformTourSteps());showToast("✅ بدأت جولة التعريف من جديد");
 }
 async function firstUseReport(event,payload={}){
   if(!firstUseEligible())return;
@@ -1881,7 +1944,6 @@ function firstUseChecklistAction(action){
   goNav("profile");
   if(action==="profile_trial")setTimeout(()=>document.getElementById("trial-start-btn")?.scrollIntoView({block:"center",behavior:"smooth"}),150);
 }
-
 
 /* ═══════════════════ GUEST LANDING + AUTH MODAL ═══════════════════ */
 const IS_ADMIN_PORTAL=document.documentElement.dataset.adminPortal==="true";
@@ -4517,6 +4579,12 @@ function vBuildSet(b){
       ${savedOpps.length?`<button onclick="DB.s('saved_opps',[]);renderVipTab();showToast('تم مسح الفرص المحفوظة')" style="background:var(--dnd);border:none;border-radius:7px;padding:3px 9px;color:var(--dn);font-size:10px;cursor:pointer;">مسح الكل</button>`:""}</div>
     </div>
 
+    ${vSect("🧭","جولة مزايا VIP")}
+    <div class="vbox">
+      <button class="btn btn-full" style="padding:9px;font-size:12px;background:linear-gradient(135deg,rgba(245,158,11,.16),rgba(217,119,6,.08));border:1px solid rgba(251,191,36,.3);color:#fcd34d;" onclick="vipTourReplay()">⭐ أعد جولة مزايا VIP</button>
+      <div style="color:var(--t5);font-size:9.5px;margin-top:7px;">تعرض الجولة فقط المزايا المتاحة فعليًا ضمن اشتراكك الحالي.</div>
+    </div>
+
     ${vSect("🗑️","منطقة الخطر")}
     <div class="vbox">
       <button class="btn btn-full" style="padding:9px;font-size:11.5px;background:var(--dnd);color:var(--dn);border:none;border-radius:10px;margin-bottom:7px;" onclick="vClearChat()">مسح سجل محادثة AI</button>
@@ -5428,7 +5496,7 @@ async function startFreeTrialUi(button){
     const r=await fetch("/api/user/trial/start",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:"{}"});
     const j=await r.json().catch(()=>null);
     if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر بدء التجربة");
-    U.trial=j.trial||U.trial;U.plan="vip";U.exp=j.trial?.endsAt||null;renderHdrVip();renderTrialBanner();renderProfile();queueTrialMessage();void loadFirstUseOnboarding({auto:false});const trialDays=Number(j.trial?.settings?.durationDays);showToast(`✅ بدأت تجربتك${Number.isInteger(trialDays)&&trialDays>0?` لمدة ${trialDays} يوم`:""} — بلا بيانات دفع أو تجديد تلقائي`);
+    U.trial=j.trial||U.trial;U.plan="vip";U.exp=j.trial?.endsAt||null;renderHdrVip();renderTrialBanner();renderProfile();queueTrialMessage();void loadFirstUseOnboarding();const trialDays=Number(j.trial?.settings?.durationDays);showToast(`✅ بدأت تجربتك${Number.isInteger(trialDays)&&trialDays>0?` لمدة ${trialDays} يوم`:""} — بلا بيانات دفع أو تجديد تلقائي`);
   }catch(e){showToast("⚠️ "+String(e?.message||"تعذر بدء التجربة"));}
   finally{if(button){button.disabled=false;button.textContent="🎁 ابدأ تجربتك المجانية لمدة 7 أيام";}}
 }
@@ -5630,6 +5698,7 @@ function renderProfile(){
   if(!isVip&&!isTrial)btns+=`<button class="prof-btn sub icon-label" onclick="openSub()">${uiIcon("star")} اشترك في VIP الآن</button>`;
   if(isAdm)btns+=`<button class="prof-btn icon-label" style="background:var(--gd);border:1px solid rgba(16,185,129,.15);color:var(--g);margin-bottom:9px;" onclick="openAdm()">${uiIcon("settings")} لوحة التحكم</button>`;
   if(U.phone!=="admin")btns+=`<button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openSetEmail()">✉️ بريد الاسترداد والتنبيهات</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openMarketingEmailSettings()">📬 رسائل تسويقية ${U.marketingEmailOptIn?"· مفعّلة":"· متوقفة"}</button><button class="prof-btn" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);margin-bottom:9px;" onclick="openChangePass()">🔒 تغيير كلمة المرور</button><button class="prof-btn" style="background:rgba(16,185,129,.08);border:1px solid rgba(52,211,153,.2);color:var(--g);margin-bottom:9px;" onclick="firstUseResetTour()">🧭 إعادة جولة التعريف</button>`;
+  if(U.phone!=="admin"&&firstUseVip().active===true)btns+=`<button class="prof-btn" style="background:linear-gradient(135deg,rgba(245,158,11,.14),rgba(217,119,6,.08));border:1px solid rgba(251,191,36,.32);color:#fcd34d;margin-bottom:9px;" onclick="vipTourReplay()">⭐ إعادة جولة مزايا VIP</button>`;
   btns+=`<button class="prof-btn out" onclick="logout()">تسجيل الخروج</button>`;
   document.getElementById("pbtns").innerHTML=btns;
   updateStats();

@@ -24,7 +24,7 @@ import {
   startFreeTrial,
 } from "../lib/free-trials";
 import { readFreeTrialSettings } from "../lib/trial-settings";
-import { onboardingState, recordOnboardingEvent, resetOnboardingTour, setOnboardingTourAction, type OnboardingEvent, type OnboardingTourAction } from "../lib/onboarding";
+import { onboardingState, recordOnboardingEvent, resetOnboardingTour, setOnboardingTourAction, type OnboardingEvent, type OnboardingTourAction, type OnboardingTourKind } from "../lib/onboarding";
 import { validMarketingUnsubscribeToken } from "../lib/marketing-email";
 import { logger } from "../lib/logger";
 import { isDuplicateKeyError } from "../lib/dbErrors";
@@ -237,8 +237,14 @@ router.post("/onboarding/tour", async (req: Request, res: Response) => {
   if (!(["started", "completed", "skipped"] as const).includes(action as OnboardingTourAction)) {
     res.status(400).json({ status: "error", message: "إجراء الجولة غير صالح" }); return;
   }
+  /* Two independent tours: the general platform tour and the VIP welcome
+   * tour. Neither influences an entitlement; both are display state. */
+  const tour = req.body?.tour === undefined ? "user" : String(req.body?.tour || "");
+  if (!(tour === "user" || tour === "vip")) {
+    res.status(400).json({ status: "error", message: "نوع الجولة غير صالح" }); return;
+  }
   try {
-    const onboarding = await setOnboardingTourAction(claims.sub, action as OnboardingTourAction, new Date());
+    const onboarding = await setOnboardingTourAction(claims.sub, action as OnboardingTourAction, new Date(), tour as OnboardingTourKind);
     res.setHeader("Cache-Control", "private, no-store, max-age=0");
     res.json({ status: "ok", ...onboarding });
   } catch (error) {
@@ -253,8 +259,14 @@ router.post("/onboarding/reset", async (req: Request, res: Response) => {
   if (rateLimitHit(`onboarding-reset:${claims.sub}`, 6, 15 * 60 * 1000)) {
     res.status(429).json({ status: "error", message: "محاولات كثيرة — حاول لاحقًا" }); return;
   }
+  /* Default replays only the general tour so the existing settings button
+   * never re-arms the VIP tour implicitly. */
+  const tour = req.body?.tour === undefined ? "user" : String(req.body?.tour || "");
+  if (!(tour === "user" || tour === "vip")) {
+    res.status(400).json({ status: "error", message: "نوع الجولة غير صالح" }); return;
+  }
   try {
-    const onboarding = await resetOnboardingTour(claims.sub, new Date());
+    const onboarding = await resetOnboardingTour(claims.sub, new Date(), tour as OnboardingTourKind);
     res.setHeader("Cache-Control", "private, no-store, max-age=0");
     res.json({ status: "ok", ...onboarding });
   } catch (error) {

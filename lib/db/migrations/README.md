@@ -25,7 +25,7 @@ single-migration run with an operator-supplied backup file.
 
 ## Pending migrations
 
-`0001_market_daily_ohlc` through `0012_payment_tx_idempotency` were **pending, unexecuted** migrations at the time of writing.
+`0001_market_daily_ohlc` through `0013_vip_onboarding_tour` were **pending, unexecuted** migrations at the time of writing.
 
 They are intentionally SQL files rather than a `drizzle-kit push`: no verified isolated database connection exists in this workspace, and an agent must never change a shared or production database without an approved backup and deployment window.
 
@@ -41,6 +41,7 @@ They are intentionally SQL files rather than a `drizzle-kit push`: no verified i
 - `0010_referral_program` adds configurable referral snapshots, fraud-review signals, reward ledger rows, and automatic referral-coupon metadata. Its rollback drops referral history, so it must only be used after a verified backup and an explicit operator decision to discard that history.
 - `0011_user_onboarding` adds an account-owned tour/checklist record. It contains only product-navigation progress; it never changes a subscription, payment, entitlement, or portfolio/alert record. Its rollback only removes that onboarding state.
 - `0012_payment_tx_idempotency` adds a normalized, case-insensitive unique index for payment transfer references so concurrent application instances cannot create duplicate payment requests. It refuses to guess which pre-existing duplicate is valid; an operator must review those records before running it. Its rollback drops only the index and does not remove payment evidence.
+- `0013_vip_onboarding_tour` adds display-state columns for the guided VIP welcome tour on the existing `user_onboarding` row (version, status and timestamps). It is shown once when an account first holds an active VIP entitlement and never grants, extends, or renews access. Its rollback removes only those tour columns.
 
 ## Safe execution sequence
 
