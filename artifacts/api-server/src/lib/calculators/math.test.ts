@@ -7,6 +7,7 @@ import {
   currencyConvert,
   dividendYield,
   inflationAdjustedReturn,
+  investorProjection,
   positionRisk,
   profitLoss,
 } from "./math";
@@ -60,6 +61,114 @@ test("compound growth has exact monthly-end contribution convention and zero-rat
   const zeroRate = valid(compoundGrowth({ initialAmount: 10000, annualReturnPercent: 0, monthlyContribution: 500, months: 12 }));
   close(zeroRate.balance, 16000);
   close(zeroRate.growth, 0);
+});
+
+/* Independent reference for the investor plan: ordinary annuity closed form
+ * (opening capital compounded monthly + contribution at each month end).
+ * Written separately from the implementation so a shared bug cannot hide. */
+function annuityFutureValue(initial: number, monthly: number, months: number, annualPercent: number): number {
+  const rate = annualPercent / 100 / 12;
+  if (rate === 0) return initial + monthly * months;
+  const factor = Math.pow(1 + rate, months);
+  return initial * factor + monthly * ((factor - 1) / rate);
+}
+
+test("investor projection matches an independent annuity formula and totals", () => {
+  const cases = [
+    { initialAmount: 100000, monthlyContribution: 5000, months: 60, annualReturnPercent: 18 },
+    { initialAmount: 10000, monthlyContribution: 500, months: 12, annualReturnPercent: 12 },
+    { initialAmount: 250000, monthlyContribution: 0, months: 36, annualReturnPercent: 9.5 },
+    { initialAmount: 0, monthlyContribution: 2000, months: 24, annualReturnPercent: 0 },
+  ];
+  for (const input of cases) {
+    const result = valid(investorProjection(input));
+    const contributions = input.initialAmount + input.monthlyContribution * input.months;
+    close(result.finalValue, annuityFutureValue(input.initialAmount, input.monthlyContribution, input.months, input.annualReturnPercent), 2);
+    close(result.totalContributions, contributions, 6);
+    close(result.estimatedProfit, result.finalValue - contributions, 2);
+    close(result.multiple, result.finalValue / contributions, 6);
+    close(result.profitSharePercent, (result.estimatedProfit / result.finalValue) * 100, 6);
+    close(result.contributionSharePercent, (contributions / result.finalValue) * 100, 6);
+    close(result.contributionSharePercent + result.profitSharePercent, 100, 6);
+  }
+});
+
+test("investor timing deposits each contribution at the month end", () => {
+  const result = valid(investorProjection({ initialAmount: 1000, monthlyContribution: 100, months: 2, annualReturnPercent: 12 }));
+  const rate = 0.01;
+  close(result.points[0].balance, 1000 * (1 + rate) + 100, 6);
+  close(result.points[1].balance, (1000 * (1 + rate) + 100) * (1 + rate) + 100, 6);
+  close(result.finalValue, 1000 * 1.01 ** 2 + 100 * 1.01 + 100, 6);
+  /* The first contribution earns one month, never two, and the second earns none. */
+  close(result.estimatedProfit, 1000 * 1.01 ** 2 + 100 * 1.01 - 1100, 6);
+});
+
+test("investor chart series is bounded, monotonic and ends on the summary value", () => {
+  const result = valid(investorProjection({ initialAmount: 50000, monthlyContribution: 1500, months: 360, annualReturnPercent: 15 }));
+  assert.ok(result.points.length >= 2 && result.points.length <= 61, `unexpected point count ${result.points.length}`);
+  result.points.forEach((point, index) => {
+    if (index > 0) assert.ok(point.month > result.points[index - 1].month, "chart months must increase");
+    close(point.profit, point.balance - point.contributions, 2);
+    assert.ok(point.balance >= point.contributions - 0.01, "growth never hides a loss at non-negative rates");
+  });
+  const last = result.points[result.points.length - 1];
+  assert.equal(last.month, 360);
+  close(last.balance, result.finalValue, 2);
+  assert.equal(result.yearlyRows.length, 30);
+  assert.equal(result.yearlyRows[result.yearlyRows.length - 1].year, 30);
+  close(result.yearlyRows[result.yearlyRows.length - 1].balance, result.finalValue, 2);
+});
+
+test("investor scenarios use visible rates, stay ordered and share one formula", () => {
+  const auto = valid(investorProjection({ initialAmount: 10000, monthlyContribution: 500, months: 120, annualReturnPercent: 12 }));
+  assert.deepEqual(auto.scenarios.map((item) => item.key), ["conservative", "expected", "optimistic"]);
+  assert.deepEqual(auto.scenarios.map((item) => item.annualReturnPercent), [9, 12, 15]);
+  assert.ok(auto.scenarios[0].finalValue < auto.scenarios[1].finalValue);
+  assert.ok(auto.scenarios[1].finalValue < auto.scenarios[2].finalValue);
+  for (const item of auto.scenarios) {
+    close(item.finalValue, annuityFutureValue(10000, 500, 120, item.annualReturnPercent), 2);
+    close(item.totalContributions, 10000 + 500 * 120, 6);
+    close(item.estimatedProfit, item.finalValue - item.totalContributions, 2);
+    close(item.monthlyRate, item.annualReturnPercent / 100 / 12, 10);
+  }
+  close(auto.scenarios[1].finalValue, auto.finalValue, 2);
+
+  const overridden = valid(investorProjection({ initialAmount: 10000, monthlyContribution: 500, months: 120, annualReturnPercent: 12, conservativePercent: 4, optimisticPercent: 20 }));
+  assert.deepEqual(overridden.scenarios.map((item) => item.annualReturnPercent), [4, 12, 20]);
+
+  const floored = valid(investorProjection({ initialAmount: 10000, monthlyContribution: 0, months: 24, annualReturnPercent: 2 }));
+  assert.equal(floored.conservativePercent, 0, "a conservative scenario never promises a negative nominal return");
+  close(floored.scenarios[0].finalValue, 10000, 2);
+});
+
+test("investor projection at 0% keeps every point exactly at the contributions", () => {
+  const result = valid(investorProjection({ initialAmount: 12000, monthlyContribution: 750, months: 18, annualReturnPercent: 0 }));
+  close(result.finalValue, 12000 + 750 * 18, 6);
+  close(result.estimatedProfit, 0, 6);
+  close(result.monthlyRate, 0, 10);
+  assert.equal(result.profitSharePercent, 0);
+  result.points.forEach((point) => close(point.profit, 0, 6));
+});
+
+test("investor validation rejects impossible inputs with Arabic errors", () => {
+  const blankAmounts = investorProjection({ initialAmount: 0, monthlyContribution: 0, months: 12, annualReturnPercent: 10 });
+  assert.equal(blankAmounts.ok, false);
+  if (!blankAmounts.ok) assert.match(blankAmounts.error, /رأس مال|مساهمة/);
+
+  const blankRate = investorProjection({ initialAmount: 1000, monthlyContribution: 0, months: 12, annualReturnPercent: "" });
+  assert.equal(blankRate.ok, false);
+  if (!blankRate.ok) assert.match(blankRate.error, /أدخل/);
+
+  assert.equal(investorProjection({ initialAmount: -1, monthlyContribution: 0, months: 12, annualReturnPercent: 10 }).ok, false);
+  assert.equal(investorProjection({ initialAmount: 1000, monthlyContribution: 0, months: 12.5, annualReturnPercent: 10 }).ok, false);
+  assert.equal(investorProjection({ initialAmount: 1000, monthlyContribution: 0, months: 601, annualReturnPercent: 10 }).ok, false);
+  assert.equal(investorProjection({ initialAmount: 1000, monthlyContribution: 0, months: 12, annualReturnPercent: 2000 }).ok, false);
+  assert.equal(investorProjection({ initialAmount: Number.NaN, monthlyContribution: 0, months: 12, annualReturnPercent: 10 }).ok, false);
+  assert.equal(investorProjection(null as unknown as Record<string, unknown>).ok, false);
+
+  const crossed = investorProjection({ initialAmount: 1000, monthlyContribution: 0, months: 12, annualReturnPercent: 10, conservativePercent: 12 });
+  assert.equal(crossed.ok, false);
+  if (!crossed.ok) assert.match(crossed.error, /المتحفظ/);
 });
 
 test("weighted average includes all lots and an unrealized P/L", () => {

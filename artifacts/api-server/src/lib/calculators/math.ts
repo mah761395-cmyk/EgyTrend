@@ -174,6 +174,116 @@ export function compoundGrowth(input: Record<string, unknown>): CalculatorResult
   };
 }
 
+/* ─── investor plan (حاسبة المستثمر) ──────────────────────────────────────
+ * One projection engine feeds the numbers and every chart, so a chart can
+ * never disagree with the summary. Timing convention is identical to
+ * compoundGrowth: the opening capital earns from month 1, each periodic
+ * contribution is deposited at month end and therefore earns only from the
+ * following month (ordinary annuity, not annuity-due). */
+type InvestorPoint = { month: number; balance: number; contributions: number; profit: number };
+type InvestorSeries = { monthlyRate: number; finalValue: number; totalContributions: number; estimatedProfit: number; points: InvestorPoint[] };
+type InvestorScenario = {
+  key: "conservative" | "expected" | "optimistic";
+  label: string;
+  annualReturnPercent: number;
+  monthlyRate: number;
+  finalValue: number;
+  totalContributions: number;
+  estimatedProfit: number;
+};
+
+function investorSeries(initialAmount: number, monthlyContribution: number, months: number, annualReturnPercent: number): InvestorSeries {
+  const monthlyRate = annualReturnPercent / 100 / 12;
+  const points: InvestorPoint[] = [];
+  let balance = initialAmount;
+  for (let month = 1; month <= months; month += 1) {
+    balance = balance * (1 + monthlyRate) + monthlyContribution;
+    const contributions = initialAmount + monthlyContribution * month;
+    points.push({ month, balance: rounded(balance), contributions: rounded(contributions), profit: rounded(balance - contributions) });
+  }
+  const totalContributions = initialAmount + monthlyContribution * months;
+  return {
+    monthlyRate: rounded(monthlyRate, 12),
+    finalValue: rounded(balance),
+    totalContributions: rounded(totalContributions),
+    estimatedProfit: rounded(balance - totalContributions),
+    points,
+  };
+}
+
+/** Evenly thin a series for chart rendering while always keeping the last point. */
+function thinPoints<T>(points: T[], maxPoints: number): T[] {
+  if (!Array.isArray(points) || points.length <= maxPoints) return points.slice();
+  const step = (points.length - 1) / (maxPoints - 1);
+  const thinned: T[] = [];
+  for (let index = 0; index < maxPoints; index += 1) thinned.push(points[Math.round(index * step)]);
+  return thinned;
+}
+
+/**
+ * 3b) Investor plan: opening capital + periodic contributions, compounded
+ * monthly, with conservative / expected / optimistic scenarios computed by the
+ * same engine. Scenario rates default to expected ∓ 3 percentage points and are
+ * floored at 0% so a scenario never promises a negative nominal return.
+ */
+export function investorProjection(input: Record<string, unknown>): CalculatorResult<{
+  initialAmount: number; monthlyContribution: number; months: number; years: number;
+  annualReturnPercent: number; monthlyRate: number;
+  totalContributions: number; estimatedProfit: number; finalValue: number;
+  multiple: number; profitSharePercent: number; contributionSharePercent: number;
+  conservativePercent: number; optimisticPercent: number;
+  points: InvestorPoint[];
+  yearlyRows: Array<{ year: number; balance: number; contributions: number; growth: number }>;
+  scenarios: InvestorScenario[];
+}> {
+  if (!isPlainRecord(input)) return failure("بيانات حاسبة المستثمر غير صحيحة");
+  const blank = (value: unknown) => value === undefined || value === null || (typeof value === "string" && value.trim() === "");
+  const initialAmount = nonNegative(input.initialAmount ?? 0, "رأس المال الأولي");
+  const monthlyContribution = nonNegative(input.monthlyContribution ?? 0, "المساهمة الدورية");
+  const annualReturnPercent = percentage(input.annualReturnPercent, "العائد السنوي المتوقع", 1_000);
+  const monthsRaw = positive(input.months, "مدة الاستثمار", 600);
+  const conservativeInput = blank(input.conservativePercent) ? null : percentage(input.conservativePercent, "عائد السيناريو المتحفظ", 1_000);
+  const optimisticInput = blank(input.optimisticPercent) ? null : percentage(input.optimisticPercent, "عائد السيناريو المتفائل", 1_000);
+  const checked = [initialAmount, monthlyContribution, annualReturnPercent, monthsRaw, conservativeInput, optimisticInput];
+  if (checked.some(valueOrError)) return checked.find(valueOrError)!;
+  const months = Math.floor(monthsRaw as number);
+  if (months !== monthsRaw) return failure("مدة الاستثمار يجب أن تكون بعدد أشهر صحيح");
+  if (initialAmount === 0 && monthlyContribution === 0) return failure("أدخل رأس مال أوليًا أو مساهمة دورية على الأقل");
+  const conservativePercent = conservativeInput === null ? Math.max(0, annualReturnPercent - 3) : (conservativeInput as number);
+  const optimisticPercent = optimisticInput === null ? Math.min(1_000, annualReturnPercent + 3) : (optimisticInput as number);
+  if (conservativePercent > annualReturnPercent || optimisticPercent < annualReturnPercent) {
+    return failure("عائد السيناريو المتحفظ يجب ألا يتجاوز العائد المتوقع، والمتفائل ألا يقل عنه");
+  }
+  const expected = investorSeries(initialAmount, monthlyContribution, months, annualReturnPercent);
+  const conservative = investorSeries(initialAmount, monthlyContribution, months, conservativePercent);
+  const optimistic = investorSeries(initialAmount, monthlyContribution, months, optimisticPercent);
+  if (!Number.isFinite(expected.finalValue) || expected.finalValue > 1_000_000_000_000_000) return failure("النتيجة أكبر من الحد المسموح");
+  const yearlyRows = expected.points
+    .filter((point) => point.month % 12 === 0 || point.month === months)
+    .map((point) => ({ year: Math.ceil(point.month / 12), balance: point.balance, contributions: point.contributions, growth: point.profit }));
+  const scenario = (key: InvestorScenario["key"], label: string, percent: number, series: InvestorSeries): InvestorScenario => ({
+    key, label, annualReturnPercent: percent, monthlyRate: series.monthlyRate,
+    finalValue: series.finalValue, totalContributions: series.totalContributions, estimatedProfit: series.estimatedProfit,
+  });
+  return {
+    ok: true,
+    initialAmount, monthlyContribution, months, years: rounded(months / 12),
+    annualReturnPercent, monthlyRate: expected.monthlyRate,
+    totalContributions: expected.totalContributions, estimatedProfit: expected.estimatedProfit, finalValue: expected.finalValue,
+    multiple: rounded(expected.finalValue / expected.totalContributions),
+    profitSharePercent: rounded(expected.finalValue > 0 ? (expected.estimatedProfit / expected.finalValue) * 100 : 0),
+    contributionSharePercent: rounded(expected.finalValue > 0 ? (expected.totalContributions / expected.finalValue) * 100 : 0),
+    conservativePercent, optimisticPercent,
+    points: thinPoints(expected.points, 61),
+    yearlyRows,
+    scenarios: [
+      scenario("conservative", "متحفظ", conservativePercent, conservative),
+      scenario("expected", "متوسط", annualReturnPercent, expected),
+      scenario("optimistic", "متفائل", optimisticPercent, optimistic),
+    ],
+  };
+}
+
 /** 4) Weighted average entry plus unrealized P/L at an optional current price. */
 export function averagePurchase(input: Record<string, unknown>): CalculatorResult<{
   shares: number; totalCost: number; averagePrice: number; currentPrice: number | null;
@@ -297,7 +407,8 @@ export function currencyConvert(input: Record<string, unknown>): CalculatorResul
 export function getCalculatorMathModuleSource(): string {
   const helpers = [
     failure, isPlainRecord, numberInRange, positive, nonNegative, percentage, valueOrError, rounded,
-    profitLoss, positionRisk, compoundGrowth, averagePurchase, dividendYield, cagr, inflationAdjustedReturn, currencyConvert,
+    profitLoss, positionRisk, compoundGrowth, investorSeries, thinPoints, investorProjection,
+    averagePurchase, dividendYield, cagr, inflationAdjustedReturn, currencyConvert,
   ].map((fn) => fn.toString()).join("\n\n");
-  return `${helpers}\n\nexport { profitLoss, positionRisk, compoundGrowth, averagePurchase, dividendYield, cagr, inflationAdjustedReturn, currencyConvert };\n`;
+  return `${helpers}\n\nexport { profitLoss, positionRisk, compoundGrowth, investorProjection, averagePurchase, dividendYield, cagr, inflationAdjustedReturn, currencyConvert };\n`;
 }
