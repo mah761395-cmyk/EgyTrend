@@ -58,6 +58,11 @@ export function geminiKey(): string {
     process.env["GOOGLE_API_KEY"] ||
     process.env["GOOGLE_GENERATIVE_AI_API_KEY"] ||
     process.env["AI_INTEGRATIONS_GOOGLE_API_KEY"] ||
+    /* Legacy exact name already present in the live Vercel project. Kept as
+     * one explicit alias (not a name scan) so the production key that is
+     * billing today keeps working after this deploy; rotate it to
+     * GEMINI_API_KEY in the dashboard when convenient. */
+    process.env["Gemini"] ||
     ""
   );
 }

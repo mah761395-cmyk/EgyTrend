@@ -7,10 +7,17 @@
  *     not end in `_test`, so production can never be reached by this script
  *   • it is only ever run explicitly (never from the app's boot path)
  *
- * Usage: node artifacts/api-server/test/setup-test-db.mjs
+ * Usage: node artifacts/api-server/test/setup-test-db.mjs   (or: bun run …)
  *
  * Uses the `pg` driver rather than the psql client: this machine's PostgreSQL
  * installation ships server binaries only (no psql.exe).
+ *
+ * Merged-server notes (2026-10-20):
+ *   • seeds one ACTIVE super_admin staff row so tests exercise the real staff
+ *     email/password login (the password-only break-glass path stays covered by
+ *     its own negative test: it must stay closed while a super_admin exists);
+ *   • the AI daily budget counts usage per principal key `user:<sub>`, so the
+ *     seeded exhausted-VIP usage rows carry that key, not the phone number.
  */
 import crypto from "node:crypto";
 import path from "node:path";
@@ -86,11 +93,17 @@ INSERT INTO app_users (phone, name, password_hash, plan, vip_expires_at, status)
 VALUES
   ('${TEST_USERS.free.phone}', '${TEST_USERS.free.name}', '${hashPassword(TEST_USERS.free.password)}', 'free', NULL, 'active'),
   ('${TEST_USERS.vip.phone}',  '${TEST_USERS.vip.name}',  '${hashPassword(TEST_USERS.vip.password)}',  'vip',  now() + interval '30 days', 'active');
+INSERT INTO employees (name, email, role, status, password_hash, permissions)
+VALUES ('Test Admin', 'admin@test.local', 'super_admin', 'active', '${hashPassword(TEST_ADMIN_PASSWORD)}', '[]');
 INSERT INTO ai_config (analyzer_enabled, summary_enabled, rewriter_enabled, daily_request_limit)
 VALUES (true, true, true, ${VIP_DAILY_LIMIT});
-INSERT INTO ai_usage (user_id, request_type, tokens_estimate, created_at) VALUES
-  ('${TEST_USERS.vip.phone}', 'chat', 120, now() - interval '1 hour'),
-  ('${TEST_USERS.vip.phone}', 'chat', 130, now() - interval '2 hours');
+/* The deployed server's daily AI budget counts usage rows whose user_id is the
+ * principal key "user:<app_users.id>". The VIP user is the row with the seeded
+ * VIP phone, so the two pre-existing calls are attributed to that key. */
+INSERT INTO ai_usage (user_id, request_type, tokens_estimate, created_at)
+SELECT 'user:' || id, 'chat', 120, now() - interval '1 hour' FROM app_users WHERE phone = '${TEST_USERS.vip.phone}'
+UNION ALL
+SELECT 'user:' || id, 'chat', 130, now() - interval '2 hours' FROM app_users WHERE phone = '${TEST_USERS.vip.phone}';
 `;
 
 async function main() {

@@ -296,6 +296,84 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .mini-in:focus{border-color:rgba(59,130,246,.35);}
 .add-btn{background:var(--bld);border:1px solid rgba(59,130,246,.25);border-radius:9px;color:#93c5fd;font-size:19px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .18s;}
 
+/* ─── VISUAL ANALYTICS (portfolio + VIP) ─── */
+.va-card{background:var(--s1);border:1px solid var(--b1);border-radius:15px;padding:13px 13px 11px;margin-bottom:11px;}
+.va-card.vip{border-color:rgba(227,183,91,.22);background:linear-gradient(160deg,rgba(227,183,91,.05),rgba(14,21,36,.9) 46%);}
+.va-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
+.va-title{color:var(--t1);font-weight:800;font-size:12.5px;display:flex;align-items:center;gap:6px;line-height:1.5;}
+.va-sub{color:var(--t4);font-size:9.5px;line-height:1.7;margin-top:4px;}
+.va-src{color:var(--t5);font-size:8.8px;line-height:1.7;margin-top:8px;padding-top:7px;border-top:1px solid var(--b1);}
+.va-src b{color:var(--t4);font-weight:700;}
+.va-empty{padding:18px 8px;text-align:center;color:var(--t4);font-size:10.5px;line-height:1.85;}
+.va-empty strong{display:block;color:var(--t3);font-size:11.5px;margin-bottom:4px;font-weight:800;}
+.va-note{color:var(--t5);font-size:8.8px;line-height:1.7;margin-top:7px;}
+.va-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:9px 0 2px;}
+.va-kpi{background:var(--ink2);border:1px solid var(--b1);border-radius:9px;padding:7px 8px;min-width:0;}
+.va-kpi label{display:block;color:var(--t5);font-size:8.3px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.va-kpi b{font-family:var(--mono);font-size:11px;color:var(--t1);font-weight:800;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* line chart: DOM axes + non-distorting SVG strokes */
+.va-line{display:flex;gap:5px;margin-top:10px;direction:ltr;}
+.va-y{display:flex;flex-direction:column;justify-content:space-between;width:44px;flex-shrink:0;color:var(--t5);font-family:var(--mono);font-size:8px;text-align:right;}
+.va-main{position:relative;flex:1;min-width:0;height:148px;touch-action:pan-y;outline:none;}
+.va-main:focus-visible{box-shadow:0 0 0 2px rgba(96,165,250,.5);border-radius:6px;}
+.va-grid{position:absolute;inset:0;pointer-events:none;}
+.va-gridline{position:absolute;left:0;right:0;border-top:1px dashed rgba(148,163,184,.13);}
+.va-gridline.solid{border-top-style:solid;border-top-color:rgba(148,163,184,.3);}
+.va-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;}
+.va-cursor{position:absolute;top:0;bottom:0;width:1px;background:rgba(226,232,240,.4);pointer-events:none;display:none;}
+.va-dot{position:absolute;width:7px;height:7px;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;display:none;box-shadow:0 0 0 2px rgba(7,11,20,.9);}
+.va-x{display:flex;justify-content:space-between;color:var(--t5);font-size:8px;margin:5px 0 0 49px;direction:ltr;}
+.va-legend{display:flex;flex-wrap:wrap;gap:5px 11px;margin-top:9px;}
+.va-lg{display:inline-flex;align-items:center;gap:4px;color:var(--t4);font-size:9px;}
+.va-lg i{width:8px;height:8px;border-radius:2px;display:inline-block;flex-shrink:0;}
+.va-tip{position:absolute;z-index:3;min-width:104px;max-width:min(200px,70%);background:rgba(10,17,30,.97);border:1px solid var(--b2);border-radius:8px;padding:6px 8px;color:var(--t2);font-size:9.3px;line-height:1.7;pointer-events:none;display:none;direction:rtl;box-shadow:0 8px 22px rgba(0,0,0,.55);}
+.va-tip b{color:var(--t1);font-weight:800;}
+.va-tip .tip-row{display:flex;justify-content:space-between;gap:8px;}
+.va-tip .tip-row span{font-family:var(--mono);}
+/* donut */
+.va-donut{display:flex;align-items:center;gap:13px;margin-top:11px;flex-wrap:wrap;}
+.va-donut svg{width:126px;height:126px;flex-shrink:0;}
+.va-donut circle.slice{transition:stroke-width .16s ease;}
+.va-donut circle.slice:hover{stroke-width:22;}
+.va-legend-col{flex:1;min-width:132px;display:flex;flex-direction:column;gap:5px;}
+.va-lg-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:9.5px;color:var(--t3);line-height:1.5;}
+.va-lg-row .nm{display:inline-flex;align-items:center;gap:5px;min-width:0;}
+.va-lg-row .nm i{width:7px;height:7px;border-radius:2px;flex-shrink:0;}
+.va-lg-row .nm span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.va-lg-row b{font-family:var(--mono);font-size:9.3px;color:var(--t2);flex-shrink:0;}
+/* signed bars */
+.va-bars{margin-top:10px;display:flex;flex-direction:column;gap:6px;}
+.va-bar-row{display:grid;grid-template-columns:46px minmax(0,1fr) 66px;align-items:center;gap:6px;}
+.va-bar-l{color:var(--t3);font-family:var(--mono);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.va-bar-track{position:relative;height:15px;background:var(--ink2);border-radius:5px;overflow:hidden;}
+.va-bar-zero{position:absolute;top:0;bottom:0;left:50%;width:1px;background:rgba(148,163,184,.35);}
+.va-bar-fill{position:absolute;top:2px;bottom:2px;border-radius:3px;min-width:1px;}
+.va-bar-v{font-family:var(--mono);font-size:9px;text-align:left;direction:ltr;white-space:nowrap;}
+.va-bar-total{background:rgba(96,165,250,.07);border:1px solid rgba(96,165,250,.16);border-radius:8px;padding:5px 6px 4px;margin-top:2px;}
+.va-bar-total .va-bar-row{grid-template-columns:46px minmax(0,1fr) 66px;}
+/* scatter */
+.va-scatter-wrap{display:flex;gap:5px;margin-top:11px;direction:ltr;}
+.va-sc-y{display:flex;flex-direction:column;justify-content:space-between;width:38px;flex-shrink:0;color:var(--t5);font-family:var(--mono);font-size:8px;text-align:right;}
+.va-scatter{position:relative;flex:1;min-width:0;height:160px;background:var(--ink2);border-radius:8px;outline:none;}
+.va-scatter:focus-visible{box-shadow:0 0 0 2px rgba(96,165,250,.5);}
+.va-sc-dot{position:absolute;width:10px;height:10px;min-width:10px;min-height:10px;line-height:0;border-radius:50%;transform:translate(-50%,-50%);cursor:pointer;border:1.5px solid rgba(7,11,20,.85);padding:0;background:transparent;}
+.va-sc-dot:focus-visible{box-shadow:0 0 0 2px #E8EEF8;}
+.va-x-risk{display:flex;justify-content:space-between;margin:4px 0 0 43px;padding:0 2.5%;color:var(--t5);font-size:8px;direction:ltr;}
+.va-risk-key{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+/* Roomier plots where the viewport allows it; two columns on desktop so the
+ * charts keep a readable aspect ratio instead of stretching full width. */
+@media (min-width:700px){
+  .va-main{height:196px;}
+  .va-scatter{height:196px;}
+  .va-donut svg{width:148px;height:148px;}
+}
+@media (min-width:1024px){
+  #port-analytics,.va-grid-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 14px;align-items:stretch;}
+  .va-span-2{grid-column:1 / -1;}
+  .va-y{width:52px;font-size:9px;}
+  .va-x{margin-left:57px;}
+}
+
 /* ─── STOCK SCREENER PRO ─── */
 .scr-mkt-tabs{display:flex;gap:0;border-radius:10px;overflow:hidden;border:1px solid var(--b1);margin-bottom:11px;}
 .scr-mkt-tab{flex:1;padding:7px 10px;font-size:11px;font-weight:700;color:var(--t4);background:var(--s1);border:none;cursor:pointer;font-family:var(--sans);transition:all .18s;}
@@ -4113,6 +4191,7 @@ const VIP_TABS=[
   {id:"ai",    ic:"🤖", lb:"المستشار"},
   {id:"stk",   ic:"🎯", lb:"تحليل AI"},
   {id:"port",  ic:"💼", lb:"المحفظة"},
+  {id:"analytics", ic:"📈", lb:"التحليلات"},
   {id:"rep",   ic:"📅", lb:"التقارير"},
   {id:"alerts",ic:"🔔", lb:"التنبيهات"},
   {id:"set",   ic:"⚙️", lb:"الإعدادات"},
@@ -4178,6 +4257,7 @@ function renderVipTab(){
   if(vipTab==="ai")return vBuildChat(b);
   if(vipTab==="stk")return vBuildStk(b);
   if(vipTab==="port")return vBuildPort(b);
+  if(vipTab==="analytics")return vBuildAnalytics(b);
   if(vipTab==="rep")return vBuildRep(b);
   if(vipTab==="alerts")return vBuildAlerts(b);
   if(vipTab==="set")return vBuildSet(b);
@@ -4701,6 +4781,282 @@ async function analyzeSymbolAI(){
 }
 
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * VISUAL ANALYTICS — shared chart primitives
+ *
+ * Every chart on this page is drawn from records the browser already received
+ * from the API: licensed quotes, licensed daily closes, saved positions and
+ * server-published opportunities. A series that cannot be built from those
+ * records returns an explicit empty state instead of a plausible-looking line.
+ * Nothing here is sampled, interpolated or randomised.
+ * ══════════════════════════════════════════════════════════════════════════ */
+const VA_C={g:"#10B981",r:"#F87171",bl:"#60A5FA",au:"#F59E0B",pu:"#A78BFA",cy:"#22D3EE",pk:"#F472B6",li:"#84CC16",nu:"#94A3B8"};
+const VA_PALETTE=[VA_C.g,VA_C.bl,VA_C.au,VA_C.pu,VA_C.cy,VA_C.pk,VA_C.li,VA_C.nu,VA_C.r];
+const VA_CHARTS=new Map();
+let vaChartSeq=0;
+
+function vaFmt(value,digits=0){
+  const n=Number(value);
+  if(!Number.isFinite(n))return "—";
+  return new Intl.NumberFormat("en-US",{minimumFractionDigits:digits,maximumFractionDigits:digits}).format(n);
+}
+function vaMoney(value,digits=0){return vaFmt(value,digits)+" ج";}
+function vaPct(value,digits=2){const n=Number(value);return Number.isFinite(n)?`${n>=0?"+":""}${n.toFixed(digits)}%`:"—";}
+function vaTone(value){const n=Number(value);return Number.isFinite(n)?(n>=0?"var(--g)":"var(--dn)"):"var(--t4)";}
+/* Axis labels must stay inside a 40px column; compact Arabic magnitude units. */
+function vaCompact(value){
+  const n=Number(value);
+  if(!Number.isFinite(n))return "—";
+  const abs=Math.abs(n);
+  if(abs>=1e9)return (n/1e9).toFixed(1)+" مليار";
+  if(abs>=1e6)return (n/1e6).toFixed(1)+"م";
+  if(abs>=1e3)return (n/1e3).toFixed(1)+"ألف";
+  return vaFmt(n,abs>=100?0:1);
+}
+/* Arabic day count for the chart subtitle (1 يوم · 2 يومان · 3–10 أيام · 11+ يومًا). */
+function vaDaysLabel(days){
+  const n=Math.max(0,Math.round(Number(days)||0));
+  if(n===1)return "يوم تداول واحد";
+  if(n===2)return "يوما تداول";
+  if(n>=3&&n<=10)return `${n} أيام تداول`;
+  return `${n} يوم تداول`;
+}
+function vaShortDate(time){
+  if(!Number.isFinite(time))return "—";
+  try{return new Intl.DateTimeFormat("ar-EG",{timeZone:"Africa/Cairo",day:"numeric",month:"short"}).format(new Date(time));}catch{return "—";}
+}
+function vaSourceFoot(html){return html?`<div class="va-src">${html}</div>`:"";}
+function vaCard(opts){
+  return `<section class="va-card${opts.vip?" vip":""}">
+    <div class="va-head"><div style="min-width:0;">
+      <div class="va-title">${sanitize(opts.icon||"")} ${sanitize(opts.title||"")}</div>
+      ${opts.sub?`<div class="va-sub">${sanitize(opts.sub)}</div>`:""}
+    </div>${opts.badge?`<span class="vchip" style="flex-shrink:0;">${sanitize(opts.badge)}</span>`:""}</div>
+    ${opts.body||""}
+    ${vaSourceFoot(opts.foot||"")}
+  </section>`;
+}
+function vaEmpty(title,detail){
+  return `<div class="va-empty"><strong>${sanitize(title)}</strong>${detail?sanitize(detail):""}</div>`;
+}
+
+/* ── line chart ─────────────────────────────────────────────────────────────
+ * The plot is LTR (time always reads left→right) while its labels, legend and
+ * tooltip follow the RTL document. Strokes use non-scaling-stroke so a
+ * responsive SVG stretched to the card width keeps a 2px line.
+ */
+function vaLineChart(cfg){
+  const series=(cfg.series||[]).filter(item=>item&&Array.isArray(item.points)&&item.points.length>=1&&item.points.every(point=>Number.isFinite(point.t)&&Number.isFinite(point.y)));
+  if(!series.length)return "";
+  const times=[...new Set(series.flatMap(item=>item.points.map(point=>point.t)))].sort((a,b)=>a-b);
+  if(times.length<2)return "";
+  const minT=times[0],maxT=times[times.length-1];
+  if(!(maxT>minT))return "";
+  let lo=Math.min(...series.flatMap(item=>item.points.map(point=>point.y)));
+  let hi=Math.max(...series.flatMap(item=>item.points.map(point=>point.y)));
+  if(!Number.isFinite(lo)||!Number.isFinite(hi))return "";
+  if(hi-lo<1e-9){const nudge=Math.max(Math.abs(hi)*0.02,0.5);lo-=nudge;hi+=nudge;}
+  const pad=(hi-lo)*0.12;lo-=pad;hi+=pad;
+  /* Each render registers one spec; the cache exists only so hover handlers
+   * can find their data, so it is trimmed instead of growing per repaint. */
+  if(VA_CHARTS.size>200)VA_CHARTS.clear();
+  const id="va-c"+(++vaChartSeq);
+  const xPct=time=>((time-minT)/(maxT-minT))*100;
+  const yPct=value=>((hi-value)/(hi-lo))*100;
+  const ticks=[0,1,2,3,4].map(index=>hi-(hi-lo)*index/4);
+  const labelTimes=[times[0],times[Math.floor((times.length-1)/2)],times[times.length-1]];
+  const yFmt=cfg.yFmt||(value=>vaCompact(value));
+  VA_CHARTS.set(id,{series,times,minT,maxT,lo,hi,xPct,yPct,yFmt});
+  return `<div class="va-line">
+      <div class="va-y">${ticks.map(tick=>`<span>${sanitize(yFmt(tick))}</span>`).join("")}</div>
+      <div class="va-main" tabindex="0" role="img" data-va-chart="${id}" aria-label="${sanitize(cfg.ariaLabel||"رسم خطي تفاعلي")}">
+        <div class="va-grid">${ticks.map((tick,index)=>`<div class="va-gridline${index===ticks.length-1?" solid":""}" style="top:${(index/(ticks.length-1)*100).toFixed(2)}%"></div>`).join("")}</div>
+        <svg class="va-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          ${series.map(item=>`<polyline fill="none" stroke="${item.color}" stroke-width="${item.width||2}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"${item.dashed?` stroke-dasharray="4 3" opacity=".85"`:""} points="${item.points.map(point=>`${xPct(point.t).toFixed(2)},${yPct(point.y).toFixed(2)}`).join(" ")}"></polyline>`).join("")}
+        </svg>
+        <div class="va-cursor"></div>
+        ${series.map((item,index)=>`<div class="va-dot" data-va-dot="${index}" style="background:${item.color};"></div>`).join("")}
+        <div class="va-tip"></div>
+      </div>
+    </div>
+    <div class="va-x">${labelTimes.map(time=>`<span>${sanitize(vaShortDate(time))}</span>`).join("")}</div>
+    <div class="va-legend">${series.map(item=>`<span class="va-lg"><i style="background:${item.color};"></i>${sanitize(item.label)}</span>`).join("")}</div>`;
+}
+function vaNearest(points,time){
+  let best=null,bestGap=Infinity;
+  for(const point of points){
+    const gap=Math.abs(point.t-time);
+    if(gap<bestGap){bestGap=gap;best=point;}
+  }
+  return best;
+}
+function vaBindCharts(root=document){
+  if(!root||!root.querySelectorAll)return;
+  root.querySelectorAll("[data-va-chart]").forEach(main=>{
+    if(main.dataset.vaBound==="1")return;
+    const spec=VA_CHARTS.get(main.dataset.vaChart);
+    if(!spec)return;
+    main.dataset.vaBound="1";
+    const cursor=main.querySelector(".va-cursor"),tip=main.querySelector(".va-tip");
+    const dots=[...main.querySelectorAll("[data-va-dot]")];
+    let index=-1;
+    const paint=target=>{
+      const i=Math.max(0,Math.min(spec.times.length-1,target));index=i;
+      const time=spec.times[i];
+      if(cursor){cursor.style.left=spec.xPct(time)+"%";cursor.style.display="block";}
+      dots.forEach((dot,dotIndex)=>{
+        const item=spec.series[dotIndex];
+        const point=item?vaNearest(item.points,time):null;
+        if(!point){dot.style.display="none";return;}
+        /* x follows the hovered day so a sparse series (a flat cost basis)
+         * marks the cursor's day instead of jumping back to its first point. */
+        dot.style.left=spec.xPct(time)+"%";
+        dot.style.top=spec.yPct(point.y)+"%";
+        dot.style.display="block";
+      });
+      if(tip){
+        tip.innerHTML=`<b>${sanitize(vaShortDate(time))}</b>`+spec.series.map(item=>{
+          const point=vaNearest(item.points,time);
+          return point?`<div class="tip-row"><span style="color:${item.color}">${sanitize(item.label)}</span><span>${sanitize(spec.yFmt(point.y))}</span></div>`:"";
+        }).join("");
+        tip.style.display="block";
+        const width=main.clientWidth||0,tipWidth=tip.offsetWidth||0;
+        let left=(spec.xPct(time)/100)*width+10;
+        if(left+tipWidth>width-2)left=(spec.xPct(time)/100)*width-tipWidth-10;
+        tip.style.left=Math.max(0,left)+"px";
+        tip.style.top="6px";
+      }
+    };
+    const clear=()=>{
+      if(cursor)cursor.style.display="none";
+      if(tip)tip.style.display="none";
+      dots.forEach(dot=>{dot.style.display="none";});
+    };
+    const indexAt=clientX=>{
+      const rect=main.getBoundingClientRect();
+      const ratio=Math.max(0,Math.min(1,(clientX-rect.left)/Math.max(1,rect.width)));
+      const target=spec.minT+ratio*(spec.maxT-spec.minT);
+      let best=0,bestGap=Infinity;
+      spec.times.forEach((time,timeIndex)=>{const gap=Math.abs(time-target);if(gap<bestGap){bestGap=gap;best=timeIndex;}});
+      return best;
+    };
+    main.addEventListener("pointermove",event=>paint(indexAt(event.clientX)),{passive:true});
+    main.addEventListener("pointerdown",event=>paint(indexAt(event.clientX)));
+    main.addEventListener("pointerleave",clear);
+    main.addEventListener("focus",()=>paint(index<0?spec.times.length-1:index));
+    main.addEventListener("blur",clear);
+    main.addEventListener("keydown",event=>{
+      if(event.key!=="ArrowLeft"&&event.key!=="ArrowRight")return;
+      event.preventDefault();
+      paint((index<0?0:index)+(event.key==="ArrowRight"?1:-1));
+    });
+  });
+}
+
+/* ── donut ──────────────────────────────────────────────────────────────────
+ * Stroked arcs (dash array) keep the ring crisp at any width. Each slice also
+ * carries a native <title> so a hover on desktop and a long-press on mobile
+ * both reveal the exact slice value.
+ */
+function vaDonut(cfg){
+  const slices=(cfg.slices||[]).filter(slice=>Number.isFinite(slice.value)&&slice.value>0);
+  if(!slices.length)return "";
+  const total=slices.reduce((sum,slice)=>sum+slice.value,0);
+  if(!(total>0))return "";
+  const radius=52,circumference=2*Math.PI*radius;
+  let offset=0;
+  const arcs=slices.map(slice=>{
+    const length=(slice.value/total)*circumference;
+    const arc=`<circle class="slice" cx="66" cy="66" r="${radius}" fill="none" stroke="${slice.color}" stroke-width="18" stroke-dasharray="${length.toFixed(2)} ${(circumference-length).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 66 66)"><title>${sanitize(slice.label)}: ${sanitize(cfg.valueFmt?cfg.valueFmt(slice.value):vaFmt(slice.value))} (${(slice.value/total*100).toFixed(1)}%)</title></circle>`;
+    offset+=length;
+    return arc;
+  }).join("");
+  return `<div class="va-donut">
+      <svg viewBox="0 0 132 132" role="img" aria-label="${sanitize(cfg.ariaLabel||"رسم دائري للتوزيع")}">
+        <circle cx="66" cy="66" r="${radius}" fill="none" stroke="rgba(148,163,184,.12)" stroke-width="18"></circle>
+        ${arcs}
+        <text x="66" y="62" text-anchor="middle" font-size="8.5" fill="#6F7E97">${sanitize(cfg.centerLabel||"")}</text>
+        <text x="66" y="77" text-anchor="middle" font-size="12" font-weight="800" fill="#E8EEF8" font-family="'IBM Plex Mono',monospace">${sanitize(cfg.centerValue||"")}</text>
+      </svg>
+      <div class="va-legend-col">${slices.map(slice=>`<div class="va-lg-row"><span class="nm"><i style="background:${slice.color};"></i><span>${sanitize(slice.label)}</span></span><b>${(slice.value/total*100).toFixed(1)}%</b></div>`).join("")}</div>
+    </div>`;
+}
+
+/* ── signed bar list (profit/loss, sector change) ───────────────────────────
+ * A zero line sits in the middle of the track, so a loss is never drawn as a
+ * shorter gain: negative values grow left of zero, positive values right of it.
+ */
+function vaSignedBars(items){
+  const rows=(items||[]).filter(row=>Number.isFinite(row.value));
+  if(!rows.length)return "";
+  const max=Math.max(...rows.map(row=>Math.abs(row.value)),1e-9);
+  const markup=rows.map(row=>{
+    const width=(Math.abs(row.value)/max)*50;
+    const left=row.value>=0?50:50-width;
+    const color=row.color||(row.value>=0?VA_C.g:VA_C.r);
+    const line=`<div class="va-bar-row">
+        <div class="va-bar-l" title="${sanitize(row.labelFull||row.label)}">${sanitize(row.label)}</div>
+        <div class="va-bar-track"><div class="va-bar-zero"></div><div class="va-bar-fill" style="left:${left.toFixed(2)}%;width:${Math.max(width,0.7).toFixed(2)}%;background:${color};"></div></div>
+        <div class="va-bar-v" style="color:${color};">${sanitize(row.display)}</div>
+      </div>`;
+    return row.total?`<div class="va-bar-total">${line}</div>`:line;
+  }).join("");
+  return `<div class="va-bars">${markup}</div>`;
+}
+
+/* ── scatter (risk vs expected return) ──────────────────────────────────────
+ * Only points with a parsed numeric return are plotted; the card reports how
+ * many opportunities were excluded and why.
+ */
+function vaScatter(cfg){
+  const points=(cfg.points||[]).filter(point=>Number.isFinite(point.x)&&Number.isFinite(point.y));
+  if(!points.length)return "";
+  let lo=Math.min(0,...points.map(point=>point.y));
+  let hi=Math.max(0,...points.map(point=>point.y));
+  if(hi-lo<1e-9){hi+=1;lo-=1;}
+  const pad=(hi-lo)*0.12;lo-=pad;hi+=pad;
+  const ticks=[0,1,2,3,4].map(index=>hi-(hi-lo)*index/4);
+  const xMin=Number(cfg.xMin??1),xMax=Number(cfg.xMax??5);
+  /* A 2.5% inset keeps an edge dot fully inside its plot instead of half
+   * hanging over the card background. */
+  const xPct=x=>2.5+((Math.min(xMax,Math.max(xMin,x))-xMin)/(xMax-xMin))*95;
+  const yPct=y=>3+((hi-y)/(hi-lo))*94;
+  return `<div class="va-scatter-wrap">
+      <div class="va-sc-y">${ticks.map(tick=>`<span>${sanitize(vaFmt(tick,Math.abs(tick)<10?1:0))}%</span>`).join("")}</div>
+      <div class="va-scatter" data-va-scatter="${cfg.id||"sc"}" role="group" aria-label="${sanitize(cfg.ariaLabel||"مخطط المخاطرة والعائد")}">
+        <div class="va-grid">${ticks.map((tick,index)=>`<div class="va-gridline${index===ticks.length-1?" solid":""}" style="top:${(index/(ticks.length-1)*100).toFixed(2)}%"></div>`).join("")}</div>
+        <div class="va-grid">${[0,1,2,3,4].map(index=>`<div class="va-gridline" style="top:0;bottom:0;left:${(2.5+index/4*95).toFixed(2)}%;right:auto;border-top:none;border-left:1px dashed rgba(148,163,184,.1);"></div>`).join("")}</div>
+        ${points.map(point=>`<button type="button" class="va-sc-dot" style="left:${xPct(point.x).toFixed(2)}%;top:${yPct(point.y).toFixed(2)}%;background:${point.color};" aria-label="${sanitize(point.aria||"")}"${point.onclick?` onclick='${point.onclick}'`:""}><span class="va-sc-tip" hidden>${point.tip||""}</span></button>`).join("")}
+        <div class="va-tip"></div>
+      </div>
+    </div>${cfg.xLabels?`<div class="va-x-risk">${cfg.xLabels.map(label=>`<span>${sanitize(label)}</span>`).join("")}</div>`:""}`;
+}
+function vaBindScatter(root=document){
+  if(!root||!root.querySelectorAll)return;
+  root.querySelectorAll("[data-va-scatter]").forEach(box=>{
+    if(box.dataset.vaBound==="1")return;
+    box.dataset.vaBound="1";
+    const tip=box.querySelector(".va-tip");
+    box.querySelectorAll(".va-sc-dot").forEach(dot=>{
+      const show=()=>{
+        if(!tip)return;
+        tip.innerHTML=dot.querySelector(".va-sc-tip")?.innerHTML||"";
+        tip.style.display="block";
+        const width=box.clientWidth||0,tipWidth=tip.offsetWidth||0;
+        const left=(parseFloat(dot.style.left)||0)/100*width+12;
+        const top=(parseFloat(dot.style.top)||0)/100*box.clientHeight-14;
+        tip.style.left=Math.max(0,Math.min(width-tipWidth-2,left))+"px";
+        tip.style.top=Math.max(2,top)+"px";
+      };
+      const hide=()=>{if(tip)tip.style.display="none";};
+      dot.addEventListener("pointerenter",show);
+      dot.addEventListener("pointerleave",hide);
+      dot.addEventListener("focus",show);
+      dot.addEventListener("blur",hide);
+    });
+  });
+}
+
 /* ══════════════ TAB 8 — المحفظة ══════════════ */
 function normalizeServerPortfolio(raw){
   if(!Array.isArray(raw))return [];
@@ -4713,7 +5069,11 @@ function normalizeServerPortfolio(raw){
     const market=m&&Number.isFinite(Number(m.price))&&String(m.source||"").trim()?{
       price:Number(m.price),source:String(m.source).slice(0,160),asOf:Number(m.asOf),delayedMinutes:Number.isFinite(Number(m.delayedMinutes))?Number(m.delayedMinutes):undefined,freshness:String(m.freshness||"").slice(0,30)
     }:null;
-    return [{id,sym,qty,price,instrumentId:String(p.instrumentId||""),market}];
+    /* Catalog label/sector come from the server's own catalog. They are
+     * grouping labels for the charts, never a valuation input. */
+    const sector=String(p.sector||"").slice(0,60);
+    const name=String(p.name||"").slice(0,160);
+    return [{id,sym,name,sector,qty,price,instrumentId:String(p.instrumentId||""),market}];
   }).slice(0,100);
 }
 async function loadServerPortfolio(force=false){
@@ -4754,6 +5114,253 @@ function portNews(sym){
   const nm=s?.name||"";
   return allArts.filter(a=>(nm&&nm.length>2&&a.title.includes(nm))||a.title.toUpperCase().includes(sym)).slice(0,3);
 }
+/* ═══════════════════ PORTFOLIO CHARTS ═══════════════════
+ * Four charts, each tied to a verified input:
+ *   • allocation  → current quantity × last licensed price, grouped by sector
+ *   • value line  → current quantity × licensed daily close (reconstruction)
+ *   • profit/loss → (licensed price − user's average cost) × quantity
+ *   • performance → close-to-close change over the same common window
+ * No fee is stored per position, so every figure is labelled as before fees.
+ */
+const VA_SERIES_CACHE=new Map();
+const PF_HISTORY_INIT={status:"idle",reason:"",missing:[],points:[],cost:0,source:"",asOf:0,startT:0,endT:0,perAsset:[],benchmark:null,days:0};
+let portHistory={...PF_HISTORY_INIT};
+let portHistorySeq=0;
+function resetPortHistory(){portHistorySeq++;portHistory={...PF_HISTORY_INIT};}
+
+/* Batched, read-only daily closes. The ceiling of 64 ids per request is the
+ * server's own contract, so larger portfolios are chunked instead of truncated. */
+async function vaFetchSparklines(ids){
+  const unique=[...new Set((ids||[]).filter(id=>canonicalInstrumentId(id)))];
+  const missing=unique.filter(id=>!VA_SERIES_CACHE.has(id));
+  for(let start=0;start<missing.length;start+=64){
+    const chunk=missing.slice(start,start+64);
+    const query=new URLSearchParams({ids:chunk.join(",")});
+    const data=await fetchJsonWithTimeout(`${MARKET_SPARKLINES_API}?${query.toString()}`,12000);
+    if(data?.status!=="ok"||!Array.isArray(data.series))throw new Error("invalid_sparklines");
+    const returned=new Map(data.series.map(item=>[String(item?.instrumentId||""),item]));
+    chunk.forEach(id=>{
+      const item=returned.get(id);
+      const points=Array.isArray(item?.points)?item.points.flatMap(raw=>{
+        const time=String(raw?.time||""),close=Number(raw?.close);
+        const t=Date.parse(`${time}T00:00:00Z`);
+        return /^\d{4}-\d{2}-\d{2}$/.test(time)&&Number.isFinite(close)&&close>0&&Number.isFinite(t)?[{time,t,close}]:[];
+      }):[];
+      const source=item?.source&&typeof item.source==="object"?item.source:null;
+      VA_SERIES_CACHE.set(id,{
+        available:item?.available===true&&points.length>=2,
+        points,
+        source:source?String(source.name||"").slice(0,120):"",
+        asOf:source?Number(source.asOf)||0:0,
+      });
+    });
+  }
+  return VA_SERIES_CACHE;
+}
+async function ensurePortfolioHistory(force=false){
+  if(!portfolio.length)return;
+  if(portHistory.status==="loading")return;
+  if(!force&&portHistory.status!=="idle")return;
+  const seq=++portHistorySeq;
+  const lacking=portfolio.filter(position=>!canonicalInstrumentId(position.instrumentId));
+  if(lacking.length){
+    portHistory={...PF_HISTORY_INIT,status:"unavailable",reason:"missing_instrument",missing:lacking.map(position=>position.sym)};
+    patchPortAnalytics();
+    return;
+  }
+  portHistory={...PF_HISTORY_INIT,status:"loading"};
+  patchPortAnalytics();
+  try{
+    const ids=[...new Set(portfolio.map(position=>position.instrumentId))];
+    const series=await vaFetchSparklines(ids);
+    const mapped=portfolio.map(position=>({position,series:series.get(position.instrumentId)}));
+    const missing=mapped.filter(item=>!item.series?.available).map(item=>item.position.sym);
+    if(missing.length){
+      portHistory={...PF_HISTORY_INIT,status:"unavailable",reason:"insufficient_history",missing};
+      throw new Error("insufficient_history");
+    }
+    /* Only days where EVERY position has a licensed close are comparable to the
+     * current portfolio; a partial day would draw a value that never existed. */
+    let common=null;
+    mapped.forEach(item=>{
+      const days=new Set(item.series.points.map(point=>point.time));
+      common=common?new Set([...common].filter(day=>days.has(day))):days;
+    });
+    const days=[...(common||[])].sort();
+    if(days.length<2){
+      portHistory={...PF_HISTORY_INIT,status:"unavailable",reason:"insufficient_history",missing:[]};
+      throw new Error("insufficient_history");
+    }
+    const lookup=mapped.map(item=>({position:item.position,byDay:new Map(item.series.points.map(point=>[point.time,point.close]))}));
+    const points=days.map(day=>{
+      let total=0;
+      lookup.forEach(entry=>{total+=(entry.byDay.get(day)||0)*entry.position.qty;});
+      return {t:Date.parse(`${day}T00:00:00Z`),y:total};
+    });
+    const first=days[0],last=days[days.length-1];
+    const perAsset=lookup.map(entry=>{
+      const from=entry.byDay.get(first),to=entry.byDay.get(last);
+      return {sym:entry.position.sym,change:from>0?((to-from)/from)*100:null};
+    }).filter(row=>Number.isFinite(row.change)).sort((a,b)=>b.change-a.change);
+    let benchmark=null;
+    try{
+      const bench=await vaFetchSparklines(["egx:EGX30"]);
+      const index=bench.get("egx:EGX30");
+      const indexDays=new Map(index?.available?index.points.map(point=>[point.time,point.close]):[]);
+      const from=indexDays.get(first),to=indexDays.get(last);
+      if(from>0&&to>0)benchmark={sym:"EGX30",change:((to-from)/from)*100};
+    }catch{ /* the benchmark is optional context, never a reason to hide the chart */ }
+    const cost=portfolio.reduce((sum,position)=>sum+position.price*position.qty,0);
+    const sources=[...new Set(portfolio.map(position=>position.market?.source).filter(Boolean))].slice(0,2);
+    const asOf=Math.max(0,...portfolio.map(position=>Number(position.market?.asOf)||0));
+    portHistory={status:"ready",reason:"",missing:[],points,cost,source:sources.join(" + "),asOf,startT:points[0].t,endT:points[points.length-1].t,perAsset,benchmark,days:days.length};
+  }catch(error){
+    if(portHistory.status!=="unavailable")portHistory={...PF_HISTORY_INIT,status:"unavailable",reason:"error"};
+  }
+  if(seq!==portHistorySeq)return;
+  patchPortAnalytics();
+}
+function patchPortAnalytics(){
+  const host=document.getElementById("port-analytics");
+  if(!host)return;
+  host.innerHTML=portAnalyticsBody();
+  vaBindCharts(host);
+}
+function pfMarketFoot(rows){
+  const priced=(rows||[]).filter(row=>row.p?.market);
+  const sources=[...new Set(priced.map(row=>row.p.market.source))].slice(0,2);
+  const asOf=Math.max(0,...priced.map(row=>Number(row.p.market.asOf)||0));
+  return `<b>المصدر:</b> ${sanitize(sources.join(" + ")||"غير متاح")} · <b>آخر تحديث للسعر:</b> ${sanitize(cairoTimestampLabel(asOf))} · ${priced.length} من ${(rows||[]).length} مركز بسعر موثّق`;
+}
+function pfAllocation(stats){
+  const rows=stats?.rows||[];
+  const priced=rows.filter(row=>row.pr!==null);
+  const skipped=rows.filter(row=>row.pr===null);
+  const groups=new Map();
+  priced.forEach(row=>{
+    const key=row.p.sector||"غير مصنّف";
+    groups.set(key,(groups.get(key)||0)+row.pr*row.p.qty);
+  });
+  const slices=[...groups.entries()].sort((a,b)=>b[1]-a[1]).map(([label,value],index)=>({label,value,color:VA_PALETTE[index%VA_PALETTE.length]}));
+  return {slices,skipped,total:slices.reduce((sum,slice)=>sum+slice.value,0)};
+}
+function pfHistoryCard(){
+  const history=portHistory;
+  if(history.status==="idle"||history.status==="loading"){
+    return vaCard({
+      icon:"📈",title:"تطور قيمة المحفظة",sub:"إعادة بناء من الإغلاق اليومي المرخّص",
+      body:`<div class="va-empty"><strong>⏳ جارٍ تحميل السجل اليومي المرخّص…</strong>لا يُرسم أي خط حتى تصل نقاط إغلاق حقيقية.</div>`,
+    });
+  }
+  if(history.status!=="ready"){
+    const copy=history.reason==="missing_instrument"
+      ? {title:"لا يمكن إعادة بناء القيمة تاريخيًا",detail:`الرموز التالية بلا معرّف أداة موثّق لدى الخادم: ${(history.missing||[]).join(" · ")}. أضف المركز من كتالوج الأسهم ليصبح له سجل.`}
+      : history.reason==="insufficient_history"
+      ? {title:"السجل اليومي المرخّص لا يغطي كل مراكز المحفظة",detail:`لا تتوفر نقاط إغلاق مشتركة لكل مركز في نفس الأيام${(history.missing||[]).length?` (ناقص: ${history.missing.join(" · ")})`:""}. لن نرسم خطًا من أيام جزئية أو من سعر اليوم الحالي.`}
+      : {title:"تعذّر تحميل السجل اليومي",detail:"لم يتم استخدام بيانات بديلة أو تقديرية. أعد المحاولة بعد قليل."};
+    return vaCard({
+      icon:"📈",title:"تطور قيمة المحفظة",sub:"إعادة بناء من الإغلاق اليومي المرخّص",
+      body:`<div class="va-empty"><strong>${sanitize(copy.title)}</strong>${sanitize(copy.detail)}${history.reason==="error"?`<div style="margin-top:9px;"><button class="btn btn-ghost" style="padding:6px 12px;font-size:10px;" onclick="ensurePortfolioHistory(true)">↻ إعادة المحاولة</button></div>`:""}</div>`,
+    });
+  }
+  const lastPoint=history.points[history.points.length-1];
+  const diff=lastPoint.y-history.cost;
+  const diffPct=history.cost>0?(diff/history.cost)*100:null;
+  return vaCard({
+    icon:"📈",title:"تطور قيمة المحفظة",
+    sub:`قيمة تقديرية معاد بناؤها من الإغلاق اليومي المرخّص · ${vaDaysLabel(history.days)} مشتركة`,
+    body:`<div class="va-kpis">
+        <div class="va-kpi"><label>القيمة (آخر إغلاق)</label><b>${vaMoney(lastPoint.y,0)}</b></div>
+        <div class="va-kpi"><label>التكلفة المدخلة</label><b>${vaMoney(history.cost,0)}</b></div>
+        <div class="va-kpi"><label>الفرق التقديري</label><b style="color:${vaTone(diff)};">${diff>=0?"+":""}${vaFmt(diff,0)} ج</b></div>
+      </div>
+      ${vaLineChart({
+        series:[
+          {label:"قيمة المحفظة (تقديرية)",color:VA_C.g,points:history.points},
+          {label:"التكلفة",color:VA_C.bl,points:[{t:history.startT,y:history.cost},{t:history.endT,y:history.cost}],dashed:true,width:1.5},
+        ],
+        yFmt:value=>vaCompact(value),
+        ariaLabel:`تطور قيمة المحفظة من ${vaShortDate(history.startT)} إلى ${vaShortDate(history.endT)}`,
+      })}
+      <div class="va-note">الرسم يفترض الكميات الحالية في كل يوم، وليس سجلاً لعملياتك. لا يشمل رسوم وسيط أو توزيعات نقدية.${diffPct!==null?` الفرق التقديري ${vaPct(diffPct,2)} من التكلفة.`:""}</div>`,
+    foot:`<b>المصدر:</b> ${sanitize(history.source||"غير متاح")} · <b>آخر إغلاق:</b> ${sanitize(vaShortDate(history.endT))} · <b>سعر السوق لكل مركز:</b> ${sanitize(cairoTimestampLabel(history.asOf))}`,
+  });
+}
+function pfPnlCard(stats){
+  const rows=(stats?.rows||[]).filter(row=>row.pnlEgp!=null).sort((a,b)=>b.pnlEgp-a.pnlEgp);
+  if(!rows.length){
+    return vaCard({
+      icon:"⚖️",title:"الربح والخسارة لكل أصل",sub:"يحتاج سعر سوق موثّقًا لكل مركز",
+      body:vaEmpty("لا يوجد سعر موثّق كافٍ","لا يمكن حساب ربح أو خسارة من دون سعر سوق حقيقي؛ لن نعرض صفرًا وهميًا."),
+    });
+  }
+  const items=rows.map(row=>({
+    label:row.p.sym,
+    labelFull:`${row.p.sym} — ${row.p.sector||"غير مصنّف"} · ${row.pnlEgp>=0?"ربح":"خسارة"} ${vaFmt(Math.abs(row.pnlEgp),0)} ج (${vaPct(row.pnl,2)})`,
+    value:row.pnlEgp,
+    display:`${row.pnlEgp>=0?"+":""}${vaFmt(row.pnlEgp,0)} ج`,
+    color:row.pnlEgp>=0?VA_C.g:VA_C.r,
+  }));
+  if(stats.pl!=null)items.push({
+    label:"الإجمالي",
+    labelFull:"إجمالي المحفظة",
+    value:stats.pl,
+    display:`${stats.pl>=0?"+":""}${vaFmt(stats.pl,0)} ج`,
+    color:stats.pl>=0?VA_C.g:VA_C.r,
+    total:true,
+  });
+  return vaCard({
+    icon:"⚖️",title:"الربح والخسارة لكل أصل",
+    sub:"(السعر الموثّق − متوسط تكلفتك) × الكمية — لكل مركز",
+    badge:stats.plPct!=null?vaPct(stats.plPct,2):null,
+    body:vaSignedBars(items),
+    foot:`${pfMarketFoot(stats.rows)}<br/><span style="color:var(--t5);">الرسوم غير مسجّلة لكل مركز، فكل الأرقام قبل رسوم الوسيط.</span>`,
+  });
+}
+function pfPerformanceCard(){
+  const history=portHistory;
+  if(history.status!=="ready"){
+    return vaCard({
+      icon:"🏁",title:"مقارنة أداء الأصول",sub:"تغير الإغلاق خلال نافذة مشتركة",
+      body:vaEmpty("المقارنة تحتاج سجلاً يوميًا لكل أصل","تظهر المقارنة عندما تتوفر نقاط إغلاق مشتركة لنفس الأيام، ولن تُستبدل ببيانات تقديرية."),
+    });
+  }
+  const items=history.perAsset.map(row=>({
+    label:row.sym,
+    labelFull:`${row.sym} — تغير الإغلاق ${vaPct(row.change,2)}`,
+    value:row.change,
+    display:vaPct(row.change,2),
+    color:row.change>=0?VA_C.g:VA_C.r,
+  }));
+  if(history.benchmark)items.push({
+    label:"EGX30",
+    labelFull:`مؤشر EGX30 المرجعي — ${vaPct(history.benchmark.change,2)}`,
+    value:history.benchmark.change,
+    display:vaPct(history.benchmark.change,2),
+    color:VA_C.bl,
+  });
+  return vaCard({
+    icon:"🏁",title:"مقارنة أداء الأصول",
+    sub:`تغير سعر الإغلاق من ${vaShortDate(history.startT)} إلى ${vaShortDate(history.endT)}${history.benchmark?" · EGX30 مرجع":""}`,
+    body:vaSignedBars(items),
+    foot:`<b>المصدر:</b> ${sanitize(history.source||"غير متاح")} · <b>آخر إغلاق:</b> ${sanitize(vaShortDate(history.endT))}<br/><span style="color:var(--t5);">تغير سعري فقط بلا توزيعات أو رسوم؛ نافذة موحّدة لكل الأصول لتصبح المقارنة عادلة.</span>`,
+  });
+}
+function portAnalyticsBody(){
+  const stats=portStats();
+  const allocation=pfAllocation(stats);
+  const priced=stats.rows.filter(row=>row.pr!==null);
+  const allocationCard=vaCard({
+    icon:"🧭",title:"توزيع المحفظة حسب القطاع",
+    sub:"قيمة المركز بالجنيه = الكمية × آخر سعر سوق موثّق",
+    body:allocation.slices.length
+      ? `${vaDonut({slices:allocation.slices,centerLabel:"القيمة",centerValue:vaFmt(allocation.total,0),valueFmt:value=>vaMoney(value,0),ariaLabel:"توزيع قيمة المحفظة على القطاعات"})}
+        ${allocation.skipped.length?`<div class="va-note">⚠️ ${allocation.skipped.length} مركز بلا سعر موثّق مستبعَد من التوزيع: ${sanitize(allocation.skipped.map(row=>row.p.sym).join(" · "))}</div>`:""}`
+      : vaEmpty("لا يوجد مركز بسعر موثّق","التوزيع يحتاج سعر سوق حقيقيًا لكل مركز؛ لا نوزّع بالتساوي ولا بالسعر المدخل يدويًا."),
+    foot:pfMarketFoot(stats.rows),
+  });
+  return `${allocationCard}${pfHistoryCard()}${pfPnlCard(stats)}${pfPerformanceCard()}`;
+}
 function vBuildPort(b){
   if(portfolioState.loading){b.innerHTML=vLoading("جارٍ تحميل محفظتك من الخادم...");return;}
   if(portfolioState.error){
@@ -4770,6 +5377,7 @@ function vBuildPort(b){
         <div style="text-align:left;"><div style="color:var(--t5);font-size:9.5px;">الفرق الحسابي</div><div style="color:${st.pl===null?"var(--t5)":st.pl>=0?"var(--g)":"var(--dn)"};font-weight:900;font-size:17px;font-family:var(--mono);">${st.pl===null?"—":(st.pl>=0?"+":"")+st.pl.toFixed(0)+" ج"}</div><div style="color:${st.pl===null?"var(--t5)":st.pl>=0?"var(--g)":"var(--dn)"};font-size:11px;font-family:var(--mono);">${st.plPct===null?"سعر سوق ناقص":(st.plPct>=0?"+":"")+st.plPct.toFixed(2)+"%"}</div></div>
       </div>
     </div>`:""}
+    ${portfolio.length?`<div id="port-analytics">${portAnalyticsBody()}</div>`:""}
     <div class="vbox bl">
       <div class="vbox-title" style="color:#93c5fd;">💼 متابع المحفظة</div>
       <div class="p-inputs">
@@ -4811,6 +5419,249 @@ function vBuildPort(b){
     ${vSect("🔔","تنبيهات المحفظة","alerts")}
     ${(()=>{const s=getNotifsStore();const rel=s.items.filter(n=>n.type==="opps"||portfolio.some(p=>(n.title+n.body).toUpperCase().includes(p.sym))).slice(0,3);return rel.length?`<div class="vbox" style="padding:0;overflow:hidden;">${rel.map(n=>`<div class="vnews-row" onclick='openVipAlert(${safeJsArg(n.link||"")})'><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;">${sanitize(n.icon)} ${sanitize(n.title)}</div><div style="color:var(--t5);font-size:9px;">${vTime(n.ts)}</div></div></div>`).join("")}</div>`:vEmpty("🔕","لا تنبيهات متعلقة بمحفظتك");})()}`;
   renderPortList();
+  vaBindCharts(b);
+  if(portfolio.length&&portHistory.status==="idle")void ensurePortfolioHistory();
+}
+
+/* ═══════════════════ VIP ANALYTICS TAB ═══════════════════
+ * The analytics tab visualises features that already exist for this account:
+ * licensed stock/index history (the same endpoint that feeds the asset chart),
+ * the published opportunity cards (already gated by the server) and the EGX
+ * stock list. It introduces no privileged endpoint of its own and therefore
+ * grants nothing: every paid read still goes through its own server gate.
+ */
+const VA_COMPARE={sym:"",range:"1M",status:"idle",error:"",series:[],kpis:null,source:"",asOf:0};
+let vaStocksRequested=false;
+let vaOppsRequested=false;
+let vaCompareSeq=0;
+function currentCompareSym(){return VA_COMPARE.sym||vaDefaultSym();}
+function vaDefaultSym(){
+  const preferred=liveStocks.find(stock=>stock.sym==="COMI")||liveStocks[0];
+  return preferred?preferred.sym:"";
+}
+function vaCompareOptions(){
+  return liveStocks.filter(stock=>canonicalInstrumentId(stock.instrumentId)).slice(0,300)
+    .map(stock=>`<option value="${sanitize(stock.sym)}"${stock.sym===currentCompareSym()?" selected":""}>${sanitize(stock.sym)}${stock.sector?` — ${sanitize(stock.sector)}`:""}</option>`).join("");
+}
+async function vaHistory(instrumentId,range){
+  const data=await fetchJsonWithTimeout(`${MARKET_HISTORY_API}/${encodeURIComponent(instrumentId)}?range=${encodeURIComponent(range)}`,12000);
+  const normalized=normalizeHistoryResponse(data,instrumentId);
+  return normalized&&normalized.available===true?normalized:null;
+}
+async function vaLoadComparison(){
+  const sym=currentCompareSym();
+  VA_COMPARE.sym=sym;
+  const stock=liveStocks.find(item=>item.sym===sym);
+  if(!stock||!canonicalInstrumentId(stock.instrumentId)){
+    VA_COMPARE.status="unavailable";VA_COMPARE.error="no_stock";
+    patchVaCompare();
+    return;
+  }
+  const token=++vaCompareSeq;
+  VA_COMPARE.status="loading";VA_COMPARE.error="";
+  patchVaCompare();
+  try{
+    const [asset,index]=await Promise.all([
+      vaHistory(stock.instrumentId,VA_COMPARE.range),
+      vaHistory("egx:EGX30",VA_COMPARE.range),
+    ]);
+    if(token!==vaCompareSeq)return;
+    if(!asset||!index){VA_COMPARE.status="unavailable";VA_COMPARE.error="no_data";patchVaCompare();return;}
+    const indexByDay=new Map(index.points.map(point=>[point.time,point.close]));
+    const common=asset.points.filter(point=>indexByDay.has(point.time));
+    const firstAsset=common.length?common[0].close:0;
+    const firstIndex=common.length?indexByDay.get(common[0].time):0;
+    if(common.length<2||!(firstAsset>0)||!(firstIndex>0)){
+      VA_COMPARE.status="unavailable";VA_COMPARE.error="no_data";
+      patchVaCompare();
+      return;
+    }
+    const series=[
+      {label:sym,color:VA_C.g,points:common.map(point=>({t:Date.parse(`${point.time}T00:00:00Z`),y:(point.close/firstAsset-1)*100}))},
+      {label:"EGX30",color:VA_C.bl,points:common.map(point=>({t:Date.parse(`${point.time}T00:00:00Z`),y:(indexByDay.get(point.time)/firstIndex-1)*100}))},
+    ];
+    VA_COMPARE.series=series;
+    VA_COMPARE.kpis={asset:series[0].points[series[0].points.length-1].y,index:series[1].points[series[1].points.length-1].y};
+    VA_COMPARE.source=asset.source?.name||"";
+    VA_COMPARE.indexSource=index.source?.name||"";
+    VA_COMPARE.asOf=asset.source?.asOf||0;
+    VA_COMPARE.startT=series[0].points[0].t;
+    VA_COMPARE.endT=series[0].points[series[0].points.length-1].t;
+    VA_COMPARE.status="ready";
+  }catch{
+    if(token!==vaCompareSeq)return;
+    VA_COMPARE.status="unavailable";VA_COMPARE.error="error";
+  }
+  patchVaCompare();
+}
+function patchVaCompare(){
+  const host=document.getElementById("va-compare-body");
+  if(!host)return;
+  host.innerHTML=vaCompareBody();
+  vaBindCharts(host);
+}
+function vaSetCompareSym(sym){
+  const next=String(sym||"").slice(0,16).toUpperCase();
+  if(!liveStocks.some(item=>item.sym===next))return;
+  VA_COMPARE.sym=next;
+  void vaLoadComparison();
+}
+function vaSetCompareRange(range){
+  VA_COMPARE.range=["1M","3M","1Y"].includes(range)?range:"1M";
+  document.querySelectorAll("[data-va-range]").forEach(button=>button.classList.toggle("active",button.dataset.vaRange===VA_COMPARE.range));
+  void vaLoadComparison();
+}
+function vaCompareBody(){
+  if(VA_COMPARE.status==="loading"||VA_COMPARE.status==="idle"){
+    return `<div class="va-empty" style="min-height:150px;"><strong>⏳ جارٍ قراءة السجل اليومي المرخّص…</strong>يُستخدم نفس سجل شارت الأصل، بلا أي رسم بديل.</div>`;
+  }
+  if(VA_COMPARE.status!=="ready"){
+    const copy=VA_COMPARE.error==="no_stock"
+      ? {title:"اختر سهمًا متاحًا",detail:"بيانات أسهم EGX لم تُحمّل بعد، لذا لا يوجد سجل يومي للمقارنة."}
+      : VA_COMPARE.error==="no_data"
+      ? {title:"لا توجد نقاط إغلاق مشتركة كافية",detail:"السجل المرخّص لهذا النطاق لا يغطي السهم والمؤشر معًا؛ لن نرسم خطًا من أيام مختلفة."}
+      : {title:"تعذّر تحميل السجل اليومي",detail:"لم يتم استخدام بيانات بديلة. جرّب نطاقًا آخر أو أعد المحاولة."};
+    return `<div class="va-empty" style="min-height:150px;"><strong>${sanitize(copy.title)}</strong>${sanitize(copy.detail)}<div style="margin-top:9px;"><button class="btn btn-ghost" style="padding:6px 12px;font-size:10px;" onclick="vaLoadComparison()">↻ إعادة المحاولة</button></div></div>`;
+  }
+  const kpis=VA_COMPARE.kpis||{asset:0,index:0};
+  return `<div class="va-kpis">
+      <div class="va-kpi"><label>${sanitize(VA_COMPARE.sym)}</label><b style="color:${vaTone(kpis.asset)};">${vaPct(kpis.asset,2)}</b></div>
+      <div class="va-kpi"><label>مؤشر EGX30</label><b style="color:${vaTone(kpis.index)};">${vaPct(kpis.index,2)}</b></div>
+      <div class="va-kpi"><label>الفارق</label><b style="color:${vaTone(kpis.asset-kpis.index)};">${vaPct(kpis.asset-kpis.index,2)}</b></div>
+    </div>
+    ${vaLineChart({series:VA_COMPARE.series,yFmt:value=>`${vaFmt(value,1)}%`,ariaLabel:`أداء ${VA_COMPARE.sym} مقابل EGX30`})}
+    <div class="va-src"><b>المصدر:</b> ${sanitize(VA_COMPARE.source||"غير متاح")} · <b>آخر شمعة:</b> ${sanitize(vaShortDate(VA_COMPARE.asOf))} · ${sanitize(VA_COMPARE.range)}<br/><span style="color:var(--t5);">عائد سعري فقط بلا توزيعات؛ النسبة تبدأ من أول يوم مشترك بين السلسلتين.</span></div>`;
+}
+function vaCompareCard(){
+  return vaCard({
+    vip:true,icon:"📉",title:"السهم مقابل مؤشر السوق",
+    sub:"أداء نسبي من أول نقطة مشتركة في النطاق المختار",
+    body:`<div style="display:flex;gap:6px;margin-top:10px;align-items:center;">
+        <select class="mini-in" style="flex:1;min-width:0;" onchange="vaSetCompareSym(this.value)" aria-label="اختر سهمًا للمقارنة">${vaCompareOptions()||`<option value="">بيانات الأسهم غير متاحة</option>`}</select>
+      </div>
+      <div class="scr-filters" style="margin-top:7px;">${[["1M","شهر"],["3M","٣ أشهر"],["1Y","سنة"]].map(([key,label])=>`<button class="scr-f${VA_COMPARE.range===key?" active":""}" data-va-range="${key}" onclick="vaSetCompareRange('${key}')">${label}</button>`).join("")}</div>
+      <div id="va-compare-body">${vaCompareBody()}</div>`,
+  });
+}
+function vaSectorGroups(){
+  const groups=new Map();
+  liveStocks.forEach(stock=>{
+    const change=knownStockNumber(stock.chgPct);
+    if(change===null)return;
+    const key=stock.sector||"غير مصنّف";
+    const group=groups.get(key)||{sector:key,count:0,sum:0,up:0,down:0};
+    group.count+=1;
+    group.sum+=change;
+    if(change>=0)group.up+=1;else group.down+=1;
+    groups.set(key,group);
+  });
+  return [...groups.values()].map(group=>({...group,avg:group.sum/group.count})).sort((a,b)=>b.avg-a.avg);
+}
+function vaSectorCard(){
+  const groups=vaSectorGroups();
+  return vaCard({
+    vip:true,icon:"🏭",title:"مقارنة القطاعات",
+    sub:"متوسط التغير اليومي للأسهم المتاحة في كل قطاع",
+    body:groups.length
+      ? vaSignedBars(groups.map(group=>({
+        label:group.sector,
+        labelFull:`${group.sector} — ${group.count} سهم · ${group.up} صاعد / ${group.down} هابط`,
+        value:group.avg,
+        display:vaPct(group.avg,2),
+        color:group.avg>=0?VA_C.g:VA_C.r,
+      })))
+      : vaEmpty("لا توجد أسعار أسهم موثّقة","لن نصنّف قطاعًا بلا أسعار؛ انتظر تحديث بيانات أسهم EGX أو أعد المحاولة."),
+    foot:`<b>المصدر:</b> ${sanitize(egxStocksFreshness?.source||"غير متاح")} · <b>آخر تحديث:</b> ${sanitize(cairoTimestampLabel(egxStocksFreshness?.fetchedAt||0))} · ${groups.length} قطاع<br/><span style="color:var(--t5);">متوسط محسوب من الأسهم المعروضة فقط، وليس مؤشرًا قطاعيًا رسميًا، وقد يختلف عن مؤشرات البورصة.</span>`,
+  });
+}
+/* Same read-only endpoint the opportunities tab uses, without touching its DOM:
+ * the analytics tab only needs the published cards for the risk/return plot. */
+async function vaLoadOpportunities(){
+  if(oppsData.length)return;
+  try{
+    const response=await fetch("/api/opportunities",{credentials:"same-origin",cache:"no-store"});
+    if(!response.ok)return;
+    const data=await response.json().catch(()=>null);
+    if(data?.status!=="ok"||!Array.isArray(data.opportunities))return;
+    oppsData=data.opportunities.map(normalizeOpportunity).filter(Boolean).filter(opportunity=>opportunity.status!=="closed");
+  }catch{ /* an unavailable feed keeps the explicit empty state */ }
+}
+function vaCleanPercent(text){
+  const raw=String(text??"").trim();
+  if(!raw)return null;
+  const match=raw.match(/^(-?\d{1,4}(?:\.\d{1,2})?)\s*%?$/);
+  if(!match)return null;
+  const value=Number(match[1]);
+  return Number.isFinite(value)?value:null;
+}
+function vaRiskReturnCard(){
+  const plotted=[],excluded=[];
+  oppsData.forEach(opportunity=>{
+    const percent=vaCleanPercent(opportunity.expectedReturn);
+    const risk=Math.round(Number(opportunity.riskLevel));
+    if(percent===null||!Number.isFinite(risk)||risk<1||risk>5){excluded.push(opportunity);return;}
+    plotted.push({opportunity,percent,risk});
+  });
+  const points=plotted.map(item=>({
+    x:item.risk,
+    y:item.percent,
+    color:RISK_COLORS[item.risk-1]||VA_C.nu,
+    tip:`<b>${sanitize(item.opportunity.title).slice(0,90)}</b>
+      <div class="tip-row"><span>المخاطرة</span><span>${sanitize(RISK_LABELS[item.risk]||"—")}</span></div>
+      <div class="tip-row"><span>العائد المتوقع</span><span>${sanitize(item.opportunity.expectedReturn)}</span></div>
+      <div class="tip-row"><span>النوع</span><span>${sanitize((OPP_TYPES[item.opportunity.type]||OPP_TYPES.stock).l)}</span></div>`,
+    aria:`${item.opportunity.title} — مخاطرة ${RISK_LABELS[item.risk]} — عائد متوقع ${item.opportunity.expectedReturn}`,
+    onclick:`openOppDetail(${safeJsArg(item.opportunity.id)})`,
+  }));
+  return vaCard({
+    vip:true,icon:"⚖️",title:"الفرص: المخاطرة مقابل العائد",
+    sub:"كل نقطة فرصة منشورة؛ المحور الأفقي المخاطرة (1–5) والرأسي العائد المتوقع %",
+    badge:plotted.length?`${plotted.length} من ${oppsData.length}`:null,
+    body:points.length
+      ? `${vaScatter({id:"va-risk",points,xMin:1,xMax:5,xLabels:["1","2","3","4","5"],ariaLabel:"مخطط المخاطرة والعائد المتوقع للفرص"})}
+        <div class="va-risk-key">${[1,2,3,4,5].map(level=>`<span class="va-lg"><i style="background:${RISK_COLORS[level-1]};"></i>${sanitize(level+" "+RISK_LABELS[level])}</span>`).join("")}</div>
+        ${excluded.length?`<div class="va-note">⚠️ ${excluded.length} فرصة غير مرسومة لأن العائد المتوقع مكتوب كنص أو مدى غير رقمي، ولم نخمّن قيمة له.</div>`:""}
+        <div class="va-note">اضغط أي نقطة لفتح تفاصيل الفرصة. العائد المتوقع المعلن من الفرصة، وليس وعدًا أو نتيجة محققة.</div>`
+      : vaEmpty(oppsData.length?"لا توجد فرص بعائد رقمي":"لم تُحمّل عناصر المتابعة بعد",oppsData.length?"كل الفرص المنشورة تكتب العائد كنص أو مدى، فلا يمكن رسمها كمحور رقمي.":"افتح تبويب الفرص لتحميلها، ثم عُد إلى هنا."),
+    foot:`<b>المصدر:</b> بطاقات الفرص المنشورة على الخادم · <b>عدد العناصر:</b> ${oppsData.length}`,
+  });
+}
+function vBuildAnalytics(b){
+  b.innerHTML=`
+    <div class="vbox au" style="border-color:rgba(227,183,91,.25);">
+      <div class="vbox-title" style="color:var(--vip);">📈 تحليلات VIP</div>
+      <div style="color:var(--t4);font-size:10.5px;line-height:1.85;">رسوم مبنية على ما هو متاح فعلًا: أسعار مرخّصة وسجل يومي مرخّص ومراكز محفظتك. كل رسم يذكر مصدره ووقت بياناته، وعند نقص البيانات يظهر السبب بدلًا من رسم مضلل.</div>
+    </div>
+    <div id="va-analytics-body" class="va-grid-2">
+      <div class="va-span-2">${vaCompareCard()}</div>
+      ${vaSectorCard()}
+      ${vaRiskReturnCard()}
+    </div>
+    <div class="vbox" style="padding:13px;">
+      <div class="vbox-title" style="margin-bottom:8px;">🧰 أدوات مرتبطة</div>
+      <div style="display:grid;gap:6px;">
+        <button class="btn btn-ghost btn-full" style="padding:9px;font-size:11.5px;" onclick="openStockDetail(currentCompareSym())">🕯 شارت الأصل: شموع + حجم + MA/RSI عند تحقق الاشتراك</button>
+        <button class="btn btn-ghost btn-full" style="padding:9px;font-size:11.5px;" onclick="vGo('port')">💼 رسوم محفظتي كاملة</button>
+        <button class="btn btn-ghost btn-full" style="padding:9px;font-size:11.5px;" onclick="goNav('calculators')">🧮 حاسبة المستثمر ورسومها</button>
+        <button class="btn btn-ghost btn-full" style="padding:9px;font-size:11.5px;" onclick="vGo('alerts')">🔔 تنبيهات الأسعار</button>
+      </div>
+      <div class="va-note">مؤشرات MA(20) وRSI(14) والشموع تُقرأ من الخادم ويفرض صلاحية الاشتراك هناك؛ هذه الصفحة لا تمنح أي صلاحية.</div>
+    </div>`;
+  vaBindCharts(b);
+  vaBindScatter(b);
+  /* A first attempt can land before the EGX list arrives; retry once the list
+   * is present instead of leaving a stale "no stock" card. */
+  if(VA_COMPARE.status!=="loading"&&VA_COMPARE.status!=="ready")void vaLoadComparison();
+  /* Missing inputs are fetched once per session, never in a render loop: an
+   * unavailable provider must not turn this tab into a request storm. */
+  if(!liveStocks.length&&!vaStocksRequested&&!egxStocksFreshness?.loading){
+    vaStocksRequested=true;
+    Promise.resolve(fetchStocksData()).finally(()=>{if(vipTab==="analytics")vBuildAnalytics(b);});
+  }
+  if(!oppsData.length&&!vaOppsRequested&&U&&(U.plan==="vip"||U.plan==="admin")){
+    vaOppsRequested=true;
+    void vaLoadOpportunities().finally(()=>{if(vipTab==="analytics")vBuildAnalytics(b);});
+  }
 }
 
 /* ══════════════ TAB 9 — التقارير ══════════════ */
@@ -5545,6 +6396,7 @@ async function addPort(){
     const j=await r.json().catch(()=>null);
     if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر الحفظ");
     ["p-sym","p-pr","p-qty"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+    resetPortHistory();
     portfolioState={...portfolioState,loaded:false,error:""};
     await loadServerPortfolio(true);showToast(j.restored?`✅ تمت استعادة ${sym} إلى المحفظة`:`✅ تمت إضافة ${sym}`);
   }catch(e){showToast("⚠️ "+String(e?.message||"تعذر حفظ المركز"));}
@@ -5557,6 +6409,7 @@ async function delPort(id){
     const r=await fetch(`/api/portfolio/positions/${encodeURIComponent(id)}`,{method:"DELETE",credentials:"same-origin",signal:ctrl.signal});
     const j=await r.json().catch(()=>null);
     if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر الأرشفة");
+    resetPortHistory();
     portfolioState={...portfolioState,loaded:false,error:""};await loadServerPortfolio(true);showToast("✅ تمت أرشفة المركز");
   }catch(e){showToast("⚠️ "+String(e?.message||"تعذر الأرشفة"));}
   finally{clearTimeout(timer);}

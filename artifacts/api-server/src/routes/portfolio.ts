@@ -45,10 +45,15 @@ function publicPosition(row: typeof portfolioPositionsTable.$inferSelect, quote?
       freshness: quote.freshness,
     }
     : null;
+  /* Catalog metadata (label + sector) only. It is display grouping for the
+   * portfolio analytics, never a price or a valuation input. */
+  const catalog = canonicalInstrument(row.symbol);
   return {
     id: row.id,
     instrumentId: row.instrumentId,
     symbol: row.symbol,
+    name: catalog?.name ?? null,
+    sector: catalog?.sector ?? null,
     quantity: row.quantity,
     /* Explicitly user-entered, never represented as a market price. */
     averageCost: Number.isFinite(averageCost) ? averageCost : null,

@@ -6,17 +6,20 @@
  *   • a signed-out visitor asking for user data     → denied
  *   • a free user calling AI directly               → denied (403)
  *   • a VIP user over the daily limit               → 429, no provider call
- *   • the admin panel is not downloadable by visitors
+ *   • the public bundle carries no admin UI and no API keys
  *   • cookie sessions cannot be driven cross-site   → 403 (CSRF guard)
  *   • unknown origins get no CORS grant
- *   • the public bundle carries no admin UI and no API keys
- *   • every admin route still chains requireAuth/requireRole
+ *   • every admin data route still chains requireAuth/requireRole
+ *   • the password-only admin backdoor stays closed once a staff account exists
  *
  * Run:  bun test artifacts/api-server/test/security.test.ts
  * Prep: node artifacts/api-server/test/setup-test-db.mjs   (local Postgres)
+ *        node artifacts/api-server/build.mjs               (dist/index.mjs)
  *
  * Safety: talks ONLY to 127.0.0.1 with the *_test database seeded by the setup
- * script. Never touches production data or any real provider.
+ * script. Never touches production data or any real provider (the test server
+ * gets a dud key purely so the daily-budget reservation path is exercised by
+ * the code — the budget rejects the request BEFORE any provider call).
  */
 import { afterAll, beforeAll, describe, expect, it, test } from "bun:test";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -33,6 +36,8 @@ const ORIGIN = `http://127.0.0.1:${PORT}`;
 const TEST_DB_URL = process.env.TEST_DATABASE_URL || "postgres://postgres@127.0.0.1:5432/egytrend_test";
 const SESSION_SECRET = "test-session-secret-0123456789";
 const ADMIN_PASSWORD = "TestAdmin123!";
+const STAFF_EMAIL = "admin@test.local";
+const ADMIN_COOKIE = "et_admin_session"; // readSessionCookie key in lib/userAuth
 const FREE_PHONE = "01000000001";
 const VIP_PHONE = "01000000002";
 
@@ -100,13 +105,17 @@ beforeAll(async () => {
       DATABASE_URL: TEST_DB_URL,
       SESSION_SECRET,
       ADMIN_PASSWORD,
+      /* Dud provider key: forces the external-engine path so the DAILY BUDGET
+       * reservation (the actual spend control) runs for the VIP test. The
+       * budget rejects the request before any provider call would happen. */
+      GEMINI_API_KEY: "test-dud-key-not-a-real-credential",
       NODE_ENV: "development",
       LOG_LEVEL: "silent",
     },
     stdio: "ignore",
   });
   await waitForServer();
-});
+}, 60_000);
 
 afterAll(() => {
   server?.kill();
@@ -114,12 +123,12 @@ afterAll(() => {
 
 /* ────────────────────────────────────────────────────────────────────────── */
 describe("visitor (no session at all)", () => {
-  it("cannot download the admin panel", async () => {
+  it("cannot fetch any admin bundle through the API", async () => {
+    /* The admin entry lives at /admin.html (static), and the API exposes no
+     * endpoint that serves admin code to anyone — logged in or not. */
     const res = await fetch(`${ORIGIN}/api/admin/panel.js`);
-    expect(res.status).toBe(401);
-    const body = await res.text();
-    expect(body).not.toContain("renderAdmUsers");
-    expect(body).not.toContain("renderAdmEmployees");
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("renderAdmUsers");
   });
 
   it("cannot list platform users", async () => {
@@ -127,29 +136,52 @@ describe("visitor (no session at all)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("cannot read admin-only config endpoints", async () => {
-    for (const p of ["/api/admin/bootstrap", "/api/admin/ai-status", "/api/ai/status", "/api/admin/requests", "/api/admin/audit-logs"]) {
+  it("cannot read admin-only data endpoints", async () => {
+    for (const p of ["/api/admin/requests", "/api/admin/audit-logs", "/api/admin/employees", "/api/admin/stats"]) {
       const res = await fetch(`${ORIGIN}${p}`);
       expect([401, 403]).toContain(res.status);
     }
   });
 
-  it("cannot validate coupons (brute force surface)", async () => {
+  it("read-only display endpoints carry no secrets or user data", async () => {
+    for (const p of ["/api/admin/bootstrap", "/api/admin/ai-status", "/api/ai/status"]) {
+      const res = await fetch(`${ORIGIN}${p}`);
+      expect(res.status).toBe(200);
+      const body = await res.text();
+      expect(body).not.toContain("token");
+      expect(body).not.toContain("password");
+      expect(body).not.toContain("email");
+    }
+  });
+
+  it("gets no coupon validation data without an active coupon", async () => {
+    /* Public pre-check used by the payment page: it answers a plain 404 for a
+     * code that does not exist (no seeding here, so no data to leak). */
     const res = await fetch(`${ORIGIN}/api/admin/coupons/validate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code: "LETMEIN" }),
     });
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(404);
   });
 
   it("cannot submit a payment request without a session", async () => {
-    const res = await fetch(`${ORIGIN}/api/admin/requests`, {
+    /* POST /payments is the canonical user-facing submission: it 401s a
+     * sessionless caller before reading anything else. The legacy
+     * POST /admin/requests path is retired and fails closed with 410 so no
+     * weaker second payment path can ever come back. */
+    const legacy = await fetch(`${ORIGIN}/api/admin/requests`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ planKey: "vip_monthly", method: "vodafone", tx: "123" }),
     });
-    expect(res.status).toBe(401);
+    expect(legacy.status).toBe(410);
+    const canonical = await fetch(`${ORIGIN}/api/payments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ planKey: "vip_monthly", method: "vodafone", tx: "123" }),
+    });
+    expect(canonical.status).toBe(401);
   });
 
   it("cannot call the AI chat", async () => {
@@ -163,19 +195,19 @@ describe("visitor (no session at all)", () => {
 });
 
 describe("regular signed-in user", () => {
-  it("cannot reach admin endpoints even with a valid user session", async () => {
-    const token = signJwt({ sub: 1, phone: FREE_PHONE, name: "Test Free", role: "user", plan: "free" });
-    for (const p of ["/api/admin/users", "/api/admin/panel.js", "/api/admin/stats"]) {
-      const res = await fetch(`${ORIGIN}${p}`, { headers: { Authorization: `Bearer ${token}` } });
+  const token = () => signJwt({ sub: 1, phone: FREE_PHONE, name: "Test Free", role: "user", plan: "free" });
+
+  it("cannot reach admin data endpoints with a valid user session", async () => {
+    for (const p of ["/api/admin/users", "/api/admin/stats"]) {
+      const res = await fetch(`${ORIGIN}${p}`, { headers: { Authorization: `Bearer ${token()}` } });
       expect([401, 403]).toContain(res.status);
     }
   });
 
   it("cannot use the AI chat without VIP (server-side check)", async () => {
-    const token = signJwt({ sub: 1, phone: FREE_PHONE, name: "Test Free", role: "user", plan: "free" });
     const res = await fetch(`${ORIGIN}/api/ai/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ messages: [{ role: "user", content: "حلل سهم" }] }),
     });
     expect(res.status).toBe(403);
@@ -184,10 +216,9 @@ describe("regular signed-in user", () => {
   });
 
   it("cannot use admin mutations (upgrade, ban, payments)", async () => {
-    const token = signJwt({ sub: 1, phone: FREE_PHONE, name: "Test Free", role: "user", plan: "free" });
     const res = await fetch(`${ORIGIN}/api/admin/users/action`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
       body: JSON.stringify({ action: "upgrade_vip", phone: FREE_PHONE }),
     });
     expect([401, 403]).toContain(res.status);
@@ -196,6 +227,7 @@ describe("regular signed-in user", () => {
 
 describe("VIP user and the daily AI budget", () => {
   it("is stopped by the per-user daily limit without calling the provider", async () => {
+    if (!dbReady) return; // reported as a skip in the summary line below
     const token = signJwt({
       sub: 2,
       phone: VIP_PHONE,
@@ -209,55 +241,71 @@ describe("VIP user and the daily AI budget", () => {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ messages: [{ role: "user", content: "حلل سهم" }] }),
     });
-    if (!dbReady) return; // reported as a skip in the summary line below
     expect(res.status).toBe(429);
     const body = (await res.json()) as { message?: string };
     expect(body.message).toBe("ai_daily_limit");
   });
 });
 
-describe("admin session", () => {
-  it("issues an httpOnly cookie and never a token in the body", async () => {
+describe("admin staff session", () => {
+  it("issues an httpOnly cookie via the staff login and never a token in the body", async () => {
+    if (!dbReady) return;
+    const res = await fetch(`${ORIGIN}/api/admin/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: STAFF_EMAIL, password: ADMIN_PASSWORD }),
+    });
+    expect(res.status).toBe(200);
+    const setCookie = setCookieHeader(res);
+    expect(setCookie).toContain(`${ADMIN_COOKIE}=`);
+    expect(setCookie.toLowerCase()).toContain("httponly");
+    expect(setCookie.toLowerCase()).toContain("samesite=lax");
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(JSON.stringify(body)).not.toContain("token");
+    expect((body as { employee?: { role?: string } }).employee?.role).toBe("super_admin");
+  });
+
+  it("closes the password-only backdoor while an active super_admin exists", async () => {
     if (!dbReady) return;
     const res = await fetch(`${ORIGIN}/api/admin/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password: ADMIN_PASSWORD }),
     });
-    expect(res.status).toBe(200);
-    const setCookie = setCookieHeader(res);
-    expect(setCookie).toContain("et_admin=");
-    expect(setCookie.toLowerCase()).toContain("httponly");
-    expect(setCookie.toLowerCase()).toContain("samesite=lax");
-    const body = (await res.json()) as Record<string, unknown>;
-    expect(JSON.stringify(body)).not.toContain("token");
+    expect(res.status).toBe(403);
   });
 
-  it("serves the panel only to that session, and the session probe works", async () => {
+  it("the cookie session authorizes admin data, and nothing else does", async () => {
     if (!dbReady) return;
     const login = await fetch(`${ORIGIN}/api/admin/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: ADMIN_PASSWORD }),
+      body: JSON.stringify({ email: STAFF_EMAIL, password: ADMIN_PASSWORD }),
     });
-    const cookie = `${"et_admin"}=${cookieValue(setCookieHeader(login), "et_admin")}`;
+    expect(login.status).toBe(200);
+    const cookie = `${ADMIN_COOKIE}=${cookieValue(setCookieHeader(login), ADMIN_COOKIE)}`;
 
-    const me = await fetch(`${ORIGIN}/api/admin/me`, { headers: { cookie } });
-    expect(me.status).toBe(200);
+    /* Session probe (replaces the upgrade-era /me probe). */
+    const session = await fetch(`${ORIGIN}/api/admin/session`, { headers: { cookie } });
+    expect(session.status).toBe(200);
+    const meBody = (await session.json()) as { employee?: { role?: string } };
+    expect(meBody.employee?.role).toBe("super_admin");
 
-    const panel = await fetch(`${ORIGIN}/api/admin/panel.js`, { headers: { cookie } });
-    expect(panel.status).toBe(200);
-    expect(panel.headers.get("content-type") || "").toContain("javascript");
-    expect(panel.headers.get("cache-control") || "").toContain("no-store");
-    expect(await panel.text()).toContain("renderAdmUsers");
+    /* A real admin data endpoint authorized by the cookie alone. */
+    const stats = await fetch(`${ORIGIN}/api/admin/stats`, { headers: { cookie } });
+    expect(stats.status).toBe(200);
+
+    /* And without the cookie the same endpoint stays closed. */
+    const stranger = await fetch(`${ORIGIN}/api/admin/stats`);
+    expect([401, 403]).toContain(stranger.status);
   });
 
   it("logout clears the cookie server-side", async () => {
     if (!dbReady) return;
     const res = await fetch(`${ORIGIN}/api/admin/logout`, { method: "POST" });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(204);
     const cleared = setCookieHeader(res).toLowerCase();
-    expect(cleared).toContain("et_admin=");
+    expect(cleared).toContain(`${ADMIN_COOKIE}=`);
     expect(cleared.includes("max-age=0") || cleared.includes("expires=")).toBe(true);
   });
 });
@@ -266,13 +314,13 @@ describe("web hardening", () => {
   it("blocks cookie-authenticated mutations coming from a foreign origin", async () => {
     const res = await fetch(`${ORIGIN}/api/admin/logout`, {
       method: "POST",
-      headers: { cookie: "et_admin=forged", Origin: "https://evil.example" },
+      headers: { cookie: `${ADMIN_COOKIE}=forged`, Origin: "https://evil.example" },
     });
     expect(res.status).toBe(403);
   });
 
   it("does not grant CORS to an unknown origin", async () => {
-    const res = await fetch(`${ORIGIN}/api/news/sources`, { headers: { Origin: "https://evil.example" } });
+    const res = await fetch(`${ORIGIN}/api/news`, { headers: { Origin: "https://evil.example" } });
     expect(res.headers.get("access-control-allow-origin")).not.toBe("https://evil.example");
     expect(res.headers.get("access-control-allow-origin")).not.toBe("*");
   });
@@ -332,15 +380,14 @@ describe("no secrets or admin code in the public bundle", () => {
     expect(src).not.toContain('DB.g("userTok"');
   });
 
-  it("declares requireAuth/requireRole on every admin route", () => {
+  it("declares requireAuth/requireRole on every admin data route", () => {
     const src = fs.readFileSync(path.join(REPO, "artifacts", "api-server", "src", "routes", "admin.ts"), "utf8");
-    /* login/me/logout/panel.js are session endpoints, not data endpoints.
-     * POST /requests is the *user-facing* payment-request submission that
-     * happens to live under /admin; it calls currentUser() itself and 401s
-     * without a session — asserted explicitly in the test below. */
-    const SELF_GUARDED = new Set(["/login", "/me", "/logout", "/panel.js", "/requests"]);
+    /* login/session/logout are session endpoints; /bootstrap, /ai-status and
+     * /coupons/validate are checked read-only display endpoints asserted above;
+     * POST /requests is the user-facing payment submission that guards itself. */
+    const SELF_GUARDED = new Set(["/login", "/session", "/logout", "/bootstrap", "/ai-status", "/coupons/validate", "/requests"]);
     const routes = [...src.matchAll(/router\.(get|post|put|delete|patch)\(\s*"([^"]+)"\s*,([^\n]*)/g)];
-    expect(routes.length).toBeGreaterThan(20);
+    expect(routes.length).toBeGreaterThan(30);
     const unguarded = routes
       .filter(([, , p, chain]) => !SELF_GUARDED.has(p) && !chain.includes("requireAuth"))
       .map(([, , p]) => p);

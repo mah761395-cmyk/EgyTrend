@@ -226,11 +226,15 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
   const positionId = String(createPosition.body?.id || "");
   const portfolio = await api("/api/portfolio", userJar);
   assert.equal(portfolio.response.status, 200);
-  const positions = (portfolio.body?.positions as Array<{ id?: string; symbol?: string; averageCost?: number; market?: unknown }>) || [];
+  const positions = (portfolio.body?.positions as Array<{ id?: string; symbol?: string; name?: string | null; sector?: string | null; averageCost?: number; market?: unknown }>) || [];
   assert.equal(positions.length, 1);
   assert.equal(positions[0]?.id, positionId);
   assert.equal(positions[0]?.symbol, "COMI");
   assert.equal(positions[0]?.averageCost, 42.5);
+  /* The portfolio charts group by the server's own catalog label, so the
+   * response must carry it: a browser may not invent a sector for a symbol. */
+  assert.equal(positions[0]?.sector, "بنوك");
+  assert.equal(positions[0]?.name, "البنك التجاري الدولي");
   assert.equal(positions[0]?.market, null, "no provider must not create a fake quote");
   const updatePosition = await api(`/api/portfolio/positions/${encodeURIComponent(positionId)}`, userJar, {
     method: "PUT",
