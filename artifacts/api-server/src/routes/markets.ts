@@ -222,8 +222,16 @@ function toMarketsPayload(snapshot: QuoteSnapshot): MarketsPayload {
     cm: sectionMeta(sections.cm, snapshot),
     cr: sectionMeta(sections.cr, snapshot),
   };
+  /* The strip repeats its rows three times for the marquee, so a one-row
+   * ticker looks like the same price looped. When index/commodity providers
+   * are unlicensed, fall back to every priced FX pair so the strip still
+   * carries several real, sourced values instead of one duplicated row. */
+  const egTicker = [
+    ...sections.eg.filter((row) => row.id === "egx:EGX30"),
+    ...sections.eg.filter((row) => row.n.includes("/")),
+  ];
   const ticker = [
-    ...sections.eg.filter((row) => /EGX30|USD\/EGP/.test(row.n)),
+    ...egTicker.slice(0, 5),
     ...sections.cm.slice(0, 2),
     ...sections.gl.slice(0, 1),
     ...sections.cr.slice(0, 2),
