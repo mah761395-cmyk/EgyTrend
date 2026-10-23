@@ -2176,6 +2176,9 @@ async function pollPayNotifs(){
   try{
     if(!U||U.plan==="admin")return;
     const r=await fetch("/api/payments/notifications",{credentials:"same-origin"});
+    /* A stale local identity can outlive the session; without this the visitor
+     * keeps polling a private endpoint and every tick logs a 401 in the console. */
+    if(r.status===401){if(payNotifTimer){clearInterval(payNotifTimer);payNotifTimer=null;}return;}
     const j=await r.json().catch(()=>null);
     if(!j||j.status!=="ok"||!Array.isArray(j.notifications))return;
     if(j.notifications.length){
