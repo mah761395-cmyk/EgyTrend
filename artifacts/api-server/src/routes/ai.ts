@@ -160,6 +160,9 @@ router.post("/chat", async (req: Request, res: Response) => {
   const isAdmin = await isActivePrivilegedAdmin(req);
   const entitlement = !isAdmin ? await getVipEntitlement(claims) : null;
   if (!isAdmin && !(await hasVipFeature(claims, "ai"))) {
+    /* A signed, non-VIP session (including a stale VIP token whose entitlement
+     * was cancelled) is denied as unauthenticated for this paid route: the
+     * entitlement table, not the JWT claim, decides access. */
     res.status(req.header("authorization") ? 403 : 401).json({ status: "error", message: "VIP subscription required" });
     return;
   }

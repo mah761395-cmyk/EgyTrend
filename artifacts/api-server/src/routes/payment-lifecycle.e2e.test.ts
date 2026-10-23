@@ -341,9 +341,22 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
   assert.equal(markets.response.status, 200);
   assert.equal(markets.body?.status, "ok");
   const marketPayload = markets.body?.markets as Record<string, unknown[]>;
-  assert.deepEqual(marketPayload.eg, []);
+  /* The only enabled provider is the openly-licensed daily FX reference feed.
+   * It must be the sole source of these rows: every rate carries its provider
+   * name, its end-of-day classification and the provider's own timestamp, and
+   * nothing else is invented for indices, commodities or crypto. */
+  assert.ok(marketPayload.eg.length > 0, "reference FX rates are served");
+  for (const raw of marketPayload.eg as Array<Record<string, unknown>>) {
+    assert.equal(raw.source, "ExchangeRate-API");
+    assert.equal(raw.freshness, "end-of-day");
+    assert.ok(Number.isFinite(raw.asOf) && (raw.asOf as number) > 0, "every rate carries a provider timestamp");
+    assert.equal(raw.flat, true, "no change direction is invented for a daily reference rate");
+  }
   assert.deepEqual(marketPayload.gl, []);
-  assert.equal((markets.body?.freshness as { sections?: Record<string, { unavailable?: boolean }> }).sections?.eg?.unavailable, true);
+  assert.deepEqual(marketPayload.cm, []);
+  assert.deepEqual(marketPayload.cr, []);
+  assert.equal((markets.body?.freshness as { sections?: Record<string, { unavailable?: boolean }> }).sections?.eg?.unavailable, false);
+  assert.equal((markets.body?.freshness as { sections?: Record<string, { unavailable?: boolean }> }).sections?.cm?.unavailable, true);
 
   /* Historical chart reads are also fail-closed. With no currently-approved
    * external-display provider, old/missing DB rows cannot become a fabricated

@@ -1586,7 +1586,7 @@ function normalizeMarketRows(raw){
     const m=item&&typeof item==="object"?item:{};
     const n=String(m.n||"").trim().slice(0,80);
     if(!n)return [];
-    return [{instrumentId:canonicalInstrumentId(m.id),n,v:String(m.v??"").slice(0,80),c:String(m.c??"").slice(0,80),s:String(m.s??"").slice(0,120),source:String(m.source??"").slice(0,160),up:m.up===true,clickable:m.clickable===true,asOf:finiteNumber(m.asOf,0)}];
+    return [{instrumentId:canonicalInstrumentId(m.id),n,v:String(m.v??"").slice(0,80),c:String(m.c??"").slice(0,80),s:String(m.s??"").slice(0,120),source:String(m.source??"").slice(0,160),up:m.up===true,flat:m.flat===true,clickable:m.clickable===true,asOf:finiteNumber(m.asOf,0)}];
   }).slice(0,100);
 }
 function normalizeMarketFreshness(raw,topLevelStale){
@@ -3205,7 +3205,7 @@ function buildTicker(){
       <span style="color:var(--ink4);font-size:7px;">◆</span>
       <span style="color:var(--t4);font-weight:600;">${sanitize(t.n)}</span>
       <span style="color:var(--t2);font-weight:700;">${sanitize(unavailable?"غير متاح حاليًا":t.v)}</span>
-      <span style="color:${unavailable?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${unavailable?"—":(t.up?"▲":"▼")+sanitize(t.c)}</span>
+      <span style="color:${unavailable||t.flat?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${unavailable||t.flat?"—":(t.up?"▲":"▼")+sanitize(t.c)}</span>
     </span>`;
   }).join("");
 }
@@ -3221,7 +3221,7 @@ function buildMarketStrip(){
     return `<div class="ms-item">
       <div class="ms-n">${sanitize(t.n)}</div>
       <div class="ms-v">${sanitize(unavailable?"غير متاح حاليًا":t.v)}</div>
-      <div class="ms-c" style="color:${unavailable?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${unavailable?"—":(t.up?"▲":"▼")+sanitize(t.c)}</div>
+      <div class="ms-c" style="color:${unavailable||t.flat?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${unavailable||t.flat?"—":(t.up?"▲":"▼")+sanitize(t.c)}</div>
     </div>`;
   }).join("");
 }
@@ -3245,16 +3245,58 @@ function setCat(id,el){activeCat=id;document.querySelectorAll(".cp").forEach(b=>
  * The server is the sole RSS client. It enforces legal-source gating,
  * snippet limits, deduplication and recency/importance ranking before the
  * browser sees an item. */
+/* Aggregated feeds (notably Google News) repeat the headline and append the
+ * publisher name in the description. Rendering that as a "TL;DR" duplicated
+ * the title and read like machine noise, so strip the echo and keep only a
+ * genuine publisher excerpt. */
+function stripSnippetEcho(title, desc, srcName){
+  const decode=(s)=>String(s||"")
+    .replace(/&nbsp;/gi," ").replace(/&amp;/gi,"&").replace(/&quot;/gi,'"').replace(/&#39;/gi,"'")
+    .replace(/&#(\d+);/g,(m,n)=>String.fromCharCode(Number(n)))
+    .replace(/\u00a0/g," ").replace(/\s+/g," ").trim();
+  const key=(s)=>s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu,"");
+  const t=decode(title), n=decode(srcName);
+  let d=decode(desc);
+  if(!d)return"";
+  if(t&&d.toLowerCase().startsWith(t.toLowerCase()))d=decode(d.slice(t.length));
+  for(let i=0;i<3;i++){
+    if(n&&d.toLowerCase().endsWith(n.toLowerCase()))d=decode(d.slice(0,d.length-n.length));
+    d=d.replace(/[\s\-\u2013\u2014|:،.]+$/,"");
+  }
+  if(!d)return"";
+  /* What is left is often only the publisher name after the headline was
+   * removed; a two-word "excerpt" carries no information. */
+  if(d.length<28&&d.split(/\s+/).length<=2)return"";
+  if(key(d)===key(t)||(key(d)&&key(t).startsWith(key(d))))return"";
+  return d.slice(0,280);
+}
+
 function normalizeNewsArticle(raw, idx){
   const item=raw&&typeof raw==="object"?raw:{};
   const src=item.source&&typeof item.source==="object"?item.source:{};
   const srcId=String(src.id||"").trim();
   const lang=String(src.lang||"");
   const cat=String(src.cat||"");
-  const title=String(item.title||"").replace(/\s+/g," ").trim().slice(0,300);
+  const srcName=String(src.name||srcId).slice(0,60);
+  let title=String(item.title||"").replace(/\s+/g," ").trim().slice(0,300);
+  /* Aggregators append the publisher to the headline ("... - Masrawy",
+   * "... - بوابة الشروق"). Strip only a short trailing brand, never a real
+   * clause, so the card does not repeat the source twice. */
+  const brand=title.match(/^(.*\S)\s[-\u2013\u2014|]\s([^-\u2013\u2014|]{2,40})$/);
+  if(brand){
+    const tail=brand[2].trim();
+    /* A publisher brand is one or two Latin words ("Masrawy", "Financial
+     * Times"); a real trailing clause is longer, so it is never removed. */
+    const latin=/^[A-Za-z0-9&.'\u2019 ]{2,22}$/.test(tail)&&tail.split(/\s+/).length<=2;
+    const n=srcName.trim();
+    const matchesSrc=!!n&&(tail===n||tail.endsWith(n)||n.endsWith(tail)||tail.includes(n));
+    if(latin||matchesSrc)title=brand[1].trim();
+  }
+  const suffix=` - ${srcName}`;
+  if(srcName&&title.toLowerCase().endsWith(suffix.toLowerCase()))title=title.slice(0,title.length-suffix.length).trim();
   const link=sanitizeURL(String(item.link||""));
   if(!/^[a-z0-9_-]{2,40}$/i.test(srcId)||!["ar","en"].includes(lang)||!["egypt","global","stocks","crypto"].includes(cat)||!title||!link)return null;
-  const rawDesc=String(item.description||"").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,280);
+  const rawDesc=stripSnippetEcho(title, String(item.description||"").replace(/<[^>]+>/g," "), srcName);
   const parsed=Date.parse(String(item.pubDate||""));
   const ts=Number.isFinite(parsed)?parsed:0;
   const isBreaking=/عاجل|breaking|urgent|alert|flash/i.test(title);
@@ -3265,7 +3307,7 @@ function normalizeNewsArticle(raw, idx){
   const guid=String(item.guid||link||idx).slice(0,300);
   return {
     id:`${srcId}-${guid}`,
-    srcId,srcName:String(src.name||srcId).slice(0,60),srcIcon:String(src.icon||"📰").slice(0,12),srcColor:safeColor(src.color),srcLang:lang,
+    srcId,srcName,srcIcon:String(src.icon||"📰").slice(0,12),srcColor:safeColor(src.color),srcLang:lang,
     cat,title,summary:rawDesc,link,ts,
     impact,impLabel:impact==="up"?"إيجابي":impact==="dn"?"سلبي":"محايد",impColor:`var(--${impact})`,
     isBreaking,
@@ -3398,10 +3440,10 @@ function renderFeed(){
             <span style="color:var(--t4);font-size:10px;">${timeAgo(a.ts)}</span>
           </div>
           <div class="ch-title">${title}</div>
-          <div style="background:rgba(16,185,129,.12);border-radius:7px;padding:5px 9px;margin-bottom:7px;">
+          ${summary?`<div style="background:rgba(16,185,129,.12);border-radius:7px;padding:5px 9px;margin-bottom:7px;">
             <span style="color:var(--g);font-size:9px;font-weight:800;">⚡ TL;DR: </span>
             <span style="color:var(--t2);font-size:11px;">${summary.slice(0,80)}...</span>
-          </div>
+          </div>`:""}
           <div style="display:flex;gap:7px;align-items:center;">${impBdg}</div>
         </div>
       </div>`;
@@ -3414,9 +3456,9 @@ function renderFeed(){
           <div style="position:absolute;bottom:7px;right:8px;">${srcBdg}</div>
         </div>
         <div class="cbody">
-          <div class="tldr"><div class="tldr-l">⚡ TL;DR</div><div class="tldr-t">${summary.slice(0,95)}...</div></div>
+          ${summary?`<div class="tldr"><div class="tldr-l">⚡ TL;DR</div><div class="tldr-t">${summary.slice(0,95)}...</div></div>`:""}
           <div class="ctitle">${title}</div>
-          <div class="csum">${summary}</div>
+          ${summary?`<div class="csum">${summary}</div>`:""}
           <div class="cmeta">
             <div style="display:flex;gap:5px;align-items:center;">${impBdg}</div>
             <span style="color:var(--t5);font-size:10px;">${timeAgo(a.ts)}</span>
@@ -3560,7 +3602,7 @@ function buildMarkets(){
       return `<div class="mc clickable${wl.includes(m.n)?" wl":""}" onclick="openMarketDetail('${key}',${idx})">
         <div class="mc-hdr"><div class="mc-name">${sanitize(m.n)}</div><button class="wl-btn" onclick='event.stopPropagation();toggleWL(${safeJsArg(m.n)})'>${wl.includes(m.n)?"⭐":"☆"}</button></div>
         <div class="mc-val">${sanitize(unavailable?"غير متاح حاليًا":m.v)}</div>
-        <div class="mc-chg" style="color:${unavailable?"var(--t5)":m.up?"var(--up)":"var(--dn)"};">${unavailable?"—":(m.up?"▲":"▼")+" "+sanitize(m.c)}</div>
+        <div class="mc-chg" style="color:${unavailable||m.flat?"var(--t5)":m.up?"var(--up)":"var(--dn)"};">${unavailable||m.flat?"—":(m.up?"▲":"▼")+" "+sanitize(m.c)}</div>
         ${sparklineMarkup(m.instrumentId)}
         <div class="mc-sub">${sanitize(m.s||"")}</div>
         <div style="color:var(--t5);font-size:8px;margin-top:3px;">المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")} · وقت المصدر: ${sanitize(cairoTimestampLabel(m.asOf))} · ${sanitize(marketStateLabel({...marketFreshness,delayedMinutes:secMeta.delayedMinutes,freshness:secMeta.freshness}))}</div>
@@ -3818,7 +3860,7 @@ function openAssetDetail(spec){
   closeMarketDetail();
   activeAssetDetail={...spec,range:"1M",mode:"candles"};
   const inWL=wl.includes(spec.watchName);
-  const changeColor=spec.up?"var(--up)":"var(--dn)";
+  const changeColor=spec.flat?"var(--t5)":spec.up?"var(--up)":"var(--dn)";
   const ov=document.createElement("div");
   ov.id="mkt-detail-ov";
   ov.className="mkt-ov";
@@ -3867,13 +3909,13 @@ function openMarketDetail(sec,idx){
   const unavailable=secMeta.unavailable===true||m.source==="غير متاح"||m.v==="غير متاح حاليًا";
   const color=SEC_COL[sec]||"var(--g)";
   openAssetDetail({
-    instrumentId:m.instrumentId,title:m.n,subtitle:ctx.en,icon:ctx.icon,category:ctx.cat,color,watchName:m.n,up:m.up,
-    price:unavailable?"غير متاح حاليًا":m.v,change:unavailable?"—":`${m.up?"▲":"▼"} ${m.c||"—"}`,
+    instrumentId:m.instrumentId,title:m.n,subtitle:ctx.en,icon:ctx.icon,category:ctx.cat,color,watchName:m.n,up:m.up,flat:m.flat,
+    price:unavailable?"غير متاح حاليًا":m.v,change:unavailable||m.flat?"—":`${m.up?"▲":"▼"} ${m.c||"—"}`,
     source:m.source||secMeta.sources||"غير متاح",freshness:`وقت المصدر: ${cairoTimestampLabel(m.asOf)} · ${marketAgeLabel(marketFreshness)} · ${marketStateLabel(unavailable?{...marketFreshness,unavailable:true}:marketFreshness)}`,
     description:ctx.desc,
     stats:[
       {label:"آخر سعر",value:unavailable?"غير متاح":m.v,style:`color:${color};font-family:var(--mono);font-size:13px;`},
-      {label:"التغيير",value:unavailable?"—":`${m.up?"▲":"▼"} ${m.c||"—"}`,style:`color:${m.up?"var(--up)":"var(--dn)"};font-family:var(--mono);font-size:13px;`},
+      {label:"التغيير",value:unavailable||m.flat?"—":`${m.up?"▲":"▼"} ${m.c||"—"}`,style:`color:${m.flat?"var(--t5)":m.up?"var(--up)":"var(--dn)"};font-family:var(--mono);font-size:13px;`},
       {label:"نوع الأصل",value:ctx.cat},{label:"أوقات التداول",value:ctx.trading,style:"font-size:10px;"},
     ],
     refresh:async()=>{await fetchMarketsData(true);openMarketDetail(sec,idx);},
@@ -3977,7 +4019,7 @@ function openEgx(name){
   const m=liveMarkets.eg.find(x=>x.n===name);
   document.getElementById("egx-name").textContent=name;
   document.getElementById("egx-val").textContent=m?.v||"";
-  document.getElementById("egx-chg").innerHTML=`<span style="color:${m?.up?"var(--up)":"var(--dn)"};">${m?.up?"▲":"▼"} ${sanitize(m?.c||"")}</span>`;
+  document.getElementById("egx-chg").innerHTML=`<span style="color:${m?.flat?"var(--t5)":m?.up?"var(--up)":"var(--dn)"};">${m?.flat?"—":(m?.up?"▲":"▼")} ${sanitize(m?.flat?"":(m?.c||""))}</span>`;
   curStocks=[...liveStocks];
   document.querySelectorAll(".sort-btn").forEach((b,i)=>b.classList.toggle("active",i===0));
   renderStocks();document.getElementById("egx-page").classList.add("open");
@@ -4322,7 +4364,7 @@ function vBuildHome(b){
         <div class="vstat" style="cursor:default;">
           <div class="vstat-l" style="font-weight:800;color:var(--t2);">${sanitize(m.n)}</div>
           <div class="vstat-n" style="font-size:14px;">${sanitize(m.v)}</div>
-          <div class="vstat-sub" style="color:${m.up?"var(--g)":"var(--dn)"};">${m.up?"▲":"▼"} ${sanitize(m.c)}</div>
+          <div class="vstat-sub" style="color:${m.flat?"var(--t5)":m.up?"var(--g)":"var(--dn)"};">${m.flat?"—":(m.up?"▲":"▼")} ${sanitize(m.flat?"":m.c)}</div>
         </div>`).join("")}
     </div>
 
@@ -4512,7 +4554,7 @@ function vBuildMkts(b){
           <div class="vstat"${m.clickable?` onclick='openEgx(${safeJsArg(m.n)})'`:""} style="${m.clickable?"cursor:pointer;":""}">
             <div class="vstat-l" style="font-weight:800;color:var(--t2);">${sanitize(m.n)}</div>
             <div class="vstat-n" style="font-size:15px;">${sanitize(m.v)}</div>
-            <div class="vstat-sub" style="color:${m.up?"var(--g)":"var(--dn)"};">${m.up?"▲":"▼"} ${sanitize(m.c)}</div>
+            <div class="vstat-sub" style="color:${m.flat?"var(--t5)":m.up?"var(--g)":"var(--dn)"};">${m.flat?"—":(m.up?"▲":"▼")} ${sanitize(m.flat?"":m.c)}</div>
           </div>`).join("")}
       </div>`).join("")}
 

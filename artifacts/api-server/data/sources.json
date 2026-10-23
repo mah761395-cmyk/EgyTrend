@@ -9,8 +9,8 @@
     "url": "https://www.elaosboa.com/feed",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
     }
   },
   "masrawy": {
@@ -22,9 +22,10 @@
     "color": "#10b981",
     "url": "https://news.google.com/rss/search?q=site:masrawy.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "amwal": {
@@ -36,9 +37,10 @@
     "color": "#7c3aed",
     "url": "https://amwalalghad.com/category/news/feed",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "elwatan": {
@@ -50,9 +52,10 @@
     "color": "#b45309",
     "url": "https://news.google.com/rss/search?q=site:elwatannews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "shorouk": {
@@ -64,9 +67,10 @@
     "color": "#dc2626",
     "url": "https://news.google.com/rss/search?q=site:shorouknews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "almasryalyoum": {
@@ -79,8 +83,8 @@
     "url": "https://www.almasryalyoum.com/rss/rssfeed.aspx?SectionID=24",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
     }
   },
   "alarabiya": {
@@ -92,9 +96,10 @@
     "color": "#c2410c",
     "url": "https://news.google.com/rss/search?q=site:alarabiya.net+%D8%A3%D8%B3%D9%88%D8%A7%D9%82+when:2d&hl=ar&gl=SA&ceid=SA:ar",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "skynews": {
@@ -107,8 +112,9 @@
     "url": "https://www.skynewsarabia.com/rss",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "General-news feed without market focus; kept off for relevance."
     }
   },
   "bbcar": {
@@ -121,8 +127,9 @@
     "url": "https://feeds.bbci.co.uk/arabic/business/rss.xml",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "General-news feed without market focus; kept off for relevance."
     }
   },
   "alain": {
@@ -135,8 +142,8 @@
     "url": "https://news.google.com/rss/search?q=site:al-ain.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=AE&ceid=AE:ar",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
     }
   },
   "reuters": {
@@ -148,9 +155,10 @@
     "color": "#ff8c00",
     "url": "https://news.google.com/rss/search?q=site:reuters.com/business+when:2d&hl=en-US&gl=US&ceid=US:en",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "cnbc": {
@@ -162,9 +170,10 @@
     "color": "#0080ff",
     "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "yahoo": {
@@ -177,8 +186,8 @@
     "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC&region=US&lang=en-US",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
     }
   },
   "marketwatch": {
@@ -190,9 +199,10 @@
     "color": "#1a7f37",
     "url": "https://feeds.content.dowjones.io/public/rss/mw_topstories",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "investing": {
@@ -205,9 +215,9 @@
     "url": "https://www.investing.com/rss/news_25.rss",
     "archivedAt": "2026-10-16T00:00:00.000Z",
     "commercialRedisplay": {
-      "status": "not_approved",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "Archived: commercial redisplay permission was not established; do not scrape or reactivate without written approval."
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
     }
   },
   "ft": {
@@ -219,9 +229,10 @@
     "color": "#9d6e3f",
     "url": "https://www.ft.com/markets?format=rss",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "coindesk": {
@@ -233,9 +244,10 @@
     "color": "#f59e0b",
     "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "cointelegraph": {
@@ -247,9 +259,10 @@
     "color": "#0891b2",
     "url": "https://cointelegraph.com/rss",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "mubasher": {
@@ -261,9 +274,10 @@
     "color": "#0ea5e9",
     "url": "https://news.google.com/rss/search?q=site:mubasher.info+%D8%A3%D8%B3%D9%87%D9%85+%D8%A8%D9%88%D8%B1%D8%B5%D8%A9+when:2d&hl=ar&gl=EG&ceid=EG:ar",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "argaam": {
@@ -276,8 +290,8 @@
     "url": "https://www.argaam.com/ar/rss",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
     }
   },
   "aleqtisadiyah": {
@@ -290,8 +304,8 @@
     "url": "https://news.google.com/rss/search?q=site:aleqtisadiyah.com+when:2d&hl=ar&gl=SA&ceid=SA:ar",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
     }
   },
   "asharq": {
@@ -304,8 +318,8 @@
     "url": "https://news.google.com/rss/search?q=site:asharq.com+when:2d&hl=ar&gl=SA&ceid=SA:ar",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
     }
   },
   "almal": {
@@ -317,9 +331,10 @@
     "color": "#059669",
     "url": "https://news.google.com/rss/search?q=site:almalnews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "dostor": {
@@ -331,9 +346,10 @@
     "color": "#b91c1c",
     "url": "https://news.google.com/rss/search?q=site:dostor.org+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   },
   "cnnar": {
@@ -346,8 +362,8 @@
     "url": "https://news.google.com/rss/search?q=site:arabic.cnn.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
     }
   },
   "zawya": {
@@ -360,8 +376,8 @@
     "url": "https://news.google.com/rss/search?q=site:zawya.com+egypt+finance+when:2d&hl=en&gl=AE&ceid=AE:en",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
     }
   },
   "enterprise": {
@@ -374,8 +390,8 @@
     "url": "https://news.google.com/rss/search?q=site:enterprise.press+egypt+business+when:2d&hl=en&gl=EG&ceid=EG:en",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
     }
   },
   "arabfinance": {
@@ -387,9 +403,10 @@
     "color": "#15803d",
     "url": "https://news.google.com/rss/search?q=site:arabfinance.com+egypt+when:2d&hl=en&gl=EG&ceid=EG:en",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-16T00:00:00.000Z",
-      "note": "RSS endpoint identified, but commercial paid-subscriber redisplay permission has not been verified. Disabled fail-closed."
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
     }
   }
 }

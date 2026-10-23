@@ -590,11 +590,22 @@ function newsDedupKey(item: FeedItem): string {
   return title || item.link.toLowerCase().slice(0, 240);
 }
 
+/* Market relevance keeps a general feed (world/regional) from pushing genuine
+ * EGX and economy stories off the homepage. It is a small, bounded boost — at
+ * most six hours — so recency still dominates within the same relevance tier. */
+const MARKET_RELEVANCE_RX =
+  /البورصة|بورصة|أسهم|سهم|مؤشر|تداول|الجنيه|دولار|ذهب|تضخم|فائدة|البنك المركزي|اقتصاد|استثمار|نفط|بترول|egx|stock|shares|equity|market|inflation|interest rate|gold|brent|crude|currency|finance|bank|egypt/gi;
+
+function marketRelevance(title: string): number {
+  const unique = new Set((title.match(MARKET_RELEVANCE_RX) ?? []).map((m) => m.toLowerCase()));
+  return Math.min(unique.size, 3);
+}
+
 function newsImportance(item: FeedItem): number {
   const title = item.title.toLowerCase();
   const breaking = /\b(breaking|urgent|alert)\b|عاجل|فوري/.test(title) ? 1_000_000_000_000 : 0;
   const published = Date.parse(item.pubDate);
-  return breaking + (Number.isFinite(published) ? published : 0);
+  return breaking + marketRelevance(title) * 2 * 60 * 60 * 1000 + (Number.isFinite(published) ? published : 0);
 }
 
 /** Deduplicate across sources and rank newest/urgent items without copying text. */

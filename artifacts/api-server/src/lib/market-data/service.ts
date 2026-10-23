@@ -4,6 +4,7 @@ import { ProviderHealthMonitor } from "./health";
 import {
   CoinGeckoProvider,
   EgidContractProvider,
+  ExchangeRateApiProvider,
   TradingEconomicsCalendarProvider,
   TwelveDataProvider,
 } from "./providers";
@@ -43,6 +44,17 @@ export class MarketDataService {
     health?: ProviderHealthMonitor,
   ) {
     this.health = health ?? new ProviderHealthMonitor(cache);
+  }
+
+  /** Providers that can actually supply a daily series. Display approval alone
+   * is not enough: an FX reference feed has no OHLC history and must never
+   * unlock stored rows for other instruments. */
+  historySourceIds(): ReadonlySet<string> {
+    return new Set(
+      this.providers
+        .filter((provider) => typeof provider.getDailyOhlc === "function")
+        .map((provider) => provider.id),
+    );
   }
 
   async getBoard(): Promise<QuoteSnapshot> {
@@ -142,7 +154,12 @@ export class MarketDataService {
     // provider's own timestamp may already be beyond this snapshot's maximum
     // cache age. Keep serving it transparently, but expose it as stale rather
     // than refreshing the browser's confidence with our fetch time.
-    const sourceStale = cached.value.some((quote) => Date.now() - quote.asOf > staleMs);
+    /* End-of-day reference data is not late just because the wall clock moved:
+     * its freshness is the provider's trading date, so only intraday quotes
+     * are measured against the cache-age window. */
+    const sourceStale = cached.value.some(
+      (quote) => quote.freshness !== "end-of-day" && Date.now() - quote.asOf > staleMs,
+    );
     return {
       quotes: cached.value,
       fetchedAt: cached.cachedAt,
@@ -195,7 +212,7 @@ let singleton: MarketDataService | null = null;
 export function getMarketDataService(): MarketDataService {
   if (!singleton) {
     singleton = new MarketDataService(
-      [new EgidContractProvider(), new TwelveDataProvider(), new CoinGeckoProvider()],
+      [new EgidContractProvider(), new TwelveDataProvider(), new CoinGeckoProvider(), new ExchangeRateApiProvider()],
       [new TradingEconomicsCalendarProvider()],
     );
   }

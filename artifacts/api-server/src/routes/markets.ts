@@ -18,6 +18,8 @@ type Quote = {
   v: string;
   c: string;
   up: boolean;
+  /** True when the provider supplied no change value; never render a direction. */
+  flat?: boolean;
   s?: string;
   source?: string;
   clickable?: boolean;
@@ -138,8 +140,11 @@ function marketService(): MarketDataService {
 /** Rows are redisplayed only while their source still has an explicit active
  * customer-display approval. A stored price does not preserve a lapsed right. */
 function activeHistoryRedisplaySources(): ReadonlySet<string> {
+  const historyCapable = marketService().historySourceIds();
   return new Set(marketService().descriptors()
-    .filter((descriptor) => descriptor.state === "configured" && descriptor.externalDisplayConfirmed)
+    .filter((descriptor) => descriptor.state === "configured"
+      && descriptor.externalDisplayConfirmed
+      && historyCapable.has(descriptor.id))
     .map((descriptor) => descriptor.id));
 }
 
@@ -180,6 +185,7 @@ function toDisplayQuote(instrument: MarketInstrument, quote: CanonicalQuote): Qu
     v: formatPrice(instrument, quote),
     c: change.text,
     up: change.up,
+    flat: !Number.isFinite(quote.changePercent),
     s: instrument.subtitle,
     source: quote.sourceName,
     clickable: instrument.id === "egx:EGX30",
@@ -228,7 +234,7 @@ function toMarketsPayload(snapshot: QuoteSnapshot): MarketsPayload {
     ts: snapshot.fetchedAt,
     sources: {
       indices: freshness.gl.sources,
-      forex: sections.eg.filter((row) => row.n.includes("/")).map((row) => row.source).filter(Boolean).join(" + ") || "غير متاح",
+      forex: [...new Set(sections.eg.filter((row) => row.n.includes("/")).map((row) => row.source).filter(Boolean))].join(" + ") || "غير متاح",
       commodities: freshness.cm.sources,
       crypto: freshness.cr.sources,
     },

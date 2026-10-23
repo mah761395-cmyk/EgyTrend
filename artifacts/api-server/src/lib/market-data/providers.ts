@@ -383,6 +383,87 @@ export class TradingEconomicsCalendarProvider implements CalendarDataProvider {
   }
 }
 
+/**
+ * Daily reference FX rates from ExchangeRate-API's open endpoint.
+ *
+ * Terms of use (exchangerate-api.com/terms) allow commercial end use on the
+ * free plan and forbid redistributing the API itself; showing a rate beside
+ * its source and update time inside this product is the permitted end use.
+ * The feed is a daily reference table, so it is labelled end-of-day — never
+ * presented as a live, tradeable quote. Cross rates are derived from the same
+ * provider table (EGP per X = EGP-per-USD ÷ X-per-USD).
+ */
+export class ExchangeRateApiProvider implements MarketDataProvider {
+  readonly id = "exchange-rate-api";
+  readonly name = "ExchangeRate-API";
+  private readonly disabled: boolean;
+
+  constructor(
+    env: NodeJS.ProcessEnv = process.env,
+    private readonly http = new ResilientHttpClient(),
+  ) {
+    this.disabled = env["FX_REFERENCE_DISABLED"] === "true";
+  }
+
+  descriptor(): ProviderDescriptor {
+    return {
+      id: this.id,
+      name: this.name,
+      state: this.disabled ? "not_configured" : "configured",
+      note: this.disabled
+        ? "أُوقف يدويًا من إعدادات المشغّل."
+        : "أسعار مرجعية يومية للصرف (إسناد إلزامي). تُعرض مع وقت تحديث المصدر وليست سعرًا لحظيًا.",
+      coverage: ["fx"],
+      externalDisplayConfirmed: !this.disabled,
+    };
+  }
+
+  canServe(instrument: MarketInstrument): boolean {
+    return !this.disabled && FX_REFERENCE_PAIRS[instrument.id] !== undefined;
+  }
+
+  async getQuotes(instruments: MarketInstrument[]): Promise<ProviderQuoteResult> {
+    const supported = instruments.filter((instrument) => this.canServe(instrument));
+    if (!supported.length) return { quotes: [], requestedCount: 0 };
+    const payload = await this.http.getJson<Record<string, unknown>>(
+      "https://open.er-api.com/v6/latest/USD",
+      { providerId: this.id, timeoutMs: 8_000, attempts: 2, minIntervalMs: 250 },
+    );
+    const rates = payload["rates"] as Record<string, unknown> | undefined;
+    const asOf = epoch(payload["time_last_update_unix"]);
+    const egpPerUsd = finite(rates?.["EGP"]);
+    if (!rates || asOf === undefined || egpPerUsd === undefined || egpPerUsd <= 0) {
+      return { quotes: [], requestedCount: supported.length };
+    }
+    const quotes = supported.flatMap((instrument) => {
+      const code = FX_REFERENCE_PAIRS[instrument.id]!;
+      let price = egpPerUsd;
+      if (code !== "USD") {
+        const perUsd = finite(rates[code]);
+        if (perUsd === undefined || perUsd <= 0) return [];
+        price = egpPerUsd / perUsd;
+      }
+      return [{
+        instrumentId: instrument.id,
+        price: Math.round(price * 10_000) / 10_000,
+        currency: "EGP",
+        asOf,
+        sourceId: this.id,
+        sourceName: this.name,
+        freshness: "end-of-day" as const,
+      } satisfies CanonicalQuote];
+    });
+    return { quotes, requestedCount: supported.length };
+  }
+}
+
+const FX_REFERENCE_PAIRS: Record<string, string> = {
+  "fx:USD-EGP": "USD",
+  "fx:EUR-EGP": "EUR",
+  "fx:GBP-EGP": "GBP",
+  "fx:SAR-EGP": "SAR",
+};
+
 function isEgyptianExchangeInstrument(instrumentId: string): boolean {
   return instrumentId.startsWith("egx:") || instrumentId.startsWith("stock:egx:");
 }
