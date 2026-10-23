@@ -142,3 +142,61 @@ export const US_STOCKS: StockDefinition[] = [
   { id: "stock:us:T", sym: "T", name: "AT&T", sector: "Telecom" },
   { id: "stock:us:VZ", sym: "VZ", name: "Verizon", sector: "Telecom" },
 ];
+
+/* ── TradingView display symbols ─────────────────────────────────────────────
+ * The platform's own quotes stay fail-closed: no licensed provider, no price in
+ * the product's data layer. Where TradingView publishes a page for an instrument,
+ * the UI may additionally show TradingView's own widget. That widget renders
+ * inside TradingView's frame with its attribution and its own latency, so the
+ * value never becomes a platform quote and nothing is redistributed by us.
+ * Only symbols whose public TradingView page was verified are listed; anything
+ * else stays explicitly unavailable instead of pointing at a symbol TradingView
+ * would render as invalid. */
+export type TvSymbol = { s: string; d: string };
+
+/* Verified 404 on TradingView: no page exists, so no widget is offered. */
+const EGX_WITHOUT_TV = new Set([
+  "ABCB", "ACDP", "AIBC", "AMCO", "ARPH", "ARCO", "BMWO", "EDBE", "ESRS",
+  "HELB", "GGHE", "IDKO", "KAHA", "MTEL", "OTLQ", "SFAP", "SCOM",
+]);
+/* Verified as NYSE listings (the remaining US entries are Nasdaq). */
+const US_NYSE = new Set([
+  "ABT", "ABBV", "BA", "BAC", "AXP", "BMY", "C", "CAT", "CVX", "CRM", "F",
+  "DIS", "GS", "GM", "HD", "GE", "IBM", "JNJ", "KO", "JPM", "MCD", "LOW",
+  "MA", "MRK", "LLY", "MS", "NKE", "ORCL", "PG", "PFE", "TGT", "T", "TMO",
+  "UNH", "V", "XOM", "VZ",
+]);
+const INSTRUMENT_TV: Record<string, string> = {
+  /* EGX70/EGX100 have no TradingView page, so they stay unavailable. */
+  "egx:EGX30": "EGX:EGX30",
+  "index:SPX": "SP:SPX",
+  "index:NASDAQ": "NASDAQ:IXIC",
+  "index:DAX": "XETR:DAX",
+  "index:FTSE100": "TVC:UKX",
+  "commodity:XAU": "TVC:GOLD",
+  "commodity:BRENT": "TVC:UKOIL",
+  "commodity:XAG": "TVC:SILVER",
+  "commodity:COPPER": "COMEX:HG1!",
+  "crypto:BTC": "BINANCE:BTCUSDT",
+  "crypto:ETH": "BINANCE:ETHUSDT",
+  "crypto:SOL": "BINANCE:SOLUSDT",
+  "crypto:XRP": "BINANCE:XRPUSDT",
+};
+
+export function tvSymbolForInstrument(id: string): string | null {
+  const known = INSTRUMENT_TV[id];
+  if (known) return known;
+  if (id.startsWith("stock:egx:")) {
+    const sym = id.slice("stock:egx:".length);
+    return EGX_WITHOUT_TV.has(sym) ? null : `EGX:${sym}`;
+  }
+  if (id.startsWith("stock:us:")) {
+    const sym = id.slice("stock:us:".length);
+    /* BRK-B has no matching page under either exchange slug. */
+    if (sym === "BRK-B") return null;
+    return `${US_NYSE.has(sym) ? "NYSE" : "NASDAQ"}:${sym}`;
+  }
+  return null;
+}
+
+

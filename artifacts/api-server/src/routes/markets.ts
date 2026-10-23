@@ -1,7 +1,14 @@
 import crypto from "node:crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { logger } from "../lib/logger";
-import { EGX_STOCKS, MARKET_INSTRUMENTS, US_STOCKS, type StockDefinition } from "../lib/market-data/catalog";
+import {
+  EGX_STOCKS,
+  MARKET_INSTRUMENTS,
+  US_STOCKS,
+  tvSymbolForInstrument,
+  type StockDefinition,
+  type TvSymbol,
+} from "../lib/market-data/catalog";
 import { getMarketHistorySnapshot, getMarketSparklines, parseHistoryRange, runMarketDailySnapshot } from "../lib/market-data/history";
 import { currentUser, isActivePrivilegedAdmin, hasVipFeature } from "../lib/userAuth";
 import { getMarketDataService, type MarketDataService, type QuoteSnapshot } from "../lib/market-data/service";
@@ -48,6 +55,9 @@ export type MarketsPayload = {
   };
   markets: { eg: Quote[]; gl: Quote[]; cm: Quote[]; cr: Quote[] };
   ticker: Quote[];
+  /** TradingView widget symbols per section. They are display-only: the widget
+   * renders inside TradingView's own frame and never becomes a platform quote. */
+  tv: Record<MarketSection, TvSymbol[]>;
 };
 
 export type StockQuote = {
@@ -90,6 +100,8 @@ type StockSnapshot = {
   delayedMinutes?: number;
   freshness?: "real-time" | "delayed" | "end-of-day" | "unknown";
   stocks: StockQuote[];
+  /** Display-only TradingView widget symbols for this list. */
+  tvSymbols: TvSymbol[];
 };
 
 type CalEvent = {
@@ -211,9 +223,12 @@ function sectionMeta(rows: Quote[], snapshot: QuoteSnapshot): SectionFreshness {
 function toMarketsPayload(snapshot: QuoteSnapshot): MarketsPayload {
   const quotes = quoteByInstrument(snapshot);
   const sections: Record<MarketSection, Quote[]> = { eg: [], gl: [], cm: [], cr: [] };
+  const unpricedTv: Record<MarketSection, TvSymbol[]> = { eg: [], gl: [], cm: [], cr: [] };
   for (const instrument of MARKET_INSTRUMENTS) {
     const quote = quotes.get(instrument.id);
-    if (quote) sections[instrument.section].push(toDisplayQuote(instrument, quote));
+    if (quote) { sections[instrument.section].push(toDisplayQuote(instrument, quote)); continue; }
+    const tv = tvSymbolForInstrument(instrument.id);
+    if (tv) unpricedTv[instrument.section].push({ s: tv, d: instrument.symbol });
   }
 
   const freshness: Record<MarketSection, SectionFreshness> = {
@@ -254,6 +269,7 @@ function toMarketsPayload(snapshot: QuoteSnapshot): MarketsPayload {
     },
     markets: sections,
     ticker,
+    tv: unpricedTv,
   };
 }
 
@@ -436,6 +452,13 @@ function toStockSnapshot(snapshot: QuoteSnapshot, definitions: StockDefinition[]
     delayedMinutes: delays.length ? Math.max(...delays) : undefined,
     freshness: freshness.length === 1 ? freshness[0] : freshness.length ? "unknown" : undefined,
     stocks,
+    /* Only rows the licensed providers did not price get a TradingView widget
+     * entry, so the UI never doubles a platform quote with a vendor one. */
+    tvSymbols: definitions.flatMap((definition) => {
+      if (byId.has(definition.id)) return [];
+      const tv = tvSymbolForInstrument(definition.id);
+      return tv ? [{ s: tv, d: definition.sym }] : [];
+    }),
   };
 }
 

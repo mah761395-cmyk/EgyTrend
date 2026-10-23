@@ -207,6 +207,12 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .sec-h{color:var(--t1);font-size:15px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:7px;}
 .sec-h::before{content:'';display:inline-block;width:3px;height:14px;border-radius:3px;background:var(--g);box-shadow:0 0 8px rgba(16,185,129,.4);}
 .mkt-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:18px;}
+/* TradingView-rendered quote table for rows the licensed providers did not price. */
+.tv-block{background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:10px 10px 4px;margin:-8px 0 16px;}
+.tv-block-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 2px 6px;}
+.tv-block-t{color:var(--t2);font-weight:800;font-size:11px;}
+.tv-block-n{color:var(--t5);font-size:9px;line-height:1.5;padding:0 2px 6px;}
+.tv-block .tradingview-widget-container{width:100%;}
 .mc{background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:12px 12px;cursor:pointer;transition:all .2s;position:relative;}
 .mc:hover{border-color:rgba(16,185,129,.22);background:var(--s2);}
 .mc.wl{border-color:rgba(245,158,11,.28);background:var(--aud);}
@@ -1777,6 +1783,8 @@ let chatHist=[];
 let subStep=1, selPlan="monthly", selPay="vodafone";
 let srcStatus={};
 let liveMarkets = JSON.parse(JSON.stringify(MARKET_STATIC)); // loading placeholders only — never financial values
+let liveTv = {eg:[],gl:[],cm:[],cr:[]}; // TradingView display symbols for rows no licensed provider priced
+let egxTvSymbols = []; // TradingView display symbols for the EGX stock list
 let marketFreshness = {fetchedAt:0,stale:true,unavailable:false,loading:true,sections:{}};
 let liveStocks = []; // EGX stocks — populated from /api/markets/stocks
 let egxStocksFreshness = {fetchedAt:0,stale:true,source:"غير متاح",unavailable:false,loading:true};
@@ -2853,10 +2861,11 @@ async function fetchStocksData(){
     const stocks=normalizeStockList(j.stocks);
     egxStocksFreshness={...normalizeStockFreshness(j),unavailable:j.unavailable===true||stocks.length===0};
     liveStocks=stocks;
+    egxTvSymbols=Array.isArray(j.tvSymbols)?j.tvSymbols:[];
 
   }catch{
     if(egxStocksFreshness.fetchedAt)egxStocksFreshness={...egxStocksFreshness,stale:true,loading:false};
-    else{egxStocksFreshness={fetchedAt:0,stale:true,source:"غير متاح",unavailable:true,loading:false};liveStocks=[];}
+    else{egxStocksFreshness={fetchedAt:0,stale:true,source:"غير متاح",unavailable:true,loading:false};liveStocks=[];egxTvSymbols=[];}
   }
   const ep=document.getElementById("egx-page");
   if(ep&&ep.classList.contains("open"))renderStocks();
@@ -3158,6 +3167,9 @@ async function fetchMarketsData(force){
       rows.forEach(r=>{if(!base.some(b=>b.n===r.n))merged.push(r);});
       liveMarkets[k]=merged.length?merged:unavailableMarketRows(k);
     });
+
+    // TradingView display symbols cover exactly the rows no provider priced.
+    liveTv = d.tv && typeof d.tv==="object" ? d.tv : {eg:[],gl:[],cm:[],cr:[]};
 
     // Update ticker only with rows the server actually supplied.
     liveTicks=normalizeMarketRows(d.ticker);
@@ -3592,6 +3604,33 @@ function marketSkeletonRows(key){
     <div class="mc-sub">جارٍ التحقق من المصدر…</div>
   </div>`).join("");
 }
+/* ═══ TradingView quote table (display only) ═══════════════════════════════
+ * The platform's own numbers stay fail-closed: no licensed provider, no price.
+ * For rows a provider did not price, the server sends `tv` symbols and this
+ * block renders TradingView's own widget inside TradingView's frame, carrying
+ * TradingView's attribution and latency. It is never used as a platform quote:
+ * no portfolio value, no calculator input, no history point. */
+const tvBuiltSigs = {};
+function ensureTvQuotes(key,gridEl,groups){
+  const existing=document.getElementById("tv-"+key);
+  if(!gridEl||!Array.isArray(groups)||!groups.length){existing?.remove();delete tvBuiltSigs[key];return;}
+  const signature=groups.map(g=>g.s).join("|");
+  if(existing&&tvBuiltSigs[key]===signature&&existing.querySelector("iframe"))return;
+  existing?.remove();
+  const block=document.createElement("div");
+  block.id="tv-"+key;block.className="tv-block";
+  block.innerHTML=`<div class="tv-block-hd"><div class="tv-block-t">أسعار من TradingView</div><a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer" style="color:var(--t5);font-size:9px;">TradingView ↗</a></div>
+    <div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div>
+    <div class="tv-block-n">هذه الأسعار تُعرض داخل أداة TradingView نفسها وقد تكون متأخرة أو متوقفة عند إغلاق السوق، وليست أسعار المنصة المرخّصة؛ لذلك لا تُستخدم في المحفظة أو الحاسبة أو الرسوم.</div>`;
+  gridEl.parentNode.insertBefore(block,gridEl);
+  const config={width:"100%",height:Math.min(78+groups.length*32,360),symbolsGroups:[{name:"",originalName:"",symbols:groups.map(g=>({name:g.s,displayName:g.d||g.s}))}],showSymbolLogo:true,colorTheme:"dark",isTransparent:true,locale:"ar",backgroundColor:"rgba(0,0,0,0)"};
+  const script=document.createElement("script");
+  script.type="text/javascript";script.async=true;
+  script.src="https://s3.tradingview.com/external-embedding/embed-widget-market-quotes.js";
+  script.text=JSON.stringify(config);
+  block.querySelector(".tradingview-widget-container").appendChild(script);
+  tvBuiltSigs[key]=signature;
+}
 function buildMarkets(){
   const dataBadge=document.getElementById("mkt-data-badge");
   if(dataBadge){
@@ -3614,6 +3653,7 @@ function buildMarkets(){
         <div style="color:var(--t5);font-size:8px;margin-top:3px;">المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")} · وقت المصدر: ${sanitize(cairoTimestampLabel(m.asOf))} · ${sanitize(marketStateLabel({...marketFreshness,delayedMinutes:secMeta.delayedMinutes,freshness:secMeta.freshness}))}</div>
       </div>`;
     }).join("");
+    ensureTvQuotes(key,el,liveTv?.[key]);
   });
   // Only fetch batched historical closes after the market page is actually visible.
   const marketsPage=document.getElementById("page-markets");
@@ -4047,8 +4087,12 @@ function renderStocks(){
   if(!liveStocks.length){
     const unavailable=egxStocksFreshness.unavailable===true;
     el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">${unavailable?"📡":"⏳"}</div><div>${unavailable?"بيانات أسهم EGX غير متاحة حاليًا":"جارٍ تحميل بيانات الأسهم..."}</div>${unavailable?`<div style="font-size:10px;color:var(--t5);margin-top:5px;">المصدر: ${sanitize(egxStocksFreshness.source||"غير متاح")}</div><button onclick="fetchStocksData()" style="margin-top:8px;background:none;border:1px solid var(--b2);border-radius:6px;color:var(--t3);font:inherit;cursor:pointer;padding:3px 8px;">↻ إعادة المحاولة</button>`:""}</div>`;
+    // No licensed EGX feed: TradingView's own widget still lists the symbols,
+    // inside TradingView's frame and with its own latency and attribution.
+    ensureTvQuotes("stocks",el,unavailable?egxTvSymbols:[]);
     return;
   }
+  ensureTvQuotes("stocks",el,[]);
   if(!curStocks.length){el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">📋</div><div>لا توجد أسهم مطابقة</div></div>`;return;}
   const source=egxStocksFreshness.source||"غير متاح";
   el.innerHTML=`<div style="color:var(--t5);font-size:9px;text-align:center;padding:4px 0 2px;font-family:var(--mono);">${marketAgeLabel(egxStocksFreshness)} · ${marketStateLabel(egxStocksFreshness)} · المصدر: ${sanitize(source)}</div>`
