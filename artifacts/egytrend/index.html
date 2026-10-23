@@ -3146,11 +3146,17 @@ async function fetchMarketsData(force){
     if(d?.status!=="ok"||!d.markets)throw new Error("bad payload");
     marketFreshness=normalizeMarketFreshness(d.freshness,d.stale===true);
 
-    // A missing section is not permission to retain a visual placeholder or
-    // an old number: show an explicit unavailable state for that section.
+    /* Merge the server's rows over the label catalog: an instrument that the
+     * server did not price stays visible as an explicit "غير متاح" card
+     * instead of disappearing, and any new server row is appended. No value
+     * is ever synthesised here. */
     ["eg","gl","cm","cr"].forEach(k=>{
       const rows=normalizeMarketRows(d.markets[k]);
-      liveMarkets[k]=rows.length?rows:unavailableMarketRows(k);
+      const base=MARKET_STATIC[k]||[];
+      const byName=new Map(rows.map(r=>[r.n,r]));
+      const merged=base.map(b=>byName.get(b.n)||{...b,v:"غير متاح حاليًا",c:"—",up:false,flat:true,source:"غير متاح"});
+      rows.forEach(r=>{if(!base.some(b=>b.n===r.n))merged.push(r);});
+      liveMarkets[k]=merged.length?merged:unavailableMarketRows(k);
     });
 
     // Update ticker only with rows the server actually supplied.
