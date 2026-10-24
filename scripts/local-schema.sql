@@ -110,6 +110,30 @@ CREATE TABLE IF NOT EXISTS payment_requests (
   tx text NOT NULL,
   status text NOT NULL DEFAULT 'pending',
   notes text,
+  -- Payment proof (data URL + original name) and the admin decision time:
+  -- these exist in the drizzle schema, so a mirror without them made the
+  -- admin payments tab answer 500 ("column does not exist").
+  proof_image text,
+  proof_name text,
+  decided_at timestamp,
   created_at timestamp NOT NULL DEFAULT now(),
   updated_at timestamp NOT NULL DEFAULT now()
 );
+
+-- Auth hardening (mirrors lib/db/migrations/0012_auth_hardening.up.sql).
+-- Shared login counters (multi-instance) and server-side session revocation.
+CREATE TABLE IF NOT EXISTS auth_rate_limits (
+  bucket       text PRIMARY KEY,
+  hits         integer NOT NULL DEFAULT 0,
+  window_start timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS auth_rate_limits_window_idx ON auth_rate_limits (window_start);
+
+CREATE TABLE IF NOT EXISTS auth_session_revocations (
+  scope      text NOT NULL,
+  subject    integer NOT NULL,
+  jti        text NOT NULL DEFAULT '',
+  revoked_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (scope, subject, jti)
+);
+CREATE INDEX IF NOT EXISTS auth_session_revocations_time_idx ON auth_session_revocations (revoked_at);

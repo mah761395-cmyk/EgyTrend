@@ -4,6 +4,7 @@ import { and, eq, gt, isNull, ne } from "drizzle-orm";
 import { appUsersTable, passwordResetsTable } from "@workspace/db/schema";
 import { db } from "@workspace/db";
 import {
+  bearerToken,
   checkUserPassword,
   currentUser,
   hashUserPassword,
@@ -11,6 +12,15 @@ import {
   signUserToken,
 } from "../lib/userAuth";
 import { SESSION_COOKIE, SEVEN_DAYS_MS, clearSessionCookie, setSessionCookie } from "../lib/security";
+import {
+  checkRegisterAllowed,
+  clearRegisterAttempts,
+  evaluateLogin,
+  phoneBucket,
+  recordRegisterAttempt,
+} from "../lib/user-login";
+import { LIMITS, getAttemptStore } from "../lib/rate-limit";
+import { revokeAllSessions, revokePresentedSession } from "../lib/session-revocation";
 import { isSmtpConfigured, resetEmailHtml, sendMail } from "../lib/mailer";
 import { logger } from "../lib/logger";
 
@@ -18,22 +28,27 @@ const router = Router();
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-/* Small in-memory limiter (same pattern as admin.ts) for the public
- * forgot-password endpoint — blocks mailbox/API flooding. */
-const rlMap = new Map<string, { n: number; reset: number }>();
-function rateLimitHit(key: string, max: number, windowMs: number): boolean {
-  const now = Date.now();
-  const e = rlMap.get(key);
-  if (!e || now > e.reset) {
-    if (rlMap.size > 5000) for (const [k, v] of rlMap) if (now > v.reset) rlMap.delete(k);
-    rlMap.set(key, { n: 1, reset: now + windowMs });
-    return false;
-  }
-  e.n += 1;
-  return e.n > max;
+/* Attempt counters live in the shared store (Postgres when configured), so the
+ * limits hold across Vercel instances instead of multiplying per instance. */
+function tooMany(retryAfterSec: number, res: Response): void {
+  res.setHeader("Retry-After", String(retryAfterSec));
+  res.setHeader("Cache-Control", "no-store");
+  res.status(429).json({
+    status: "error",
+    message: "محاولات كثيرة — حاول مرة أخرى بعد قليل",
+    retryAfter: retryAfterSec,
+  });
 }
 
-function publicUser(user: typeof appUsersTable.$inferSelect) {
+type PublicUserInput = {
+  id: number;
+  phone: string;
+  name: string;
+  plan: string;
+  vipExpiresAt: Date | null;
+};
+
+function publicUser(user: PublicUserInput) {
   return {
     id: user.id,
     phone: user.phone,
@@ -57,6 +72,17 @@ router.post("/register", async (req: Request, res: Response) => {
     return;
   }
 
+  /* Account creation is capped per IP and per phone: a script cannot mint
+   * accounts in bulk, and replayed requests cannot bypass the count. */
+  const store = getAttemptStore();
+  const ip = req.ip || "unknown";
+  const gate = await checkRegisterAllowed({ phone, ip }, store);
+  if (!gate.allowed) {
+    tooMany(gate.retryAfterSec, res);
+    return;
+  }
+  await recordRegisterAttempt({ phone, ip }, store);
+
   const existing = await db.select({ id: appUsersTable.id }).from(appUsersTable)
     .where(eq(appUsersTable.phone, phone)).limit(1);
   if (existing.length) {
@@ -78,6 +104,7 @@ router.post("/register", async (req: Request, res: Response) => {
     passwordHash: hashUserPassword(password),
     ...(email ? { email } : {}),
   }).returning();
+  await clearRegisterAttempts({ phone, ip }, store);
   const token = signUserToken({ sub: user.id, phone: user.phone, name: user.name, role: "user", plan: user.plan });
   /* httpOnly cookie only — the SPA never stores a credential any more. */
   setSessionCookie(res, SESSION_COOKIE, token, SEVEN_DAYS_MS);
@@ -86,18 +113,32 @@ router.post("/register", async (req: Request, res: Response) => {
 });
 
 router.post("/login", async (req: Request, res: Response) => {
-  const phone = normalizeUserPhone(req.body?.phone);
-  const password = String(req.body?.password || "");
-  if (!phone || !password) {
-    res.status(400).json({ status: "error", message: "phone and password required" });
+  const ip = req.ip || "unknown";
+  /* Limits are checked before any password work, so a blocked caller cannot
+   * spend CPU on scrypt and cannot slip extra guesses through by replaying. */
+  const outcome = await evaluateLogin(
+    { phone: req.body?.phone, password: req.body?.password, ip },
+    {
+      store: getAttemptStore(),
+      findUser: async (phone) => {
+        const [user] = await db.select().from(appUsersTable)
+          .where(and(eq(appUsersTable.phone, phone), eq(appUsersTable.status, "active"))).limit(1);
+        return user ?? null;
+      },
+    },
+  );
+
+  if (outcome.kind === "limited") {
+    tooMany(outcome.retryAfterSec, res);
     return;
   }
-  const [user] = await db.select().from(appUsersTable)
-    .where(and(eq(appUsersTable.phone, phone), eq(appUsersTable.status, "active"))).limit(1);
-  if (!user || !checkUserPassword(password, user.passwordHash)) {
-    res.status(401).json({ status: "error", message: "invalid credentials" });
+  if (outcome.kind === "invalid") {
+    res.setHeader("Cache-Control", "no-store");
+    res.status(outcome.status).json({ status: "error", message: outcome.message });
     return;
   }
+
+  const user = outcome.user;
   const normalized = publicUser(user);
   const token = signUserToken({
     sub: user.id,
@@ -113,9 +154,10 @@ router.post("/login", async (req: Request, res: Response) => {
   res.json({ status: "ok", user: normalized });
 });
 
-/* Explicit logout: clears the httpOnly cookie. A logged-out session cannot be
- * revived from client storage because none is kept there. */
-router.post("/logout", (_req: Request, res: Response) => {
+/* Explicit logout: revoke this session server-side, then clear the cookie.
+ * Clearing the cookie alone would leave any copy of the token valid. */
+router.post("/logout", async (req: Request, res: Response) => {
+  await revokePresentedSession("user", bearerToken(req));
   clearSessionCookie(res, SESSION_COOKIE);
   res.setHeader("Cache-Control", "no-store");
   res.json({ status: "ok" });
@@ -154,6 +196,23 @@ router.put("/password", async (req: Request, res: Response) => {
     passwordHash: hashUserPassword(newPassword),
     updatedAt: new Date(),
   }).where(eq(appUsersTable.id, user.id));
+  /* Changing the password ends every other session (a stolen token dies here).
+   * This device gets a fresh session whose `iat` is strictly after the
+   * revocation, so the revocation never eats the session it just replaced. */
+  const revokedAt = Date.now();
+  await revokeAllSessions("user", user.id);
+  const fresh = signUserToken(
+    {
+      sub: user.id,
+      phone: user.phone,
+      name: user.name,
+      role: "user",
+      plan: publicUser(user).plan,
+    },
+    { issuedAfterMs: revokedAt },
+  );
+  setSessionCookie(res, SESSION_COOKIE, fresh, SEVEN_DAYS_MS);
+  res.setHeader("Cache-Control", "no-store");
   res.json({ status: "ok" });
 });
 
@@ -167,8 +226,17 @@ router.post("/forgot-password", async (req: Request, res: Response) => {
   const ip = req.ip || "unknown";
   const email0 = String(req.body?.email || "").trim().toLowerCase();
   // Shared-IP friendly (mobile carrier NAT is common in Egypt): a generous
-  // per-IP ceiling plus a strict per-mailbox ceiling.
-  if (rateLimitHit(`fp-ip:${ip}`, 20, 15 * 60 * 1000) || rateLimitHit(`fp-em:${email0}`, 3, 15 * 60 * 1000)) {
+  // per-IP ceiling plus a strict per-mailbox ceiling, both counted in the
+  // shared store so multiple instances cannot multiply them.
+  const store = getAttemptStore();
+  const byIp = await store.hit(`fp-ip:${ip}`, LIMITS.forgotIp.limit, LIMITS.forgotIp.windowMs);
+  const byMail = await store.hit(
+    `fp-em:${email0}`,
+    LIMITS.forgotEmail.limit,
+    LIMITS.forgotEmail.windowMs,
+  );
+  if (byIp.blocked || byMail.blocked) {
+    res.setHeader("Retry-After", String(Math.max(byIp.retryAfterSec, byMail.retryAfterSec, 1)));
     res.status(429).json({ status: "error", message: "طلبات كثيرة — حاول بعد 15 دقيقة" });
     return;
   }
@@ -220,7 +288,9 @@ router.post("/forgot-password", async (req: Request, res: Response) => {
  * Single-use, hash-checked, expiring token → sets a new password. */
 router.post("/reset-password", async (req: Request, res: Response) => {
   const ip = req.ip || "unknown";
-  if (rateLimitHit(`rp:${ip}`, 30, 15 * 60 * 1000)) {
+  const rpState = await getAttemptStore().hit(`rp:${ip}`, 30, 15 * 60 * 1000);
+  if (rpState.blocked) {
+    res.setHeader("Retry-After", String(rpState.retryAfterSec));
     res.status(429).json({ status: "error", message: "طلبات كثيرة — حاول بعد 15 دقيقة" });
     return;
   }
@@ -249,6 +319,11 @@ router.post("/reset-password", async (req: Request, res: Response) => {
     updatedAt: new Date(),
   }).where(eq(appUsersTable.id, user.id));
   await db.update(passwordResetsTable).set({ usedAt: new Date() }).where(eq(passwordResetsTable.id, row.id));
+  /* A reset means the account may have been compromised: every old session
+   * dies, and the login counter is cleared so the owner can sign in again. */
+  await revokeAllSessions("user", user.id);
+  await getAttemptStore().clear(phoneBucket(user.phone));
+  res.setHeader("Cache-Control", "no-store");
   res.json({ status: "ok", message: "تم تحديث كلمة المرور — يمكنك تسجيل الدخول الآن" });
 });
 

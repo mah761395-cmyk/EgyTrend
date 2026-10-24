@@ -10,13 +10,23 @@ export type UserClaims = {
   role: "user";
   plan: string;
   vipExpiresAt?: string;
+  /** Session id, so a single logout can be revoked server-side. */
+  jti?: string;
+  /** Issued-at (seconds), set by jsonwebtoken. */
+  iat?: number;
 };
 
-const JWT_SECRET = process.env["SESSION_SECRET"];
-
+/* Read lazily: the value arrives from the environment (Vercel, .env loaded at
+ * boot, or a test that sets it before exercising the helpers), so capturing it
+ * at module load made the helpers untestable and order-dependent. */
 function secret(): string {
-  if (!JWT_SECRET) throw new Error("SESSION_SECRET is not configured");
-  return JWT_SECRET;
+  const value = process.env["SESSION_SECRET"];
+  if (!value) throw new Error("SESSION_SECRET is not configured");
+  return value;
+}
+
+function secretOrNull(): string | null {
+  return process.env["SESSION_SECRET"] || null;
 }
 
 export function normalizeUserPhone(value: unknown): string {
@@ -41,14 +51,33 @@ export function checkUserPassword(password: string, encoded: string): boolean {
   }
 }
 
-export function signUserToken(claims: UserClaims): string {
-  return jwt.sign(claims, secret(), { expiresIn: "7d" });
+export function signUserToken(claims: UserClaims, options: { issuedAfterMs?: number } = {}): string {
+  /* `jti` identifies this one session: logout revokes that id, while a password
+   * change revokes everything issued before it. `issuedAfterMs` lets a route
+   * mint the replacement session with an `iat` strictly after the revocation
+   * it just wrote — without it, a token created in the same second as the
+   * revocation would be revoked as well (iat has one-second resolution). */
+  const { jti: _jti, iat: _iat, ...payload } = claims;
+  /* jsonwebtoken takes the issued-at from the payload and has no `timestamp`
+   * option (an unknown option is rejected), so the replacement session's `iat`
+   * is set here: one whole second after the revocation, because `iat` only has
+   * second resolution and a token minted in the same second would itself be
+   * revoked. */
+  const body: Record<string, unknown> = payload;
+  if (options.issuedAfterMs !== undefined) {
+    body["iat"] = Math.ceil(options.issuedAfterMs / 1000) + 1;
+  }
+  return jwt.sign(body, secret(), {
+    expiresIn: "7d",
+    jwtid: crypto.randomUUID(),
+  });
 }
 
 export function verifyUserToken(token: string): UserClaims | null {
-  if (!JWT_SECRET || !token) return null;
+  const key = secretOrNull();
+  if (!key || !token) return null;
   try {
-    const value = jwt.verify(token, JWT_SECRET);
+    const value = jwt.verify(token, key);
     if (!value || typeof value === "string" || (value as { role?: string }).role !== "user") return null;
     return value as unknown as UserClaims;
   } catch {
@@ -81,9 +110,10 @@ export function currentUser(req: Request): UserClaims | null {
 
 export function isAdminToken(req: Request): boolean {
   const token = adminToken(req);
-  if (!token || !JWT_SECRET) return false;
+  const key = secretOrNull();
+  if (!token || !key) return false;
   try {
-    const value = jwt.verify(token, JWT_SECRET);
+    const value = jwt.verify(token, key);
     const role = value && typeof value !== "string" ? (value as { role?: string }).role : undefined;
     return role === "admin" || role === "super_admin";
   } catch {

@@ -1,10 +1,11 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { opportunities } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 import crypto from "crypto";
 import { logger } from "../lib/logger";
 import { currentUser, isAdminToken, isVipActive } from "../lib/userAuth";
+import { requireStaff } from "./admin";
 import { buildLocalOpportunities, type OppCandidate } from "../lib/opp-engine";
 import { getMarketsSnapshot, getStocksSnapshot, type StockQuote } from "./markets";
 import { getNewsSnapshot } from "./news";
@@ -25,10 +26,10 @@ function isAdmin(req: { headers: Record<string, string | string[] | undefined>; 
   return isAdminToken(req as unknown as Parameters<typeof isAdminToken>[0]);
 }
 
-function requireAuth(req: any, res: any, next: any) {
-  if (!isAdmin(req)) return res.status(401).json({ status: "error", message: "unauthorized" });
-  next();
-}
+/* Staff-only, with the fine-grained `opportunities` permission: any employee
+ * token used to be enough to create or delete opportunities. */
+const STAFF_EDITORS = ["super_admin", "admin", "editor", "analyst"];
+const staffWhoMayEdit = requireStaff("opportunities", ...STAFF_EDITORS);
 
 /* ─── Live in-process inputs (serverless-safe) ─────────────────────────
  * Reads the SAME in-process caches the /api/markets, /api/markets/stocks
@@ -114,7 +115,7 @@ router.get("/opportunities", async (req, res) => {
 });
 
 /* ─── POST /api/opportunities ────────────────────────────────── */
-router.post("/opportunities", requireAuth, async (req, res) => {
+router.post("/opportunities", staffWhoMayEdit, async (req: Request, res: Response) => {
   try {
     const { title, summary, details, type, market, expectedReturn, riskLevel, sector, duration, deadline, status, featured, vipOnly } = req.body;
     if (!title || !summary || !type || !market) {
@@ -144,9 +145,9 @@ router.post("/opportunities", requireAuth, async (req, res) => {
 });
 
 /* ─── PUT /api/opportunities/:id ─────────────────────────────── */
-router.put("/opportunities/:id", requireAuth, async (req, res) => {
+router.put("/opportunities/:id", staffWhoMayEdit, async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params["id"] ?? "");
     const { title, summary, details, type, market, expectedReturn, riskLevel, sector, duration, deadline, status, featured, vipOnly } = req.body;
     await db.update(opportunities)
       .set({
@@ -173,9 +174,9 @@ router.put("/opportunities/:id", requireAuth, async (req, res) => {
 });
 
 /* ─── DELETE /api/opportunities/:id ─────────────────────────── */
-router.delete("/opportunities/:id", requireAuth, async (req, res) => {
+router.delete("/opportunities/:id", staffWhoMayEdit, async (req: Request, res: Response) => {
   try {
-    await db.delete(opportunities).where(eq(opportunities.id, req.params.id));
+    await db.delete(opportunities).where(eq(opportunities.id, String(req.params["id"] ?? "")));
     return res.json({ status: "ok" });
   } catch (e) {
     return res.status(500).json({ status: "error", message: "Failed to delete opportunity" });
@@ -186,7 +187,7 @@ router.delete("/opportunities/:id", requireAuth, async (req, res) => {
    AI-powered: reads real market data → asks Claude → inserts fresh opportunities.
    Admin-only. Replaces AI-generated ones so they stay current.
    ─────────────────────────────────────────────────────────── */
-router.post("/opportunities/generate", requireAuth, async (req, res) => {
+router.post("/opportunities/generate", staffWhoMayEdit, async (req: Request, res: Response) => {
   /* No Anthropic key → local rule-based engine over REAL live data
    * (markets + stocks + news). Same contract, zero fake data. */
   if (!ANTHROPIC_BASE || !ANTHROPIC_KEY) {
@@ -365,7 +366,7 @@ ${newsSummary || "لا توجد أخبار"}
    Seeds opportunities from the LIVE data engine (real market data).
    No hardcoded numbers — fields the upstream data does not provide are
    omitted rather than invented. Admin-only. */
-router.post("/opportunities/seed", requireAuth, async (req, res) => {
+router.post("/opportunities/seed", staffWhoMayEdit, async (req: Request, res: Response) => {
   const { force } = req.body || {};
   try {
     const existing = await db.select().from(opportunities);

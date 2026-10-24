@@ -5,6 +5,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { apiSecurityHeaders, corsOptionsFor, requireSameOrigin } from "./lib/security";
+import { sessionRevocationGuard } from "./lib/session-revocation";
 
 const app: Express = express();
 
@@ -41,6 +42,12 @@ app.use(cookieParser());
 app.use(apiSecurityHeaders);
 /* Cookie-authenticated mutations must come from an allowed origin (CSRF). */
 app.use(requireSameOrigin);
+/* A revoked session (logout, password change, disabled account) is stripped
+ * from the request before any route sees it, so every endpoint treats it as an
+ * anonymous request without repeating the check. */
+app.use((req, res, next) => {
+  void sessionRevocationGuard(req, res, next);
+});
 /* Bounded bodies: JSON payloads above this size can only be abuse, and the
  * default (100 MB per request) is a cheap memory-exhaustion vector. */
 app.use(express.json({ limit: "300kb" }));
