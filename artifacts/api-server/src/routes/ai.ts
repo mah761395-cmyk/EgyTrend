@@ -118,8 +118,13 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 router.post("/chat", async (req: Request, res: Response) => {
   const isAdmin = isAdminToken(req);
-  if (!isAdmin && !(await isVipActive(currentUser(req)))) {
-    res.status(req.header("authorization") ? 403 : 401).json({ status: "error", message: "VIP subscription required" });
+  const claims = currentUser(req);
+  if (!isAdmin && !(await isVipActive(claims))) {
+    /* 401 only when there is no session at all; a signed-in non-VIP user gets
+     * 403 so the UI can say "VIP required" instead of "please sign in". The
+     * session now lives in an httpOnly cookie, so the old header check can no
+     * longer tell the two cases apart. */
+    res.status(claims ? 403 : 401).json({ status: "error", message: "VIP subscription required" });
     return;
   }
   if (!(await isAiEnabled())) {
@@ -153,7 +158,7 @@ router.post("/chat", async (req: Request, res: Response) => {
     return;
   }
 
-  const claims = currentUser(req);
+  /* `claims` was resolved above (the VIP gate needs it too). */
   const userKey = claims?.phone ?? (isAdmin ? "admin" : `ip:${ip}`);
 
   /* Cost control: per-user 24h budget (admin exempt) */

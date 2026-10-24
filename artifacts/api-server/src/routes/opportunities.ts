@@ -3,18 +3,14 @@ import { db } from "@workspace/db";
 import { opportunities } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 import crypto from "crypto";
-import jwt from "jsonwebtoken";
 import { logger } from "../lib/logger";
-import { currentUser, isVipActive } from "../lib/userAuth";
+import { currentUser, isAdminToken, isVipActive } from "../lib/userAuth";
 import { buildLocalOpportunities, type OppCandidate } from "../lib/opp-engine";
 import { getMarketsSnapshot, getStocksSnapshot, type StockQuote } from "./markets";
 import { getNewsSnapshot } from "./news";
 type StockT = OppCandidate extends never ? never : Parameters<typeof buildLocalOpportunities>[1][number];
 
 const router = Router();
-
-const JWT_SECRET = process.env["SESSION_SECRET"];
-const LEGACY_TOKEN = process.env["ADMIN_TOKEN"] || "";
 
 const ANTHROPIC_BASE =
   process.env["AI_INTEGRATIONS_ANTHROPIC_BASE_URL"] || "https://api.anthropic.com";
@@ -24,17 +20,9 @@ const ANTHROPIC_KEY =
   "";
 const AI_MODEL       = "claude-sonnet-4-6";
 
-function isAdmin(req: { headers: Record<string, string | string[] | undefined> }): boolean {
-  const token = req.headers["x-admin-token"] as string | undefined;
-  if (!token) return false;
-  if (LEGACY_TOKEN && token === LEGACY_TOKEN) return true;
-  if (!JWT_SECRET) return false;
-  try {
-    const payload = jwt.verify(token, JWT_SECRET) as { role?: string };
-    return payload.role === "admin" || payload.role === "super_admin";
-  } catch {
-    return false;
-  }
+/* Header or httpOnly admin cookie; the static ADMIN_TOKEN bypass was removed. */
+function isAdmin(req: { headers: Record<string, string | string[] | undefined>; }): boolean {
+  return isAdminToken(req as unknown as Parameters<typeof isAdminToken>[0]);
 }
 
 function requireAuth(req: any, res: any, next: any) {

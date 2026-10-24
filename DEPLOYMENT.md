@@ -76,9 +76,14 @@ NODE_ENV=production
 DATABASE_URL=postgres://egytrend:كلمة_المرور@localhost:5432/egytrend
 # سر الجلسات — ولّده مرة واحدة بـ: openssl rand -hex 48
 SESSION_SECRET=ضع_هنا_64_حرف_عشوائي
-# كلمة مرور لوحة المدير — جديدة وعشوائية، ليست نفسها المحلية
+# كلمة مرور لوحة المدير — بديل احتياطي فقط. الأفضل إنشاء حساب موظف
+# (email + password) ثم إزالة ADMIN_PASSWORD نهائيًا.
 ADMIN_PASSWORD=ضع_كلمة_مرور_مدير_قوية
-ADMIN_TOKEN=ضع_توكن_مدير_عشوائيا_اختياري
+# ملاحظة أمنية: لم يعد يوجد ADMIN_TOKEN ثابت. جلسات الإدارة تُسلَّم في
+# كوكي httpOnly (et_admin) وتنتهي بعد 24 ساعة، فلا يمكن استخراجها من
+# localStorage ولا إعادة استخدامها بعد تسجيل الخروج.
+# النطاقات المسموحة للـ CORS (اختياري — النطاق الحالي مسموح تلقائيًا):
+# ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
 
 # ── اختيارية (خدمات بيانات/AI) ────────────────────────────
 ANTHROPIC_API_KEY=            # يفعّل Claude في محلل AI بدل المحرك المحلي

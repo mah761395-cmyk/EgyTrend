@@ -1127,11 +1127,8 @@ async function callAI({system, messages, max_tokens=2000, context=null, memory=f
   const ctrl = new AbortController();
   const tid = setTimeout(()=>ctrl.abort(), 85000);
   try{
+    /* The session is an httpOnly cookie now — no credential is read from JS. */
     const headers={"Content-Type":"application/json"};
-    const userTok=DB.g("userTok","");
-    const adminTok=DB.g("admTok","");
-    if(userTok)headers.Authorization="Bearer "+userTok;
-    if(adminTok)headers["x-admin-token"]=adminTok;
     const body={system, messages, max_tokens};
     /* Own-context for AI tools (portfolio/alerts) — sent only when the
      * caller opts in; the backend reads nothing else from the body. */
@@ -1308,8 +1305,7 @@ const FAQ = [
    a:"AI Advisor مستشار مالي ذكي، إشارات تداول يومية، Stock Screener احترافي، مستهدفات الأسعار، Morning & Closing Reports، تنبيهات مبكرة."},
   {q:"ماذا أفعل إذا لم يُفعَّل اشتراكي؟",
    a:"تواصل فوراً عبر واتساب 01008605139 مع كود العملية وسنُفعّل اشتراكك خلال دقائق."},
-  {q:"هل بيانات الأسواق حقيقية؟",
-   a:"نعم! بيانات أسهم EGX حقيقية من Yahoo Finance (20 سهم، تُحدَّث كل دقيقتين)، بيانات الكريبتو من CoinGecko، وأسعار الصرف من Alpha Vantage. جميع البيانات تلقائية وحقيقية."},
+  {q:"هل بيانات الأسواق حقيقية؟",    a:"أسعار أسهم EGX من مزوّد بيانات سوقي عبر TradingView، مع تأخير معلن 15 دقيقة ووقت آخر تحديث ظاهر أعلى القائمة. إذا تعذّر تحديث البيانات تظهر لافتة تحذير ولا يُعرض السعر كسعر حالي. بيانات الكريبتو من CoinGecko وأسعار الصرف من مزوّدي السوق."},
 ];
 
 /* ─── FALLBACK IMAGES ─── */
@@ -1331,6 +1327,12 @@ let srcStatus={};
 let liveMarkets = JSON.parse(JSON.stringify(MARKET_STATIC)); // deep copy
 let liveStocks = []; // EGX stocks — populated from /api/markets/stocks
 let usStocks   = []; // US stocks  — populated from /api/markets/us-stocks
+/* Provider timestamps, not cache timestamps: `dataAsOf` is the market time the
+ * feed itself reports, and `stale` means the backend could not prove the data
+ * is current. A stale list may still be shown, but never as a live price. */
+let egxStocksMeta = {dataAsOf:null, delayedMinutes:null, stale:false, unavailable:false, fetchedAt:0};
+let usStocksMeta  = {dataAsOf:null, stale:false, unavailable:false, fetchedAt:0};
+const MAX_QUOTE_AGE_MS = 72*60*60*1000;
 let scrMarket  = "egx"; // active screener market: "egx" | "us"
 let scrSearch  = "";
 let scrFilters = {sector:"all",perf:"all",priceMin:"",priceMax:"",volMin:"",peFilter:"all",divFilter:"all",epsFilter:"all",sortBy:"chgPct",sortDir:-1};
@@ -1363,17 +1365,26 @@ function loadUserScopedData(){ wl=DB.g("wl",[]); savedIds=DB.g("sv",[]); portfol
 /* ═══════════════════ INIT ═══════════════════ */
 document.addEventListener("DOMContentLoaded",async()=>{
   wl=DB.g("wl",[]);savedIds=DB.g("sv",[]);portfolio=DB.g("pt",[]);
-  const tok=DB.g("userTok","");
+  /* Sessions live in httpOnly cookies. Old builds kept bearer tokens in
+   * localStorage; purge them so an upgraded browser exposes nothing. */
+  DB.d("userTok");DB.d("admTok");
   const s=DB.g("s",null);
-  if(tok){
+  if(s?.phone==="admin"){
     try{
-      const r=await fetch("/api/user/me",{headers:{Authorization:"Bearer "+tok}});
+      const r=await fetch("/api/admin/me");
+      const d=await r.json();
+      if(!r.ok||d.status!=="ok")throw new Error("session");
+      U=s;bootApp();
+    }catch{DB.d("s");document.getElementById("auth").classList.add("open");}
+  }else if(s){
+    try{
+      const r=await fetch("/api/user/me");
       const d=await r.json();
       if(!r.ok||d.status!=="ok")throw new Error("session");
       U=d.user;DB.s("s",U);bootApp();
-    }catch{DB.d("userTok");DB.d("s");document.getElementById("auth").classList.add("open");}
-  }else if(s?.phone==="admin"&&DB.g("admTok","")){U=s;bootApp();}
-  else{DB.d("s");document.getElementById("auth").classList.add("open");}
+    }catch{DB.d("s");document.getElementById("auth").classList.add("open");}
+  }
+  else{document.getElementById("auth").classList.add("open");}
   buildTicker();buildCalendar();buildFAQ();
   // Kick off live data immediately so even pre-login users see real numbers
   fetchMarketsData();fetchCalendarData();
@@ -1401,33 +1412,77 @@ function bootApp(){
   setInterval(fetchUsStocksData, 5*60*1000);
 }
 
+/* ─── Freshness helpers (server-supplied market time, never the cache clock) ─── */
+function quoteClock(ms){
+  const n=Number(ms);
+  if(!Number.isFinite(n)||n<=0) return "—";
+  try{return new Date(n).toLocaleString("ar-EG",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});}catch{return new Date(n).toISOString().slice(0,16).replace("T"," ");}
+}
+function isQuoteStale(asOf){
+  const n=Number(asOf);
+  return !Number.isFinite(n)||n<=0||Date.now()-n>MAX_QUOTE_AGE_MS;
+}
+function egxFreshnessLine(){
+  const m=egxStocksMeta;
+  if(!m.fetchedAt) return "";
+  const delay=m.delayedMinutes===0?"مباشر":(m.delayedMinutes>0?`تأخير ${m.delayedMinutes} دقيقة`:"تأخير غير معلن");
+  return `آخر بيانات السوق: ${quoteClock(m.dataAsOf)} · ${delay}`;
+}
+function staleBanner(what, asOf){
+  return `<div class="stale-warn" role="alert" style="margin:6px 0 8px;padding:8px 10px;border-radius:10px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fca5a5;font-size:10.5px;line-height:1.7;text-align:center;direction:rtl;">⚠️ ${what} غير محدّثة — آخر بيانات متاحة ${quoteClock(asOf)}، وليست سعرًا حاليًا.</div>`;
+}
+
 /* ─── EGX Stocks live fetch ─── */
 async function fetchStocksData(){
   try{
     const r=await fetch(STOCKS_API);
-    if(!r.ok) return;
+    if(!r.ok) throw new Error("stocks unavailable");
     const j=await r.json();
-    if(j.status==="ok" && Array.isArray(j.stocks) && j.stocks.length){
-      liveStocks=j.stocks;
-      checkPriceAlerts();
-      const ep=document.getElementById("egx-page");
-      if(ep&&ep.classList.contains("open")) renderStocks();
-      if(scrMarket==="egx") renderScrResults();
-    }
-  }catch{}
+    if(j.status!=="ok" || !Array.isArray(j.stocks) || !j.stocks.length) throw new Error("invalid stocks payload");
+    liveStocks=j.stocks;
+    const asOf=Number(j.dataAsOf)||Number(j.stocks[0]?.asOf)||null;
+    egxStocksMeta={
+      dataAsOf:asOf,
+      delayedMinutes:typeof j.delayedMinutes==="number"?j.delayedMinutes:(typeof j.stocks[0]?.delayedMinutes==="number"?j.stocks[0].delayedMinutes:null),
+      stale:j.fresh===false||j.stale===true||isQuoteStale(asOf),
+      unavailable:false,
+      fetchedAt:Date.now(),
+    };
+    /* Alerts compare against a price; a stale price must not fire one. */
+    if(!egxStocksMeta.stale) checkPriceAlerts();
+    const ep=document.getElementById("egx-page");
+    if(ep&&ep.classList.contains("open")) renderStocks();
+    if(scrMarket==="egx") renderScrResults();
+  }catch{
+    /* Never replace a failed refresh with made-up or undated prices: either
+     * the previous list is explicitly marked stale, or EGX is unavailable. */
+    egxStocksMeta=liveStocks.length
+      ? {...egxStocksMeta,stale:true,unavailable:false}
+      : {...egxStocksMeta,stale:true,unavailable:true};
+    const ep=document.getElementById("egx-page");
+    if(ep&&ep.classList.contains("open")) renderStocks();
+    if(scrMarket==="egx") renderScrResults();
+  }
 }
 
 /* ─── US Stocks live fetch ─── */
 async function fetchUsStocksData(){
   try{
     const r=await fetch(US_STOCKS_API);
-    if(!r.ok) return;
+    if(!r.ok) throw new Error("us stocks unavailable");
     const j=await r.json();
     if(j.status==="ok" && Array.isArray(j.stocks) && j.stocks.length){
       usStocks=j.stocks;
+      const asOf=Number(j.dataAsOf)||Number(j.stocks[0]?.asOf)||null;
+      usStocksMeta={dataAsOf:asOf,stale:j.fresh===false||j.stale===true||isQuoteStale(asOf),unavailable:false,fetchedAt:Date.now()};
       if(scrMarket==="us") renderScrResults();
     }
-  }catch{}
+  }catch{
+    usStocksMeta=usStocks.length
+      ? {...usStocksMeta,stale:true,unavailable:false}
+      : {...usStocksMeta,stale:true,unavailable:true};
+    if(scrMarket==="us") renderScrResults();
+  }
 }
 
 /* ─── Helpers for stocks ─── */
@@ -1537,7 +1592,7 @@ function doAuth(){
       const rr=await fetch("/api/user/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,phone,password:pass,email:email||undefined})});
       const rd=await rr.json().catch(()=>({}));
       if(!rr.ok||rd.status!=="ok"){showE(rd.message||"تعذر إنشاء الحساب");return;}
-      DB.s("userTok",rd.token);U=rd.user;
+      U=rd.user;
     } else {
       if(!phone||!pass){showE("أدخل الرقم وكلمة المرور");return;}
       /* Admin: internal check — not exposed in UI.
@@ -1552,9 +1607,10 @@ function doAuth(){
             : {password:pass};
           const lr = await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(adminBody)});
           const lj = await lr.json();
-          if(lr.ok && lj.status==="ok" && lj.token){
-            U={name:"المدير",phone:"admin",plan:"admin"};
-            DB.s("admTok", lj.token);
+          /* The admin session arrives as an httpOnly cookie; no token is read
+           * or stored here. */
+          if(lr.ok && lj.status==="ok"){
+            U={name:lj.employee?.name||"المدير",phone:"admin",plan:"admin"};
           } else {
             showE("كلمة مرور المدير غير صحيحة");
             return;
@@ -1568,25 +1624,30 @@ function doAuth(){
         const ur=await fetch("/api/user/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,password:pass})});
         const ud=await ur.json().catch(()=>({}));
         if(!ur.ok||ud.status!=="ok"){showE(ud.message==="invalid credentials"?"الرقم أو كلمة المرور غير صحيحة":ud.message||"تعذر تسجيل الدخول");return;}
-        DB.s("userTok",ud.token);U=ud.user;
+        U=ud.user;
       }
     }
     DB.s("s",U);bootApp();
   },550);
 }
 
-function logout(){DB.d("s");DB.d("userTok");DB.d("admTok");U=null;portfolio=[];wl=[];savedIds=[];goNav("home");document.getElementById("main").style.display="none";document.getElementById("auth").classList.add("open");}
+async function logout(){
+  /* Clear the server-side httpOnly cookie first; local state alone would leave
+   * a valid session behind. */
+  try{await Promise.allSettled([fetch("/api/user/logout",{method:"POST"}),fetch("/api/admin/logout",{method:"POST"})]);}catch{}
+  DB.d("s");DB.d("userTok");DB.d("admTok");U=null;portfolio=[];wl=[];savedIds=[];goNav("home");document.getElementById("main").style.display="none";document.getElementById("auth").classList.add("open");
+}
 
 /* ═══════════════════ ADMIN API HELPER ═══════════════════ */
 async function admFetch(url, opts={}){
-  const tok = DB.g("admTok", "");
-  if(!tok) throw new Error("not authenticated");
-  const headers = Object.assign({}, opts.headers||{}, {"x-admin-token":tok});
+  /* Admin session is the httpOnly et_admin cookie; the browser sends it on
+   * same-origin requests automatically. */
+  const headers = Object.assign({}, opts.headers||{});
   if(opts.body && !headers["Content-Type"]) headers["Content-Type"]="application/json";
-  const r = await fetch(url, Object.assign({}, opts, {headers}));
+  const r = await fetch(url, Object.assign({}, opts, {headers, credentials:"same-origin"}));
   if(r.status===401){
     showToast("⚠️ انتهت صلاحية جلسة المدير");
-    DB.d("admTok");
+    DB.d("s");U=null;
     throw new Error("unauthorized");
   }
   return r;
@@ -2278,13 +2339,14 @@ function renderStocks(){
   const el=document.getElementById("stocks-list");
   if(!el) return;
   if(!liveStocks.length){
-    el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">⏳</div><div>جارٍ تحميل بيانات الأسهم...</div></div>`;
+    el.innerHTML=egxStocksMeta.unavailable
+      ? `<div class="empty"><div style="font-size:28px;margin-bottom:7px;">⚠️</div><div>تعذّر تحميل أسعار EGX الآن — لا نعرض أسعارًا قديمة كأسعار حالية.</div></div>`
+      : `<div class="empty"><div style="font-size:28px;margin-bottom:7px;">⏳</div><div>جارٍ تحميل بيانات الأسهم...</div></div>`;
     return;
   }
   if(!curStocks.length){el.innerHTML=`<div class="empty"><div style="font-size:28px;margin-bottom:7px;">📋</div><div>لا توجد أسهم مطابقة</div></div>`;return;}
-  const ts=liveStocks[0]?.ts;
-  const age=ts?Math.round((Date.now()-ts)/1000):null;
-  el.innerHTML=(age!==null?`<div style="color:var(--t5);font-size:9px;text-align:center;padding:4px 0 2px;font-family:var(--mono);">آخر تحديث: ${age<60?age+"ث":Math.round(age/60)+"د"} · بيانات حقيقية من Yahoo Finance</div>`:"")
+  el.innerHTML=(egxStocksMeta.stale?staleBanner("أسعار أسهم EGX",egxStocksMeta.dataAsOf):"")
+  +`<div style="color:var(--t5);font-size:9px;text-align:center;padding:4px 0 2px;font-family:var(--mono);">${sanitize(egxFreshnessLine())}</div>`
   +curStocks.map(s=>{
     const up=s.chgPct>=0;
     return`<div class="stock-row" onclick="openStockDetail('${s.sym}')">
@@ -2307,7 +2369,8 @@ function openStockDetail(sym){
   if(!s){showToast("📊 "+sym);return;}
   const up=s.chgPct>=0;
   const inWL=wl.includes(sym);
-  const msg=`${sanitize(s.sym)} — ${sanitize(s.name)}\n💰 ${s.price.toFixed(2)} ج (${up?"+":""}${s.chgPct.toFixed(2)}%)\n📊 فتح: ${s.open.toFixed(2)} | أعلى: ${s.high.toFixed(2)} | أقل: ${s.low.toFixed(2)}\n🔄 الحجم: ${fmtVol(s.vol)}${s.pe?"\n📈 P/E: "+s.pe.toFixed(1):""}${s.divYield?"\n💵 عائد توزيعات: "+s.divYield.toFixed(2)+"%":""}${s.mktCapM?"\n🏦 رأس المال: "+fmtMktCap(s.mktCapM)+" ج.م":""}`;
+  const staleNote=egxStocksMeta.stale?`⚠️ سعر غير محدّث (آخر بيانات ${quoteClock(egxStocksMeta.dataAsOf)}) — ليس سعرًا حاليًا\n`:"";
+  const msg=`${staleNote}${sanitize(s.sym)} — ${sanitize(s.name)}\n💰 ${s.price.toFixed(2)} ج (${up?"+":""}${s.chgPct.toFixed(2)}%)\n📊 فتح: ${s.open.toFixed(2)} | أعلى: ${s.high.toFixed(2)} | أقل: ${s.low.toFixed(2)}\n🔄 الحجم: ${fmtVol(s.vol)}${s.pe?"\n📈 P/E: "+s.pe.toFixed(1):""}${s.divYield?"\n💵 عائد توزيعات: "+s.divYield.toFixed(2)+"%":""}${s.mktCapM?"\n🏦 رأس المال: "+fmtMktCap(s.mktCapM)+" ج.م":""}`;
   showToast(msg.split("\n")[0]);
   if(confirm(`${msg}\n\n${inWL?"إزالة من":"إضافة إلى"} القائمة المفضلة؟`)){
     toggleWL(sym);
@@ -2346,7 +2409,7 @@ function renderVIP(){
           ["🔍","Stock Screener","فلتر 20 سهم مصري بعشرات المعايير: P/E، الحجم، القطاع — مثل Investing.com تماماً"],
           ["💼","متابع المحفظة","أدخل أسهمك وأسعار شرائها — AI يحلل أداءك ويوصي بقرارات مبنية على بيانات"],
           ["🌅","تقارير يومية","تقرير صباحي قبل فتح السوق وتقرير إغلاق مسائي — لا تبدأ يومك بدونه"],
-          ["📊","بيانات حقيقية","Yahoo Finance · Finnhub · Alpha Vantage — أسعار مباشرة وليست مؤخرة"]
+          ["📊","بيانات موثّقة","أسعار EGX من مزوّد سوقي بتأخير معلن 15 دقيقة مع وقت آخر تحديث — لا أسعار قديمة تُعرض كحية"]
         ].map(f=>`
           <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:13px 11px;text-align:center;">
             <div style="font-size:26px;margin-bottom:5px;">${f[0]}</div>
@@ -2856,7 +2919,7 @@ function vBuildScr(b){
         </table>
       </div>
       <div style="margin-top:8px;padding:6px;background:rgba(59,130,246,.05);border-radius:8px;border:1px solid rgba(59,130,246,.1);">
-        <div style="color:var(--t5);font-size:9px;text-align:center;direction:rtl;" id="scr-footer">📡 بيانات حقيقية من Yahoo Finance · EGX كل 3 دقائق · US كل 5 دقائق</div>
+        <div style="color:var(--t5);font-size:9px;text-align:center;direction:rtl;" id="scr-footer">📡 أسعار من مزوّدي السوق · EGX كل 3 دقائق · US كل 5 دقائق</div>
       </div>
     </div>`;
   renderScrSectorPills();
@@ -3440,6 +3503,22 @@ function renderScrResults(){
   const tb=document.getElementById("scr-results");
   if(!tb) return;
   const countEl=document.getElementById("scr-count");
+  const footEl=document.getElementById("scr-footer");
+  if(footEl){
+    if(scrMarket==="egx"){
+      footEl.innerHTML=egxStocksMeta.stale
+        ? staleBanner("أسعار أسهم EGX",egxStocksMeta.dataAsOf)
+        : egxStocksMeta.fetchedAt
+          ? `📡 ${sanitize(egxFreshnessLine())} · الأسهم عبر مزوّد سوقي · تحديث كل 3 دقائق`
+          : `📡 جارٍ تحميل بيانات أسهم EGX...`;
+    }else{
+      footEl.innerHTML=!usStocksMeta.fetchedAt
+        ? `📡 جارٍ تحميل بيانات الأسهم الأمريكية...`
+        : usStocksMeta.stale
+          ? staleBanner("أسعار الأسهم الأمريكية",usStocksMeta.dataAsOf)
+          : `📡 آخر بيانات السوق: ${quoteClock(usStocksMeta.dataAsOf)} · أسهم أمريكية · تحديث كل 5 دقائق`;
+    }
+  }
 
   const stocks_src=scrMarket==="egx"?liveStocks:usStocks;
   if(!stocks_src.length){
@@ -3864,9 +3943,7 @@ async function submitPay(){
   if(btn){btn.disabled=true;btn.textContent="⏳ جارٍ الإرسال...";}
   try{
     const headers={"Content-Type":"application/json"};
-    const userTok=DB.g("userTok","");
-    if(userTok)headers.Authorization="Bearer "+userTok;
-    const response=await fetch("/api/payments",{method:"POST",headers,body:JSON.stringify({planKey:selPlan,method:SUB_METHOD,tx,proofImage:payProofData,proofName:payProofName})});
+    const response=await fetch("/api/payments",{method:"POST",headers,body:JSON.stringify({planKey:selPlan,method:SUB_METHOD,tx,proofImage:payProofData,proofName:payProofName}),credentials:"same-origin"});
     const result=await response.json().catch(()=>null);
     if(!response.ok||!result||result.status!=="ok") throw new Error((result&&result.message)||"تعذر إرسال الطلب");
     payProofData=null;payProofName="";
@@ -3880,11 +3957,11 @@ async function submitPay(){
 /* ─── حالة طلب الدفع (تظهر في صفحة VIP) ─── */
 async function loadPayStatus(){
   const el=document.getElementById("pay-status-card");if(!el)return;
-  const userTok=DB.g("userTok","");
-  if(!userTok){el.innerHTML="";return;}
+  /* Admin sessions are staff, not paying app users — /api/payments/* is 401. */
+  if(!U||U.phone==="admin"){el.innerHTML="";return;}
   el.innerHTML=`<div class="empty" style="padding:13px;"><div style="font-size:18px;">⏳</div><div style="font-size:11px;">جارٍ تحميل حالة الطلب...</div></div>`;
   try{
-    const r=await fetch("/api/payments/my",{headers:{Authorization:"Bearer "+userTok}});
+    const r=await fetch("/api/payments/my");
     const j=await r.json().catch(()=>null);
     if(!j||j.status!=="ok"){el.innerHTML="";return;}
     const reqs=j.requests||[];
@@ -4007,8 +4084,7 @@ async function doChangePass(){
    if(nw.length<8){showErr("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل");return;}
   if(nw!==con){showErr("كلمات المرور غير متطابقة");return;}
    try{
-     const token=DB.g("userTok","");
-     const r=await fetch("/api/user/password",{method:"PUT",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({currentPassword:cur,newPassword:nw})});
+     const r=await fetch("/api/user/password",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({currentPassword:cur,newPassword:nw}),credentials:"same-origin"});
      const d=await r.json().catch(()=>({}));
      if(!r.ok||d.status!=="ok"){showErr(d.message==="current password is incorrect"?"كلمة المرور الحالية غير صحيحة":d.message||"تعذر تغيير كلمة المرور");return;}
    }catch{showErr("تعذر الاتصال بالخادم");return;}
@@ -4970,8 +5046,8 @@ function payNotifsSeen(){return DB.g(PAY_NOTIF_SEEN_KEY,[]);}
 function markPayNotifsSeen(ids){DB.s(PAY_NOTIF_SEEN_KEY,ids);}
 async function pollPayNotifs(){
   try{
-    const tok=DB.g("userTok","");if(!tok)return;
-    const r=await fetch("/api/payments/notifications",{headers:{Authorization:"Bearer "+tok}});
+    if(!U||U.phone==="admin")return;
+    const r=await fetch("/api/payments/notifications");
     const j=await r.json().catch(()=>null);
     if(!j||j.status!=="ok"||!Array.isArray(j.notifications))return;
     if(j.notifications.length){
@@ -5115,10 +5191,9 @@ async function loadOpps(force=false){
   // The local snapshot (U.plan) may be stale — e.g. VIP was activated
   // after this login. Re-check with the server once before gating.
   if(!isVip){
-    const tok2=DB.g("userTok","");
-    if(tok2){
+    if(U){
       try{
-        const mr=await fetch("/api/user/me",{headers:{Authorization:"Bearer "+tok2}});
+        const mr=await fetch("/api/user/me");
         const md=await mr.json();
         if(mr.ok&&md.status==="ok"&&md.user){
           U=md.user;DB.s("s",U);
@@ -5148,10 +5223,7 @@ async function loadOpps(force=false){
   const el=document.getElementById("opps-list");if(!el)return;
   if(force||oppsData.length===0)el.innerHTML=`<div style="padding:20px;text-align:center;"><div class="sp sp-g"></div></div>`;
   try{
-    const oppHeaders={};
-    const userTok=DB.g("userTok","");
-    if(userTok)oppHeaders.Authorization="Bearer "+userTok;
-    const r=await fetch("/api/opportunities",{headers:oppHeaders});
+    const r=await fetch("/api/opportunities");
     if(!r.ok)throw new Error("server");
     const d=await r.json();
     oppsData=(d.opportunities||[]).filter(o=>o.status!=="deleted"&&o.status!=="closed");

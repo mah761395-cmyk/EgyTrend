@@ -1,6 +1,14 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { logger } from "../lib/logger";
 import { EGX_AR_NAMES } from "../lib/egx-names";
+import {
+  isDeadQuote,
+  newestAsOf,
+  partitionUsableQuotes,
+  quoteAge,
+  resolveAsOf,
+  tvDelayMinutes,
+} from "../lib/market-freshness";
 
 const router: IRouter = Router();
 
@@ -184,12 +192,25 @@ async function fetchStooq(_symbol: string): Promise<{ price: number; open: numbe
 
 async function fetchYahooIndexQuote(
   symbol: string,
-): Promise<{ price: number; pct: number } | null> {
+): Promise<{ price: number; pct: number; asOf: number } | null> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const q = (await yf.quote(symbol, {}, { validateResult: false })) as any;
     const price = Number(q?.regularMarketPrice);
     if (!Number.isFinite(price) || price === 0) return null;
+    /* The provider's own market time decides whether this is a current price.
+     * Yahoo keeps answering for symbols it stopped updating (all EGX tickers on
+     * this endpoint are frozen at July 2024), so a frozen quote must be refused
+     * here instead of becoming an "index value" on the board. */
+    /* The board shows an index value without its own timestamp, so it must be
+     * strictly current: anything past the weekend window is dropped instead of
+     * being labelled "EGX30" as if it were today's close. */
+    const asOf = Number(q?.regularMarketTime) * 1000;
+    const age = quoteAge(asOf);
+    if (age.stale) {
+      logger.warn({ symbol, asOf, reason: age.reason }, "yahoo index quote rejected as not current");
+      return null;
+    }
     const pctDirect = Number(q?.regularMarketChangePercent);
     const prev = Number(q?.regularMarketPreviousClose);
     const pct = Number.isFinite(pctDirect)
@@ -197,7 +218,7 @@ async function fetchYahooIndexQuote(
       : Number.isFinite(prev) && prev > 0
         ? ((price - prev) / prev) * 100
         : 0;
-    return { price, pct };
+    return { price, pct, asOf: Number.isFinite(asOf) && asOf > 0 ? asOf : Date.now() };
   } catch (e) {
     logger.warn({ symbol, err: (e as Error).message }, "yahoo quote failed");
     return null;
@@ -222,10 +243,10 @@ async function mapStaggeredQuotes<T, R>(
   return results;
 }
 
-async function fetchEGX30(): Promise<{ price: number; pctChange: number } | null> {
-  // 1) Yahoo Finance (^CASE30 — real EGX 30 index, no scraping)
+async function fetchEGX30(): Promise<{ price: number; pctChange: number; source: string } | null> {
+  // 1) Yahoo Finance (^CASE30) — only accepted with a current provider time
   const y = await fetchYahooIndexQuote("^CASE30");
-  if (y) return { price: y.price, pctChange: y.pct };
+  if (y) return { price: y.price, pctChange: y.pct, source: "Yahoo Finance" };
   // 2) TradingEconomics scraper (fallback)
   try {
     const html = await fetchText("https://tradingeconomics.com/egypt/stock-market", 10000);
@@ -250,7 +271,9 @@ async function fetchEGX30(): Promise<{ price: number; pctChange: number } | null
       if (altPct) pct = parseFloat(altPct[1]);
     }
     if (!Number.isFinite(pct)) pct = 0;
-    return { price, pctChange: pct };
+    /* Scraped page content has no provider timestamp, so the source is named
+     * instead of pretending the value is a live Yahoo quote. */
+    return { price, pctChange: pct, source: "TradingEconomics" };
   } catch (e) {
     logger.warn({ err: (e as Error).message }, "EGX30 fetch failed");
     return null;
@@ -533,7 +556,9 @@ async function buildMarketsPayload(): Promise<MarketsPayload> {
     status: "ok",
     ts: Date.now(),
     sources: {
-      indices: "Yahoo Finance",
+      indices: egx30Raw?.source === "TradingEconomics"
+        ? "TradingEconomics (EGX30) + Yahoo Finance"
+        : "Yahoo Finance",
       forex: hasAV ? "Yahoo Finance + Alpha Vantage" : "Yahoo Finance",
       commodities: "Yahoo Finance",
       crypto: hasFinnhub ? "Finnhub/Binance" : "CoinGecko",
@@ -937,7 +962,12 @@ export type StockQuote = {
   pe?: number; forwardPE?: number; divYield?: number; eps?: number;
   bookValue?: number; priceToBook?: number; sharesM?: number;
   high52w?: number; low52w?: number;
+  /** When this server obtained the value (cache/board time). */
   ts: number;
+  /** The provider's own market time for the value, epoch ms. Never invented. */
+  asOf?: number;
+  /** Declared contractual delay of the feed, when the provider states it. */
+  delayedMinutes?: number;
 };
 
 /* yahoo-finance2 v3 — default export is the YahooFinance class; must use `new`. */
@@ -990,6 +1020,13 @@ async function fetchYahooQuote(def: StockDef): Promise<StockQuote | null> {
     const prev   = q.regularMarketPreviousClose ?? price;
     const chg    = price - prev;
     const chgPct = prev > 0 ? (chg / prev) * 100 : 0;
+    /* No provider time means no proof of freshness: the quote is refused
+     * rather than stamped with the time we happened to receive it. */
+    const asOf = Number(q.regularMarketTime) * 1000;
+    if (isDeadQuote(asOf)) {
+      logger.warn({ sym: def.sym, asOf }, "yf2 quote rejected as no longer maintained");
+      return null;
+    }
     let vol = q.regularMarketVolume ?? 0;
     /* EGX tickers never carry volume on the quote endpoint — fill from the
      * chart endpoint's real daily bars (cached). Never fabricate: if Yahoo
@@ -1020,6 +1057,8 @@ async function fetchYahooQuote(def: StockDef): Promise<StockQuote | null> {
       high52w:    q.fiftyTwoWeekHigh ?? undefined,
       low52w:     q.fiftyTwoWeekLow  ?? undefined,
       ts:         Date.now(),
+      asOf,
+      delayedMinutes: 0,
     };
   } catch (e) {
     logger.warn({ sym: def.sym, err: (e as Error).message }, "yf2 quote failed");
@@ -1049,7 +1088,7 @@ let usStocksCache: { ts: number; stocks: StockQuote[] } | null = null;
  * equities with price/volume/cap/PE/div/52w — values cross-checked
  * against Yahoo chart closes. Falls back to the Yahoo flow below on
  * any failure (cached 3 min, single gentle call per refresh). */
-const TV_COLS = ["name","description","close","change","change_abs","open","high","low","volume","market_cap_basic","sector","price_earnings_ttm","earnings_per_share_basic_ttm","dividends_yield","price_book_ratio","price_52_week_high","price_52_week_low"];
+const TV_COLS = ["name","description","close","change","change_abs","open","high","low","volume","market_cap_basic","sector","price_earnings_ttm","earnings_per_share_basic_ttm","dividends_yield","price_book_ratio","price_52_week_high","price_52_week_low","update_mode","update_time"];
 
 async function fetchTVStocks(): Promise<StockQuote[] | null> {
   const ctrl = new AbortController();
@@ -1077,6 +1116,7 @@ async function fetchTVStocks(): Promise<StockQuote[] | null> {
     const meta = new Map(EGX_DEFS.map(d => [d.sym, d]));
     const seen = new Set<string>();
     const out: StockQuote[] = [];
+    const fetchedAt = Date.now();
     for (const row of rows) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const o: Record<string, any> = {};
@@ -1089,6 +1129,12 @@ async function fetchTVStocks(): Promise<StockQuote[] | null> {
       const chgAbs = Number(o.change_abs) || 0;
       const chgPct = Number(o.change) || 0;
       const cap = Number(o.market_cap_basic) || 0;
+      /* The scanner states its contractual delay (EGX: delayed_streaming_900)
+       * AND the provider's own last-update time. The timestamp is what proves a
+       * price is current; the delay only explains the lag, and when the mode is
+       * unrecognised it yields no fallback timestamp at all. */
+      const delayedMinutes = tvDelayMinutes(o.update_mode);
+      const asOf = resolveAsOf(o.update_time, fetchedAt, delayedMinutes);
       out.push({
         sym,
         name:        egxName(sym, def?.name) || String(o.description || sym),
@@ -1111,10 +1157,16 @@ async function fetchTVStocks(): Promise<StockQuote[] | null> {
         sharesM:     cap && price ? Math.round(cap / price / 1_000_000) : undefined,
         high52w:     Number(o.price_52_week_high) || undefined,
         low52w:      Number(o.price_52_week_low) || undefined,
-        ts:          Date.now(),
+        ts:          fetchedAt,
+        asOf,
+        delayedMinutes,
       });
     }
-    return out.length ? out : null;
+    const { usable, rejected } = partitionUsableQuotes(out, fetchedAt);
+    if (rejected.length) {
+      logger.warn({ rejected: rejected.length, of: out.length }, "TV EGX rows rejected: provider stopped updating them");
+    }
+    return usable.length ? usable : null;
   } catch (e) {
     logger.warn({ err: (e as Error).message }, "TV EGX scan failed — using Yahoo fallback");
     return null;
@@ -1137,9 +1189,15 @@ export function getStocksSnapshot(): Promise<StockQuote[] | null> {
     stocksBuildInFlight = (async () => {
       try {
         const tvStocks = await fetchTVStocks();
-        const stocks = tvStocks ?? await fetchStocksBatched(EGX_DEFS);
-        stocksCache = { ts: Date.now(), stocks };
-        return stocks;
+        const raw = tvStocks ?? await fetchStocksBatched(EGX_DEFS);
+        /* Second guard for the Yahoo fallback path, which builds its own rows. */
+        const { usable, rejected } = partitionUsableQuotes(raw, Date.now());
+        if (rejected.length) {
+          logger.warn({ rejected: rejected.length, of: raw.length }, "EGX rows rejected: provider stopped updating them");
+        }
+        if (!usable.length) return stocksCache ? stocksCache.stocks : null;
+        stocksCache = { ts: Date.now(), stocks: usable };
+        return usable;
       } catch (e) {
         logger.error({ err: (e as Error).message }, "egx-stocks build failed");
         return stocksCache ? stocksCache.stocks : null;
@@ -1154,32 +1212,55 @@ export function getStocksSnapshot(): Promise<StockQuote[] | null> {
 router.get("/stocks", async (_req: Request, res: Response) => {
   const now = Date.now();
   if (stocksCache && now - stocksCache.ts < STOCKS_TTL_MS) {
-    res.json({ status: "ok", ts: stocksCache.ts, stocks: stocksCache.stocks });
+    res.json({ status: "ok", ...stocksPayload(stocksCache.stocks, stocksCache.ts, now) });
     return;
   }
   const stocks = await getStocksSnapshot();
   if (stocks) {
-    const fresh = stocksCache && Date.now() - stocksCache.ts < STOCKS_TTL_MS;
-    res.json({ status: "ok", ts: stocksCache?.ts ?? now, stocks, ...(fresh ? {} : { stale: true }) });
+    res.json({ status: "ok", ...stocksPayload(stocks, stocksCache?.ts ?? now, now) });
     return;
   }
   res.status(503).json({ status: "error", message: "EGX stocks data unavailable" });
 });
 
+/* Prices carry the provider's own market time so the client can label them.
+ * `ts` remains "when this server last built the snapshot"; `dataAsOf` is the
+ * newest provider time inside it, and the delay is what the feed declares. */
+function stocksPayload(stocks: StockQuote[], cachedAt: number, now: number) {
+  const dataAsOf = newestAsOf(stocks);
+  const delay = stocks[0]?.delayedMinutes;
+  /* Two independent reasons to warn: the provider's data time is old, or this
+   * snapshot is older than its refresh window (a rebuild kept failing). */
+  const cacheAged = now - cachedAt > STOCKS_TTL_MS;
+  const fresh = dataAsOf !== null && !quoteAge(dataAsOf, now).stale && !cacheAged;
+  return {
+    ts: cachedAt,
+    dataAsOf,
+    delayedMinutes: delay,
+    fresh,
+    ...(fresh ? {} : { stale: true }),
+    stocks,
+  };
+}
+
 router.get("/us-stocks", async (_req: Request, res: Response) => {
   const now = Date.now();
+  const usPayload = (stocks: StockQuote[], at: number) => ({
+    status: "ok" as const,
+    ...stocksPayload(stocks, at, now),
+  });
   if (usStocksCache && now - usStocksCache.ts < US_STOCKS_TTL_MS) {
-    res.json({ status: "ok", ts: usStocksCache.ts, stocks: usStocksCache.stocks });
+    res.json(usPayload(usStocksCache.stocks, usStocksCache.ts));
     return;
   }
   try {
-    const stocks = await fetchStocksBatched(US_DEFS, 20, 500);
-    usStocksCache = { ts: now, stocks };
-    res.json({ status: "ok", ts: now, stocks });
+    const { usable } = partitionUsableQuotes(await fetchStocksBatched(US_DEFS, 20, 500), now);
+    usStocksCache = { ts: now, stocks: usable };
+    res.json(usPayload(usable, now));
   } catch (e) {
     logger.error({ err: (e as Error).message }, "us-stocks build failed");
     if (usStocksCache) {
-      res.json({ status: "ok", ts: usStocksCache.ts, stocks: usStocksCache.stocks, stale: true });
+      res.json({ ...usPayload(usStocksCache.stocks, usStocksCache.ts), stale: true, fresh: false });
     } else {
       res.status(503).json({ status: "error", message: "US stocks data unavailable" });
     }
@@ -1218,6 +1299,9 @@ router.get("/health", (_req: Request, res: Response) => {
         ageSeconds: stocksAge,
         ttlSeconds: STOCKS_TTL_MS / 1000,
         count: stocksCache?.stocks.length ?? 0,
+        /* Provider market time is what proves the prices themselves are current. */
+        dataAsOf: stocksCache ? newestAsOf(stocksCache.stocks) : null,
+        delayedMinutes: stocksCache?.stocks[0]?.delayedMinutes ?? null,
       },
       calendar: {
         status: ok(calAge, CAL_TTL_MS),

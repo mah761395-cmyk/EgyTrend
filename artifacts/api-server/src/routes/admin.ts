@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { logger } from "../lib/logger";
-import { currentUser } from "../lib/userAuth";
+import { adminToken, currentUser } from "../lib/userAuth";
+import { ADMIN_COOKIE, ONE_DAY_MS, clearSessionCookie, setSessionCookie } from "../lib/security";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import {
@@ -20,7 +21,9 @@ const router: IRouter = Router();
 /* ─── Secrets ─── */
 const JWT_SECRET = process.env["SESSION_SECRET"];
 const ADMIN_PASSWORD = process.env["ADMIN_PASSWORD"];
-const LEGACY_TOKEN = process.env["ADMIN_TOKEN"] || "";
+/* The static ADMIN_TOKEN is gone. It was a non-expiring shared string that
+ * authenticated as super_admin on every admin endpoint and made requireRole
+ * skip all role checks — a permanent full takeover if it ever leaked. */
 
 /* ─── Brute-force protection on /login ─── */
 const loginAttempts = new Map<string, { count: number; until: number }>();
@@ -162,25 +165,13 @@ function checkPassword(pw: string, encoded: string): boolean {
 }
 
 /* ─── Auth middleware ─── */
-interface AuthRequest extends Request { actor?: JWTPayload; isLegacyAdmin?: boolean; }
-
-function extractToken(req: Request): string {
-  return (req.header("x-admin-token") || "").trim()
-    || (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim();
-}
+interface AuthRequest extends Request { actor?: JWTPayload; }
 
 function requireAuth(req: AuthRequest, res: Response, next: NextFunction): void {
-  const token = extractToken(req);
+  /* httpOnly cookie first, then the header for non-browser tooling. */
+  const token = adminToken(req);
   if (!token) { res.status(401).json({ status: "error", message: "unauthorized" }); return; }
 
-  // Legacy static token (backward compat for mobile admin flow)
-  if (LEGACY_TOKEN && token === LEGACY_TOKEN) {
-    req.isLegacyAdmin = true;
-    req.actor = { sub: 0, name: "Super Admin", role: "super_admin", email: "admin@egytrend" };
-    next(); return;
-  }
-
-  // JWT token
   const payload = verifyToken(token);
   if (!payload) { res.status(401).json({ status: "error", message: "invalid or expired token" }); return; }
   req.actor = payload;
@@ -189,7 +180,6 @@ function requireAuth(req: AuthRequest, res: Response, next: NextFunction): void 
 
 function requireRole(...roles: string[]) {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
-    if (req.isLegacyAdmin) { next(); return; }
     if (!req.actor || !roles.includes(req.actor.role)) {
       res.status(403).json({ status: "error", message: "insufficient permissions" });
       return;
@@ -286,7 +276,7 @@ router.get("/bootstrap", (_req, res: Response) => {
   });
 });
 
-/* Legacy password login → returns static token */
+/* Password / employee login → httpOnly session cookie (no token in the body) */
 router.post("/login", async (req: AuthRequest, res: Response) => {
   const ip = req.ip || "unknown";
 
@@ -324,7 +314,11 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
       await db.update(employeesTable).set({ lastLogin: new Date() }).where(eq(employeesTable.id, emp.id));
       const token = signToken({ sub: emp.id, name: emp.name, role: emp.role, email: emp.email });
       await auditLog("login", { sub: emp.id, name: emp.name, role: emp.role, email: emp.email }, "employee", { email }, req.ip);
-      res.json({ status: "ok", token, employee: { id: emp.id, name: emp.name, role: emp.role, email: emp.email } });
+      /* httpOnly cookie only — no token in the response body, so nothing can
+       * be parked in localStorage and read by a script. */
+      setSessionCookie(res, ADMIN_COOKIE, token, ONE_DAY_MS);
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ status: "ok", employee: { id: emp.id, name: emp.name, role: emp.role, email: emp.email } });
       return;
     }
     recordLoginFailure(ip);
@@ -332,9 +326,15 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
     return;
   }
 
-  // Legacy password-only login
+  // Password-only login (fallback when no employee account is used)
   if (!ADMIN_PASSWORD) {
     res.status(503).json({ status: "error", message: "admin password is not configured" });
+    return;
+  }
+  /* The session is a signed JWT, so SESSION_SECRET is mandatory now that the
+   * static ADMIN_TOKEN is gone. Say so instead of throwing a 500. */
+  if (!JWT_SECRET) {
+    res.status(503).json({ status: "error", message: "SESSION_SECRET is not configured" });
     return;
   }
   const expected = Buffer.from(ADMIN_PASSWORD);
@@ -345,13 +345,38 @@ router.post("/login", async (req: AuthRequest, res: Response) => {
     return;
   }
   clearLoginFailures(ip);
-  const token = LEGACY_TOKEN || signToken({
+  const token = signToken({
     sub: 0,
     name: "Super Admin",
     role: "super_admin",
     email: "admin@egytrend",
   });
-  res.json({ status: "ok", token });
+  await auditLog("login", { sub: 0, name: "Super Admin", role: "super_admin", email: "admin@egytrend" }, "password", {}, req.ip);
+  setSessionCookie(res, ADMIN_COOKIE, token, ONE_DAY_MS);
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ status: "ok", employee: { id: 0, name: "Super Admin", role: "super_admin", email: "admin@egytrend" } });
+});
+
+/* Session probe: the panel calls this before showing any UI, so the admin
+ * interface is only ever revealed to a server-verified staff session. */
+router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    status: "ok",
+    actor: {
+      id: req.actor?.sub ?? null,
+      name: req.actor?.name ?? "",
+      email: req.actor?.email ?? "",
+      role: req.actor?.role ?? "",
+    },
+  });
+});
+
+/* Explicit logout: clears the httpOnly session cookie server-side. */
+router.post("/logout", (_req: Request, res: Response) => {
+  clearSessionCookie(res, ADMIN_COOKIE);
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ status: "ok" });
 });
 
 /* Public: check AI config (for frontend to know what's enabled) */
