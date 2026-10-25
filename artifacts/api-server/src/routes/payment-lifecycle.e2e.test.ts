@@ -92,7 +92,9 @@ before(async () => {
     role: "admin",
     status: "active",
     passwordHash: employeePasswordHash("SyntheticAdminPass1!"),
-    permissions: ["pricing.manage"],
+    /* An explicit list narrows the role: pricing stays a separate gate, and
+     * /admin/requests + /admin/subscriptions need the payments permission. */
+    permissions: ["pricing.manage", "payments"],
   });
 
   const { default: app } = await import("../app");

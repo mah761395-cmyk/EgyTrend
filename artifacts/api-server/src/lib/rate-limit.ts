@@ -218,6 +218,7 @@ export function createAttemptStore(options: AttemptStoreOptions = {}): AttemptSt
     options.query ??
     (async (sql, params) => {
       const { pool } = await import("@workspace/db");
+      if (!pool) throw new Error("DATABASE_URL is not configured");
       const result = await pool.query(sql, params as unknown[]);
       return { rows: result.rows as Record<string, unknown>[] };
     });

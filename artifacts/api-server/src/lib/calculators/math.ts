@@ -410,5 +410,11 @@ export function getCalculatorMathModuleSource(): string {
     profitLoss, positionRisk, compoundGrowth, investorSeries, thinPoints, investorProjection,
     averagePurchase, dividendYield, cagr, inflationAdjustedReturn, currencyConvert,
   ].map((fn) => fn.toString()).join("\n\n");
-  return `${helpers}\n\nexport { profitLoss, positionRisk, compoundGrowth, investorProjection, averagePurchase, dividendYield, cagr, inflationAdjustedReturn, currencyConvert };\n`;
+  /* A TypeScript/esbuild transform (tsx's keepNames, for one) prints each
+   * declaration as `var f = __name(function …, "f")` and leaves that helper
+   * call in the printed source. Browsers have no `__name`, so the payload
+   * would throw ReferenceError while it is being evaluated — before any
+   * calculator runs. The shim is exactly what esbuild itself injects. */
+  const keepNamesShim = "const __name = (target, _name) => target;\n";
+  return `${keepNamesShim}${helpers}\n\nexport { profitLoss, positionRisk, compoundGrowth, investorProjection, averagePurchase, dividendYield, cagr, inflationAdjustedReturn, currencyConvert };\n`;
 }

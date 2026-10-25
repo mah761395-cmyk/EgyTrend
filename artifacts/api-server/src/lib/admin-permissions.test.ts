@@ -6,6 +6,7 @@ import { test } from "node:test";
 import crypto from "node:crypto";
 import {
   canDecidePayments,
+  permissionForAdminPath,
   canManageEmployee,
   canManageStaff,
   canModifyUserAccounts,
@@ -145,6 +146,24 @@ test("an empty password or hash never verifies", () => {
 });
 
 /* ── Stored fine-grained permissions ─────────────────────────────────────── */
+
+test("admin route paths map to the permission they need", () => {
+  assert.equal(permissionForAdminPath("/users"), "users");
+  assert.equal(permissionForAdminPath("/users/action"), "users");
+  assert.equal(permissionForAdminPath("/requests/req-1"), "payments");
+  assert.equal(permissionForAdminPath("/sources"), "content");
+  assert.equal(permissionForAdminPath("/articles/abc"), "content");
+  assert.equal(permissionForAdminPath("/plans/7"), "plans");
+  assert.equal(permissionForAdminPath("/coupons/c1"), "coupons");
+  assert.equal(permissionForAdminPath("/employees/3"), "employees");
+  assert.equal(permissionForAdminPath("/ai-config"), "ai");
+  assert.equal(permissionForAdminPath("/ai-usage"), "ai");
+  assert.equal(permissionForAdminPath("/audit-logs"), "audit");
+  assert.equal(permissionForAdminPath("/settings/payment"), "settings");
+  /* Unmapped paths keep the old role-only behaviour. */
+  assert.equal(permissionForAdminPath("/stats"), null);
+  assert.equal(permissionForAdminPath("/bootstrap"), null);
+});
 
 test("permission lists are cleaned before they are stored", () => {
   assert.deepEqual(normalizePermissions(["Users", " users ", "AI", "root", 42, ""]), ["users", "ai"]);

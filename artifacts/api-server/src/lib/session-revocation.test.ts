@@ -17,7 +17,7 @@ import {
   sessionRevocationGuard,
 } from "./session-revocation";
 import { bearerToken, signUserToken, verifyUserToken } from "./userAuth";
-import { SESSION_COOKIE } from "./security";
+import { ADMIN_SESSION_COOKIE, USER_SESSION_COOKIE } from "./userAuth";
 
 const SECRET = process.env["SESSION_SECRET"]!;
 
@@ -205,38 +205,38 @@ async function sessionRefRevoked(ref: ReturnType<typeof sessionRef>): Promise<bo
 
 test("a valid cookie session passes the guard untouched", async () => {
   const token = userToken();
-  const req = mockReq({ [SESSION_COOKIE]: token }, { authorization: `Bearer ${token}` });
+  const req = mockReq({ [USER_SESSION_COOKIE]: token }, { authorization: `Bearer ${token}` });
   const { res, out } = mockRes();
   let nextCalled = false;
   await sessionRevocationGuard(req, res, () => {
     nextCalled = true;
   });
   assert.equal(nextCalled, true);
-  assert.equal(req.cookies[SESSION_COOKIE], token);
+  assert.equal(req.cookies[USER_SESSION_COOKIE], token);
   assert.equal(verifyUserToken(bearerToken(req))?.sub, 42);
   assert.deepEqual(out.cleared, []);
 });
 
 test("a revoked cookie session is stripped to an anonymous request", async () => {
   const token = userToken();
-  const req = mockReq({ [SESSION_COOKIE]: token }, { authorization: `Bearer ${token}` });
+  const req = mockReq({ [USER_SESSION_COOKIE]: token }, { authorization: `Bearer ${token}` });
   const { res, out } = mockRes();
   await revokePresentedSession("user", token);
   await sessionRevocationGuard(req, res, () => {});
   assert.equal(bearerToken(req), "");
   assert.equal(verifyUserToken(bearerToken(req)), null);
-  assert.deepEqual(out.cleared, [SESSION_COOKIE]);
+  assert.deepEqual(out.cleared, [USER_SESSION_COOKIE]);
 });
 
 test("a revoked staff cookie is stripped with its header fallbacks", async () => {
   const token = staffToken();
-  const req = mockReq({ et_admin: token }, { "x-admin-token": token, authorization: `Bearer ${token}` });
+  const req = mockReq({ [ADMIN_SESSION_COOKIE]: token }, { "x-admin-token": token, authorization: `Bearer ${token}` });
   const { res, out } = mockRes();
   await revokePresentedSession("admin", token);
   await sessionRevocationGuard(req, res, () => {});
   assert.equal(req.headers["x-admin-token"], undefined);
   assert.equal(req.headers["authorization"], undefined);
-  assert.deepEqual(out.cleared, ["et_admin"]);
+  assert.deepEqual(out.cleared, [ADMIN_SESSION_COOKIE]);
 });
 
 test("an anonymous request is untouched and never queried", async () => {

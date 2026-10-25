@@ -211,36 +211,39 @@ test("a cookie POST with no Origin needs a same-site Referer, otherwise 403", ()
 
 /* ── Token extraction (cookie first, header second) ──────────────────── */
 
-test("the user session is read from the httpOnly cookie before any header", async () => {
-  const { bearerToken, currentUser, signUserToken } = await import("./userAuth");
+test("the user session comes from its own httpOnly cookie, not a header", async () => {
+  const { currentUser, signUserToken, USER_SESSION_COOKIE } = await import("./userAuth");
   const token = signUserToken({ sub: 7, phone: "01000000000", name: "Test", role: "user", plan: "free" });
   const req = mockReq({
-    cookies: { [SESSION_COOKIE]: token },
+    cookies: { [USER_SESSION_COOKIE]: token },
     headers: { authorization: "Bearer attacker-supplied-value" },
   });
-  assert.equal(bearerToken(req), token);
-  assert.equal(currentUser(req)?.sub, 7);
-
-  /* A user JWT is not a staff session. */
-  const { isAdminToken } = await import("./userAuth");
-  assert.equal(isAdminToken(req), false);
+  assert.equal(currentUser(req)?.sub, 7, "the httpOnly cookie wins over a supplied header");
 });
 
 test("the admin session is read from its own cookie, and a user token never opens it", async () => {
-  const { adminToken, isAdminToken, signUserToken } = await import("./userAuth");
+  const {
+    ADMIN_SESSION_COOKIE,
+    USER_SESSION_COOKIE,
+    adminSessionToken,
+    currentAdminClaims,
+    signUserToken,
+  } = await import("./userAuth");
   /* Reuse the same signing path as admin.ts (role in the JWT). */
   const jwt = (await import("jsonwebtoken")).default;
   const secret = process.env["SESSION_SECRET"]!;
   const staff = jwt.sign({ sub: 3, name: "Editor", role: "editor", email: "e@example.com" }, secret, { expiresIn: "1h" });
-  const req = mockReq({ cookies: { [ADMIN_COOKIE]: staff } });
-  assert.equal(adminToken(req), staff);
-  assert.equal(isAdminToken(req), false, "editor is staff but not an AI/admin-level role");
+  const req = mockReq({ cookies: { [ADMIN_SESSION_COOKIE]: staff } });
+  assert.equal(adminSessionToken(req), staff);
+  assert.equal(currentAdminClaims(req)?.role, "editor");
 
   const superAdmin = jwt.sign({ sub: 1, name: "Owner", role: "super_admin", email: "o@example.com" }, secret, { expiresIn: "1h" });
-  assert.equal(isAdminToken(mockReq({ cookies: { [ADMIN_COOKIE]: superAdmin } })), true);
+  assert.equal(currentAdminClaims(mockReq({ cookies: { [ADMIN_SESSION_COOKIE]: superAdmin } }))?.role, "super_admin");
 
+  /* A normal app-user session can never be mistaken for a staff session. */
   const userToken = signUserToken({ sub: 9, phone: "01000000001", name: "User", role: "user", plan: "vip" });
-  assert.equal(isAdminToken(mockReq({ headers: { "x-admin-token": userToken } })), false);
+  assert.equal(currentAdminClaims(mockReq({ cookies: { [ADMIN_SESSION_COOKIE]: userToken } })), null);
+  assert.equal(currentAdminClaims(mockReq({ cookies: { [USER_SESSION_COOKIE]: userToken } })), null);
 });
 
 test("a token signed with another secret or with the wrong role is rejected", async () => {

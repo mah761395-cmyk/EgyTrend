@@ -15,9 +15,15 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-const MIGRATION_DIR = path.resolve(__dirname, "../../../../lib/db/migrations");
+/* Source-mode tests are native ESM (no __dirname); the production bundle
+ * supplies it. Same idiom as dataStore.ts. */
+const moduleDir = typeof __dirname === "string"
+  ? __dirname
+  : path.dirname(fileURLToPath(import.meta.url));
+const MIGRATION_DIR = path.resolve(moduleDir, "../../../../lib/db/migrations");
 
 type Sql = (sql: string, params: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
 
@@ -28,13 +34,27 @@ type Pglite = {
 };
 
 let makeDb: null | (() => Promise<Pglite>) = null;
-try {
-  const mod = await import("@electric-sql/pglite");
-  makeDb = () => new mod.PGlite() as unknown as Promise<Pglite>;
-} catch {
-  /* Without PGlite the suite is skipped rather than failing the build. */
+/* No top-level await: Node rejects a module that mixes require() output with
+ * TLA, and the loader cannot otherwise decide the format. The import is started
+ * here and awaited (with a skip) inside each test instead. */
+const pgliteReady = import("@electric-sql/pglite")
+  .then((mod) => {
+    makeDb = () => new mod.PGlite() as unknown as Promise<Pglite>;
+  })
+  .catch(() => {
+    /* Without PGlite the suite is skipped rather than failing the build. */
+  });
+
+function maybe(name: string, run: () => Promise<void>): void {
+  test(name, async (t) => {
+    await pgliteReady;
+    if (!makeDb) {
+      t.skip("PGlite is not installed");
+      return;
+    }
+    await run();
+  });
 }
-const maybe = makeDb ? test : test.skip;
 
 function sqlFrom(db: Pglite): Sql {
   return async (sql, params) => {
@@ -43,8 +63,8 @@ function sqlFrom(db: Pglite): Sql {
   };
 }
 
-const UP = fs.readFileSync(path.join(MIGRATION_DIR, "0012_auth_hardening.up.sql"), "utf8");
-const DOWN = fs.readFileSync(path.join(MIGRATION_DIR, "0012_auth_hardening.down.sql"), "utf8");
+const UP = fs.readFileSync(path.join(MIGRATION_DIR, "0014_auth_hardening.up.sql"), "utf8");
+const DOWN = fs.readFileSync(path.join(MIGRATION_DIR, "0014_auth_hardening.down.sql"), "utf8");
 
 async function freshDb() {
   const db = await makeDb!();
@@ -52,7 +72,7 @@ async function freshDb() {
   return db;
 }
 
-maybe("migration 0012 applies and can be re-applied without error", async () => {
+maybe("migration 0014 applies and can be re-applied without error", async () => {
   const db = await makeDb!();
   await db.exec(UP);
   await db.exec(UP); // idempotent

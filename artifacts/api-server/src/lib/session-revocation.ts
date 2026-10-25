@@ -18,8 +18,14 @@
 import type { NextFunction, Request, Response } from "express";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import { ADMIN_COOKIE, SESSION_COOKIE, clearSessionCookie } from "./security";
-import { adminToken, bearerToken, verifyUserToken } from "./userAuth";
+import {
+  ADMIN_SESSION_COOKIE,
+  USER_SESSION_COOKIE,
+  adminSessionToken,
+  bearerToken,
+  clearSessionCookie,
+  readSessionCookie,
+} from "./userAuth";
 
 export type SessionScope = "user" | "admin";
 
@@ -154,6 +160,7 @@ export function createRevocationStore(options: RevocationStoreOptions = {}): Rev
     options.query ??
     (async (sql, params) => {
       const { pool } = await import("@workspace/db");
+      if (!pool) throw new Error("DATABASE_URL is not configured");
       const result = await pool.query(sql, params as unknown[]);
       return { rows: result.rows as Record<string, unknown>[] };
     });
@@ -304,13 +311,13 @@ export async function sessionRevocationGuard(
   try {
     const presented: { ref: SessionRef; cookie?: string; header?: string }[] = [];
 
-    const userToken = bearerToken(req);
+    const userToken = readSessionCookie(req, USER_SESSION_COOKIE) || bearerToken(req);
     const userRef = userToken ? sessionRef("user", userToken) : null;
-    if (userRef) presented.push({ ref: userRef, cookie: SESSION_COOKIE });
+    if (userRef) presented.push({ ref: userRef, cookie: USER_SESSION_COOKIE });
 
-    const staffToken = adminToken(req);
+    const staffToken = adminSessionToken(req);
     const staffRef = staffToken ? sessionRef("admin", staffToken) : null;
-    if (staffRef) presented.push({ ref: staffRef, cookie: ADMIN_COOKIE });
+    if (staffRef) presented.push({ ref: staffRef, cookie: ADMIN_SESSION_COOKIE });
 
     for (const entry of presented) {
       if (!(await isRevokedCached(entry.ref))) continue;

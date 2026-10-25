@@ -106,6 +106,9 @@ export const ADMIN_PERMISSIONS = [
   "audit",
   "settings",
   "opportunities",
+  /* Pricing stays a separate, narrower gate (requirePricingAccess) but is a
+   * real staff permission already used by the panel. */
+  "pricing.manage",
 ] as const;
 
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];
@@ -114,6 +117,31 @@ const PERMISSION_SET: ReadonlySet<string> = new Set(ADMIN_PERMISSIONS);
 
 export function isAdminPermission(value: unknown): value is AdminPermission {
   return typeof value === "string" && PERMISSION_SET.has(value);
+}
+
+/** Admin route path (relative to /api/admin) → the permission it needs.
+ *
+ * The routes already carry a role allowlist; this adds the per-employee list on
+ * top without repeating the mapping in 50 handlers. An unmapped path is decided
+ * by the role alone, exactly as before this change. */
+export const ADMIN_PERMISSION_ROUTES: ReadonlyArray<{ pattern: RegExp; permission: AdminPermission }> = [
+  { pattern: /^\/(users|user-notifications)(\/|$)/, permission: "users" },
+  { pattern: /^\/(requests|subscriptions|payments)(\/|$)/, permission: "payments" },
+  { pattern: /^\/(sources|articles|broadcasts)(\/|$)/, permission: "content" },
+  { pattern: /^\/plans(\/|$)/, permission: "plans" },
+  { pattern: /^\/coupons(\/|$)/, permission: "coupons" },
+  { pattern: /^\/employees(\/|$)/, permission: "employees" },
+  { pattern: /^\/ai-/, permission: "ai" },
+  { pattern: /^\/audit-logs(\/|$)/, permission: "audit" },
+  { pattern: /^\/settings(\/|$)/, permission: "settings" },
+];
+
+export function permissionForAdminPath(path: string): AdminPermission | null {
+  const clean = path.split("?")[0] ?? "";
+  for (const route of ADMIN_PERMISSION_ROUTES) {
+    if (route.pattern.test(clean)) return route.permission;
+  }
+  return null;
 }
 
 /** Untrusted input → clean list. Unknown values are dropped, duplicates and
