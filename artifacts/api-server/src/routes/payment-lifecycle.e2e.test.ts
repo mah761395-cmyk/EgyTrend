@@ -31,6 +31,9 @@ import { createMemoryDatabase } from "../test-support/memory-db";
  * It has no DATABASE_URL, no network listener, and cannot reach a Neon/Vercel
  * database. The application is imported only after the test DB is injected. */
 process.env.NODE_ENV = "test";
+/* This scenario pins the no-provider contract: the restored legacy free feeds
+ * must stay off so the portfolio quote below can only be a fake. */
+process.env.LEGACY_MARKET_FEEDS_DISABLED = "true";
 process.env.SESSION_SECRET = "test-only-session-secret-not-for-deployment";
 process.env.LOG_LEVEL = "silent";
 

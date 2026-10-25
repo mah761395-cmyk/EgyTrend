@@ -206,6 +206,330 @@ export class TwelveDataProvider implements MarketDataProvider {
   }
 }
 
+/**
+ * Legacy free reference feeds, restored from the pre-upgrade v6.0 markets
+ * page. The licensed providers above still take priority: these adapters are
+ * registered last in the runtime singleton, so they only price instruments
+ * that no contracted provider was configured for. Every quote keeps the same
+ * canonical envelope — a named source, the provider's own timestamp when it
+ * gives one, and a freshness label that never claims real-time.
+ * An operator can switch the whole legacy layer off with
+ * LEGACY_MARKET_FEEDS_DISABLED=true.
+ */
+const LEGACY_FEEDS_DISABLED_ENV = "LEGACY_MARKET_FEEDS_DISABLED";
+
+/* Yahoo's public v8 chart endpoint, the same symbol list the pre-upgrade
+ * build used for the global indices and commodities cards. The endpoint
+ * answers without credentials but rejects non-browser user agents, so the
+ * request carries one in its own name. */
+const YAHOO_CHART_SYMBOLS: Record<string, string> = {
+  "index:SPX": "^GSPC",
+  "index:NASDAQ": "^IXIC",
+  "index:DAX": "^GDAXI",
+  "index:FTSE100": "^FTSE",
+  "commodity:XAU": "GC=F",
+  "commodity:BRENT": "BZ=F",
+  "commodity:XAG": "SI=F",
+  "commodity:COPPER": "HG=F",
+};
+
+type YahooChartPayload = {
+  chart?: {
+    result?: Array<{ meta?: Record<string, unknown> }>;
+  };
+};
+
+export class YahooChartProvider implements MarketDataProvider {
+  readonly id = "yahoo-chart";
+  readonly name = "Yahoo Finance";
+  private readonly disabled: boolean;
+
+  constructor(
+    env: NodeJS.ProcessEnv = process.env,
+    private readonly http = new ResilientHttpClient(),
+  ) {
+    this.disabled = env[LEGACY_FEEDS_DISABLED_ENV] === "true";
+  }
+
+  descriptor(): ProviderDescriptor {
+    return {
+      id: this.id,
+      name: this.name,
+      state: this.disabled ? "not_configured" : "configured",
+      note: "مرجع عام مجاني للمؤشرات والسلع العالمية؛ يُعرض بذكر المصدر ووقت التحديث من المصدر، وليس سعرًا مرخّصًا فوريًا.",
+      coverage: ["index", "commodity"],
+      externalDisplayConfirmed: !this.disabled,
+    };
+  }
+
+  canServe(instrument: MarketInstrument): boolean {
+    return !this.disabled && YAHOO_CHART_SYMBOLS[instrument.id] !== undefined;
+  }
+
+  async getQuotes(instruments: MarketInstrument[]): Promise<ProviderQuoteResult> {
+    const supported = instruments.filter((instrument) => this.canServe(instrument));
+    if (!supported.length) return { quotes: [], requestedCount: 0 };
+    const quotes: CanonicalQuote[] = [];
+    /* Sequential pacing: one free endpoint, no bursts. */
+    for (const instrument of supported) {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(YAHOO_CHART_SYMBOLS[instrument.id])}?interval=1d&range=1d`;
+      const payload = await this.http.getJson<YahooChartPayload>(url, {
+        providerId: this.id,
+        timeoutMs: 10_000,
+        attempts: 2,
+        minIntervalMs: 350,
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+        },
+      });
+      const meta = (payload.chart?.result?.[0]?.meta ?? {}) as Record<string, unknown>;
+      const price = finite(meta.regularMarketPrice);
+      if (price === undefined || price <= 0) continue;
+      const asOf = epoch(meta.regularMarketTime);
+      if (asOf === undefined) continue;
+      quotes.push({
+        instrumentId: instrument.id,
+        price,
+        previousClose: finite(meta.chartPreviousClose),
+        currency: instrument.currency,
+        asOf,
+        sourceId: this.id,
+        sourceName: this.name,
+        freshness: "unknown",
+      });
+    }
+    return { quotes, requestedCount: supported.length };
+  }
+}
+
+/**
+ * TradingView's public Egypt scanner. The pre-upgrade product relied on it
+ * after verifying Yahoo's EGX prices were stale and limited; it covers the
+ * EGX equities (and, when present, the EGX index rows) with name-logged
+ * prices. TradingView's own attribution is displayed by the client widget
+ * already used for unpriced rows.
+ */
+const TV_SCANNER_URL = "https://scanner.tradingview.com/egypt/scan";
+const TV_SCANNER_COLUMNS = [
+  "type", "name", "description", "close", "change", "change_abs", "open", "high", "low",
+  "volume", "market_cap_basic", "sector",
+];
+
+export class TradingViewScannerProvider implements MarketDataProvider {
+  readonly id = "tradingview-scanner";
+  readonly name = "TradingView Scanner";
+  private readonly disabled: boolean;
+
+  constructor(
+    env: NodeJS.ProcessEnv = process.env,
+    private readonly http = new ResilientHttpClient(),
+  ) {
+    this.disabled = env[LEGACY_FEEDS_DISABLED_ENV] === "true";
+  }
+
+  descriptor(): ProviderDescriptor {
+    return {
+      id: this.id,
+      name: this.name,
+      state: this.disabled ? "not_configured" : "configured",
+      note: "بيانات أسعار عرضية من ماسح TradingView العام للبورصة المصرية؛ قد تكون متأخرة عن سعر التداول وبإسناد إلزامي للمصدر.",
+      coverage: ["index", "equity"],
+      externalDisplayConfirmed: !this.disabled,
+    };
+  }
+
+  canServe(instrument: MarketInstrument): boolean {
+    if (this.disabled) return false;
+    return instrument.id.startsWith("stock:egx:") || instrument.id.startsWith("egx:");
+  }
+
+  async getQuotes(instruments: MarketInstrument[]): Promise<ProviderQuoteResult> {
+    const supported = instruments.filter((instrument) => this.canServe(instrument));
+    if (!supported.length) return { quotes: [], requestedCount: 0 };
+
+    const payload = await this.http.postJson<{ data?: Array<{ s: string; d: unknown[] }> }>(
+      TV_SCANNER_URL,
+      {
+        filter: [{ left: "type", operation: "in_range", right: ["stock", "index"] }],
+        markets: ["egypt"],
+        symbols: { query: { types: [] }, tickers: [] },
+        columns: TV_SCANNER_COLUMNS,
+        sort: { sortBy: "market_cap_basic", sortOrder: "desc" },
+        range: [0, 500],
+      },
+      { providerId: this.id, timeoutMs: 12_000, attempts: 2, minIntervalMs: 1_000 },
+    );
+
+    const bySymbol = new Map<string, Record<string, unknown>>();
+    for (const row of payload.data ?? []) {
+      if (!Array.isArray(row?.d)) continue;
+      const entry: Record<string, unknown> = {};
+      TV_SCANNER_COLUMNS.forEach((column, index) => { entry[column] = row.d[index]; });
+      const symbol = String(entry.name ?? "").trim().replace(/^EGX:/, "");
+      if (symbol) bySymbol.set(symbol, entry);
+    }
+
+    const quotes = supported.flatMap((instrument) => {
+      const row = bySymbol.get(instrument.symbol);
+      const price = finite(row?.close);
+      if (!row || price === undefined || price <= 0) return [];
+      const changeAbs = finite(row.change_abs);
+      return [{
+        instrumentId: instrument.id,
+        price,
+        previousClose: changeAbs !== undefined ? price - changeAbs : undefined,
+        change: changeAbs,
+        changePercent: finite(row.change) ?? undefined,
+        open: finite(row.open),
+        high: finite(row.high),
+        low: finite(row.low),
+        volume: finite(row.volume),
+        currency: instrument.currency,
+        asOf: Date.now(),
+        sourceId: this.id,
+        sourceName: this.name,
+        freshness: "unknown",
+      } satisfies CanonicalQuote];
+    });
+    return { quotes, requestedCount: supported.length };
+  }
+}
+
+/** The free public CoinGecko endpoint, used exactly as in the pre-upgrade
+ * build: a public reference feed for crypto with its 24h change, still
+ * shadowed by the CoinGecko Provider when a commercial key is configured. */
+export class CoinGeckoFreeProvider implements MarketDataProvider {
+  readonly id = "coingecko-free";
+  readonly name = "CoinGecko (مرجع عام)";
+  private readonly disabled: boolean;
+
+  constructor(
+    env: NodeJS.ProcessEnv = process.env,
+    private readonly http = new ResilientHttpClient(),
+  ) {
+    this.disabled = env[LEGACY_FEEDS_DISABLED_ENV] === "true";
+  }
+
+  descriptor(): ProviderDescriptor {
+    return {
+      id: this.id,
+      name: this.name,
+      state: this.disabled ? "not_configured" : "configured",
+      note: "مصدر عام مجاني للعملات المشفرة؛ يُعرض بذكر المصدر ووقت التحديث من المصدر فقط، وليس سعرًا مرخّصًا.",
+      coverage: ["crypto"],
+      externalDisplayConfirmed: !this.disabled,
+    };
+  }
+
+  canServe(instrument: MarketInstrument): boolean {
+    return !this.disabled && coinId(instrument) !== undefined;
+  }
+
+  async getQuotes(instruments: MarketInstrument[]): Promise<ProviderQuoteResult> {
+    const supported = instruments.filter((instrument) => this.canServe(instrument));
+    if (!supported.length) return { quotes: [], requestedCount: 0 };
+    const ids = [...new Set(supported.map((instrument) => coinId(instrument)!))];
+    const url = new URL("https://api.coingecko.com/api/v3/simple/price");
+    url.searchParams.set("ids", ids.join(","));
+    url.searchParams.set("vs_currencies", "usd");
+    url.searchParams.set("include_24hr_change", "true");
+    const payload = await this.http.getJson<Record<string, Record<string, unknown>>>(url.toString(), {
+      providerId: this.id,
+      timeoutMs: 9_000,
+      attempts: 2,
+      minIntervalMs: 500,
+    });
+    const fetchedAt = Date.now();
+    const quotes = supported.flatMap((instrument) => {
+      const row = payload[coinId(instrument)!];
+      const price = finite(row?.usd);
+      if (price === undefined || price <= 0) return [];
+      return [{
+        instrumentId: instrument.id,
+        price,
+        changePercent: finite(row?.usd_24h_change),
+        currency: "USD",
+        asOf: epoch(row?.last_updated_at) ?? fetchedAt,
+        sourceId: this.id,
+        sourceName: this.name,
+        freshness: "unknown",
+      } satisfies CanonicalQuote];
+    });
+    return { quotes, requestedCount: supported.length };
+  }
+}
+
+/**
+ * The EGX30 headline index has little third-party coverage outside Egypt.
+ * The pre-upgrade build read Trading Economics' public Egypt stock-market
+ * summary for exactly this number; that attribution and summary time are
+ * carried through unchanged here.
+ */
+export class TradingEconomicsEgxIndexProvider implements MarketDataProvider {
+  readonly id = "tradingeconomics-egx-index";
+  readonly name = "Trading Economics (EGX30)";
+  private readonly disabled: boolean;
+
+  constructor(
+    env: NodeJS.ProcessEnv = process.env,
+    private readonly http = new ResilientHttpClient(),
+  ) {
+    this.disabled = env[LEGACY_FEEDS_DISABLED_ENV] === "true";
+  }
+
+  descriptor(): ProviderDescriptor {
+    return {
+      id: this.id,
+      name: this.name,
+      state: this.disabled ? "not_configured" : "configured",
+      note: "مرجع عام مجاني لمؤشر EGX30؛ يُعرض بذكر المصدر ووقت الجلب فقط، وليس سعرًا مرخّصًا فوريًا.",
+      coverage: ["index"],
+      externalDisplayConfirmed: !this.disabled,
+    };
+  }
+
+  canServe(instrument: MarketInstrument): boolean {
+    return !this.disabled && instrument.id === "egx:EGX30";
+  }
+
+  async getQuotes(instruments: MarketInstrument[]): Promise<ProviderQuoteResult> {
+    const supported = instruments.filter((instrument) => this.canServe(instrument));
+    if (!supported.length) return { quotes: [], requestedCount: 0 };
+    const html = await this.http.getText("https://tradingeconomics.com/egypt/stock-market", {
+      providerId: this.id,
+      timeoutMs: 10_000,
+      attempts: 2,
+      minIntervalMs: 1_000,
+      headers: { Accept: "text/html" },
+    });
+    const priceMatch = html.match(/<td id="p">([0-9.,]+)/);
+    const price = priceMatch ? finite(priceMatch[1]) : undefined;
+    if (price === undefined || price <= 0) return { quotes: [], requestedCount: supported.length };
+    let changePercent = finite(/EGX 30[^<]*?([+\-]?[0-9]+\.[0-9]+)%\s*from the previous/i.exec(html)?.[1]);
+    if (changePercent === undefined) {
+      const pctMatch = html.match(/(gaining|losing|rising|falling|up|down)\s*([0-9.]+)%/i);
+      if (pctMatch) {
+        const magnitude = finite(pctMatch[2]);
+        changePercent = magnitude === undefined ? undefined : (/(losing|falling|down)/i.test(pctMatch[1]) ? -magnitude : magnitude);
+      }
+    }
+    return {
+      quotes: supported.map((instrument) => ({
+        instrumentId: instrument.id,
+        price,
+        changePercent: changePercent ?? undefined,
+        currency: instrument.currency,
+        asOf: Date.now(),
+        sourceId: this.id,
+        sourceName: this.name,
+        freshness: "unknown",
+      } satisfies CanonicalQuote)),
+      requestedCount: supported.length,
+    };
+  }
+}
+
 /** CoinGecko is deliberately isolated to crypto and needs a paid commercial key. */
 export class CoinGeckoProvider implements MarketDataProvider {
   readonly id = "coingecko";

@@ -2,11 +2,15 @@ import { createMarketCache, loadCached, type JsonCache } from "./cache";
 import { MARKET_INSTRUMENTS, type StockDefinition } from "./catalog";
 import { ProviderHealthMonitor } from "./health";
 import {
+  CoinGeckoFreeProvider,
   CoinGeckoProvider,
   EgidContractProvider,
   ExchangeRateApiProvider,
   TradingEconomicsCalendarProvider,
+  TradingEconomicsEgxIndexProvider,
+  TradingViewScannerProvider,
   TwelveDataProvider,
+  YahooChartProvider,
 } from "./providers";
 import type {
   CalendarDataProvider,
@@ -211,8 +215,19 @@ let singleton: MarketDataService | null = null;
 /** Runtime singleton: provider calls remain server-side and configuration is read once. */
 export function getMarketDataService(): MarketDataService {
   if (!singleton) {
+    /* The legacy free reference feeds are registered last on purpose: they
+     * only price instruments that no licensed provider was configured for. */
     singleton = new MarketDataService(
-      [new EgidContractProvider(), new TwelveDataProvider(), new CoinGeckoProvider(), new ExchangeRateApiProvider()],
+      [
+        new EgidContractProvider(),
+        new TwelveDataProvider(),
+        new CoinGeckoProvider(),
+        new ExchangeRateApiProvider(),
+        new YahooChartProvider(),
+        new TradingEconomicsEgxIndexProvider(),
+        new TradingViewScannerProvider(),
+        new CoinGeckoFreeProvider(),
+      ],
       [new TradingEconomicsCalendarProvider()],
     );
   }

@@ -3578,6 +3578,49 @@ async function aiAnalyze(){
 
 /* ═══════════════════ MARKETS ═══════════════════ */
 /* Charts deliberately wait for licensed backend OHLC history. */
+/* ─── TradingView mini chart — display-only fallback restored from the
+ * pre-upgrade markets detail. Live licensed history takes priority; this
+ * widget only fills the detail chart when no licensed record exists. ─── */
+const MKT_TV_SYMS={
+  "EGX30":"EGX:EGX30",
+  "EGX70":"EGX:EGX70",
+  "EGX100":"EGX:EGX100",
+  "USD/EGP":"FX_IDC:USDEGP",
+  "EUR/EGP":"FX_IDC:EUREGP",
+  "GBP/EGP":"FX_IDC:GBPEGP",
+  "SAR/EGP":"FX_IDC:SAREGP",
+  "S&P 500":"SP:SPX",
+  "NASDAQ":"NASDAQ:COMP",
+  "DAX":"XETR:DAX",
+  "FTSE 100":"INDEX:UKX",
+  "ذهب":"TVC:GOLD",
+  "فضة":"TVC:SILVER",
+  "نفط برنت":"TVC:UKOIL",
+  "BTC":"BINANCE:BTCUSDT",
+  "ETH":"BINANCE:ETHUSDT",
+  "SOL":"BINANCE:SOLUSDT",
+  "XRP":"BINANCE:XRPUSDT",
+};
+function loadTvMiniChart(containerId,tvSymbol){
+  const container=document.getElementById(containerId);
+  if(!container||!tvSymbol)return;
+  container.innerHTML="";
+  const sc=document.createElement("script");
+  sc.type="text/javascript";
+  sc.async=true;
+  sc.src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js";
+  sc.innerHTML=JSON.stringify({
+    symbol:tvSymbol,width:"100%",height:260,locale:"ar",dateRange:"3M",
+    colorTheme:"dark",trendLineColor:"#10b981",underLineColor:"rgba(16,185,129,.2)",
+    underLineBottomColor:"rgba(0,0,0,0)",isTransparent:true,autosize:true,
+    chartOnly:false,noTimeScale:false,
+  });
+  container.appendChild(sc);
+}
+function removeTvFallback(){
+  document.getElementById("mkt-tv-fallback")?.remove();
+}
+/* ─── TradingView widget note (end of this map) ─── */
 const MKT_CTX={
   "EGX30":{icon:"🇪🇬",en:"EGX30 Index",desc:"مؤشر بورصة مصر الرئيسي — يضم أكبر 30 شركة من حيث القيمة السوقية والسيولة. يُعدّ المرجع الأساسي لقياس أداء سوق الأسهم المصري.",cat:"مؤشر",trading:"الأحد–الخميس 10:00–15:30"},
   "USD/EGP":{icon:"💵",en:"US Dollar / EGP",desc:"سعر صرف الدولار الأمريكي مقابل الجنيه المصري — المرجع الأول لتسعير السلع والاستيراد والمعاملات الدولية في مصر.",cat:"فوركس",trading:"24/7"},
@@ -3791,8 +3834,30 @@ function chartEmpty(message,detail=""){
   const host=document.getElementById("mkt-chart-host");
   if(load)load.innerHTML=`<div class="mkt-chart-empty"><div><strong>${sanitize(message)}</strong>${detail?`<span>${sanitize(detail)}</span>`:""}</div></div>`;
   if(host)host.hidden=true;
+  /* Pre-upgrade fallback: no licensed daily history → show TradingView's own
+   * mini overview inside TradingView's frame, with its attribution and its
+   * latency. It is purely display; nothing from it feeds platform state. */
+  const card=load?.closest(".mkt-chart-card");
+  const tvSymbol=activeAssetDetail?.tvSymbol;
+  if(card&&tvSymbol){
+    removeTvFallback();
+    const wrap=document.createElement("div");
+    wrap.className="tradingview-widget-container";
+    wrap.id="mkt-tv-fallback";
+    wrap.style.cssText="width:100%;direction:ltr;padding:4px 12px 12px;";
+    wrap.innerHTML="<div class='tradingview-widget-container__widget' style='width:100%;height:260px;'></div>";
+    const foot=card.querySelector(".mkt-chart-foot");
+    card.insertBefore(wrap,foot);
+    const note=document.createElement("div");
+    note.className="mkt-chart-foot";
+    note.style.cssText="padding:0 12px 10px;";
+    note.innerHTML="<span>أسعار المصدر داخل أداة TradingView نفسها وقد تكون متأخرة أو متوقفة عند الإغلاق · <a href='https://www.tradingview.com/' target='_blank' rel='noopener noreferrer'>TradingView ↗</a></span>";
+    card.insertBefore(note,foot);
+    loadTvMiniChart("mkt-tv-fallback",tvSymbol);
+  }
 }
 function chartLoading(){
+  removeTvFallback();
   const load=document.getElementById("mkt-chart-loading");
   const host=document.getElementById("mkt-chart-host");
   if(host){host.hidden=true;host.replaceChildren();}
@@ -3866,6 +3931,7 @@ async function loadAssetChart(){
     const load=document.getElementById("mkt-chart-loading");
     const host=document.getElementById("mkt-chart-host");
     if(!host)return;
+    removeTvFallback();
     host.hidden=false;
     if(load)load.replaceChildren();
     const source=document.getElementById("mkt-chart-source");
@@ -3958,7 +4024,7 @@ function openMarketDetail(sec,idx){
   const unavailable=secMeta.unavailable===true||m.source==="غير متاح"||m.v==="غير متاح حاليًا";
   const color=SEC_COL[sec]||"var(--g)";
   openAssetDetail({
-    instrumentId:m.instrumentId,title:m.n,subtitle:ctx.en,icon:ctx.icon,category:ctx.cat,color,watchName:m.n,up:m.up,flat:m.flat,
+    instrumentId:m.instrumentId,tvSymbol:MKT_TV_SYMS[m.n],title:m.n,subtitle:ctx.en,icon:ctx.icon,category:ctx.cat,color,watchName:m.n,up:m.up,flat:m.flat,
     price:unavailable?"غير متاح حاليًا":m.v,change:unavailable||m.flat?"—":`${m.up?"▲":"▼"} ${m.c||"—"}`,
     source:m.source||secMeta.sources||"غير متاح",freshness:`وقت المصدر: ${cairoTimestampLabel(m.asOf)} · ${marketAgeLabel(marketFreshness)} · ${marketStateLabel(unavailable?{...marketFreshness,unavailable:true}:marketFreshness)}`,
     description:ctx.desc,
@@ -4131,7 +4197,7 @@ function openStockDetail(sym){
   const change=stockChangeText(s.chgPct);
   const number=value=>Number.isFinite(Number(value))?`${currency}${Number(value).toFixed(2)}`:"غير متاح";
   openAssetDetail({
-    instrumentId:s.instrumentId,title:s.sym,subtitle:s.name,icon:isEgx?"🇪🇬":"🌐",category:isEgx?"سهم EGX":"سهم عالمي",color:isEgx?"var(--g)":"var(--bl)",watchName:s.sym,up,
+    instrumentId:s.instrumentId,tvSymbol:isEgx?`EGX:${s.sym}`:undefined,title:s.sym,subtitle:s.name,icon:isEgx?"🇪🇬":"🌐",category:isEgx?"سهم EGX":"سهم عالمي",color:isEgx?"var(--g)":"var(--bl)",watchName:s.sym,up,
     price:number(s.price),change:up===null?"—":`${up?"▲ ":"▼ "}${change}`,source:s.source||freshness.source||"غير متاح",
     freshness:`وقت المصدر: ${cairoTimestampLabel(s.ts)} · ${marketAgeLabel(freshness)} · ${marketStateLabel(freshness)}`,
     description:`${s.name} — قطاع ${s.sector||"غير محدد"}. يعرض الرسم السجل اليومي المرخّص المتاح فقط، ولا يقدّم توصية تداول.`,

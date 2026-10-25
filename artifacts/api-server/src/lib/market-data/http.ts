@@ -45,6 +45,7 @@ export type ResilientFetchOptions = {
   attempts?: number;
   minIntervalMs?: number;
   headers?: Record<string, string>;
+  body?: string;
 };
 
 /**
@@ -60,6 +61,34 @@ export class ResilientHttpClient {
   ) {}
 
   async getJson<T>(url: string, opts: ResilientFetchOptions): Promise<T> {
+    const responseText = await this.send(url, opts, "GET");
+    try {
+      return JSON.parse(responseText) as T;
+    } catch {
+      throw new UpstreamHttpError("upstream returned invalid JSON");
+    }
+  }
+
+  /** Some public reference pages (HTML) act as name-labeled price tables;
+   * they are fetched as text and parsed by the single provider that owns them. */
+  async getText(url: string, opts: ResilientFetchOptions): Promise<string> {
+    return this.send(url, opts, "GET");
+  }
+
+  async postJson<T>(url: string, body: unknown, opts: ResilientFetchOptions): Promise<T> {
+    const responseText = await this.send(url, { ...opts, body: JSON.stringify(body) }, "POST");
+    try {
+      return JSON.parse(responseText) as T;
+    } catch {
+      throw new UpstreamHttpError("upstream returned invalid JSON");
+    }
+  }
+
+  private async send(
+    url: string,
+    opts: ResilientFetchOptions,
+    method: "GET" | "POST",
+  ): Promise<string> {
     const attempts = Math.max(1, Math.min(3, opts.attempts ?? 2));
     const timeoutMs = Math.max(500, opts.timeoutMs ?? 8_000);
     let lastError: unknown;
@@ -70,12 +99,14 @@ export class ResilientHttpClient {
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await this.fetcher(url, {
-          method: "GET",
+          method,
           headers: {
             Accept: "application/json",
             "User-Agent": "EgyTrend-MarketData/1.0 (+backend-only)",
+            ...(method === "POST" && opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
             ...(opts.headers ?? {}),
           },
+          body: method === "POST" ? opts.body : undefined,
           signal: controller.signal,
         });
         if (!response.ok) {
@@ -84,11 +115,7 @@ export class ResilientHttpClient {
           if (!retryable || attempt + 1 === attempts) throw error;
           lastError = error;
         } else {
-          try {
-            return await response.json() as T;
-          } catch {
-            throw new UpstreamHttpError("upstream returned invalid JSON", response.status);
-          }
+          return await response.text();
         }
       } catch (err) {
         const normalized = err instanceof Error ? err : new Error("unknown upstream error");
