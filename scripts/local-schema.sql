@@ -1,3 +1,8 @@
+-- TEST-ONLY schema mirror (used by artifacts/api-server/test/setup-test-db.mjs).
+-- PROVISIONING MUST NOT USE THIS FILE: the source of truth is lib/db/src/schema
+-- plus the reviewed paired SQL files under lib/db/migrations (see
+-- lib/db/migrations/README.md after a verified backup). It exists only to
+-- recreate the throwaway `egytrend_test` database for the security tests.
 -- EgyTrend schema (mirrors lib/db/src/schema/*)
 CREATE TABLE IF NOT EXISTS app_users (
   id serial PRIMARY KEY,
@@ -110,9 +115,9 @@ CREATE TABLE IF NOT EXISTS payment_requests (
   tx text NOT NULL,
   status text NOT NULL DEFAULT 'pending',
   notes text,
-  -- Payment proof (data URL + original name) and the admin decision time:
-  -- these exist in the drizzle schema, so a mirror without them made the
-  -- admin payments tab answer 500 ("column does not exist").
+  -- Payment proof (data URL + original name) and the admin decision time.
+  -- These three columns were missing from this mirror, so a database created
+  -- from it returned 500 on the admin payments tab (column does not exist).
   proof_image text,
   proof_name text,
   decided_at timestamp,

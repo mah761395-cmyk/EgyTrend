@@ -6,7 +6,12 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#0ea5e9",
-    "url": "https://www.elaosboa.com/feed"
+    "url": "https://www.elaosboa.com/feed",
+    "commercialRedisplay": {
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+    }
   },
   "masrawy": {
     "id": "masrawy",
@@ -15,7 +20,13 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#10b981",
-    "url": "https://news.google.com/rss/search?q=site:masrawy.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:masrawy.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "amwal": {
     "id": "amwal",
@@ -24,7 +35,13 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#7c3aed",
-    "url": "https://amwalalghad.com/category/news/feed"
+    "url": "https://amwalalghad.com/category/news/feed",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "elwatan": {
     "id": "elwatan",
@@ -33,7 +50,13 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#b45309",
-    "url": "https://news.google.com/rss/search?q=site:elwatannews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:elwatannews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "shorouk": {
     "id": "shorouk",
@@ -42,7 +65,13 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#dc2626",
-    "url": "https://news.google.com/rss/search?q=site:shorouknews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:shorouknews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "almasryalyoum": {
     "id": "almasryalyoum",
@@ -51,7 +80,12 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#22c55e",
-    "url": "https://www.almasryalyoum.com/rss/rssfeed.aspx?SectionID=24"
+    "url": "https://www.almasryalyoum.com/rss/rssfeed.aspx?SectionID=24",
+    "commercialRedisplay": {
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+    }
   },
   "alarabiya": {
     "id": "alarabiya",
@@ -60,7 +94,13 @@
     "lang": "ar",
     "cat": "global",
     "color": "#c2410c",
-    "url": "https://news.google.com/rss/search?q=site:alarabiya.net+%D8%A3%D8%B3%D9%88%D8%A7%D9%82+when:2d&hl=ar&gl=SA&ceid=SA:ar"
+    "url": "https://news.google.com/rss/search?q=site:alarabiya.net+%D8%A3%D8%B3%D9%88%D8%A7%D9%82+when:2d&hl=ar&gl=SA&ceid=SA:ar",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "skynews": {
     "id": "skynews",
@@ -69,7 +109,13 @@
     "lang": "ar",
     "cat": "global",
     "color": "#f59e0b",
-    "url": "https://www.skynewsarabia.com/rss"
+    "url": "https://www.skynewsarabia.com/rss",
+    "commercialRedisplay": {
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "General-news feed without market focus; kept off for relevance."
+    }
   },
   "bbcar": {
     "id": "bbcar",
@@ -78,7 +124,13 @@
     "lang": "ar",
     "cat": "global",
     "color": "#e2001a",
-    "url": "https://feeds.bbci.co.uk/arabic/business/rss.xml"
+    "url": "https://feeds.bbci.co.uk/arabic/business/rss.xml",
+    "commercialRedisplay": {
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "General-news feed without market focus; kept off for relevance."
+    }
   },
   "alain": {
     "id": "alain",
@@ -87,7 +139,12 @@
     "lang": "ar",
     "cat": "global",
     "color": "#6366f1",
-    "url": "https://news.google.com/rss/search?q=site:al-ain.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=AE&ceid=AE:ar"
+    "url": "https://news.google.com/rss/search?q=site:al-ain.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=AE&ceid=AE:ar",
+    "commercialRedisplay": {
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+    }
   },
   "reuters": {
     "id": "reuters",
@@ -96,7 +153,13 @@
     "lang": "en",
     "cat": "global",
     "color": "#ff8c00",
-    "url": "https://news.google.com/rss/search?q=site:reuters.com/business+when:2d&hl=en-US&gl=US&ceid=US:en"
+    "url": "https://news.google.com/rss/search?q=site:reuters.com/business+when:2d&hl=en-US&gl=US&ceid=US:en",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "cnbc": {
     "id": "cnbc",
@@ -105,7 +168,13 @@
     "lang": "en",
     "cat": "global",
     "color": "#0080ff",
-    "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html"
+    "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "yahoo": {
     "id": "yahoo",
@@ -114,7 +183,12 @@
     "lang": "en",
     "cat": "global",
     "color": "#7e22ce",
-    "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC&region=US&lang=en-US"
+    "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC&region=US&lang=en-US",
+    "commercialRedisplay": {
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+    }
   },
   "marketwatch": {
     "id": "marketwatch",
@@ -123,7 +197,13 @@
     "lang": "en",
     "cat": "stocks",
     "color": "#1a7f37",
-    "url": "https://feeds.content.dowjones.io/public/rss/mw_topstories"
+    "url": "https://feeds.content.dowjones.io/public/rss/mw_topstories",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "investing": {
     "id": "investing",
@@ -132,7 +212,13 @@
     "lang": "en",
     "cat": "global",
     "color": "#ef4444",
-    "url": "https://www.investing.com/rss/news_25.rss"
+    "url": "https://www.investing.com/rss/news_25.rss",
+    "archivedAt": "2026-10-16T00:00:00.000Z",
+    "commercialRedisplay": {
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+    }
   },
   "ft": {
     "id": "ft",
@@ -141,7 +227,13 @@
     "lang": "en",
     "cat": "stocks",
     "color": "#9d6e3f",
-    "url": "https://www.ft.com/markets?format=rss"
+    "url": "https://www.ft.com/markets?format=rss",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "coindesk": {
     "id": "coindesk",
@@ -150,7 +242,13 @@
     "lang": "en",
     "cat": "crypto",
     "color": "#f59e0b",
-    "url": "https://www.coindesk.com/arc/outboundfeeds/rss/"
+    "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "cointelegraph": {
     "id": "cointelegraph",
@@ -159,7 +257,13 @@
     "lang": "en",
     "cat": "crypto",
     "color": "#0891b2",
-    "url": "https://cointelegraph.com/rss"
+    "url": "https://cointelegraph.com/rss",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "mubasher": {
     "id": "mubasher",
@@ -168,7 +272,13 @@
     "lang": "ar",
     "cat": "stocks",
     "color": "#0ea5e9",
-    "url": "https://news.google.com/rss/search?q=site:mubasher.info+%D8%A3%D8%B3%D9%87%D9%85+%D8%A8%D9%88%D8%B1%D8%B5%D8%A9+when:2d&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:mubasher.info+%D8%A3%D8%B3%D9%87%D9%85+%D8%A8%D9%88%D8%B1%D8%B5%D8%A9+when:2d&hl=ar&gl=EG&ceid=EG:ar",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "argaam": {
     "id": "argaam",
@@ -177,7 +287,12 @@
     "lang": "ar",
     "cat": "stocks",
     "color": "#16a34a",
-    "url": "https://www.argaam.com/ar/rss"
+    "url": "https://www.argaam.com/ar/rss",
+    "commercialRedisplay": {
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+    }
   },
   "aleqtisadiyah": {
     "id": "aleqtisadiyah",
@@ -186,7 +301,12 @@
     "lang": "ar",
     "cat": "global",
     "color": "#7c3aed",
-    "url": "https://news.google.com/rss/search?q=site:aleqtisadiyah.com+when:2d&hl=ar&gl=SA&ceid=SA:ar"
+    "url": "https://news.google.com/rss/search?q=site:aleqtisadiyah.com+when:2d&hl=ar&gl=SA&ceid=SA:ar",
+    "commercialRedisplay": {
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+    }
   },
   "asharq": {
     "id": "asharq",
@@ -195,7 +315,12 @@
     "lang": "ar",
     "cat": "global",
     "color": "#f59e0b",
-    "url": "https://news.google.com/rss/search?q=site:asharq.com+when:2d&hl=ar&gl=SA&ceid=SA:ar"
+    "url": "https://news.google.com/rss/search?q=site:asharq.com+when:2d&hl=ar&gl=SA&ceid=SA:ar",
+    "commercialRedisplay": {
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+    }
   },
   "almal": {
     "id": "almal",
@@ -204,7 +329,13 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#059669",
-    "url": "https://news.google.com/rss/search?q=site:almalnews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:almalnews.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "dostor": {
     "id": "dostor",
@@ -213,7 +344,13 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#b91c1c",
-    "url": "https://news.google.com/rss/search?q=site:dostor.org+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:dostor.org+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   },
   "cnnar": {
     "id": "cnnar",
@@ -222,7 +359,12 @@
     "lang": "ar",
     "cat": "global",
     "color": "#cc0000",
-    "url": "https://news.google.com/rss/search?q=site:arabic.cnn.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar"
+    "url": "https://news.google.com/rss/search?q=site:arabic.cnn.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
+    "commercialRedisplay": {
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+    }
   },
   "zawya": {
     "id": "zawya",
@@ -231,7 +373,12 @@
     "lang": "en",
     "cat": "global",
     "color": "#0369a1",
-    "url": "https://news.google.com/rss/search?q=site:zawya.com+egypt+finance+when:2d&hl=en&gl=AE&ceid=AE:en"
+    "url": "https://news.google.com/rss/search?q=site:zawya.com+egypt+finance+when:2d&hl=en&gl=AE&ceid=AE:en",
+    "commercialRedisplay": {
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+    }
   },
   "enterprise": {
     "id": "enterprise",
@@ -240,7 +387,12 @@
     "lang": "en",
     "cat": "egypt",
     "color": "#1d4ed8",
-    "url": "https://news.google.com/rss/search?q=site:enterprise.press+egypt+business+when:2d&hl=en&gl=EG&ceid=EG:en"
+    "url": "https://news.google.com/rss/search?q=site:enterprise.press+egypt+business+when:2d&hl=en&gl=EG&ceid=EG:en",
+    "commercialRedisplay": {
+      "status": "pending",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+    }
   },
   "arabfinance": {
     "id": "arabfinance",
@@ -249,6 +401,12 @@
     "lang": "en",
     "cat": "egypt",
     "color": "#15803d",
-    "url": "https://news.google.com/rss/search?q=site:arabfinance.com+egypt+when:2d&hl=en&gl=EG&ceid=EG:en"
+    "url": "https://news.google.com/rss/search?q=site:arabfinance.com+egypt+when:2d&hl=en&gl=EG&ceid=EG:en",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Headline + feed excerpt + attribution + link-back only."
+    }
   }
 }

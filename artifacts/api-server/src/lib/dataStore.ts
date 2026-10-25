@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { logger } from "./logger";
 
 /* The data directory lives next to the build output (dist/) at
@@ -14,9 +15,30 @@ import { logger } from "./logger";
  * the embedded copy (read-only; admin edits then only live in memory for
  * the life of the function instance). Writes still work normally when a
  * writable disk exists (local / VPS). */
-const DATA_DIR = path.resolve(__dirname, "..", "data");
+// The production bundle supplies __dirname via build.mjs; source-mode tests
+// are native ESM and need the standard import.meta fallback instead.
+const moduleDir = typeof __dirname === "string"
+  ? __dirname
+  : path.dirname(fileURLToPath(import.meta.url));
+/* Bundles live in `<api>/dist` while source-mode tests live in
+ * `<api>/src/lib`; select the first real sibling data directory rather than
+ * watching a non-existent `src/data` path and emitting misleading warnings. */
+const dataDirCandidates = [
+  path.resolve(moduleDir, "..", "data"),
+  path.resolve(moduleDir, "..", "..", "data"),
+];
+const DATA_DIR = dataDirCandidates.find((candidate) => fsSync.existsSync(candidate)) || dataDirCandidates[0]!;
 import embeddedSources from "../../data/sources.json" with { type: "json" };
 import embeddedArticles from "../../data/articles.json" with { type: "json" };
+
+export type CommercialRedisplayReview = {
+  /** Only an explicit written commercial redisplay grant can be `approved`. */
+  status: "approved" | "pending" | "not_approved";
+  /** Public contract/terms URL or internal contract reference; never a secret. */
+  evidence?: string;
+  reviewedAt?: string;
+  note?: string;
+};
 
 export type SourceMeta = {
   id: string;
@@ -26,6 +48,13 @@ export type SourceMeta = {
   cat: "egypt" | "global" | "stocks" | "crypto";
   color: string;
   url: string;
+  /**
+   * RSS availability alone is not permission to republish in a paid product.
+   * Missing metadata is treated as pending, and pending sources are never fetched.
+   */
+  commercialRedisplay?: CommercialRedisplayReview;
+  /** Soft-deletion marker; archived content is retained on disk for recovery. */
+  archivedAt?: string;
 };
 
 export type CustomArticle = {
@@ -42,6 +71,8 @@ export type CustomArticle = {
   srcIcon: string;
   srcColor: string;
   srcLang: "ar" | "en";
+  /** Soft-deletion marker; archived content is retained on disk for recovery. */
+  archivedAt?: string;
 };
 
 const SOURCES_FILE = path.join(DATA_DIR, "sources.json");
@@ -77,9 +108,11 @@ async function writeJSONAtomic(file: string, data: unknown): Promise<void> {
     await fs.writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
     await fs.rename(tmp, file);
   } catch (err) {
-    /* Read-only/ephemeral filesystem (serverless): keep the change in memory
-     * only — the admin action still succeeds for the life of the instance. */
-    logger.warn({ err, file }, "dataStore: disk write unavailable, kept in memory");
+    // A memory-only success on an ephemeral/read-only server is deceptive:
+    // the next instance would silently lose an admin edit. Fail closed so the
+    // caller can show a durable-storage error and leave the cache unchanged.
+    logger.error({ err, file }, "dataStore: durable write unavailable");
+    throw new Error("content storage is unavailable");
   }
 }
 
@@ -95,6 +128,10 @@ let articlesCache: CustomArticle[] = readJSONSync(
 /* Watch for external edits to the JSON files (e.g. you edit sources.json
  * by hand) so the cache stays fresh without restart. */
 function startWatcher(file: string, onChange: () => void): void {
+  /* Embedded JSON is the deliberate serverless fallback. When no on-disk
+   * copy exists there is nothing to watch, and that is not an operational
+   * warning. */
+  if (!fsSync.existsSync(file)) return;
   try {
     fsSync.watch(file, { persistent: false }, () => {
       // debounce so we coalesce burst events
@@ -118,57 +155,83 @@ startWatcher(ARTICLES_FILE, async () => {
 
 /* ─── Public API ─── */
 
+/** A source is live only after a documented commercial redisplay review. */
+export function isCommercialRedisplayApproved(source: SourceMeta): boolean {
+  const review = source.commercialRedisplay;
+  return !source.archivedAt
+    && review?.status === "approved"
+    && typeof review.evidence === "string"
+    && review.evidence.trim().length >= 8;
+}
+
+/** Active sources are the only third-party feeds that network code may fetch. */
 export function listSources(): SourceMeta[] {
+  return Object.values(sourcesCache).filter(isCommercialRedisplayApproved);
+}
+
+/** Full inventory is admin-only; it includes archived/pending entries for review. */
+export function listSourceInventory(): SourceMeta[] {
   return Object.values(sourcesCache);
 }
 
 export function getSource(id: string): SourceMeta | undefined {
-  return sourcesCache[id];
+  const source = sourcesCache[id];
+  return source && isCommercialRedisplayApproved(source) ? source : undefined;
 }
 
 export async function upsertSource(src: SourceMeta): Promise<void> {
-  sourcesCache = { ...sourcesCache, [src.id]: src };
-  await writeJSONAtomic(SOURCES_FILE, sourcesCache);
+  const existing = sourcesCache[src.id];
+  // Admin-created feeds always begin disabled. Approval needs a separately
+  // documented legal review rather than trusting an RSS URL or a form field.
+  const commercialRedisplay = existing?.commercialRedisplay ?? {
+    status: "pending" as const,
+    reviewedAt: new Date().toISOString(),
+    note: "Awaiting documented commercial redisplay approval.",
+  };
+  const next = { ...sourcesCache, [src.id]: { ...src, commercialRedisplay, archivedAt: undefined } };
+  await writeJSONAtomic(SOURCES_FILE, next);
+  sourcesCache = next;
 }
 
+/** Archives rather than destroys a source so it can be recovered from JSON. */
 export async function deleteSource(id: string): Promise<boolean> {
-  if (!sourcesCache[id]) return false;
-  const next = { ...sourcesCache };
-  delete next[id];
+  const current = sourcesCache[id];
+  if (!current || current.archivedAt) return false;
+  const next = { ...sourcesCache, [id]: { ...current, archivedAt: new Date().toISOString() } };
+  await writeJSONAtomic(SOURCES_FILE, next);
   sourcesCache = next;
-  await writeJSONAtomic(SOURCES_FILE, sourcesCache);
   return true;
 }
 
 export function listCustomArticles(): CustomArticle[] {
-  return [...articlesCache].sort(
+  return articlesCache.filter((article) => !article.archivedAt).sort(
     (a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime(),
   );
 }
 
 export function getCustomArticle(id: string): CustomArticle | undefined {
-  return articlesCache.find((a) => a.id === id);
+  const article = articlesCache.find((a) => a.id === id);
+  return article?.archivedAt ? undefined : article;
 }
 
 export async function upsertCustomArticle(a: CustomArticle): Promise<void> {
+  const nextArticle = { ...a, archivedAt: undefined };
   const idx = articlesCache.findIndex((x) => x.id === a.id);
-  if (idx >= 0) {
-    articlesCache = [
-      ...articlesCache.slice(0, idx),
-      a,
-      ...articlesCache.slice(idx + 1),
-    ];
-  } else {
-    articlesCache = [a, ...articlesCache];
-  }
-  await writeJSONAtomic(ARTICLES_FILE, articlesCache);
+  const next = idx >= 0
+    ? [...articlesCache.slice(0, idx), nextArticle, ...articlesCache.slice(idx + 1)]
+    : [nextArticle, ...articlesCache];
+  await writeJSONAtomic(ARTICLES_FILE, next);
+  articlesCache = next;
 }
 
+/** Archives rather than destroys an article so it can be recovered from JSON. */
 export async function deleteCustomArticle(id: string): Promise<boolean> {
-  const before = articlesCache.length;
-  articlesCache = articlesCache.filter((a) => a.id !== id);
-  if (articlesCache.length === before) return false;
-  await writeJSONAtomic(ARTICLES_FILE, articlesCache);
+  const idx = articlesCache.findIndex((a) => a.id === id && !a.archivedAt);
+  if (idx < 0) return false;
+  const next = [...articlesCache];
+  next[idx] = { ...next[idx], archivedAt: new Date().toISOString() };
+  await writeJSONAtomic(ARTICLES_FILE, next);
+  articlesCache = next;
   return true;
 }
 

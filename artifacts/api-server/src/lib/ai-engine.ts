@@ -48,24 +48,23 @@ export type EngineError = {
 
 /* ─── env ──────────────────────────────────────────────────────────── */
 export function geminiKey(): string {
-  /* Canonical name first, then common alternates — including the names the
-   * owner created in the Vercel dashboard ("Gemini1A", "Gemini") so a
-   * mis-named env var still works without renaming it in the dashboard.
-   * Last resort: any env key containing "gemini" (case-insensitive) whose
-   * value looks like a key — excluding model/base-url vars. */
-  const direct =
+  /* Accept only documented, explicit names. Scanning process.env for keys
+   * containing “gemini” can accidentally select an unrelated credential
+   * (or a typo) and makes the active billing boundary impossible to audit.
+   * Configure GEMINI_API_KEY for new deployments; the two standard Google
+   * aliases remain for an intentional compatibility window. */
+  return (
     process.env["GEMINI_API_KEY"] ||
     process.env["GOOGLE_API_KEY"] ||
+    process.env["GOOGLE_GENERATIVE_AI_API_KEY"] ||
     process.env["AI_INTEGRATIONS_GOOGLE_API_KEY"] ||
-    process.env["Gemini1A"] ||
+    /* Legacy exact name already present in the live Vercel project. Kept as
+     * one explicit alias (not a name scan) so the production key that is
+     * billing today keeps working after this deploy; rotate it to
+     * GEMINI_API_KEY in the dashboard when convenient. */
     process.env["Gemini"] ||
-    "";
-  if (direct) return direct;
-  for (const [k, v] of Object.entries(process.env)) {
-    const lk = k.toLowerCase();
-    if (v && lk.includes("gemini") && !/model|base|url|endpoint/.test(lk)) return v;
-  }
-  return "";
+    ""
+  );
 }
 export function anthropicKey(): string {
   return (
@@ -249,18 +248,11 @@ async function geminiRequestOnce(
     });
     const txt = await r.text();
     if (!r.ok) {
-    let msg = txt.slice(0, 400);
-    try {
-      const j = JSON.parse(txt) as { error?: { message?: string } };
-      if (j.error?.message) msg = j.error.message.slice(0, 400);
-    } catch { /* keep raw */ }
-    /* Google echoes the sent key back inside some 401 body shapes —
-     * NEVER forward that to a client. Strip anything key-like first. */
-    msg = msg.replace(/(?:(?:x-goog-api-key|key|api[-_]?)\s*[:=]\s*["']?)?\b([A-Za-z0-9_\-\.]{25,})\b/g, "[redacted]");
-      logger.warn({ status: r.status, msg }, "gemini upstream error");
+      /* Provider bodies can echo credentials or user-adjacent request details.
+       * Retain only the HTTP status in logs and never surface that body. */
+      logger.warn({ status: r.status, bodyLength: txt.length }, "gemini upstream error");
       if (r.status === 429) throw new UpstreamError("gemini rate limited", "rate_limit", 429);
-      if (r.status === 503 || r.status === 502) throw new UpstreamError(msg, "upstream", r.status);
-      throw new UpstreamError(msg, "upstream", r.status);
+      throw new UpstreamError("gemini upstream error", "upstream", r.status);
     }
     let data: {
       candidates?: Array<{
@@ -492,7 +484,7 @@ export async function anthropicChat(
     });
     const txt = await r.text();
     if (!r.ok) {
-      logger.warn({ status: r.status, body: txt.slice(0, 300) }, "anthropic upstream error");
+      logger.warn({ status: r.status, bodyLength: txt.length }, "anthropic upstream error");
       if (r.status === 429) throw new UpstreamError("anthropic rate limited", "rate_limit", 429);
       throw new UpstreamError("anthropic upstream error", "upstream", r.status);
     }
@@ -534,21 +526,18 @@ export type GeminiVerify = {
   error?: string;
 };
 
-/* Never forward anything key-like (the AQ. OAuth sample, AIza…, whatever
- * the owner pasted) in an error message shown to clients. */
-function redactKeys(s: string): string {
-  return s.replace(/[A-Za-z0-9_\-\.]{25,}/g, "[redacted]");
-}
-
 export async function geminiVerify(modelOverride?: string): Promise<GeminiVerify> {
   const model = modelOverride || geminiModel();
   const t0 = Date.now();
   try {
-    const { parts } = await geminiRequest(
+    /* A health probe must cost at most one request. Do not use the chat
+     * retry/failover chain here: an operator refresh should never fan out
+     * across models or spend quota to diagnose quota. */
+    const { parts } = await geminiRequestOnce(
       [{ role: "user", parts: [{ text: "ping" }] }],
       "Reply with the single word: OK",
       16,
-      15_000,
+      10_000,
       model,
     );
     const text = parts
@@ -566,7 +555,9 @@ export async function geminiVerify(modelOverride?: string): Promise<GeminiVerify
       model,
       latencyMs: Date.now() - t0,
       status: err?.upstreamStatus,
-      error: redactKeys(err?.message || "gemini unreachable").slice(0, 300),
+      /* A stable category is useful to an authenticated operator without
+       * exposing provider error text, request context, or credentials. */
+      error: err?.kind === "rate_limit" ? "rate_limit" : err?.kind === "timeout" ? "timeout" : "unavailable",
     };
   }
 }

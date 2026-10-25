@@ -1,18 +1,17 @@
 /* EgyTrend mailer — password-reset (and future) emails.
- * SMTP is OPTIONAL: when SMTP_HOST/SMTP_USER/SMTP_PASS are not configured,
- * sendMail() logs the message and returns { delivered:false } — the
- * password-reset flow stays fully testable locally, and on the server the
- * admin only adds SMTP env vars (see DEPLOYMENT.md) to switch real delivery
- * on with zero code changes.
- * nodemailer is resolved at RUNTIME (tools/mailer install, workspace
- * node_modules, or api-server node_modules) so a missing install only
- * disables email — it never breaks the server. */
+ * SMTP is optional. If it is not configured, sendMail() performs no delivery
+ * and writes no recipient, subject, HTML, or reset token to logs. This keeps
+ * local development and shared previews from becoming an accidental mailbox
+ * or credential sink.
+ *
+ * When SMTP is configured, the supplied account email is the only recipient;
+ * there is no admin-copy or catch-all fallback. */
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 import { logger } from "./logger";
 
-export type MailResult = { delivered: boolean; error?: string };
+export type MailResult = { delivered: boolean; error?: "smtp_not_configured" | "nodemailer_missing" | "send_failed" };
 
 type Mailer = {
   createTransport: (opts: unknown) => { sendMail: (msg: unknown) => Promise<unknown> };
@@ -57,13 +56,13 @@ async function loadNodemailer(): Promise<Mailer | null> {
       /* try next location */
     }
   }
-  logger.warn("nodemailer not installed — email delivery disabled (reset flow falls back per environment)");
+  logger.warn("nodemailer not installed — email delivery disabled");
   return null;
 }
 
 export async function sendMail(to: string, subject: string, html: string): Promise<MailResult> {
   if (!smtpConfigured()) {
-    logger.warn({ to, subject, preview: html.slice(0, 400) }, "SMTP not configured — email NOT delivered (dev preview above)");
+    logger.warn({ reason: "smtp_not_configured" }, "email delivery skipped");
     return { delivered: false, error: "smtp_not_configured" };
   }
   const nodemailer = await loadNodemailer();
@@ -81,12 +80,11 @@ export async function sendMail(to: string, subject: string, html: string): Promi
       subject,
       html,
     });
-    logger.info({ to, subject }, "email sent");
+    logger.info({ delivery: "smtp" }, "email sent");
     return { delivered: true };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "send_failed";
-    logger.error({ err: msg }, "email send failed");
-    return { delivered: false, error: msg };
+    logger.error({ err: e }, "email send failed");
+    return { delivered: false, error: "send_failed" };
   }
 }
 

@@ -23,7 +23,10 @@ type ChatMsg = { role: "user" | "assistant"; content: string };
  * ───────────────────────────────────────────────────────────────────── */
 
 type MarketsPayload = {
-  markets?: Record<string, Array<{ n: string; v: string; c: string; up: boolean; s?: string }>>;
+  markets?: Record<string, Array<{
+    n: string; v: string; c: string; up: boolean; s?: string;
+    source?: string; asOf?: number; delayedMinutes?: number;
+  }>>;
   sources?: Record<string, string>;
 };
 
@@ -31,6 +34,7 @@ type StocksPayload = {
   stocks?: Array<{
     sym: string; name: string; price: number; chgPct: number;
     pe?: number; mktCapM?: number; vol?: number; sector?: string;
+    source?: string; ts?: number;
   }>;
 };
 
@@ -259,9 +263,9 @@ function detectIntent(text: string, stocks?: NonNullable<StocksPayload["stocks"]
       || (text.indexOf("العنوان:") !== -1 && text.indexOf("الخلاصة:") !== -1)) return "article";
   if (text.indexOf("محفظتي") !== -1 || text.indexOf("محفظت") !== -1 || text.indexOf("portfolio") !== -1) return "portfolio";
   const tn = normAr(text);
-  /* فرص تداول — تُبنى من البيانات الحية بدل قائمة منيو ثابتة. */
+  /* طلب عناصر المتابعة يرد بلقطات وصفية موثّقة فقط. */
   if (tn.includes("فرص") || tn.includes("opportunit")) return "opportunities";
-  /* سؤال «تأثير X على Y» — يحتاج تحليلًا سببيًا لا لقطة أسعار فقط.
+  /* سؤال عن علاقة/تأثير عامل سوقي: يرد ببيانات متاحة وحدودها، لا بتحليل سببي.
    * (لا نستخدم «اذا» المجردة لأنها تطابق «لماذا».) */
   if (tn.includes("تاثير") || tn.includes("impact")
       || /اذا (ارتفع|انخفض|رفع|خفض|زاد|قل|هبط|صعد)/.test(tn)) return "impact";
@@ -301,77 +305,56 @@ function detectIntent(text: string, stocks?: NonNullable<StocksPayload["stocks"]
 
 /* ─── Response builders (all grounded in live data) ─── */
 
+function hasVerifiedQuotes(markets: MarketsPayload | undefined): boolean {
+  return Boolean(markets?.markets && Object.values(markets.markets).some((rows) => Array.isArray(rows) && rows.length > 0));
+}
+
 function greetingReply(): string {
   return [
-    "أهلاً بك! أنا محرر EgyTrend الذكي 🤖",
+    "أهلاً بك! أنا مساعد بيانات EgyTrend 🤖",
     "",
-    "أعمل الآن بالوضع المحلي وأحلل بيانات السوق الحقيقية المحدّثة:",
-    "• مؤشر EGX30 وأسهم البورصة المصرية",
-    "• الدولار والعملات والذهب والنفط",
-    "• الكريبتو وأهم الأخبار اليومية",
+    "أصف فقط البيانات التي تصل من الخادم بمصدرها، وأوضح النقص أو التأخر.",
+    "• عند غياب مصدر مرخّص سأقول «غير متاح» بدل تخمين رقم أو توصية.",
+    "• لا أختار أصلًا للشراء أو البيع ولا أتوقع اتجاهًا أو عائدًا.",
     "",
     "اسألني مثلاً:",
     "«إيه حالة السوق النهاردة؟»",
-    "«حلّل سهم COMI»",
-    "«هل أشتري ذهب ولا دولار؟»",
+    "«لخّص بيانات سهم COMI»",
+    "«إيه البيانات المتاحة عن الذهب والدولار؟»",
   ].join("\n");
 }
 
 function marketReply(live: { markets?: MarketsPayload; news?: NewsPayload; stocks?: StocksPayload }): string {
-  const m = live.markets?.markets;
-  if (!m) return fallbackReply(live, "بيانات الأسواق");
-  const lines: string[] = ["📊 **نظرة سريعة على الأسواق الآن**", ""];
-  const eg = m.eg || [];
-  if (eg.length) {
-    lines.push("🇪🇬 **السوق المصري:**");
-    for (const q of eg.slice(0, 4)) lines.push(`• ${q.n}: ${q.v} (${fmtPct(q.c)}) ${dirOf(q.c)}`);
+  const markets = live.markets?.markets;
+  if (!markets || !hasVerifiedQuotes(live.markets)) return fallbackReply(live, "بيانات الأسواق");
+  const lines: string[] = ["📊 **لقطة بيانات الأسواق المتاحة**", ""];
+  const groups: Array<[string, NonNullable<MarketsPayload["markets"]>[keyof MarketsPayload["markets"]]]> = [
+    ["🇪🇬 السوق المصري", markets.eg || []],
+    ["🌍 الأسواق العالمية", markets.gl || []],
+    ["🥇 السلع", markets.cm || []],
+    ["₿ الأصول الرقمية", markets.cr || []],
+  ];
+  for (const [label, quotes] of groups) {
+    if (!quotes.length) continue;
+    lines.push(`**${label}:**`);
+    for (const quote of quotes.slice(0, 4)) {
+      lines.push(`• ${quote.n}: ${quote.v} (${quote.c || "—"}) · المصدر: ${quote.source || "غير متاح"}`);
+    }
     lines.push("");
   }
-  const gl = m.gl || [];
-  if (gl.length) {
-    lines.push("🌍 **الأسواق العالمية:**");
-    lines.push(gl.map((q) => `${q.n} ${q.v} (${fmtPct(q.c)})`).join(" · "));
-    lines.push("");
-  }
-  const cm = m.cm || [];
-  if (cm.length) {
-    lines.push("🥇 **السلع:** " + cm.map((q) => `${q.n} ${q.v} (${fmtPct(q.c)})`).join(" · "));
-    lines.push("");
-  }
-  const cr = m.cr || [];
-  if (cr.length) {
-    lines.push("₿ **الكريبتو:** " + cr.map((q) => `${q.n} ${q.v} (${fmtPct(q.c)})`).join(" · "));
-    lines.push("");
-  }
-  const egx = eg.find((q) => q.n === "EGX30");
-  if (egx) {
-    const down = egx.c.startsWith("-");
-    lines.push(down
-      ? `💡 **الخلاصة:** المؤشر المصري ${dirOf(egx.c)} — يُفضّل الحذر والانتظار حتى استقرار الحركة، مع مراقبة أسهم البنوك والصناعات الدفاعية.`
-      : `💡 **الخلاصة:** المؤشر المصري ${dirOf(egx.c)} — الزخم الإيجابي مدعوم بسيولة جيدة، مع التركيز على القطاعات القائدة للصعود.`);
-  }
+  lines.push("⚠️ هذه لقطة وصفية؛ لا تثبت سبب الحركة ولا تمثل توصية أو توقعًا.");
   return lines.join("\n");
 }
 
 /* Shown only when a dataset genuinely could not be loaded in time. It leads
  * with what we DO have instead of a bare «غير متاحة», which read like a
  * broken site to users. */
-function fallbackReply(live: Live, what: string): string {
-  const stocks = live.stocks?.stocks;
-  const m = live.markets?.markets;
-  const lines: string[] = [`⏳ ${what} قيد التحديث الآن — أعد الإرسال بعد لحظات.`];
-  if (m?.eg?.length) {
-    lines.push("", "أقرب ما نملكه لحظياً:");
-    for (const q of m.eg.slice(0, 3)) lines.push(`• ${q.n}: ${q.v} (${fmtPct(q.c)}) ${dirOf(q.c)}`);
-  } else if (stocks?.length) {
-    const { up, dn } = topMovers(stocks);
-    lines.push("", "أقرب ما نملكه لحظياً:");
-    if (up[0]) lines.push(`• الأكثر صعوداً: ${up[0].sym} ${up[0].price.toFixed(2)} ج (+${up[0].chgPct.toFixed(2)}%)`);
-    if (dn[0]) lines.push(`• الأكثر تراجعاً: ${dn[0].sym} ${dn[0].price.toFixed(2)} ج (${dn[0].chgPct.toFixed(2)}%)`);
-  } else {
-    lines.push("(أول تحميل في اليوم قد يأخذ ثوانٍ).");
-  }
-  return lines.join("\n");
+function fallbackReply(_live: Live, what: string): string {
+  return [
+    `📡 ${what} غير متاحة حاليًا من مصدر موثّق.`,
+    "لن أعرض رقمًا بديلًا أو أستنتج نتيجة من بيانات ناقصة.",
+    "افتح صفحة «مصادر بيانات الأسواق» لمعرفة حالة المصدر، ثم أعد المحاولة عند توافره.",
+  ].join("\n");
 }
 
 function stockReply(
@@ -379,71 +362,50 @@ function stockReply(
   live: { stocks?: StocksPayload; news?: NewsPayload },
 ): string {
   const stocks = live.stocks?.stocks;
-  if (!stocks || !stocks.length) return fallbackReply(live, "بيانات الأسهم");
+  if (!stocks?.length) return fallbackReply(live, "بيانات الأسهم");
   const hits = resolveStockMentions(question, stocks);
   if (!hits.length) {
-    /* An explicit ticker-like token that matches nothing must be reported
-     * honestly — never silently answered with an unrelated movers list. */
     const tickerLike = (question.match(/\b[A-Za-z]{3,12}\b/g) || [])
-      .filter((t) => /^[A-Z]+$/.test(t) && !/^(USD|EGP|EGX|AI|ETF|IPO|PE|NEWS|OK|VIP)$/.test(t));
-    if (tickerLike.length) {
-      return [
-        `📊 لم أجد سهمًا بالرمز «${tickerLike[0]}» في بيانات البورصة المصرية المتاحة حالياً.`,
-        "تحقّق من الرمز (مثال: COMI · JUFO · HRHO) أو اكتب اسم الشركة بالعربي.",
-      ].join("\n");
-    }
-    const { up, dn } = topMovers(stocks);
-    const lines = ["📈 **أبرز تحركات الأسهم الآن:**", ""];
-    if (up.length) lines.push("🟢 **الأكثر صعوداً:**");
-    for (const s of up) lines.push(`• ${s.sym} (${s.name}): ${s.price.toFixed(2)} ج (${s.chgPct >= 0 ? "+" : ""}${s.chgPct.toFixed(2)}%)${s.pe ? ` · P/E ${s.pe.toFixed(1)}` : ""}`);
-    lines.push("");
-    if (dn.length) lines.push("🔴 **الأكثر تراجعاً:**");
-    for (const s of dn) lines.push(`• ${s.sym} (${s.name}): ${s.price.toFixed(2)} ج (${s.chgPct >= 0 ? "+" : ""}${s.chgPct.toFixed(2)}%)${s.pe ? ` · P/E ${s.pe.toFixed(1)}` : ""}`);
-    lines.push("", "💡 اذكر رمز السهم (مثل COMI أو ABUK) لتحليل مفصّل له.");
-    return lines.join("\n");
+      .filter((ticker) => /^[A-Z]+$/.test(ticker) && !/^(USD|EGP|EGX|AI|ETF|IPO|PE|NEWS|OK|VIP)$/.test(ticker));
+    return tickerLike.length
+      ? `📊 لم أجد سهمًا بالرمز «${tickerLike[0]}» في القائمة المتاحة حاليًا. تحقّق من الرمز أو اكتب اسم الشركة.`
+      : "📊 اذكر رمز السهم أو اسمه لعرض الحقول والمصدر المتاحين، من دون تقييم أو توصية.";
   }
   const lines: string[] = [];
-  for (const s of hits) {
-    lines.push(`📊 **تحليل ${s.sym} — ${s.name}**`, "");
-    lines.push(`• السعر الحالي: ${s.price.toFixed(2)} ج`);
-    lines.push(`• التغير اليوم: ${s.chgPct >= 0 ? "+" : ""}${s.chgPct.toFixed(2)}% ${dirOf(s.chgPct >= 0 ? "+" : "-")}`);
-    if (s.pe) {
-      const cheap = s.pe < 8 ? "رخيص نسبياً" : s.pe < 15 ? "معتدل" : "مرتفع نسبياً";
-      lines.push(`• معامل الربحية P/E: ${s.pe.toFixed(1)} (${cheap})`);
-    }
-    if (s.mktCapM) lines.push(`• القيمة السوقية: ${s.mktCapM >= 1000 ? (s.mktCapM / 1000).toFixed(1) + " مليار" : s.mktCapM + " مليون"} ج`);
-    if (s.vol) lines.push(`• حجم التداول: ${s.vol.toLocaleString("ar-EG")} سهم`);
-    lines.push("");
-    if (s.chgPct >= 2) lines.push("💡 **القراءة:** زخم شرائي قوي اليوم — من الأفضل انتظار تراجع بسيط للدخول، مع وقف خسارة تحت قاع اليوم.");
-    else if (s.chgPct <= -2) lines.push("💡 **القراءة:** ضغط بيعي واضح — يُفضّل الانتظار حتى يظهر استقرار أو انعكاس قبل أي قرار شراء.");
-    else lines.push("💡 **القراءة:** حركة هادئة ضمن النطاق — مناسبة للتراكم التدريجي لمن يتبنى رؤية طويلة المدى.");
-    lines.push("", "⚠️ تحليل تعليمي مبني على البيانات الحية وليس توصية استثمارية.");
-    lines.push("");
+  for (const stock of hits) {
+    const change = Number.isFinite(stock.chgPct)
+      ? `${stock.chgPct! >= 0 ? "+" : ""}${stock.chgPct!.toFixed(2)}%`
+      : "غير متاح";
+    lines.push(`📊 **بيانات ${stock.sym} — ${stock.name}**`, "");
+    lines.push(`• السعر المعروض: ${stock.price.toFixed(2)} ج`);
+    lines.push(`• التغير المسجل: ${change}`);
+    lines.push(`• المصدر: ${stock.source || "غير متاح"}`);
+    if (typeof stock.pe === "number" && Number.isFinite(stock.pe)) lines.push(`• P/E المرسل من المصدر: ${stock.pe.toFixed(1)}`);
+    if (typeof stock.mktCapM === "number" && Number.isFinite(stock.mktCapM)) lines.push(`• القيمة السوقية المرسلة: ${stock.mktCapM.toLocaleString("ar-EG")} مليون ج`);
+    if (typeof stock.vol === "number" && Number.isFinite(stock.vol)) lines.push(`• حجم التداول المرسل: ${stock.vol.toLocaleString("ar-EG")}`);
+    lines.push("• لا تثبت هذه الحقول سبب الحركة أو ملاءمة السهم لقرار شخصي.", "");
   }
+  lines.push("⚠️ هذا ملخص وصفي للبيانات المتاحة، وليس توصية شراء أو بيع أو احتفاظ.");
   return lines.join("\n");
 }
 
 function adviceReply(live: { markets?: MarketsPayload; stocks?: StocksPayload }): string {
-  const m = live.markets?.markets;
-  const lines: string[] = ["🧭 **قراءة سريعة لاتخاذ القرار:**", ""];
-  const egx = m?.eg?.find((q) => q.n === "EGX30");
-  const usd = m?.eg?.find((q) => q.n === "USD/EGP");
-  const gold = m?.cm?.find((q) => q.n === "ذهب");
-  if (egx) lines.push(`• البورصة: EGX30 عند ${egx.v} (${fmtPct(egx.c)}) — ${dirOf(egx.c)}`);
-  if (usd) lines.push(`• الدولار: ${usd.v} جنيه (${fmtPct(usd.c)})`);
-  if (gold) lines.push(`• الذهب: ${gold.v} للأوقية (${fmtPct(gold.c)})`);
-  lines.push("");
-  const stocks = live.stocks?.stocks;
-  if (stocks) {
-    const cheap = cheapestByPE(stocks);
-    if (cheap.length) {
-      lines.push("💰 **أرخص الأسهم تقييماً (P/E منخفض):**");
-      for (const s of cheap) lines.push(`• ${s.sym} (${s.name}): P/E ${s.pe?.toFixed(1)} · سعر ${s.price.toFixed(2)} ج`);
-      lines.push("");
-    }
+  const markets = live.markets?.markets;
+  const lines = [
+    "🧭 لا أقدّم اختيارًا شخصيًا للشراء أو البيع أو توزيعًا للمحفظة.",
+    "يمكنني بدلًا من ذلك وصف الأسعار والحقول المتاحة ومصادرها، أو شرح مصطلح مالي بصورة عامة.",
+  ];
+  const sample = [
+    ...(markets?.eg || []),
+    ...(markets?.cm || []),
+  ].slice(0, 3);
+  if (sample.length) {
+    lines.push("", "**أمثلة من البيانات المتاحة:**");
+    for (const quote of sample) lines.push(`• ${quote.n}: ${quote.v} (${quote.c || "—"}) · المصدر: ${quote.source || "غير متاح"}`);
+  } else if (!live.stocks?.stocks?.length) {
+    lines.push("", "ولا توجد الآن بيانات موثّقة كافية لعرضها.");
   }
-  lines.push("**قاعدة عامة:** التنويع بين البورصة والذهب وأدوات الدين يقلل المخاطر، ولا تُدخل بمال لا تتحمل خسارته.");
-  lines.push("", "⚠️ هذا تحليل تعليمي وليس توصية استثمارية ملزمة.");
+  lines.push("", "⚠️ راجع المصدر الأصلي ومختصًا مرخصًا إذا كنت تحتاج نصيحة ملائمة لظروفك.");
   return lines.join("\n");
 }
 
@@ -477,12 +439,12 @@ function newsReply(live: { news?: NewsPayload; markets?: MarketsPayload; stocks?
     if (hits.length) {
       const lines = [`📰 **أخبار ${label}:**`, ""];
       for (const h of hits) lines.push(`• ${h.title} — ${h.src}`);
-      lines.push("", `🔎 بحث في عناوين ${feeds.length} مصدرًا حيًّا.`);
+      lines.push("", `🔎 بحث في عناوين ${feeds.length} مصدرًا متاحًا ومعتمدًا.`);
       return lines.join("\n");
     }
     /* No match → say it honestly instead of dumping unrelated headlines. */
     const lines = [
-      `⚠️ **لا توجد أخبار منشورة حاليًا عن ${label}** في آخر العناوين من ${feeds.length} مصدرًا.`,
+      `⚠️ **لا توجد أخبار منشورة حاليًا عن ${label}** في آخر العناوين من ${feeds.length} مصدرًا متاحًا.`,
       "قد يكون الخبر غير منشور بعد — أو جرّب كلمات بحث مختلفة.",
       "",
       "📰 آخر العناوين للمتابعة:",
@@ -505,7 +467,7 @@ function portfolioReply(question: string, live: { stocks?: StocksPayload }): str
     }
     lines.push("");
   }
-  lines.push("لتحليل محفظتك بالتفصيل: أضف أسهمك من تبويب «حسابي ← محفظتي» مع سعر الشراء وعدد الأسهم، ثم اضغط «تحليل المحفظة» — سأقيّم الأداء والتوزيع والمخاطر بناءً على الأسعار الحية.");
+  lines.push("لتحليل محفظتك بالتفصيل: أضف أسهمك من تبويب «حسابي ← محفظتي» مع سعر الشراء وعدد الأسهم. لن يُحسب الأداء إلا عند توافر أسعار موثّقة من المصدر.");
   return lines.join("\n");
 }
 
@@ -515,251 +477,113 @@ function generalReply(live: { markets?: MarketsPayload }): string {
     "",
     "• **حالة السوق:** اسأل «إيه حالة السوق؟»",
     "• **تحليل سهم:** اذكر الرمز مثل «حلّل COMI»",
-    "• **قرار استثماري:** اسأل «هل أشتري ذهب ولا دولار؟»",
+    "• **قراءة تعليمية:** اسأل عن عوامل الذهب أو الدولار بدل طلب توصية شخصية.",
     "• **آخر الأخبار:** اسأل «أهم الأخبار النهاردة»",
     "",
-    "كل الإجابات مبنية على بيانات السوق الحقيقية المحدّثة لحظياً.",
-    live.markets?.markets?.eg?.length
-      ? `\n📊 الآن: EGX30 ${live.markets.markets.eg[0]?.v} (${fmtPct(live.markets.markets.eg[0]?.c || "")}) · USD/EGP ${live.markets.markets.eg[1]?.v || "—"}`
+    "لن أذكر رقمًا أو أقدّم إشارة تداول إذا لم تكن بيانات المصدر الموثّقة متاحة.",
+    hasVerifiedQuotes(live.markets)
+      ? `\n📊 من المصدر المتاح: EGX30 ${live.markets?.markets?.eg?.[0]?.v || "—"} (${fmtPct(live.markets?.markets?.eg?.[0]?.c || "")})`
       : "",
   ].join("\n");
 }
 
 /* ─── Article analysis (news reader «حلّل الآن») ───────────────────────
- * Rule-based but grounded: the article text is matched against a sector
- * table and answered with the live quotes we already hold, so the reply
- * actually covers the story instead of falling back to a menu or a
- * top-movers list (which is what users saw as «مش بتشغل»). */
-
-const ARTICLE_HINTS: Array<{ re: RegExp; sector?: string; line: string }> = [
-  { re: /بنك|ائتمان|قروض|سعر الفائدة|البنك المركزي|تمويل/i, sector: "بنوك",
-    line: "قطاع البنوك يتأثر مباشرةً: سعر الفائدة والائتمان يحدّدان هوامش الربح وحجم التمويل." },
-  { re: /عقار|إسكان|أراضٍ|مطورين|طلعت مصطفى|بالم هيلز|سوديك|هيرو/i, sector: "عقارات",
-    line: "قطاع العقارات: الترخيص والتسهيلات والطلب العقاري تتحرّك بها دخل شركات المطورين." },
-  { re: /اتصالات|مشغل|فودافون|أورنج|موبايل/i, sector: "اتصالات",
-    line: "قطاع الاتصالات: أي تعديل في الأسعار أو الضريبة ينعكس فوراً على الإيرادات." },
-  { re: /أدوية|دواء|صيدل|استهلاك دواء/i, sector: "أدوية",
-    line: "قطاع الأدوية: تسعير الدواء والتهيئة الصناعية يحدّدان التكلفة — أي تغيير يظهر في هوامش الربح." },
-  { re: /غذائية|أغذية|غذاء|تضخم|غلاء|أسعار/i, sector: "غذائية",
-    line: "الغذائية والسلع الاستهلاكية: التضخم يرفع التكلفة وقد يضغط على الهوامش إن لم تُعدّل الأسعار." },
-  { re: /فوري|رقمنة|دفع إلكتروني|تكنولوجيا|برمجة|ذكاء اصطناعي/i, sector: "تقنية",
-    line: "قطاع التقنية والدفع الإلكتروني: التوسع الرقمي يدعم الإيرادات المتكررة." },
-  { re: /أسمنت|حديد|مواد بناء|مقاولات|تحت البنية|مشروعات وطنية/i, sector: "مواد بناء",
-    line: "مواد البناء والمقاولات: الإنفاق الحكومي والمشروعات الكبرى تُحرك الطلب." },
-  { re: /تأمين/i, sector: "مالية",
-    line: "التأمين: عائدات محافظ الاستثمار المرتبطة بالفائدة تؤثر في أرباح القطاع." },
-  { re: /تصدير|استيراد|ميزان تجاري|دولار|سعر صرف|جمارك/i,
-    line: "سعر الصرف والتجارة: تحرّك الدولار ينعكس على تكلفة الاستيراد وأرباح الشركات المصدِّرة." },
-  { re: /ذهب|صاغة|عيار/i,
-    line: "الذهب: سعر الجنيه الذهب محلياً يتبع أونصة الذهب بالدولار ثم سعر الصرف." },
-  { re: /نفط|برنت|غاز|طاقة/i,
-    line: "النفط والطاقة: البرنت ينعكس على أسهم الطاقة وتكاليف النقل والصناعة." },
-  { re: /بيتكوين|كريبتو|عملات رقمية|إيثريوم/i,
-    line: "الكريبتو: تقلب عالي ويتأثر بمشاعر السوق العالمية وتدفقات الصناديق." },
-];
-
-const POS_WORDS = "ارتفاع|صعود|ارتقاء|زيادة|نمو|مكاسب|تفاؤل|استثمار|صفقة|اعتماد|خفض الفائدة|تسهيلات|إنعاش|توسعة|موافقة|إطلاق|توظيف|صادرات";
-const NEG_WORDS = "هبوط|تراجع|انخفاض|خسارة|عجز|أزمة|تحذير|ضغط|إضراب|رفع الفائدة|عقوبة|مطالبة|تدهور|انكماش|غرامة|قضية|اعتقال|توقّف|منع|إفلام|ديون";
-
-type Direction = { icon: string; label: string; note: string };
-
-function directionOf(text: string): Direction {
-  const pos = (text.match(new RegExp(POS_WORDS, "g")) || []).length;
-  const neg = (text.match(new RegExp(NEG_WORDS, "g")) || []).length;
-  if (pos > neg) {
-    return { icon: "📈", label: "إيجابي",
-      note: "لغة الخبر تسودها الإشارات الإيجابية (نمو/استثمار/اعتماد)، ما يرجّح دعم سعري للقطاعات المذكورة." };
-  }
-  if (neg > pos) {
-    return { icon: "📉", label: "سلبي",
-      note: "لغة الخبر تسودها الإشارات السلبية (تراجع/ضغط/مطالبات)، ما يرجّح حذراً تجاه القطاعات المذكورة." };
-  }
-  return { icon: "➖", label: "محايد",
-    note: "الخبر محايد أو لم تتضح إشارته بعد — الأثر سيظهر عند صدور أرقام مؤكدة." };
-}
-
-function peerLine(s: NonNullable<StocksPayload["stocks"]>[number]): string {
-  const dir = s.chgPct >= 0 ? "+" : "";
-  return `   ‣ ${s.sym} (${s.name}): ${s.price.toFixed(2)} ج · ${dir}${s.chgPct.toFixed(2)}%${s.pe ? ` · P/E ${s.pe.toFixed(1)}` : ""}`;
-}
-
+ * The local fallback is deliberately a source-bound explainer. It must not
+ * infer affected securities, causality, rankings, or a future price path from
+ * a headline and a short licensed snippet. */
 function articleAnalysisReply(question: string, live: Live): string {
   const grab = (re: RegExp) => (question.match(re) || [])[1]?.trim() || "";
   const title = grab(/العنوان:\s*(.+)/);
   const src = grab(/المصدر:\s*(.+)/);
   const summary = grab(/الخلاصة:\s*([\s\S]*?)(?:\n\s*\n|\nالمطلوب|$)/);
-  const corpus = [title, summary].filter(Boolean).join("\n");
-
-  const lines: string[] = [];
-  lines.push("📰 **تحليل الخبر**");
+  const lines: string[] = ["📰 **شرح الخبر**"];
   if (title) lines.push(`**${title}**`);
-  if (src) lines.push(`🔎 المصدر: ${src}`, "");
-  if (summary) {
-    lines.push("1️⃣ **الخلاصة الفورية**");
-    lines.push(summary.slice(0, 420), "");
-  }
+  if (src) lines.push(`🔎 المصدر: ${src}`);
+  if (summary) lines.push("", "1️⃣ **الخلاصة الواردة**", summary.slice(0, 420));
+  else lines.push("", "1️⃣ **الخلاصة الواردة**", "لا تتوفر خلاصة كافية في المدخل.");
 
-  const dir = directionOf(corpus);
-  lines.push(`${dir.icon} **اتجاه التأثير: ${dir.label}**`);
-  lines.push(dir.note, "");
+  lines.push("", "2️⃣ **ما يذكره النص**");
+  lines.push("• يقتصر هذا الشرح على العنوان والخلاصة أعلاه؛ لا يضيف شركات أو أصولًا أو وقائع غير مذكورة.");
 
-  /* Live market context — what the numbers say right now */
-  const m = live.markets?.markets;
-  lines.push("3️⃣ **وضع السوق الآن (بيانات حية)**");
-  if (m?.eg?.length || m?.cm?.length || m?.cr?.length) {
-    for (const q of (m.eg || []).slice(0, 3)) lines.push(`• ${q.n}: ${q.v} (${fmtPct(q.c)}) ${dirOf(q.c)}`);
-    const gold = (m.cm || []).find((q) => /ذهب/.test(q.n));
-    if (gold) lines.push(`• الذهب: ${gold.v} للأوقية (${fmtPct(gold.c)}) ${dirOf(gold.c)}`);
-    const btc = (m.cr || []).find((q) => q.n === "BTC");
-    if (btc) lines.push(`• Bitcoin: ${btc.v} (${fmtPct(btc.c)}) ${dirOf(btc.c)}`);
-    lines.push("");
-  }
-
-  /* Which parts of the economy the story touches — with live quotes */
-  const hits = ARTICLE_HINTS.filter((h) => h.re.test(corpus));
-  const stocks = live.stocks?.stocks ?? [];
-  lines.push("2️⃣ **القطاعات والأسهم المتأثرة**");
-  if (hits.length) {
-    for (const h of hits.slice(0, 5)) {
-      lines.push(`• ${h.line}`);
-      if (h.sector && stocks.length) {
-        const peers = stocks
-          .filter((s) => s.sector === h.sector)
-          .sort((a, b) => (b.mktCapM ?? 0) - (a.mktCapM ?? 0))
-          .slice(0, 3);
-        for (const p of peers) lines.push(peerLine(p));
-      }
+  const markets = live.markets?.markets;
+  if (hasVerifiedQuotes(live.markets) && markets) {
+    lines.push("", "3️⃣ **لقطة سوق منفصلة عن الخبر**");
+    for (const quote of (markets.eg || []).slice(0, 3)) {
+      lines.push(`• ${quote.n}: ${quote.v} (${quote.c || "—"}) · المصدر: ${quote.source || "غير متاح"}`);
     }
-    lines.push("");
+    lines.push("• هذه الأرقام تعرض لقطة مستقلة ولا تثبت أن الخبر سبب أي حركة.");
   } else {
-    lines.push("• لم يذكر الخبر قطاعاً محدداً — الأثر سيعمّ السوق إذا استمرت القصة.", "");
+    lines.push("", "3️⃣ **لقطة السوق**", "• لا توجد أسعار موثّقة متاحة لعرضها بجانب الخبر.");
   }
 
-  if (!m?.eg?.length && !stocks.length) {
-    /* Data never arrived — do not pretend it did. */
-    return [
-      ...lines,
-      "⏳ ملاحظة: أسعار السوق الحية قيد التحديث الآن، لذا التحليل أعلاه مبني على نص الخبر فقط — أعد الضغط بعد لحظات للأسعار.",
-    ].join("\n");
-  }
-
-  lines.push("4️⃣ **المخاطر التي يجب مراعاتها**");
-  lines.push(dir.label === "سلبي"
-    ? "• لا تتصدّر القسم المتأثر قبل تأكيد الرقم/القرار من المصدر نفسه.\n• وزّع الدخول على دفعات بدل شراء دفعة واحدة.\n• اضبط وقف خسارة تحت مستوى دعم واضح للسهم."
-    : dir.label === "إيجابي"
-      ? "• الإيجابية قد تكون مسعّرة سلفاً — احذر «اشترِ الخبر» بعد ارتفاع سعرها.\n• راجع أرقام الربحية قبل الدخول (P/E المذكور أعلاه).\n• الأثر يحتاج تأكيداً من أرقام رسمية قادمة."
-      : "• لا تبنِ قراراً على خبر واحد بلا أرقام مؤكدة.\n• راقب ردّ فعل السوق في الجلسات القادمة.\n• تجنّب المضاربة السريعة على معلومات ناقصة.",
-  "");
-
-  lines.push("5️⃣ **خلاصة القرار**");
-  lines.push(
-    dir.label === "سلبي"
-      ? "• موقف انتظار للقطاع المذكور حتى يظهر استقرار.\n• الأفضلية حالياً للسيولة والنقد بعيداً عن المخاطرة."
-      : dir.label === "إيجابي"
-        ? "• يُفضّل متابعة الدخول التدريجي على القطاعات المذكورة.\n• ركّز على الشركات ذات الربحية المنخفضة P/E والسيولة الجيدة."
-        : "• لا توجد إشارة كافية للدخول الآن — انتظر تأكيداً.\n• استمر في متابعة أرقام السوق من تبويب «الأسواق».",
-    "",
-    "⚠️ تحليل تعليمي مبني على نص الخبر والبيانات الحية — وليس توصية استثمارية. قراراتك على مسؤوليتك.",
-  );
-
+  lines.push("", "4️⃣ **حدود الشرح**");
+  lines.push("• العنوان والملخص لا يثبتان سبب حركة سعر أو أثرًا ماليًا أو اتجاهًا مستقبليًا.");
+  lines.push("• راجع المصدر الأصلي والإفصاحات الرسمية للحصول على التفاصيل والسياق الكامل.");
+  lines.push("", "⚠️ هذا شرح معلوماتي للنص، وليس توصية شراء أو بيع أو تقييمًا استثماريًا.");
   return lines.join("\n");
 }
 
-/* ─── فرص تداول — مبنية على البيانات الحية بدل قائمة ثابتة ─── */
-
+/* ─── عناصر متابعة وصفية ───────────────────────────────────────────── */
 function opportunitiesReply(live: Live): string {
   const stocks = live.stocks?.stocks || [];
-  if (!stocks.length) return fallbackReply(live, "بيانات الفرص");
-  const newsTitles: string[] = [];
-  for (const f of live.news?.feeds || []) {
-    for (const it of f.items || []) { newsTitles.push(it.title); if (newsTitles.length >= 10) break; }
-    if (newsTitles.length >= 10) break;
-  }
-  let cands: ReturnType<typeof buildLocalOpportunities> = [];
+  if (!stocks.length) return fallbackReply(live, "عناصر متابعة السوق");
+  let cards: ReturnType<typeof buildLocalOpportunities> = [];
   try {
-    cands = buildLocalOpportunities(
-      live.markets as any, stocks as any, newsTitles,
+    cards = buildLocalOpportunities(
+      live.markets as unknown,
+      stocks as Parameters<typeof buildLocalOpportunities>[1],
+      [],
       new Date().toLocaleDateString("ar-EG"),
     );
-  } catch (e) { logger.warn({ err: e }, "opportunitiesReply build failed"); }
-  if (!cands.length) {
+  } catch (error) {
+    logger.warn({ err: error }, "market observation reply build failed");
+  }
+  if (!cards.length) {
     return [
-      "💡 لم أجد فرصة واضحة وفق البيانات الحالية.",
-      "هذا يعني أن الظروف الحالية لا تُظهر إعدادًا قويًا (تقييم/زخم/توزيعات) — ولن أخترع فرصًا غير موجودة.",
+      "💡 لا توجد لقطات وصفية يمكن التحقق منها حاليًا.",
+      "يلزم مصدر مرخّص ووقت مصدر صالح لكل بطاقة؛ لن ننشئ بديلًا أو توصية عند غياب ذلك.",
       "",
-      "جرّب: «إيه أرخص الأسهم؟» أو «إيه حالة السوق؟»",
+      "جرّب: «إيه حالة السوق؟» أو «إيه البيانات المتاحة عن الذهب؟»",
     ].join("\n");
   }
-  const lines = ["💡 **فرص مبنية على بيانات السوق الحية**", ""];
-  for (const c of cands.slice(0, 5)) {
-    const rl = Math.max(1, Math.min(5, c.riskLevel));
-    const risk = "★".repeat(rl) + "☆".repeat(5 - rl);
-    lines.push(`• **${c.title}**`);
-    lines.push(`  ${c.summary}`);
-    lines.push(`  العائد المتوقع: ${c.expectedReturn} · المخاطرة: ${risk} · المدة: ${c.duration}`);
+  const lines = ["💡 **لقطات وصفية من بيانات المصدر المتاحة**", ""];
+  for (const card of cards.slice(0, 5)) {
+    lines.push(`• **${card.title}**`);
+    lines.push(`  ${card.summary}`);
+    lines.push(`  المصدر: ${card.source} · وقت المصدر: ${new Intl.DateTimeFormat("ar-EG", { timeZone: "Africa/Cairo", dateStyle: "medium", timeStyle: "short" }).format(new Date(card.sourceAsOf))}`);
     lines.push("");
   }
-  lines.push("⚠️ محسوبة من محرك EgyTrend على بيانات حية (تقييم/زخم/توزيعات/سلع/كريبتو) — وليست توصية استثمارية.");
+  lines.push("⚠️ هذه لقطات وصفية، وليست ترتيبًا استثماريًا أو توصية أو توقع عائد.");
   return lines.join("\n");
 }
 
-/* ─── تحليل تأثير عامل على السوق — قراءة سببية بأرقام حية ─── */
-
+/* ─── سؤال عن عامل سوقي: وصف البيانات لا السببية ─────────────────── */
 function impactReply(question: string, live: Live): string {
-  const m = live.markets?.markets;
-  if (!m) return fallbackReply(live, "بيانات الأسواق");
+  const markets = live.markets?.markets;
+  if (!markets || !hasVerifiedQuotes(live.markets)) return fallbackReply(live, "بيانات الأسواق");
   const q = normAr(question);
-  const eg = m.eg || [];
-  const egx = eg.find((x) => /EGX30/.test(x.n));
-  const usd = eg.find((x) => /USD/.test(x.n));
-  const cm = m.cm || [];
-  const gold = cm.find((x) => /ذهب/.test(x.n));
-  const brent = cm.find((x) => /برنت|نفط|خام/.test(x.n));
-
-  const lines: string[] = ["🧠 **تحليل التأثير**", ""];
-  const snap: string[] = [];
-  if (egx) snap.push(`EGX30 ${egx.v} (${fmtPct(egx.c)})`);
-  if (usd) snap.push(`دولار ${usd.v} (${fmtPct(usd.c)})`);
-  if (gold) snap.push(`${gold.n} ${gold.v} (${fmtPct(gold.c)})`);
-  if (brent) snap.push(`${brent.n} ${brent.v} (${fmtPct(brent.c)})`);
-  if (snap.length) { lines.push("**الأرقام الآن:** " + snap.join(" · "), ""); }
-
-  const aboutGold = /ذهب|gold/.test(q);
-  const aboutRate = /فايده|interest|فيدرال|fed/.test(q);
-  const aboutOil = /نفط|بترول|oil|برنت/.test(q);
-  const aboutUsd = /دولار|dollar|usd/.test(q);
-
-  if (aboutGold) {
-    lines.push("**لماذا يهم الذهب السوق المصري؟**");
-    lines.push("• الذهب يُسعَّر بالأوقية بالدولار، وسعره بالجنيه = سعر الأوقية × سعر الصرف — فيتحرك مع الدولار لا مع EGX.");
-    lines.push("• ارتفاع الذهب عادةً يعني طلبًا على الملاذ الآمن أو توقعات تضخم/ضعف عملة، فيُحوّل المستثمر المحلي جزءًا من السيولة إلى الذهب بدل الأسهم.");
-    lines.push("• التأثير على EGX غير مباشر: ضعف الجنيه يرفع تكلفة الاستيراد على الشركات المستوردة، بينما شركات مرتبطة بالذهب/التعدين قد تستفيد.");
-    lines.push("");
-    lines.push("**القراءة الحالية:** " + (gold ? `الذهب عند ${gold.v} (${fmtPct(gold.c)})${usd ? ` والدولار ${usd.v}` : ""}.` : "بيانات الذهب غير متاحة لحظيًا."));
-  } else if (aboutRate) {
-    lines.push("**لماذا تهم الفائدة الأمريكية؟**");
-    lines.push("• رفع الفائدة يقوّي الدولار عالميًا، ما يضغط عادةً على الذهب والأصول عالية المخاطر.");
-    lines.push("• في مصر، الفائدة المرتفعة محليًا تجعل أدوات الدين منافسًا قويًا للأسهم (خروج سيولة من EGX)، وترفع تكلفة الاقتراض على الشركات.");
-    lines.push("• صعود الدولار يرفع تكلفة الاستيراد ويضغط على الشركات المستوردة، ويدعم المصدّرين.");
-    lines.push("");
-    lines.push("**القراءة الحالية:** " + (usd ? `الدولار عند ${usd.v} (${fmtPct(usd.c)})` : "الدولار غير متاح لحظيًا") + (egx ? ` وEGX30 عند ${egx.v} (${fmtPct(egx.c)}).` : "."));
-  } else if (aboutOil) {
-    lines.push("**لماذا يهم النفط؟**");
-    lines.push("• مصر مستورد صافٍ للطاقة؛ ارتفاع النفط يرفع تكاليف النقل والصناعة ويضغط على هوامش الشركات الصناعية.");
-    lines.push("• في المقابل يدعم اقتصادات الخليج وأسهم الطاقة عالميًا.");
-    lines.push("");
-    lines.push("**القراءة الحالية:** " + (brent ? `${brent.n} عند ${brent.v} (${fmtPct(brent.c)}).` : "بيانات النفط غير متاحة لحظيًا."));
-  } else if (aboutUsd) {
-    lines.push("**لماذا يهم الدولار؟**");
-    lines.push("• ارتفاع الدولار يرفع تكلفة الاستيراد، يضغط على الشركات المستوردة، ويدعم المصدّرين والسياحة.");
-    lines.push("• يؤثر على تقييم الأصول الدولارية (الذهب، ETFs العالمية) بالجنيه.");
-    lines.push("");
-    lines.push("**القراءة الحالية:** " + (usd ? `الدولار ${usd.v} (${fmtPct(usd.c)}).` : "الدولار غير متاح لحظيًا."));
-  } else {
-    lines.push("حدّد العامل الذي تريد تحليل تأثيره (الذهب، الفائدة، الدولار، النفط) لأعطيك قراءة سببية مبنية على الأرقام الحية.");
+  const rows = [
+    ...(markets.eg || []),
+    ...(markets.cm || []),
+    ...(markets.gl || []),
+    ...(markets.cr || []),
+  ];
+  const matching = rows.filter((row) => {
+    const name = normAr(`${row.n || ""} ${row.s || ""}`);
+    return (/(ذهب|gold)/.test(q) && /(ذهب|gold)/.test(name))
+      || (/(دولار|dollar|usd)/.test(q) && /(دولار|usd)/.test(name))
+      || (/(نفط|بترول|oil|برنت)/.test(q) && /(نفط|برنت|oil)/.test(name))
+      || (/(بيتكوين|bitcoin|btc|كريبتو)/.test(q) && /(btc|بيتكوين|كريبتو)/.test(name));
+  });
+  const lines = ["🧭 **بيانات مرتبطة بالسؤال**", ""];
+  const shown = matching.length ? matching : rows.slice(0, 5);
+  for (const row of shown.slice(0, 5)) {
+    lines.push(`• ${row.n}: ${row.v} (${row.c || "—"}) · المصدر: ${row.source || "غير متاح"}`);
   }
-
-  lines.push("", "⚠️ تحليل تعليمي مبني على بيانات حية — وليس توصية استثمارية.");
+  lines.push("", "**ما الذي لا تثبته هذه اللقطة؟**");
+  lines.push("• لا تثبت سبب الحركة أو علاقة سببية بين عامل اقتصادي وسعر أصل.");
+  lines.push("• لا تكفي لاتخاذ قرار شخصي أو توقع اتجاه مستقبلي.");
+  lines.push("• راجع المصدر الأصلي والبيانات الأوسع إذا احتجت سياقًا إضافيًا.");
   return lines.join("\n");
 }
 

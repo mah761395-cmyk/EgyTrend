@@ -1,0 +1,9 @@
+# Legacy imported snapshots can contain obsolete UI, credentials or payment text.
+# They are not an application dependency and must never be uploaded to Vercel.
+attached_assets/
+
+# Local-only operational artifacts
+.local-logs/
+backups/
+.env
+.env.*

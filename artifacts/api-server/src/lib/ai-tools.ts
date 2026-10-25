@@ -42,6 +42,10 @@ const UNAVAILABLE = (what: string): ToolResult => ({
   error: `لا تتوفر بيانات ${what} حاليًا في النظام — لم أتمكن من الوصول إلى بيانات حديثة لهذا الطلب.`,
 });
 
+function hasFiniteChange(stock: StockQuote): stock is StockQuote & { chgPct: number } {
+  return typeof stock.chgPct === "number" && Number.isFinite(stock.chgPct);
+}
+
 /* ─── 1. get_market_data ─────────────────────────────────────────────── */
 export async function getMarketData(args: { group?: string } = {}): Promise<ToolResult> {
   try {
@@ -91,7 +95,7 @@ export async function getStockData(args: { query?: string; limit?: number }): Pr
     const limit = Math.min(Math.max(Number(args.limit) || 3, 1), 10);
 
     if (!q) {
-      const sorted = [...stocks].filter((s) => Number.isFinite(s.chgPct));
+      const sorted = [...stocks].filter(hasFiniteChange);
       const up = [...sorted].sort((a, b) => b.chgPct - a.chgPct).slice(0, 5);
       const dn = [...sorted].sort((a, b) => a.chgPct - b.chgPct).slice(0, 5);
       return { ok: true, scope: "top_movers", up, down: dn, total: stocks.length };
@@ -312,23 +316,23 @@ export async function getScreenerResults(args: ScreenerArgs = {}): Promise<ToolR
     }
     if (args.perf) {
       const map: Record<string, (s: StockQuote) => boolean> = {
-        up: (s) => s.chgPct > 0,
-        dn: (s) => s.chgPct < 0,
-        up3: (s) => s.chgPct >= 3,
-        dn3: (s) => s.chgPct <= -3,
-        up5: (s) => s.chgPct >= 5,
+        up: (s) => hasFiniteChange(s) && s.chgPct > 0,
+        dn: (s) => hasFiniteChange(s) && s.chgPct < 0,
+        up3: (s) => hasFiniteChange(s) && s.chgPct >= 3,
+        dn3: (s) => hasFiniteChange(s) && s.chgPct <= -3,
+        up5: (s) => hasFiniteChange(s) && s.chgPct >= 5,
       };
       const f = map[args.perf];
       if (f) { out = out.filter(f); applied.push(`perf=${args.perf}`); }
     }
     if (typeof args.priceMin === "number") { out = out.filter((s) => s.price >= args.priceMin!); applied.push(`price>=${args.priceMin}`); }
     if (typeof args.priceMax === "number") { out = out.filter((s) => s.price <= args.priceMax!); applied.push(`price<=${args.priceMax}`); }
-    if (typeof args.volMin === "number") { out = out.filter((s) => (s.vol || 0) >= args.volMin!); applied.push(`vol>=${args.volMin}`); }
+    if (typeof args.volMin === "number") { out = out.filter((s) => typeof s.vol === "number" && s.vol >= args.volMin!); applied.push(`vol>=${args.volMin}`); }
     if (typeof args.peMin === "number") { out = out.filter((s) => s.pe && s.pe > 0 && s.pe >= args.peMin!); applied.push(`pe>=${args.peMin}`); }
     if (typeof args.peMax === "number") { out = out.filter((s) => s.pe && s.pe > 0 && s.pe <= args.peMax!); applied.push(`pe<=${args.peMax}`); }
-    if (typeof args.divMin === "number") { out = out.filter((s) => (s.divYield || 0) >= args.divMin!); applied.push(`divYield>=${args.divMin}`); }
-    if (args.eps === "pos") { out = out.filter((s) => (s.eps || 0) > 0); applied.push("eps>0"); }
-    if (args.eps === "neg") { out = out.filter((s) => !s.eps || s.eps <= 0); applied.push("eps<=0"); }
+    if (typeof args.divMin === "number") { out = out.filter((s) => typeof s.divYield === "number" && s.divYield >= args.divMin!); applied.push(`divYield>=${args.divMin}`); }
+    if (args.eps === "pos") { out = out.filter((s) => typeof s.eps === "number" && s.eps > 0); applied.push("eps>0"); }
+    if (args.eps === "neg") { out = out.filter((s) => typeof s.eps === "number" && s.eps <= 0); applied.push("eps<=0"); }
     if (args.mktCap) {
       const bands: Record<string, (m: number) => boolean> = {
         mega: (m) => m >= 100000,
@@ -339,7 +343,7 @@ export async function getScreenerResults(args: ScreenerArgs = {}): Promise<ToolR
       const f = bands[args.mktCap];
       if (f) { out = out.filter((s) => typeof s.mktCapM === "number" && f(s.mktCapM!)); applied.push(`mktCap=${args.mktCap}`); }
     }
-    if (args.abovePrevClose) { out = out.filter((s) => s.price > s.prevClose); applied.push("price>prevClose (فوق إغلاق أمس)"); }
+    if (args.abovePrevClose) { out = out.filter((s) => typeof s.prevClose === "number" && s.price > s.prevClose); applied.push("price>prevClose (فوق إغلاق أمس)"); }
     if (typeof args.near52wHighPct === "number" && args.near52wHighPct > 0) {
       const pct = args.near52wHighPct;
       out = out.filter((s) => s.high52w && s.price >= s.high52w * (1 - pct / 100));
@@ -434,7 +438,7 @@ export async function getPortfolio(args: { items?: PortItem[] }): Promise<ToolRe
     };
   } catch (e) {
     logger.warn({ err: (e as Error).message }, "tool get_portfolio failed");
-    return UNAVAILABLE("بيانات المحفظة الحية");
+    return UNAVAILABLE("بيانات المحفظة من المصدر");
   }
 }
 
@@ -465,9 +469,9 @@ export async function getAlerts(args: { items?: AlertItem[]; limit?: number }): 
 }
 
 /* ─── 10. get_opportunities ────────────────────────────────────────────
-   Live candidates computed by the EXISTING local opportunity engine
-   (real market data, no fake picks) — the same rules the admin
-   "generate opportunities" button uses. No DB writes here. */
+   Source-backed descriptive observation cards from the same deterministic
+   engine used by the admin. No DB writes, rankings, target returns, or
+   trading recommendations occur here. */
 export async function getOpportunities(args: { limit?: number } = {}): Promise<ToolResult> {
   try {
     const [mkRes, stRes, newsRes] = await Promise.allSettled([
@@ -479,8 +483,8 @@ export async function getOpportunities(args: { limit?: number } = {}): Promise<T
     const st = stRes.status === "fulfilled" ? stRes.value : null;
     const news = newsRes.status === "fulfilled" ? newsRes.value : null;
 
-    if (!mk && !st) return UNAVAILABLE("بيانات الفرص (السوق والأسهم)");
-    if (!st || !st.length) return UNAVAILABLE("بيانات الأسهم لحساب الفرص");
+    if (!mk && !st) return UNAVAILABLE("بيانات عناصر متابعة السوق (الأسواق والأسهم)");
+    if (!st || !st.length) return UNAVAILABLE("بيانات الأسهم لإنشاء لقطات وصفية");
 
     const newsTitles: string[] = [];
     if (news) {
@@ -504,13 +508,13 @@ export async function getOpportunities(args: { limit?: number } = {}): Promise<T
       return {
         ok: true,
         opportunities: [],
-        note: "لا توجد فرصة واضحة وفق البيانات الحالية — قل هذا النص صراحةً بدل اختراع فرص.",
+        note: "لا توجد لقطات وصفية يمكن التحقق منها حاليًا — لا تخترع بديلًا أو توصية.",
       };
     }
     return {
       ok: true,
       opportunities: out,
-      basis: "محسوبة من محرك EgyTrend المحلي على بيانات السوق/الأسهم/الأخبار الحية — ليست توصيات مُختلقة.",
+      basis: "بطاقات وصفية من حقول سوق/أسهم ذات مصدر ووقت مصدر صالحين؛ ليست توصيات أو ترتيبًا استثماريًا.",
       hasNews: newsTitles.length > 0,
       hasMarkets: !!mk,
     };
@@ -528,7 +532,7 @@ export async function getOpportunities(args: { limit?: number } = {}): Promise<T
 export const TOOL_DECLARATIONS: Array<{ name: string; description: string; parameters: Record<string, unknown> }> = [
   {
     name: "get_market_data",
-    description: "جلب بيانات الأسواق الحية: المؤشرات المصرية والعالمية والعملات والسلع والكريبتو. استخدمها لأي سؤال عن حالة السوق أو نسب التغير.",
+    description: "جلب بيانات الأسواق المتاحة من المصدر: المؤشرات والعملات والسلع والأصول الرقمية، مع حالة المصدر عند توافرها.",
     parameters: {
       type: "object",
       properties: {
@@ -538,7 +542,7 @@ export const TOOL_DECLARATIONS: Array<{ name: string; description: string; param
   },
   {
     name: "get_market_indices",
-    description: "جلب المؤشرات الرئيسية فقط (EGX30 والمؤشرات العالمية) مع نسب التغير الحية.",
+    description: "جلب المؤشرات الرئيسية المتاحة (مثل EGX30 والمؤشرات العالمية) مع نسب التغير المرسلة من المصدر.",
     parameters: { type: "object", properties: {} },
   },
   {
@@ -554,7 +558,7 @@ export const TOOL_DECLARATIONS: Array<{ name: string; description: string; param
   },
   {
     name: "get_news",
-    description: "بحث في العناوين الإخبارية الحية من كل المصادر. بلا معاملات يعيد آخر العناوين. استخدمه لأي سؤال عن الأخبار.",
+    description: "بحث في العناوين الإخبارية المتاحة من المصادر المعتمدة. بلا معاملات يعيد آخر العناوين.",
     parameters: {
       type: "object",
       properties: {
@@ -587,7 +591,7 @@ export const TOOL_DECLARATIONS: Array<{ name: string; description: string; param
   },
   {
     name: "get_screener_results",
-    description: "فلترة حقيقية على أسهم EGX الحية (نفس فلاتر Screener في المنصة). لا يوجد مستوى مقاومة محسوب — استخدم abovePrevClose أو near52wHighPct كبديلين حقيقيين واذكر ذلك.",
+    description: "فلترة على حقول أسهم EGX المتاحة من المصدر. لا يوجد مستوى مقاومة محسوب؛ لا تستخدم بدائل كتوصية أو إشارة تداول.",
     parameters: {
       type: "object",
       properties: {
@@ -611,7 +615,7 @@ export const TOOL_DECLARATIONS: Array<{ name: string; description: string; param
   },
   {
     name: "get_portfolio",
-    description: "محفظة المستخدم الحالية (يمررها الواجهة) مع حساب الأرباح من الأسعار الحية في الخادم. استخدمه فقط لسؤال يخص محفظة المستخدم.",
+    description: "محفظة المستخدم الحالية (تمررها الواجهة) مع فرق حسابي فقط عند توافر سعر موثّق من الخادم. استخدمه لسؤال يخص محفظة المستخدم.",
     parameters: {
       type: "object",
       properties: {
@@ -656,11 +660,11 @@ export const TOOL_DECLARATIONS: Array<{ name: string; description: string; param
   },
   {
     name: "get_opportunities",
-    description: "فرص تداول محسوبة فعليًا من محرك EgyTrend على بيانات السوق الحية. استخدمه لسؤال «هات فرص تداول». لا توجد فرصة → قول «لا توجد فرصة واضحة وفق البيانات الحالية».",
+    description: "لقطات سوق وصفية من حقول مصدرها ووقتها صالحان. استخدمه لسؤال عن البيانات المتاحة، ولا تصفها كفرص شراء أو ترتيب استثماري.",
     parameters: {
       type: "object",
       properties: {
-        limit: { type: "integer", description: "أقصى عدد فرص، الافتراضي 5" },
+        limit: { type: "integer", description: "أقصى عدد بطاقات وصفية، الافتراضي 5" },
       },
     },
   },

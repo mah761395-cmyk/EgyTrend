@@ -1,4 +1,9 @@
 @echo off
-REM EgyTrend daily DB backup — launched by Task Scheduler ("EgyTrend DB Backup", daily 03:00)
-REM Logs everything to backups\task-run.log; the script itself also appends to backups\backup.log
-"C:\Users\TBARK\AppData\Local\Programs\@codebufffreebuff-desktop\resources\bun\bun.exe" "C:\Users\TBARK\Desktop\egytrendd\EgyTrend\scripts\backup-db.mjs" >> "C:\Users\TBARK\Desktop\egytrendd\EgyTrend\backups\task-run.log" 2>&1
+setlocal
+REM EgyTrend daily DB backup — schedule this file from Task Scheduler.
+REM Use EGYTREND_RUNTIME to override the Node/Bun executable when needed.
+set "PROJECT_ROOT=%~dp0.."
+if not defined EGYTREND_RUNTIME set "EGYTREND_RUNTIME=node"
+if not exist "%PROJECT_ROOT%\backups" mkdir "%PROJECT_ROOT%\backups"
+"%EGYTREND_RUNTIME%" "%PROJECT_ROOT%\scripts\backup-db.mjs" >> "%PROJECT_ROOT%\backups\task-run.log" 2>&1
+endlocal

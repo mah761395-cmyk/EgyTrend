@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { logger } from "../lib/logger";
-import { currentUser, isAdminToken, isVipActive } from "../lib/userAuth";
+import { currentUser, getVipEntitlement, hasVipFeature, isActivePrivilegedAdmin } from "../lib/userAuth";
 import { db } from "@workspace/db";
 import { aiConfigTable, aiUsageTable } from "@workspace/db";
 import { and, eq, gte, sql } from "drizzle-orm";
@@ -38,23 +38,67 @@ function rateLimited(ip: string): boolean {
   return cur.count > RATE_MAX;
 }
 
-/* Per-user AI budget (cost control on the Free Tier): a rolling 24h
- * window over ai_usage rows, capped by ai_config.daily_request_limit.
- * Admin tokens bypass the budget (they run the dashboards). */
+/* Paid/external AI is admitted before the provider call. A reservation is
+ * deliberately retained even when the provider fails: under uncertainty it
+ * is safer to slightly under-serve than to let retries turn into an
+ * unbounded bill. Limits are bounded by code even if an admin DB row is
+ * accidentally configured too high. */
 const AI_BUDGET_WINDOW_MS = 24 * 60 * 60 * 1000;
-async function aiBudgetExceeded(userId: string): Promise<boolean> {
+const AI_PER_PRINCIPAL_HARD_CAP = Math.max(
+  1,
+  Math.min(Number(process.env["AI_PER_PRINCIPAL_DAILY_HARD_CAP"]) || 50, 1_000),
+);
+const AI_GLOBAL_DAILY_HARD_CAP = Math.max(
+  1,
+  Math.min(Number(process.env["AI_GLOBAL_DAILY_HARD_CAP"]) || 200, 5_000),
+);
+
+type AiReservation = "ok" | "limit" | "unavailable";
+
+async function reserveExternalAiRequest(userId: string, requestType: string, tokensEstimate: number, trialDailyLimit: number | null = null): Promise<AiReservation> {
   try {
-    const [cfg] = await db.select().from(aiConfigTable).limit(1);
-    const limit = cfg?.dailyRequestLimit ?? 1000;
-    if (limit <= 0) return false;
-    const since = new Date(Date.now() - AI_BUDGET_WINDOW_MS);
-    const [row] = await db
-      .select({ n: sql<number>`count(*)` })
-      .from(aiUsageTable)
-      .where(and(eq(aiUsageTable.userId, userId), gte(aiUsageTable.createdAt, since)));
-    return Number(row?.n || 0) >= limit;
-  } catch {
-    return false; // budget check must never block a paying user
+    /* `COUNT then INSERT` is otherwise racy across concurrent serverless
+     * invocations: multiple requests can all observe the final remaining slot.
+     * A transaction-scoped PostgreSQL advisory lock serializes this tiny daily
+     * budget decision across all instances without retaining a process-local
+     * lock or trusting a client counter. It releases automatically on commit,
+     * rollback, or connection loss. */
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(843912607)`);
+      const since = new Date(Date.now() - AI_BUDGET_WINDOW_MS);
+      const [cfg] = await tx.select().from(aiConfigTable).limit(1);
+      /* 0 means disabled, not unlimited. A malformed value is bounded by the
+       * code cap, so neither an outage nor a bad dashboard entry opens spend. */
+      const configured = Number(cfg?.dailyRequestLimit ?? AI_PER_PRINCIPAL_HARD_CAP);
+      const configuredLimit = Number.isFinite(configured)
+        ? Math.max(0, Math.min(Math.floor(configured), AI_PER_PRINCIPAL_HARD_CAP))
+        : AI_PER_PRINCIPAL_HARD_CAP;
+      /* A trial cap is captured server-side at trial start. It can only tighten
+       * the platform-wide per-principal policy, never raise it. */
+      const trialLimit = Number.isInteger(trialDailyLimit)
+        ? Math.max(0, Math.min(Number(trialDailyLimit), AI_PER_PRINCIPAL_HARD_CAP))
+        : null;
+      const perPrincipalLimit = trialLimit === null ? configuredLimit : Math.min(configuredLimit, trialLimit);
+      if (perPrincipalLimit === 0) return "limit" as const;
+
+      const [principalUsage] = await tx
+        .select({ n: sql<number>`count(*)` })
+        .from(aiUsageTable)
+        .where(and(eq(aiUsageTable.userId, userId), gte(aiUsageTable.createdAt, since)));
+      if (Number(principalUsage?.n || 0) >= perPrincipalLimit) return "limit" as const;
+
+      const [globalUsage] = await tx
+        .select({ n: sql<number>`count(*)` })
+        .from(aiUsageTable)
+        .where(gte(aiUsageTable.createdAt, since));
+      if (Number(globalUsage?.n || 0) >= AI_GLOBAL_DAILY_HARD_CAP) return "limit" as const;
+
+      await tx.insert(aiUsageTable).values({ userId, requestType, tokensEstimate });
+      return "ok" as const;
+    });
+  } catch (e) {
+    logger.warn({ err: e }, "AI budget reservation unavailable");
+    return "unavailable";
   }
 }
 
@@ -73,22 +117,15 @@ type ChatBody = {
   memory?: boolean;
 };
 
-/* Admin AI toggle (ai_config.analyzer_enabled) — lets the admin panel actually
- * turn the AI features off without a redeploy. Defaults to enabled. */
+/* Admin AI toggle (ai_config.analyzer_enabled). A database failure fails
+ * closed so a control-plane outage cannot trigger paid provider traffic. */
 async function isAiEnabled(): Promise<boolean> {
   try {
     const [cfg] = await db.select().from(aiConfigTable).limit(1);
     return cfg?.analyzerEnabled ?? true;
-  } catch {
-    return true;
-  }
-}
-
-async function logAiUsage(userId: string, requestType: string, tokensEstimate: number): Promise<void> {
-  try {
-    await db.insert(aiUsageTable).values({ userId, requestType, tokensEstimate });
   } catch (e) {
-    logger.warn({ err: e }, "ai usage log failed");
+    logger.warn({ err: e }, "AI enablement check unavailable");
+    return false;
   }
 }
 
@@ -117,14 +154,16 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 router.post("/chat", async (req: Request, res: Response) => {
-  const isAdmin = isAdminToken(req);
   const claims = currentUser(req);
-  if (!isAdmin && !(await isVipActive(claims))) {
-    /* 401 only when there is no session at all; a signed-in non-VIP user gets
-     * 403 so the UI can say "VIP required" instead of "please sign in". The
-     * session now lives in an httpOnly cookie, so the old header check can no
-     * longer tell the two cases apart. */
-    res.status(claims ? 403 : 401).json({ status: "error", message: "VIP subscription required" });
+  // A JWT role claim alone is not enough: this rechecks that the staff row is
+  // active and still privileged before granting an AI/admin bypass.
+  const isAdmin = await isActivePrivilegedAdmin(req);
+  const entitlement = !isAdmin ? await getVipEntitlement(claims) : null;
+  if (!isAdmin && !(await hasVipFeature(claims, "ai"))) {
+    /* A signed, non-VIP session (including a stale VIP token whose entitlement
+     * was cancelled) is denied as unauthenticated for this paid route: the
+     * entitlement table, not the JWT claim, decides access. */
+    res.status(req.header("authorization") ? 403 : 401).json({ status: "error", message: "VIP subscription required" });
     return;
   }
   if (!(await isAiEnabled())) {
@@ -150,32 +189,27 @@ router.post("/chat", async (req: Request, res: Response) => {
       (m): m is { role: "user" | "assistant"; content: string } =>
         m && typeof m.content === "string" && (m.role === "user" || m.role === "assistant"),
     )
-    .slice(-20)
-    .map((m) => ({ role: m.role, content: m.content.slice(0, 12000) }));
+    /* Bound both context tokens and provider spend before the request leaves
+     * the server; client controls are never treated as a spending limit. */
+    .slice(-8)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 2500) }));
 
   if (!safeMessages.length) {
     res.status(400).json({ status: "error", message: "no valid messages" });
     return;
   }
 
-  /* `claims` was resolved above (the VIP gate needs it too). */
-  const userKey = claims?.phone ?? (isAdmin ? "admin" : `ip:${ip}`);
-
-  /* Cost control: per-user 24h budget (admin exempt) */
-  if (!isAdmin) {
-    if (await aiBudgetExceeded(userKey)) {
-      res.status(429).json({ status: "error", message: "ai_daily_limit" });
-      return;
-    }
-  }
+  /* Never use a phone/email as an AI memory or usage identifier. Admin
+   * sessions share a bounded operator bucket instead of bypassing cost caps. */
+  const userKey = claims ? `user:${claims.sub}` : isAdmin ? "admin" : `ip:${ip}`;
 
   const systemPrompt =
-    typeof body.system === "string" ? body.system.slice(0, 6000) : "";
+    typeof body.system === "string" ? body.system.slice(0, 3000) : "";
 
   const maxTokens =
     typeof body.max_tokens === "number" && body.max_tokens > 0
-      ? Math.min(Math.floor(body.max_tokens), 4096)
-      : 2000;
+      ? Math.min(Math.floor(body.max_tokens), 2048)
+      : 1200;
 
   /* Memory: single-turn follow-ups get the stored context merged in;
    * multi-turn clients (chat UI) already send their own history.
@@ -205,6 +239,22 @@ router.post("/chat", async (req: Request, res: Response) => {
   };
 
   const engine = engineName();
+  if (engine !== "local") {
+    const reservation = await reserveExternalAiRequest(
+      userKey,
+      `chat-${engine}-reserved`,
+      maxTokens,
+      entitlement?.subscriptionType === "trial" ? entitlement.trialAiDailyLimit : null,
+    );
+    if (reservation === "limit") {
+      res.status(429).json({ status: "error", message: "ai_daily_limit" });
+      return;
+    }
+    if (reservation === "unavailable") {
+      res.status(503).json({ status: "error", message: "ai_budget_unavailable" });
+      return;
+    }
+  }
 
   try {
     const result = await runEngine(messages, systemPrompt, maxTokens, ctx);
@@ -214,11 +264,6 @@ router.post("/chat", async (req: Request, res: Response) => {
       ...messages.slice(-8),
       { role: "assistant" as const, content: result.text.slice(0, 2000) },
     ]);
-
-    const approxTokens = Math.ceil(
-      (messages.reduce((n, m) => n + m.content.length, 0) + result.text.length) / 4,
-    );
-    await logAiUsage(userKey, `chat-${result.engine}`, approxTokens);
 
     res.json({
       status: "ok",
@@ -231,7 +276,7 @@ router.post("/chat", async (req: Request, res: Response) => {
     const err = e instanceof UpstreamError ? e : null;
     const kind = err?.kind;
 
-    logger.warn({ err: (e as Error)?.message, kind, engine }, "ai chat engine failed");
+    logger.warn({ err: e, kind, engine }, "ai chat engine failed");
 
     /* Gemini/Anthropic rate-limited upstream → surface as 429 (frontend
      * already shows the friendly "wait a minute" message). */
@@ -246,7 +291,6 @@ router.post("/chat", async (req: Request, res: Response) => {
     try {
       const localText = await withTimeout(localAiChat(messages), LOCAL_FALLBACK_TIMEOUT_MS);
       if (localText && !localText.startsWith("⚠️ حدث خطأ")) {
-        await logAiUsage(userKey, "chat-local-fallback", 0);
         res.json({
           status: "ok",
           text: localText,
@@ -258,7 +302,7 @@ router.post("/chat", async (req: Request, res: Response) => {
         return;
       }
     } catch (le) {
-      logger.warn({ err: (le as Error)?.message }, "local fallback also failed");
+      logger.warn({ err: le }, "local fallback also failed");
     }
 
     /* Everything failed → explicit honest message (never a fake answer). */
@@ -274,10 +318,42 @@ router.post("/chat", async (req: Request, res: Response) => {
   }
 });
 
-/* `?verify=1` runs ONE real Gemini call from this deployment (proves the
- * env key authenticates on Vercel, not just locally). Cached 60s + shares
- * the per-IP rate limiter so a public probe can never burn quota. */
+/* A live provider probe is an explicit, authenticated operational action.
+ * It is cached and separately throttled because each invocation consumes
+ * quota even when the normal chat endpoint is idle. */
+const VERIFY_RATE: Map<string, number[]> = new Map();
+const VERIFY_WINDOW_MS = 15 * 60 * 1000;
+const VERIFY_MAX = 3;
+
+function verificationRateLimited(key: string): boolean {
+  const now = Date.now();
+  const recent = (VERIFY_RATE.get(key) || []).filter((ts) => now - ts < VERIFY_WINDOW_MS);
+  if (recent.length >= VERIFY_MAX) {
+    VERIFY_RATE.set(key, recent);
+    return true;
+  }
+  recent.push(now);
+  VERIFY_RATE.set(key, recent);
+  return false;
+}
+
 let verifyCache: { ts: number; model: string; result: GeminiVerify } | null = null;
+let verifyInFlight: Promise<GeminiVerify> | null = null;
+
+async function cachedGeminiVerification(model: string): Promise<GeminiVerify> {
+  if (verifyCache && verifyCache.model === model && Date.now() - verifyCache.ts <= 5 * 60_000) {
+    return verifyCache.result;
+  }
+  if (!verifyInFlight) {
+    verifyInFlight = geminiVerify().then((result) => {
+      verifyCache = { ts: Date.now(), model, result };
+      return result;
+    }).finally(() => {
+      verifyInFlight = null;
+    });
+  }
+  return verifyInFlight;
+}
 
 router.get("/status", async (req: Request, res: Response) => {
   const engine = engineName();
@@ -289,33 +365,44 @@ router.get("/status", async (req: Request, res: Response) => {
     model: activeModel(),
   };
 
-  if (req.query.verify === undefined || engine !== "gemini") {
+  if (req.query.verify !== "1") {
     res.json(body);
     return;
   }
 
+  if (!(await isActivePrivilegedAdmin(req))) {
+    res.status(403).json({ status: "error", message: "admin authorization required" });
+    return;
+  }
+  if (engine !== "gemini") {
+    res.status(409).json({ ...body, verify: { ok: false, model: body.model, latencyMs: 0, error: "gemini_not_configured" } });
+    return;
+  }
+
+  /* Never let a query parameter pick an arbitrary provider model: probes are
+   * limited to the configured production model, avoiding accidental costly
+   * model selection from a URL or bookmark. */
+  if (typeof req.query.model === "string" && req.query.model.trim() !== body.model) {
+    res.status(400).json({ status: "error", message: "verification uses the configured model only" });
+    return;
+  }
+
   const ip = req.ip || req.socket.remoteAddress || "unknown";
-  if (rateLimited(ip)) {
+  if (verificationRateLimited(ip)) {
     res.status(429).json({ ...body, verify: { ok: false, model: body.model, latencyMs: 0, error: "rate_limit" } });
     return;
   }
 
-  /* Admin-only model probe (?verify=1&model=gemini-x): lets the operator
-   * compare quota/health across candidate models. Clients without an admin
-   * token can never make the server call an arbitrary model name. */
-  const rawModel = typeof req.query.model === "string" ? req.query.model.trim() : "";
-  const probeModel =
-    isAdminToken(req) && /^[a-z0-9.-]{3,60}$/i.test(rawModel) ? rawModel : undefined;
-  const cacheKey = probeModel || body.model;
-
-  if (!verifyCache || verifyCache.model !== cacheKey || Date.now() - verifyCache.ts > 60_000) {
-    verifyCache = { ts: Date.now(), model: cacheKey, result: await geminiVerify(probeModel) };
-    logger.info(
-      { ok: verifyCache.result.ok, status: verifyCache.result.status, ms: verifyCache.result.latencyMs, model: cacheKey },
-      "gemini verify",
-    );
-  }
-  res.json({ ...body, model: verifyCache.model, verify: verifyCache.result });
+  const result = await cachedGeminiVerification(body.model);
+  logger.info({ ok: result.ok, status: result.status, ms: result.latencyMs, model: body.model }, "gemini verify");
+  res.json({ ...body, verify: result });
 });
+
+/* Deliberately narrow test seam: no route exposes this reservation primitive.
+ * PostgreSQL advisory-lock contention itself is exercised only against a real
+ * PostgreSQL Preview database; pg-mem has no transaction-scoped advisory lock
+ * implementation, so its isolated regression verifies the important fallback:
+ * a lock/DB failure admits no external AI request. */
+export const __aiTest = { reserveExternalAiRequest };
 
 export default router;

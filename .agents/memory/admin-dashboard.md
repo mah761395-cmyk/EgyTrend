@@ -1,37 +1,38 @@
 ---
 name: Admin Dashboard Architecture
-description: Full production admin dashboard — JWT/RBAC/PostgreSQL schema, 10-tab UI
+description: Current security model for the EgyTrend administrative dashboard
 ---
 
-# Admin Dashboard Overhaul
+# Admin Dashboard — Current Architecture
 
-## Backend (artifacts/api-server/src/routes/admin.ts)
-- Legacy token auth (SESSION_SECRET static token) preserved for backward compat
-- New JWT auth for employee logins via email+password (24h expiry, signed with SESSION_SECRET)
-- RBAC via `requireRole(...roles)` middleware: super_admin > admin > editor/analyst/support/marketing
-- Passwords hashed with SHA-256 + JWT_SECRET salt
-- All mutations write to `audit_logs` table automatically
+> **Operational note:** This is an internal implementation memory, not a deployment runbook. Never place credentials, fixed admin tokens, payment credentials, or provider keys in this file.
 
-## Database Schema (lib/db/src/schema/)
-- `employees` — staff with roles, email, passwordHash, status, lastLogin
-- `subscription_plans` — plan CRUD with key/nameAr/price/durationMonths/features
-- `coupons` — discount coupons (percent or fixed), maxUses, startsAt, expiresAt
-- `audit_logs` — all admin actions with actor, target, detail, ip, timestamp
-- `ai_config` — singleton row: analyzerEnabled, summaryEnabled, rewriterEnabled, dailyRequestLimit
-- `ai_usage` — per-request AI usage tracking (userId, requestType, tokensEstimate)
+## Authentication and authorization
 
-## Frontend (artifacts/egytrend/index.html)
-10 admin tabs: dash, users, reqs, articles, sources, plans, coupons, employees, aiconfig, audit
-- Users tab: ban/unban/VIP upgrade with localStorage sync + server audit
-- Plans tab: full CRUD with features list, badge, active toggle
-- Coupons tab: full CRUD with percent/fixed discount, date range, usage stats
-- Employees tab: full CRUD with role display, last login, status toggle
-- AI Config tab: toggle features, daily limit, AI report generation
-- Audit Log tab: paginated list with search/filter by action type
+- Staff sign in through `/api/admin/login` with their own employee e-mail and password.
+- Passwords use salted `scrypt` hashes. A legacy hash may be upgraded only after a successful login; new records never use legacy hashing.
+- The browser receives a short-lived, signed `HttpOnly`, `SameSite=Lax` admin-session cookie. It is not a JavaScript-readable credential.
+- Each protected request resolves the signed employee ID against the current `employees` row. Disabled/archived employees and stale role claims are rejected immediately.
+- There is **no** `x-admin-token`, `ADMIN_TOKEN`, static header, or `localStorage` authorization path.
+- A password-only `break_glass` session is a temporary bootstrap recovery path, has a short expiry, and stops working as soon as an active staff `super_admin` exists. It must not be treated as a normal account.
+- RBAC is server-enforced: `super_admin`, `admin`, `editor`, `analyst`, `support`, and `marketing`. Sensitive pricing permissions are separately checked from the current employee row.
 
-## Key constraints
-- Users still in localStorage (no migration needed) — admin actions audit-logged server-side
-- `admFetch()` helper sends x-admin-token header; 401 auto-clears token
-- Seeds: 3 default plans (monthly/quarterly/yearly) and 2 coupons (WELCOME20/SAVE50) created
+## Data and audit behavior
 
-**Why:** The previous admin was localStorage-only with static token. Now production-ready with real DB and RBAC.
+- `employees`, payment decisions/settings, plans, coupons, subscriptions, AI controls, and audit logs are server/DB authoritative.
+- Destructive-looking operations preserve history: employee deletion archives the employee; coupon deletion disables it; plans are made inactive rather than removed.
+- The last active `super_admin` cannot be removed through archive, disable, or demotion flows.
+- Admin mutations write a minimized audit event; audit data must not become a shadow store for passwords, payment proofs, or full personal data.
+- Payment collection is fail-closed. A payment method must have an explicitly enabled DB setting and a valid configured address; no static default wallet is acceptable.
+
+## Frontend contract
+
+- The public client is `artifacts/egytrend/index.html`; the admin client is `artifacts/egytrend/admin.html`.
+- UI state may improve usability, but it never grants VIP/admin access or supplies server-trusted user/payment data.
+- Admin writes must use the cookie-backed server API, perform CSRF/origin checks provided by the app, and handle `401`/`403` by returning to sign-in rather than trying a local fallback.
+
+## Safe operating constraints
+
+- Do not seed production plans, coupons, employees, payment settings, or mock successes from the frontend or a local script.
+- Before a database change: use an approved Preview/Test environment, a verified backup, and paired reversible migrations via `scripts/run-db-migration.mjs`. It intentionally refuses production.
+- Use `lib/db/migrations/README.md`, `.env.example`, and the current release preflight for the authoritative operational procedure.

@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { rm, copyFile, mkdir } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -13,6 +13,16 @@ const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
+
+  /* The admin panel is a separate, role-gated asset (see routes/admin.ts
+   * GET /panel.js). It is NOT bundled into the public SPA; it is served from
+   * the function's own file tree (vercel.json includeFiles covers dist/**),
+   * so the build has to place it next to the bundle. */
+  await mkdir(distDir, { recursive: true });
+  await copyFile(
+    path.resolve(artifactDir, "assets/admin-panel.js"),
+    path.resolve(distDir, "admin-panel.js"),
+  );
 
   await esbuild({
     // index-bridge.ts = serverless bootstrap (Vercel): same bundle without
@@ -55,7 +65,6 @@ async function buildAll() {
       "pg-native",
       "oracledb",
       "mongodb-client-encryption",
-      "nodemailer",
       "handlebars",
       "knex",
       "typeorm",
@@ -107,7 +116,15 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
     ],
-    sourcemap: "linked",
+    /* Reviewed database migrations are imported as text and inlined into the
+     * bundle, so the deployed function always carries the exact SQL that was
+     * reviewed in the repository (no runtime file access on Vercel). */
+    loader: {
+      ".sql": "text",
+    },
+    // Source maps make the serverless artifact substantially larger and are
+    // not required at runtime. Opt in locally only when diagnosing a build.
+    sourcemap: process.env["GENERATE_SOURCEMAP"] === "true" ? "linked" : false,
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
       esbuildPluginPino({ transports: ["pino-pretty"] })

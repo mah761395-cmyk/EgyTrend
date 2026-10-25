@@ -7,18 +7,16 @@
    Why it exists: the live EGX snapshot holds ~300 listings but only a
    handful carry an Arabic label, so an Arabic question like «موبكو» or
    «الإسكندرية للحاويات» found nothing and the AI answered "no data".
-   EGX_AR_NAMES gives every live symbol an Arabic display name (sourced
-   from TradingView's Arabic symbol search — the same feed that prices
-   the app), and EGX_ALIASES maps colloquial names, rebrands and even
-   dead tickers (مدينة مصر → MASR, DOMTY → DOMT) onto the live symbol.
+   EGX_AR_NAMES is a curated Arabic display-name catalog only; it is not a
+   price feed. EGX_ALIASES maps colloquial names, rebrands and even dead
+   tickers (مدينة مصر → MASR, DOMTY → DOMT) onto the canonical symbol.
 
    EGX_ALIASES keys are PRE-NORMALIZED exactly like ai-tools.normAr
    (tashkeel/tatweel stripped, أإآ→ا, ة→ه, ى→ي) so the runtime lookup is
    a plain map hit. Keys shorter than 4 characters are rejected.
    ═══════════════════════════════════════════════════════════════════ */
 
-/* Arabic display name per EGX symbol (Arabic spelling wins over TradingView's
- * English description when the symbol has no curated entry in EGX_DEFS). */
+/* Arabic display name per EGX symbol; this metadata does not imply quote coverage. */
 export const EGX_AR_NAMES: Record<string, string> = {
   "AALR": "العامة لاستصلاح الأراضي",
   "ABUK": "ابوقير للاسمدة",

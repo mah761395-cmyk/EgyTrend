@@ -13,6 +13,13 @@ export const couponsTable = pgTable("coupons", {
   startsAt: timestamp("starts_at"),
   expiresAt: timestamp("expires_at"),
   createdBy: integer("created_by"),
+  /** Referral-created coupons are never supplied by a browser; the payment
+   * service resolves them against the authenticated account automatically. */
+  ownerUserId: integer("owner_user_id"),
+  referralRewardId: text("referral_reward_id"),
+  firstSubscriptionOnly: boolean("first_subscription_only").notNull().default(false),
+  renewalOnly: boolean("renewal_only").notNull().default(false),
+  autoApply: boolean("auto_apply").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

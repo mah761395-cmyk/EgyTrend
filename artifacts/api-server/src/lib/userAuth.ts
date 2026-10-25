@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
-import { ADMIN_COOKIE, SESSION_COOKIE } from "./security";
 
 export type UserClaims = {
   sub: number;
@@ -18,15 +17,38 @@ export type UserClaims = {
 
 /* Read lazily: the value arrives from the environment (Vercel, .env loaded at
  * boot, or a test that sets it before exercising the helpers), so capturing it
- * at module load made the helpers untestable and order-dependent. */
-function secret(): string {
-  const value = process.env["SESSION_SECRET"];
-  if (!value) throw new Error("SESSION_SECRET is not configured");
-  return value;
-}
-
+ * at module load made the helpers order-dependent and untestable. */
 function secretOrNull(): string | null {
   return process.env["SESSION_SECRET"] || null;
+}
+
+/* Browser sessions are HttpOnly cookies, not JavaScript-readable bearer
+ * tokens. The bearer/header paths remain only for approved non-browser
+ * clients during the compatibility window. */
+export const USER_SESSION_COOKIE = "et_user_session";
+export const ADMIN_SESSION_COOKIE = "et_admin_session";
+
+type CookieRequest = Request & { cookies?: Record<string, unknown> };
+
+export function readSessionCookie(req: Request, name: string): string {
+  const value = (req as CookieRequest).cookies?.[name];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function sessionCookieOptions(maxAge?: number) {
+  return {
+    httpOnly: true,
+    secure: process.env["NODE_ENV"] === "production" || process.env["VERCEL"] === "1",
+    sameSite: "lax" as const,
+    path: "/",
+    ...(maxAge === undefined ? {} : { maxAge }),
+  };
+}
+
+function secret(): string {
+  const value = secretOrNull();
+  if (!value) throw new Error("SESSION_SECRET is not configured");
+  return value;
 }
 
 export function normalizeUserPhone(value: unknown): string {
@@ -53,24 +75,17 @@ export function checkUserPassword(password: string, encoded: string): boolean {
 
 export function signUserToken(claims: UserClaims, options: { issuedAfterMs?: number } = {}): string {
   /* `jti` identifies this one session: logout revokes that id, while a password
-   * change revokes everything issued before it. `issuedAfterMs` lets a route
-   * mint the replacement session with an `iat` strictly after the revocation
-   * it just wrote — without it, a token created in the same second as the
-   * revocation would be revoked as well (iat has one-second resolution). */
-  const { jti: _jti, iat: _iat, ...payload } = claims;
-  /* jsonwebtoken takes the issued-at from the payload and has no `timestamp`
-   * option (an unknown option is rejected), so the replacement session's `iat`
-   * is set here: one whole second after the revocation, because `iat` only has
-   * second resolution and a token minted in the same second would itself be
+   * change revokes everything issued before it. jsonwebtoken takes the issued-at
+   * from the payload and has no `timestamp` option, so a replacement session is
+   * placed one whole second after the revocation it just wrote — `iat` only has
+   * second resolution, and a token minted in the same second would itself be
    * revoked. */
+  const { jti: _jti, iat: _iat, ...payload } = claims;
   const body: Record<string, unknown> = payload;
   if (options.issuedAfterMs !== undefined) {
     body["iat"] = Math.ceil(options.issuedAfterMs / 1000) + 1;
   }
-  return jwt.sign(body, secret(), {
-    expiresIn: "7d",
-    jwtid: crypto.randomUUID(),
-  });
+  return jwt.sign(body, secret(), { expiresIn: "7d", jwtid: crypto.randomUUID() });
 }
 
 export function verifyUserToken(token: string): UserClaims | null {
@@ -85,81 +100,305 @@ export function verifyUserToken(token: string): UserClaims | null {
   }
 }
 
-/* Session token for app users: httpOnly cookie first (the SPA no longer keeps
- * tokens in localStorage), then the Authorization header for non-browser
- * clients that legitimately hold a token. */
 export function bearerToken(req: Request): string {
-  const cookieToken = (req.cookies as Record<string, string> | undefined)?.[SESSION_COOKIE];
-  if (cookieToken) return String(cookieToken).trim();
   return (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim();
 }
 
-/* Admin/staff session: httpOnly cookie first, header second (kept so existing
- * non-browser tooling that already holds a token keeps working). */
-export function adminToken(req: Request): string {
-  const cookieToken = (req.cookies as Record<string, string> | undefined)?.[ADMIN_COOKIE];
-  if (cookieToken) return String(cookieToken).trim();
-  return (req.header("x-admin-token") || req.header("authorization") || "")
-    .replace(/^Bearer\s+/i, "")
-    .trim();
-}
-
 export function currentUser(req: Request): UserClaims | null {
-  return verifyUserToken(bearerToken(req));
+  return verifyUserToken(readSessionCookie(req, USER_SESSION_COOKIE) || bearerToken(req));
 }
 
-export function isAdminToken(req: Request): boolean {
-  const token = adminToken(req);
+export const STAFF_ROLES = ["super_admin", "admin", "editor", "analyst", "support", "marketing"] as const;
+export type StaffRole = typeof STAFF_ROLES[number];
+
+/**
+ * Administrative claims are only a short-lived session hint. Every protected
+ * operation resolves a positive staff ID against the current employee row so
+ * disabling an account or changing its role takes effect immediately instead
+ * of waiting for a previously issued JWT to expire.
+ *
+ * `break_glass` is intentionally explicit and exists only for the configured
+ * password-only bootstrap login. A raw static ADMIN_TOKEN is never accepted.
+ */
+export type AdminClaims = {
+  sub: number;
+  name: string;
+  role: StaffRole;
+  email: string;
+  authSource?: "break_glass";
+  /** Session id, so a panel logout can be revoked server-side. */
+  jti?: string;
+  /** Issued-at (seconds), set by jsonwebtoken. */
+  iat?: number;
+};
+
+function isStaffRole(value: unknown): value is StaffRole {
+  return typeof value === "string" && (STAFF_ROLES as readonly string[]).includes(value);
+}
+
+export function adminSessionToken(req: Request): string {
+  return readSessionCookie(req, ADMIN_SESSION_COOKIE) || bearerToken(req);
+}
+
+/** Expire a session cookie (name: USER_SESSION_COOKIE or ADMIN_SESSION_COOKIE). */
+export function clearSessionCookie(res: Response, name: string): void {
+  const { maxAge: _maxAge, ...options } = sessionCookieOptions();
+  res.clearCookie(name, options);
+}
+
+/** Verifies the signed administrative session without trusting its stale role. */
+export function currentAdminClaims(req: Request): AdminClaims | null {
+  const token = adminSessionToken(req);
   const key = secretOrNull();
-  if (!token || !key) return false;
+  if (!token || !key) return null;
   try {
     const value = jwt.verify(token, key);
-    const role = value && typeof value !== "string" ? (value as { role?: string }).role : undefined;
-    return role === "admin" || role === "super_admin";
+    if (!value || typeof value === "string") return null;
+    const raw = value as Partial<AdminClaims>;
+    const sub = Number(raw.sub);
+    if (!Number.isSafeInteger(sub) || sub < 0 || !isStaffRole(raw.role)) return null;
+    if (sub === 0 && raw.authSource !== "break_glass") return null;
+    const iat = Number((raw as { iat?: unknown }).iat);
+    return {
+      sub,
+      name: typeof raw.name === "string" ? raw.name : "",
+      role: raw.role,
+      email: typeof raw.email === "string" ? raw.email : "",
+      ...(raw.authSource === "break_glass" ? { authSource: "break_glass" as const } : {}),
+      ...(typeof (raw as { jti?: unknown }).jti === "string"
+        ? { jti: (raw as { jti: string }).jti }
+        : {}),
+      ...(Number.isFinite(iat) ? { iat } : {}),
+    };
   } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns a server-current staff identity, failing closed on DB failure,
+ * deletion, suspension, role changes, or malformed legacy tokens. The
+ * break-glass session remains explicit and is never a header/API key.
+ */
+export async function currentActiveAdmin(req: Request): Promise<AdminClaims | null> {
+  const claims = currentAdminClaims(req);
+  if (!claims) return null;
+  try {
+    const { db } = await import("@workspace/db");
+    const { employeesTable } = await import("@workspace/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+    /* Break-glass is an emergency bootstrap path, not a permanent parallel
+     * super-admin account. Once the staff directory contains an active
+     * super_admin, both new and already-issued break-glass sessions stop
+     * working immediately. A DB failure is also a deny, never a fallback. */
+    if (claims.sub === 0) {
+      if (claims.authSource !== "break_glass") return null;
+      const [staffSuperAdmin] = await db.select({ id: employeesTable.id })
+        .from(employeesTable)
+        .where(and(eq(employeesTable.role, "super_admin"), eq(employeesTable.status, "active")))
+        .limit(1);
+      return staffSuperAdmin ? null : claims;
+    }
+    const [staff] = await db.select({
+      id: employeesTable.id,
+      name: employeesTable.name,
+      email: employeesTable.email,
+      role: employeesTable.role,
+      status: employeesTable.status,
+    }).from(employeesTable).where(eq(employeesTable.id, claims.sub)).limit(1);
+    if (!staff || staff.status !== "active" || !isStaffRole(staff.role)) return null;
+    return { sub: staff.id, name: staff.name, email: staff.email, role: staff.role };
+  } catch {
+    return null;
+  }
+}
+
+/** Paid-feature bypasses are reserved for active administrator roles only. */
+export async function isActivePrivilegedAdmin(req: Request): Promise<boolean> {
+  const admin = await currentActiveAdmin(req);
+  return admin?.role === "admin" || admin?.role === "super_admin";
+}
+
+export type VipEntitlement = {
+  /** `true` only after a server-side user + entitlement check. */
+  active: boolean;
+  /** subscription is the post-migration source of truth; legacy is temporary compatibility only. */
+  source: "subscription" | "legacy" | "none";
+  subscriptionType: "paid" | "trial" | "legacy" | "none";
+  planKey: string | null;
+  planNameAr: string | null;
+  planFeatures: string[];
+  /** A selected-scope trial still has VIP, but individual server gates consult this scope. */
+  trialFeatureScope: string[] | "all" | null;
+  trialAiDailyLimit: number | null;
+  trialStartedAt: Date | null;
+  trialEndsAt: Date | null;
+  trialEndedAt: Date | null;
+  trialConvertedAt: Date | null;
+  status: "active" | "grace" | "cancelled" | "expired" | "none";
+  expiresAt: Date | null;
+  graceEndsAt: Date | null;
+};
+
+const NO_VIP: VipEntitlement = {
+  active: false,
+  source: "none",
+  subscriptionType: "none",
+  planKey: null,
+  planNameAr: null,
+  planFeatures: [],
+  trialFeatureScope: null,
+  trialAiDailyLimit: null,
+  trialStartedAt: null,
+  trialEndsAt: null,
+  trialEndedAt: null,
+  trialConvertedAt: null,
+  status: "none",
+  expiresAt: null,
+  graceEndsAt: null,
+};
+
+function legacyEntitlement(row: { plan: string; vipExpiresAt: Date | null }, now = new Date()): VipEntitlement {
+  if (row.plan !== "vip") return NO_VIP;
+  /* Compatibility bridge for users that predate 0002. It is deliberately
+   * server-side, never based on the JWT, and will disappear only after every
+   * legacy record has been reconciled. A missing historic expiry is preserved
+   * rather than silently inventing an expiry or breaking a paid user. */
+  const active = !row.vipExpiresAt || row.vipExpiresAt.getTime() > now.getTime();
+  return {
+    active,
+    source: "legacy",
+    subscriptionType: "legacy",
+    planKey: "legacy-vip",
+    planNameAr: "اشتراك VIP سابق",
+    planFeatures: [],
+    trialFeatureScope: null,
+    trialAiDailyLimit: null,
+    trialStartedAt: null,
+    trialEndsAt: null,
+    trialEndedAt: null,
+    trialConvertedAt: null,
+    status: active ? "active" : "expired",
+    expiresAt: row.vipExpiresAt,
+    graceEndsAt: null,
+  };
+}
+
+function subscriptionTableMissing(error: unknown): boolean {
+  const e = error as { code?: unknown; cause?: { code?: unknown }; message?: unknown } | null;
+  const code = String(e?.code || e?.cause?.code || "");
+  const message = String(e?.message || "");
+  return code === "42P01" || /user_subscriptions.+(?:does not exist|undefined)/i.test(message);
+}
+
+/**
+ * Resolves the single server-side VIP entitlement. New approvals always write
+ * `user_subscriptions`; the legacy projection is read only as a temporary,
+ * documented migration bridge for accounts that have not been backfilled.
+ * JWT `plan` / browser state never grants access.
+ */
+export async function getVipEntitlement(claims: Pick<UserClaims, "sub"> | null, now = new Date()): Promise<VipEntitlement> {
+  if (!claims || !Number.isInteger(claims.sub) || claims.sub <= 0) return NO_VIP;
+  if (!Number.isFinite(now.getTime())) return NO_VIP;
+  const { db } = await import("@workspace/db");
+  const { appUsersTable, userSubscriptionsTable } = await import("@workspace/db/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const [user] = await db
+    .select({ plan: appUsersTable.plan, status: appUsersTable.status, vipExpiresAt: appUsersTable.vipExpiresAt })
+    .from(appUsersTable)
+    .where(and(eq(appUsersTable.id, claims.sub), eq(appUsersTable.status, "active")))
+    .limit(1);
+  if (!user) return NO_VIP;
+
+  try {
+    const [subscription] = await db
+      .select({
+        planKey: userSubscriptionsTable.planKey,
+        planNameAr: userSubscriptionsTable.planNameAr,
+        planFeatures: userSubscriptionsTable.planFeatures,
+        subscriptionType: userSubscriptionsTable.subscriptionType,
+        trialFeatureScope: userSubscriptionsTable.trialFeatureScope,
+        trialAiDailyLimit: userSubscriptionsTable.trialAiDailyLimit,
+        trialStartedAt: userSubscriptionsTable.trialStartedAt,
+        trialEndsAt: userSubscriptionsTable.trialEndsAt,
+        trialEndedAt: userSubscriptionsTable.trialEndedAt,
+        trialConvertedAt: userSubscriptionsTable.trialConvertedAt,
+        startsAt: userSubscriptionsTable.startsAt,
+        status: userSubscriptionsTable.status,
+        expiresAt: userSubscriptionsTable.expiresAt,
+        graceEndsAt: userSubscriptionsTable.graceEndsAt,
+      })
+      .from(userSubscriptionsTable)
+      .where(eq(userSubscriptionsTable.userId, claims.sub))
+      .limit(1);
+
+    if (subscription) {
+      const expiresAt = subscription.expiresAt;
+      const paidActive = subscription.status === "active" && expiresAt.getTime() > now.getTime();
+      const graceActive = (subscription.status === "active" || subscription.status === "grace")
+        && expiresAt.getTime() <= now.getTime()
+        && Boolean(subscription.graceEndsAt && subscription.graceEndsAt.getTime() > now.getTime());
+      const active = paidActive || graceActive;
+      /* A payment approved mid-trial has a future paid startsAt. The current
+       * row is paid for billing/lifecycle purposes, but the retained trial
+       * feature snapshot remains authoritative until that date. */
+      const trialWindowBeforePaidStart = subscription.subscriptionType === "paid"
+        && subscription.startsAt.getTime() > now.getTime()
+        && !!subscription.trialEndsAt && subscription.trialEndsAt.getTime() > now.getTime()
+        && (subscription.trialFeatureScope === "all" || Array.isArray(subscription.trialFeatureScope));
+      return {
+        active,
+        source: "subscription",
+        subscriptionType: subscription.subscriptionType === "trial" || trialWindowBeforePaidStart ? "trial" : "paid",
+        planKey: subscription.planKey,
+        planNameAr: subscription.planNameAr,
+        planFeatures: Array.isArray(subscription.planFeatures) ? subscription.planFeatures : [],
+        trialFeatureScope: (subscription.subscriptionType === "trial" || trialWindowBeforePaidStart)
+          ? (subscription.trialFeatureScope === "all" || Array.isArray(subscription.trialFeatureScope) ? subscription.trialFeatureScope : "all")
+          : null,
+        trialAiDailyLimit: (subscription.subscriptionType === "trial" || trialWindowBeforePaidStart) && Number.isInteger(subscription.trialAiDailyLimit)
+          ? Number(subscription.trialAiDailyLimit) : null,
+        trialStartedAt: subscription.trialStartedAt,
+        trialEndsAt: subscription.trialEndsAt,
+        trialEndedAt: subscription.trialEndedAt,
+        trialConvertedAt: subscription.trialConvertedAt,
+        status: paidActive ? "active" : graceActive ? "grace" : subscription.status === "cancelled" ? "cancelled" : "expired",
+        expiresAt,
+        graceEndsAt: subscription.graceEndsAt,
+      };
+    }
+  } catch (error) {
+    /* A deployment must run 0002 before application code. The narrow fallback
+     * makes rollback/old Preview environments safe without treating any other
+     * database failure as a VIP grant. */
+    if (!subscriptionTableMissing(error)) throw error;
+    return legacyEntitlement(user, now);
+  }
+
+  return legacyEntitlement(user, now);
+}
+
+/** The one authorization predicate used by every paid API/content gate. */
+export async function hasVip(claims: Pick<UserClaims, "sub"> | null): Promise<boolean> {
+  try {
+    return (await getVipEntitlement(claims)).active;
+  } catch {
+    /* Authorization always fails closed on an unavailable/corrupt database. */
     return false;
   }
 }
 
-export function isVipClaims(claims: UserClaims | null): boolean {
-  if (!claims || claims.plan !== "vip") return false;
-  return !claims.vipExpiresAt || new Date(claims.vipExpiresAt).getTime() > Date.now();
-}
-
-/* DB-backed VIP check: the JWT embeds the plan for up to 7 days, so without
- * this a banned or downgraded user would keep VIP access until token expiry.
- * Also the reverse: a user upgraded AFTER login carries a stale non-VIP
- * claim — the DB is the source of truth, so re-verify before rejecting.
- * Fail-open only applies when the claims themselves said VIP (pre-existing
- * behavior for transient DB hiccups); a non-VIP claim never fails open. */
-async function dbVipCheck(userId: number): Promise<boolean> {
-  const { db } = await import("@workspace/db");
-  const { appUsersTable } = await import("@workspace/db/schema");
-  const { and, eq } = await import("drizzle-orm");
-  const [row] = await db
-    .select({ plan: appUsersTable.plan, status: appUsersTable.status, vipExpiresAt: appUsersTable.vipExpiresAt })
-    .from(appUsersTable)
-    .where(and(eq(appUsersTable.id, userId), eq(appUsersTable.status, "active")))
-    .limit(1);
-  if (!row) return false; // user deleted or banned
-  if (row.plan !== "vip") return false; // downgraded or not yet VIP
-  return !row.vipExpiresAt || row.vipExpiresAt.getTime() > Date.now();
-}
-
-export async function isVipActive(claims: UserClaims | null): Promise<boolean> {
-  if (!claims) return false;
-  if (isVipClaims(claims)) {
-    try {
-      return await dbVipCheck(claims.sub);
-    } catch {
-      return true; // claims already validated; only a DB failure lands here
-    }
-  }
-  // Claims say non-VIP — could be a stale token (VIP granted after login).
-  // Verify against the DB, but fail CLOSED on DB errors (never grant VIP
-  // from a failed check).
+/** A trial may be configured for a selected feature subset. `hasVip()` stays
+ * true for its whole active period, while every feature-specific server gate
+ * calls this predicate so a browser can never expand the chosen scope. */
+export async function hasVipFeature(claims: Pick<UserClaims, "sub"> | null, feature: string): Promise<boolean> {
   try {
-    return await dbVipCheck(claims.sub);
+    const entitlement = await getVipEntitlement(claims);
+    if (!entitlement.active) return false;
+    if (entitlement.subscriptionType !== "trial") return true;
+    return entitlement.trialFeatureScope === "all"
+      || (Array.isArray(entitlement.trialFeatureScope) && entitlement.trialFeatureScope.includes(feature));
   } catch {
     return false;
   }
@@ -171,11 +410,24 @@ export async function requireVipUser(req: Request, res: Response, next: NextFunc
     res.status(401).json({ status: "error", message: "login required" });
     return;
   }
-  // DB-backed (handles stale claims both ways: revoked VIP → 403 even with
-  // an old vip token; freshly-granted VIP → allowed even with an old free token).
-  if (!(await isVipActive(claims))) {
+  if (!(await hasVip(claims))) {
     res.status(403).json({ status: "error", message: "VIP subscription required" });
     return;
   }
   next();
+}
+
+export function requireVipFeature(feature: string) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const claims = currentUser(req);
+    if (!claims) {
+      res.status(401).json({ status: "error", message: "login required" });
+      return;
+    }
+    if (!(await hasVipFeature(claims, feature))) {
+      res.status(403).json({ status: "error", message: "هذه الميزة غير متاحة ضمن اشتراكك الحالي" });
+      return;
+    }
+    next();
+  };
 }

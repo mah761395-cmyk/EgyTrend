@@ -1,3 +1,5 @@
+import { promises as dns } from "node:dns";
+import { isIP } from "node:net";
 import { Router, type IRouter } from "express";
 import { XMLParser } from "fast-xml-parser";
 import { logger } from "../lib/logger";
@@ -134,6 +136,213 @@ function safeUrl(input: string): string {
   return v.replace(/["'<>\\)\\]/g, "");
 }
 
+/* ─── RSS outbound-request guard ──────────────────────────────────────────
+ * Feed URLs are editable metadata, so treat them as an SSRF boundary rather
+ * than trusting a URL merely because it came from the source registry. Every
+ * hop is manually followed, revalidated and DNS-resolved before it is fetched.
+ * This blocks localhost, private/link-local/metadata ranges, credentials,
+ * non-standard ports and redirects to an internal target. DNS failures fail
+ * closed; a feed can be unavailable, but it must never become a network probe.
+ */
+type ResolvedAddress = { address: string; family: 4 | 6 };
+type HostResolver = (hostname: string) => Promise<ResolvedAddress[]>;
+type FeedFetch = (input: string, init: RequestInit) => Promise<Response>;
+
+const MAX_FEED_REDIRECTS = 3;
+const MAX_FEED_BYTES = 1_500_000;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const FORBIDDEN_HOST_SUFFIXES = [".localhost", ".local", ".internal", ".lan", ".home"];
+
+const resolveHost: HostResolver = async (hostname) => {
+  const records = await dns.lookup(hostname, { all: true, verbatim: true });
+  return records.filter((record): record is ResolvedAddress => record.family === 4 || record.family === 6);
+};
+
+function isPublicIpv4(address: string): boolean {
+  const parts = address.split(".");
+  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return false;
+  const octets = parts.map(Number);
+  if (octets.some((part) => part < 0 || part > 255)) return false;
+  const [a, b, c] = octets;
+  /* RFC 1918, loopback, link-local, CGNAT, documentation/test ranges,
+   * benchmarking, multicast and future-reserved ranges are all non-public. */
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return false;
+  if (a === 100 && b >= 64 && b <= 127) return false;
+  if (a === 169 && b === 254) return false;
+  if (a === 172 && b >= 16 && b <= 31) return false;
+  if (a === 192 && b === 0 && c === 0) return false;
+  if (a === 192 && b === 0 && c === 2) return false;
+  if (a === 192 && b === 88 && c === 99) return false;
+  if (a === 192 && b === 168) return false;
+  if (a === 198 && (b === 18 || b === 19)) return false;
+  if (a === 198 && b === 51 && c === 100) return false;
+  if (a === 203 && b === 0 && c === 113) return false;
+  return true;
+}
+
+function ipv4TailToGroups(value: string): string | null {
+  const octets = value.split(".");
+  if (octets.length !== 4 || octets.some((part) => !/^\d{1,3}$/.test(part))) return null;
+  const numbers = octets.map(Number);
+  if (numbers.some((part) => part < 0 || part > 255)) return null;
+  return `${((numbers[0]! << 8) | numbers[1]!).toString(16)}:${((numbers[2]! << 8) | numbers[3]!).toString(16)}`;
+}
+
+/** Parses a canonical IPv6 literal into a bigint without performing DNS. */
+function ipv6ToBigInt(input: string): bigint | null {
+  let value = input.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (!value || value.includes("%")) return null;
+  if (value.includes(".")) {
+    const cut = value.lastIndexOf(":");
+    if (cut < 0) return null;
+    const tail = ipv4TailToGroups(value.slice(cut + 1));
+    if (!tail) return null;
+    value = `${value.slice(0, cut)}:${tail}`;
+  }
+  const halves = value.split("::");
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  if (left.some((part) => !/^[0-9a-f]{1,4}$/.test(part)) || right.some((part) => !/^[0-9a-f]{1,4}$/.test(part))) return null;
+  const missing = 8 - left.length - right.length;
+  if ((halves.length === 1 && missing !== 0) || (halves.length === 2 && missing < 1)) return null;
+  const groups = [...left, ...Array(Math.max(0, missing)).fill("0"), ...right];
+  if (groups.length !== 8) return null;
+  return groups.reduce((out, group) => (out << 16n) | BigInt(`0x${group}`), 0n);
+}
+
+function isPublicIpv6(address: string): boolean {
+  const value = ipv6ToBigInt(address);
+  if (value === null || value === 0n || value === 1n) return false;
+  /* IPv4-compatible and IPv4-mapped literals must obey the IPv4 policy. */
+  if (value >> 32n === 0n || value >> 32n === 0xffffn) {
+    const tail = Number(value & 0xffffffffn);
+    return isPublicIpv4([
+      (tail >>> 24) & 255,
+      (tail >>> 16) & 255,
+      (tail >>> 8) & 255,
+      tail & 255,
+    ].join("."));
+  }
+  /* fc00::/7 (ULA), fe80::/10 (link-local), ff00::/8 (multicast),
+   * 2001:db8::/32 (documentation), plus transition/tunnel ranges. */
+  if ((value & (0xfe00n << 112n)) === (0xfc00n << 112n)) return false;
+  if ((value & (0xffc0n << 112n)) === (0xfe80n << 112n)) return false;
+  if ((value >> 120n) === 0xffn) return false;
+  if ((value >> 96n) === 0x20010db8n) return false;
+  if ((value >> 112n) === 0x2002n) return false;
+  if ((value >> 96n) === 0x20010000n) return false;
+  return true;
+}
+
+function isPublicIpAddress(address: string): boolean {
+  const normalized = address.trim().replace(/^\[|\]$/g, "");
+  const family = isIP(normalized);
+  if (family === 4) return isPublicIpv4(normalized);
+  if (family === 6) return isPublicIpv6(normalized);
+  return false;
+}
+
+function forbiddenHostname(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase().replace(/\.$/, "");
+  return !normalized
+    || normalized === "localhost"
+    || normalized === "metadata.google.internal"
+    || FORBIDDEN_HOST_SUFFIXES.some((suffix) => normalized.endsWith(suffix));
+}
+
+function unsafeFeedTarget(): Error {
+  /* Keep the reason stable and non-enumerating: it may be returned in a
+   * public source-health response, so never include URL/host/DNS details. */
+  return new Error("rss_target_not_allowed");
+}
+
+async function assertSafeFeedUrl(input: string, resolver: HostResolver = resolveHost): Promise<URL> {
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    throw unsafeFeedTarget();
+  }
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.port) {
+    throw unsafeFeedTarget();
+  }
+  const hostname = url.hostname.replace(/^\[|\]$/g, "");
+  if (forbiddenHostname(hostname)) throw unsafeFeedTarget();
+  if (isIP(hostname)) {
+    if (!isPublicIpAddress(hostname)) throw unsafeFeedTarget();
+    return url;
+  }
+  let addresses: ResolvedAddress[];
+  try {
+    addresses = await resolver(hostname);
+  } catch {
+    throw unsafeFeedTarget();
+  }
+  /* Require every resolved address to be public. Choosing only the first one
+   * is unsafe on dual-stack hosts, and an empty answer is not fetchable. */
+  if (!addresses.length || addresses.some((record) => !isPublicIpAddress(record.address))) {
+    throw unsafeFeedTarget();
+  }
+  return url;
+}
+
+async function fetchSafeFeed(
+  initialUrl: string,
+  init: RequestInit,
+  resolver: HostResolver = resolveHost,
+  fetchImpl: FeedFetch = fetch as FeedFetch,
+): Promise<Response> {
+  let target = await assertSafeFeedUrl(initialUrl, resolver);
+  for (let redirects = 0; redirects <= MAX_FEED_REDIRECTS; redirects++) {
+    const response = await fetchImpl(target.toString(), { ...init, redirect: "manual" });
+    if (!REDIRECT_STATUSES.has(response.status)) return response;
+    const location = response.headers.get("location");
+    /* A redirect body is irrelevant and may hold a connection open. */
+    void response.body?.cancel().catch(() => undefined);
+    if (!location || redirects === MAX_FEED_REDIRECTS) throw unsafeFeedTarget();
+    try {
+      target = await assertSafeFeedUrl(new URL(location, target).toString(), resolver);
+    } catch {
+      throw unsafeFeedTarget();
+    }
+  }
+  throw unsafeFeedTarget();
+}
+
+async function readFeedText(response: Response): Promise<string> {
+  const declaredLength = Number(response.headers.get("content-length") || "0");
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_FEED_BYTES) {
+    void response.body?.cancel().catch(() => undefined);
+    throw new Error("rss_feed_too_large");
+  }
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_FEED_BYTES) {
+        await reader.cancel();
+        throw new Error("rss_feed_too_large");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(merged);
+}
+
 function pickImage(it: Record<string, unknown>): string | undefined {
   const enclosure = it["enclosure"] as Record<string, unknown> | undefined;
   if (
@@ -164,6 +373,11 @@ function pickImage(it: Record<string, unknown>): string | undefined {
   }
   return undefined;
 }
+
+/* Keep syndicated content to the permitted display shape: headline, short
+ * snippet, named source and link back. We never fetch/publish article bodies. */
+const NEWS_TITLE_MAX = 300;
+const NEWS_SNIPPET_MAX = 280;
 
 type FeedItem = {
   title: string;
@@ -205,13 +419,13 @@ function parseFeed(xml: string): FeedItem[] {
 
   return rawItems
     .map((it) => {
-      const title = clean(pickText(it["title"]));
+      const title = clean(pickText(it["title"])).slice(0, NEWS_TITLE_MAX);
       const description = clean(
         pickText(it["description"]) ||
           pickText(it["content:encoded"]) ||
           pickText(it["summary"]) ||
           "",
-      );
+      ).slice(0, NEWS_SNIPPET_MAX);
       const link = safeUrl(pickLink(it["link"]) || pickText(it["guid"]));
       const rawDate =
         pickText(it["pubDate"]) ||
@@ -220,10 +434,9 @@ function parseFeed(xml: string): FeedItem[] {
         pickText(it["updated"]) ||
         "";
       const parsed = rawDate ? new Date(rawDate) : null;
-      const pubDate =
-        parsed && !Number.isNaN(parsed.getTime())
-          ? parsed.toISOString()
-          : new Date().toISOString();
+      // Do not invent a current timestamp for undated items: recency ranking
+      // must be based on publisher metadata, not fetch time.
+      const pubDate = parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : "";
       const guid = clean(pickText(it["guid"]).replace(/["'<>\\)\\]/g, "")) || link || title;
       const img = pickImage(it);
       return {
@@ -273,7 +486,7 @@ async function fetchSource(src: SourceMeta): Promise<{
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(src.url, {
+    const res = await fetchSafeFeed(src.url, {
       signal: ctrl.signal,
       headers: {
         "User-Agent": UA,
@@ -281,12 +494,12 @@ async function fetchSource(src: SourceMeta): Promise<{
           "application/rss+xml, application/xml, application/atom+xml, text/xml, */*",
         "Accept-Language": "ar,en;q=0.8",
       },
-      redirect: "follow",
     });
     if (!res.ok) {
+      void res.body?.cancel().catch(() => undefined);
       throw new Error(`upstream ${res.status} for ${src.id}`);
     }
-    const xml = await res.text();
+    const xml = await readFeedText(res);
     const items = parseFeed(xml).slice(0, 12);
     const data = { status: "ok" as const, items, meta: src };
     if (items.length > 0) {
@@ -319,7 +532,7 @@ function customArticlesFeed(): {
   const items: FeedItem[] = articles.map((a) => ({
     title: a.title,
     link: a.link,
-    description: a.description,
+    description: a.description.slice(0, NEWS_SNIPPET_MAX),
     pubDate: a.pubDate,
     guid: a.id,
     ...(a.thumbnail
@@ -350,7 +563,8 @@ router.get("/news/sources", (_req, res) => {
     cat: s.cat,
     color: s.color,
   }));
-  // Always advertise the admin pseudo-source so the UI can filter to it.
+  // Always advertise the platform's own editorial pseudo-source. Third-party
+  // RSS sources are listed only after a documented commercial review.
   sources.unshift({
     id: "admin",
     name: "تحرير المنصة",
@@ -359,13 +573,87 @@ router.get("/news/sources", (_req, res) => {
     cat: "egypt",
     color: "#a855f7",
   });
-  res.json({ status: "ok", sources });
+  res.json({
+    status: "ok",
+    sources,
+    thirdPartyApprovedCount: sources.length - 1,
+    policy: "third_party_rss_requires_commercial_redisplay_approval",
+  });
 });
 
 type NewsFeed = { status: "ok"; items: FeedItem[]; meta: SourceMeta };
+
+function newsDedupKey(item: FeedItem): string {
+  const title = item.title.toLocaleLowerCase("ar")
+    .replace(/[^\u0600-\u06ffa-z0-9]+/gi, "")
+    .slice(0, 120);
+  return title || item.link.toLowerCase().slice(0, 240);
+}
+
+/* Market relevance keeps a general feed (world/regional) from pushing genuine
+ * EGX and economy stories off the homepage. It is a small, bounded boost — at
+ * most six hours — so recency still dominates within the same relevance tier. */
+const MARKET_RELEVANCE_RX =
+  /البورصة|بورصة|أسهم|سهم|مؤشر|تداول|الجنيه|دولار|ذهب|تضخم|فائدة|البنك المركزي|اقتصاد|استثمار|نفط|بترول|egx|stock|shares|equity|market|inflation|interest rate|gold|brent|crude|currency|finance|bank|egypt/gi;
+
+function marketRelevance(title: string): number {
+  const unique = new Set((title.match(MARKET_RELEVANCE_RX) ?? []).map((m) => m.toLowerCase()));
+  return Math.min(unique.size, 3);
+}
+
+function newsImportance(item: FeedItem): number {
+  const title = item.title.toLowerCase();
+  const breaking = /\b(breaking|urgent|alert)\b|عاجل|فوري/.test(title) ? 1_000_000_000_000 : 0;
+  const published = Date.parse(item.pubDate);
+  return breaking + marketRelevance(title) * 2 * 60 * 60 * 1000 + (Number.isFinite(published) ? published : 0);
+}
+
+/** Deduplicate across sources and rank newest/urgent items without copying text. */
+function dedupeAndRankFeeds(feeds: NewsFeed[]): NewsFeed[] {
+  const seen = new Set<string>();
+  const normalized = feeds.map((feed) => ({
+    ...feed,
+    items: [...feed.items]
+      .sort((a, b) => newsImportance(b) - newsImportance(a))
+      .filter((item) => {
+        const key = newsDedupKey(item);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 12),
+  })).filter((feed) => feed.items.length > 0);
+  return normalized.sort((a, b) => newsImportance(b.items[0]!) - newsImportance(a.items[0]!));
+}
+
+function rankedItemsFromFeeds(feeds: NewsFeed[]): RankedNewsItem[] {
+  return feeds.flatMap((feed) => feed.items.map((item) => ({
+    ...item,
+    source: {
+      id: feed.meta.id,
+      name: feed.meta.name,
+      icon: feed.meta.icon,
+      lang: feed.meta.lang,
+      cat: feed.meta.cat,
+      color: feed.meta.color,
+    },
+    importance: newsImportance(item),
+  }))).sort((a, b) => b.importance - a.importance);
+}
+
+type RankedNewsItem = FeedItem & {
+  source: Pick<SourceMeta, "id" | "name" | "icon" | "lang" | "cat" | "color">;
+  importance: number;
+};
+
 type NewsSnapshot = {
   status: "ok";
+  /** `feeds` remains for server-side consumers such as the local AI. */
   feeds: NewsFeed[];
+  /** Canonical, server-ranked presentation list for browser clients. */
+  items: RankedNewsItem[];
+  availability: "available" | "unavailable";
+  reason?: "no_approved_sources" | "upstream_unavailable";
   errors: Array<{ source: string; message: string }>;
 };
 
@@ -388,14 +676,28 @@ async function buildNewsAgg(): Promise<NewsSnapshot | null> {
       else
         errors.push({
           source: sources[i]?.id || "?",
-          message: (r as PromiseRejectedResult).reason?.message || "error",
+          /* Source health is public; never reflect an upstream redirect URL,
+           * resolver failure, or internal transport detail to a visitor. */
+          message: "upstream_unavailable",
         });
     });
     // Merge admin-authored content as a first-class feed.
     const custom = customArticlesFeed();
     if (custom.items.length > 0) feeds.unshift(custom);
     if (errors.length > 0) logger.warn({ errors }, "some news sources failed");
-    const data: NewsSnapshot = { status: "ok", feeds, errors };
+    const rankedFeeds = dedupeAndRankFeeds(feeds);
+    const items = rankedItemsFromFeeds(rankedFeeds);
+    const availability = items.length > 0 ? "available" : "unavailable";
+    const data: NewsSnapshot = {
+      status: "ok",
+      feeds: rankedFeeds,
+      items,
+      availability,
+      ...(availability === "unavailable"
+        ? { reason: sources.length === 0 ? "no_approved_sources" as const : "upstream_unavailable" as const }
+        : {}),
+      errors,
+    };
     newsAggCache = { ts: Date.now(), data };
     return data;
   } catch (e) {
@@ -446,10 +748,24 @@ router.get("/news", async (req, res) => {
     logger.warn({ err, source: sourceId }, "failed to fetch news source");
     res.status(502).json({
       status: "error",
-      message: (err as Error).message || "fetch failed",
+      message: "news source unavailable",
       items: [],
     });
   }
 });
+
+/* Test-only access to deterministic parsing/ranking logic; routes remain the
+ * production interface. */
+export const __newsTest = {
+  parseFeed,
+  newsDedupKey,
+  newsImportance,
+  dedupeAndRankFeeds,
+  rankedItemsFromFeeds,
+  isPublicIpAddress,
+  assertSafeFeedUrl,
+  fetchSafeFeed,
+  readFeedText,
+};
 
 export default router;
