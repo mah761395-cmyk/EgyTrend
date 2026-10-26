@@ -1080,7 +1080,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       </form>
     </div>
 
-    <div style="margin-top:13px;text-align:center;color:var(--t5);font-size:11px;">دعم المنصة: <span style="color:var(--t4);">غير متاح حالياً</span></div>
+    <div style="margin-top:13px;text-align:center;color:var(--t5);font-size:11px;">دعم المنصة: <a href="https://wa.me/201008605139" target="_blank" rel="noopener noreferrer" style="color:var(--g);text-decoration:none;font-weight:700;">واتساب 01008605139</a></div>
     <div style="margin-top:6px;text-align:center;color:var(--t5);font-size:10px;">
       <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style="color:var(--t5);text-decoration:none;">سياسة الخصوصية</a> · <a href="/terms.html" target="_blank" rel="noopener noreferrer" style="color:var(--t5);text-decoration:none;">الشروط والأحكام</a>
     </div>
@@ -1215,8 +1215,10 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       </div>
     </div>
     <div id="help-tour-anchor" style="display:flex;align-items:center;gap:10px;margin-top:12px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.18);border-radius:14px;padding:13px 15px;">
-      <span style="font-size:22px;color:var(--t4);display:grid;place-items:center;"><svg class="et-icon"><use href="#i-megaphone"></use></svg></span>
-      <div><div style="color:var(--t3);font-weight:800;font-size:13px;">الدعم الفني</div><div style="color:var(--t4);font-size:11px;">قناة الدعم غير متاحة حالياً</div></div>
+      <a href="https://wa.me/201008605139" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;gap:10px;text-decoration:none;flex:1;">
+      <span style="font-size:22px;color:var(--g);display:grid;place-items:center;"><svg class="et-icon"><use href="#i-megaphone"></use></svg></span>
+      <div style="flex:1;"><div style="color:var(--t3);font-weight:800;font-size:13px;">الدعم الفني</div><div style="color:var(--g);font-size:11px;">تواصل معنا واتساب 01008605139 · متاح الآن</div></div>
+      </a>
     </div>
     <div style="margin-top:14px;text-align:center;color:var(--t5);font-size:10px;">
       <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style="color:var(--t5);text-decoration:none;">سياسة الخصوصية</a> · <a href="/terms.html" target="_blank" rel="noopener noreferrer" style="color:var(--t5);text-decoration:none;">الشروط والأحكام</a>
@@ -1538,7 +1540,7 @@ function normalizeMarketRows(raw){
   return raw.flatMap(item=>{
     const m=item&&typeof item==="object"?item:{};
     const n=String(m.n||"").trim().slice(0,80);
-    if(!n)return [];
+    if(!n||REMOVED_MARKETS.has(n))return [];
     return [{instrumentId:canonicalInstrumentId(m.id),n,v:String(m.v??"").slice(0,80),c:String(m.c??"").slice(0,80),s:String(m.s??"").slice(0,120),source:String(m.source??"").slice(0,160),up:m.up===true,clickable:m.clickable===true,asOf:finiteNumber(m.asOf,0)}];
   }).slice(0,100);
 }
@@ -1634,11 +1636,12 @@ const CATS = [
 /* ─── Market data: licensed backend providers only ─── */
 /* The catalog below contains labels only. It never contains financial values and
  * is rendered as a skeleton until a backend response is verified. */
+/* EGX70/EGX100 were removed from the markets menu; rows still sent by the
+ * shared server API are dropped here so they never re-enter the lists. */
+const REMOVED_MARKETS = new Set(["EGX70", "EGX100"]);
 const MARKET_STATIC = {
   eg:[
     {n:"EGX30",  v:"",c:"",up:true,s:"مؤشر رئيسي",clickable:true},
-    {n:"EGX70",  v:"",c:"",up:true,s:"مؤشر السبعين"},
-    {n:"EGX100", v:"",c:"",up:true,s:"مؤشر المائة"},
     {n:"USD/EGP",v:"",c:"",up:true,s:"دولار/جنيه"},
     {n:"EUR/EGP",v:"",c:"",up:true,s:"يورو/جنيه"},
     {n:"GBP/EGP",v:"",c:"",up:true,s:"إسترليني/جنيه"},
@@ -1980,16 +1983,33 @@ document.addEventListener("DOMContentLoaded",async()=>{
    * cookie. Local storage remains for non-sensitive UI preferences only. */
   loadUserScopedData();
   try{
-    const r=await fetch("/api/user/me",{credentials:"same-origin"});
-    const d=await r.json().catch(()=>({}));
-    if(r.ok&&d.status==="ok"&&d.user){setCurrentUser({...d.user,trial:d.trial||null,subscription:d.subscription||null});bootApp();}
-    else{
-      const ar=await fetch("/api/admin/session",{credentials:"same-origin"});
-      const ad=await ar.json().catch(()=>({}));
-      if(ar.ok&&ad.status==="ok"&&ad.employee){
+    if(IS_ADMIN_PORTAL){
+      /* The admin portal resolves the staff cookie first: a staff member who
+       * also uses the public site in the same browser keeps a user session, and
+       * that session must not bounce them off the portal. The employee session
+       * is still verified server-side (same cookies the API rbac-checks). */
+      const ad=await fetch("/api/admin/session",{credentials:"same-origin"}).then(r=>r.json().catch(()=>({}))).catch(()=>({}));
+      if(ad&&ad.status==="ok"&&ad.employee){
         U={name:ad.employee.name||"المدير",phone:"admin",plan:"admin",role:ad.employee.role};
         bootApp();
-      }else showGuestLanding();
+      }else{
+        const r=await fetch("/api/user/me",{credentials:"same-origin"});
+        const d=await r.json().catch(()=>({}));
+        if(r.ok&&d.status==="ok"&&d.user){setCurrentUser({...d.user,trial:d.trial||null,subscription:d.subscription||null});bootApp();}
+        else showGuestLanding();
+      }
+    }else{
+      const r=await fetch("/api/user/me",{credentials:"same-origin"});
+      const d=await r.json().catch(()=>({}));
+      if(r.ok&&d.status==="ok"&&d.user){setCurrentUser({...d.user,trial:d.trial||null,subscription:d.subscription||null});bootApp();}
+      else{
+        const ar=await fetch("/api/admin/session",{credentials:"same-origin"});
+        const ad=await ar.json().catch(()=>({}));
+        if(ar.ok&&ad.status==="ok"&&ad.employee){
+          U={name:ad.employee.name||"المدير",phone:"admin",plan:"admin",role:ad.employee.role};
+          bootApp();
+        }else showGuestLanding();
+      }
     }
   }catch{showGuestLanding();}
   /* Guests may receive guest-targeted announcements; this runs after the
@@ -3265,7 +3285,7 @@ function openAssetDetail(spec){
           <div style="font-size:13px;font-weight:700;font-family:var(--mono);color:${changeColor};">${sanitize(spec.change||"—")}</div>
         </div>
       </div>
-      <section class="mkt-chart-card" aria-label="رسم بياني تاريخي">
+      ${spec.noChart?"":`<section class="mkt-chart-card" aria-label="رسم بياني تاريخي">
         <div class="mkt-chart-top">
           <div><div class="mkt-chart-title">السجل السعري اليومي</div><div class="mkt-chart-source" id="mkt-chart-source">يُحمّل من السجل المرخّص عبر الخادم فقط</div></div>
           <div class="mkt-chart-modes" aria-label="نوع الرسم"><button class="mkt-chart-mode active" data-chart-mode="candles" onclick="setMarketChartMode('candles')">شموع</button><button class="mkt-chart-mode" data-chart-mode="line" onclick="setMarketChartMode('line')">خطي</button></div>
@@ -3277,14 +3297,15 @@ function openAssetDetail(spec){
         <div id="mkt-indicators" class="mkt-indicators" hidden><div class="mkt-indicators-top"><span>⭐ مؤشرات VIP: MA(20) و RSI(14)</span><span id="mkt-indicator-note" class="mkt-indicators-note"></span></div><div id="mkt-rsi-host" class="mkt-rsi-host" hidden></div></div>
         <div id="mkt-vip-indicators" class="mkt-vip-lock">⭐ MA(20) و RSI(14) من مزايا VIP <span>يتم التحقق من الاشتراك من الخادم؛ الشارت الأساسي متاح للجميع.</span></div>
         <div class="mkt-chart-foot"><span id="mkt-volume-note" class="mkt-volume-note">يُعرض الحجم عند توافره في كل شمعة.</span><span>الرسوم بواسطة <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView Lightweight Charts™</a></span></div>
-      </section>
+      </section>`}
       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:14px;">${detailStatsMarkup(spec.stats||[])}</div>
       <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:14px;margin-bottom:14px;"><div style="color:var(--t5);font-size:10px;font-weight:700;margin-bottom:7px;letter-spacing:.5px;">ℹ️ عن هذا الأصل</div><div style="color:var(--t3);font-size:12.5px;line-height:1.75;direction:rtl;">${sanitize(spec.description||"لا تتوفر معلومات وصفية إضافية.")}</div></div>
-      <div style="color:var(--t5);font-size:10px;line-height:1.7;margin:0 2px 12px;">الأسعار والسجل للاطلاع العام وليسا توصية شراء أو بيع. لا يظهر الرسم عند غياب سجل OHLC مرخّص كافٍ.</div>
+      <div style="color:var(--t5);font-size:10px;line-height:1.7;margin:0 2px 12px;">${spec.noChart?"الأسعار للاطلاع العام وليست توصية شراء أو بيع.":"الأسعار والسجل للاطلاع العام وليسا توصية شراء أو بيع. لا يظهر الرسم عند غياب سجل OHLC مرخّص كافٍ."}</div>
       <div style="display:flex;gap:8px;"><button id="wl-toggle-btn" class="btn btn-sm" style="flex:1;background:var(--s1);border:1px solid var(--b1);color:var(--t3);padding:11px;font-size:12px;" onclick='toggleWLDetail(${safeJsArg(spec.watchName)})'>${inWL?"⭐ في المفضلة":"☆ أضف للمفضلة"}</button><button id="mkt-detail-refresh" class="btn btn-sm" style="flex:1;background:${spec.color}18;border:1px solid ${spec.color}35;color:${spec.color};padding:11px;font-size:12px;" onclick="refreshAssetDetail()">↻ تحديث</button></div>
     </div>`;
   document.body.appendChild(ov);
-  loadAssetChart();
+  /* Markets detail has no daily-history chart card by design; stock detail keeps its own. */
+  if(!spec.noChart)loadAssetChart();
 }
 function openMarketDetail(sec,idx){
   const m=liveMarkets[sec]?.[idx];
@@ -3294,6 +3315,7 @@ function openMarketDetail(sec,idx){
   const unavailable=secMeta.unavailable===true||m.source==="غير متاح"||m.v==="غير متاح حاليًا";
   const color=SEC_COL[sec]||"var(--g)";
   openAssetDetail({
+    noChart:true,
     instrumentId:m.instrumentId,title:m.n,subtitle:ctx.en,icon:ctx.icon,category:ctx.cat,color,watchName:m.n,up:m.up,
     price:unavailable?"غير متاح حاليًا":m.v,change:unavailable?"—":`${m.up?"▲":"▼"} ${m.c||"—"}`,
     source:m.source||secMeta.sources||"غير متاح",freshness:`وقت المصدر: ${cairoTimestampLabel(m.asOf)} · ${marketAgeLabel(marketFreshness)} · ${marketStateLabel(unavailable?{...marketFreshness,unavailable:true}:marketFreshness)}`,
@@ -3543,7 +3565,7 @@ function renderVIP(){
   el.innerHTML=`
     <div class="row between" style="margin-bottom:12px;">
       <div class="row"><span style="font-size:19px;">⭐</span><div><div style="color:var(--au);font-weight:900;font-size:16px;">مركز VIP</div><div style="color:var(--t4);font-size:9.5px;">${sanitize(U?.name||"عضو VIP")} · كل الأدوات مفتوحة</div></div></div>
-      <div style="display:flex;gap:6px;"><button class="btn btn-ghost" style="padding:6px 9px;font-size:10px;" onclick="goNav('calculators')">🧮 الحاسبات</button><button class="btn btn-ghost" style="padding:6px 9px;font-size:10px;" onclick="openMySubscription()">📋 اشتراكي</button></div>
+      <div style="display:flex;gap:6px;"><button class="btn btn-ghost" style="padding:6px 9px;font-size:10px;" onclick="openMySubscription()">📋 اشتراكي</button></div>
     </div>
     <div class="vtabs-wrap"><div class="vtabs" id="vtabs-bar"></div></div>
     <div id="vip-body"></div>`;
@@ -3571,10 +3593,24 @@ function calculatorPreviewMarkup(){
   </div>`;
 }
 function calculatorRuntimeError(message,canSubscribe){
-  return `<div style="max-width:620px;margin:34px auto;text-align:center;background:var(--s1);border:1px solid var(--b1);border-radius:17px;padding:24px 18px;"><div style="font-size:35px;margin-bottom:8px;">${canSubscribe?"🔒":"⚠️"}</div><div style="color:${canSubscribe?"var(--au)":"var(--dn)"};font-size:16px;font-weight:900;margin-bottom:7px;">${canSubscribe?"الحاسبات لمشتركي VIP":"تعذر فتح الحاسبات"}</div><div style="color:var(--t3);font-size:12px;line-height:1.8;">${sanitize(message)}</div><div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:14px;">${canSubscribe?`<button class="btn btn-au" onclick="openSub()">عرض اشتراك VIP</button>`:""}<button class="btn btn-ghost" onclick="renderCalculatorsPage()">↻ إعادة المحاولة</button></div></div>`;
+  return `<div style="max-width:620px;margin:34px auto;text-align:center;background:var(--s1);border:1px solid var(--b1);border-radius:17px;padding:24px 18px;"><div style="font-size:35px;margin-bottom:8px;">${canSubscribe?"🔒":"⚠️"}</div><div style="color:${canSubscribe?"var(--au)":"var(--dn)"};font-size:16px;font-weight:900;margin-bottom:7px;">${canSubscribe?"الحاسبات محجوزة لاشتراك VIP فعّال":"تعذر فتح الحاسبات"}</div><div style="color:var(--t3);font-size:12px;line-height:1.8;">${sanitize(message)}</div><div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:14px;">${canSubscribe?`<button class="btn btn-au" onclick="openSub()">عرض اشتراك VIP</button><button class="btn btn-ghost" onclick="openMySubscription()">📋 اشتراكي</button>`:""}<button class="btn btn-ghost" onclick="retryCalculators(this)">↻ إعادة المحاولة</button></div></div>`;
 }
-async function loadVipCalculatorRuntime(){
-  const host=document.getElementById("calculators-runtime");
+function calculatorSkeletonMarkup(){
+  return `<div class="calc-runtime-host"><div class="calculator-skeleton" role="status" aria-label="جارٍ التحقق من اشتراكك وتحميل أدوات الحاسبات"><span class="sk sk-line lg"></span><span class="sk sk-calc"></span><span class="sk sk-calc"></span><span class="sk sk-line md"></span></div></div>`;
+}
+function mountCalculatorShell(host){
+  if(!host||calculatorRuntimeLoading)return;
+  host.innerHTML=calculatorSkeletonMarkup();
+  void loadVipCalculatorRuntime(host.querySelector(".calc-runtime-host"));
+}
+function retryCalculators(btn){
+  const host=btn&&btn.closest?btn.closest(".calc-runtime-host"):null;
+  if(host&&host.closest("#calculators-el"))void renderCalculatorsPage();
+  else if(host){host.innerHTML=calculatorSkeletonMarkup();void loadVipCalculatorRuntime(host);}
+  else void renderCalculatorsPage();
+}
+async function loadVipCalculatorRuntime(host){
+  host=host||document.getElementById("calculators-runtime");
   if(!host||calculatorRuntimeLoading)return;
   calculatorRuntimeLoading=true;
   try{
@@ -3595,17 +3631,27 @@ async function loadVipCalculatorRuntime(){
     host.innerHTML="";module.mountCalculatorRuntime(host);
   }catch(error){
     const msg=error?.name==="AbortError"?"انتهت مهلة تحميل أدوات الحاسبات. تحقق من الاتصال ثم أعد المحاولة.":"تعذر تحميل أدوات الحاسبات الآن. لم يتم عرض نتائج بديلة.";
-    const retry=document.getElementById("calculators-runtime");if(retry)retry.innerHTML=calculatorRuntimeError(msg,false);
+    host.innerHTML=calculatorRuntimeError(msg,false);
   }finally{calculatorRuntimeLoading=false;}
 }
-function renderCalculatorsPage(){
+async function renderCalculatorsPage(){
   const el=document.getElementById("calculators-el");if(!el)return;
-  /* This hint only chooses the preview; server bootstrap remains the authority. */
-  if(U?.plan!=="vip"){
-    el.innerHTML=calculatorPreviewMarkup();return;
+  if(U?.plan==="vip"||U?.plan==="admin"){mountCalculatorShell(el);return;}
+  /* A cached client plan never wins: if the session predates a payment
+   * approval (or an admin upgrade), one fresh /api/user/me decides the view.
+   * The server bootstrap remains the authority for actual access. */
+  if(U){
+    try{
+      const mr=await fetch("/api/user/me",{credentials:"same-origin",cache:"no-store"});
+      const md=await mr.json().catch(()=>({}));
+      if(mr.ok&&md.status==="ok"&&md.user){
+        setCurrentUser({...md.user,trial:md.trial||null,subscription:md.subscription||null});
+        renderHdrVip();
+        if(U.plan==="vip"||U.plan==="admin"){mountCalculatorShell(el);return;}
+      }
+    }catch{}
   }
-  el.innerHTML=`<div id="calculators-runtime" class="calculator-skeleton" role="status" aria-label="جارٍ التحقق من اشتراكك وتحميل أدوات الحاسبات"><span class="sk sk-line lg"></span><span class="sk sk-calc"></span><span class="sk sk-calc"></span><span class="sk sk-line md"></span></div>`;
-  loadVipCalculatorRuntime();
+  el.innerHTML=calculatorPreviewMarkup();
 }
 
 /* ══════════════ VIP TABS SYSTEM ══════════════ */
@@ -3618,6 +3664,7 @@ const VIP_TABS=[
   {id:"ai",    ic:"🤖", lb:"المستشار"},
   {id:"stk",   ic:"🎯", lb:"تحليل AI"},
   {id:"port",  ic:"💼", lb:"المحفظة"},
+  {id:"calc",  ic:"🧮", lb:"الحاسبات"},
   {id:"rep",   ic:"📅", lb:"التقارير"},
   {id:"alerts",ic:"🔔", lb:"التنبيهات"},
   {id:"set",   ic:"⚙️", lb:"الإعدادات"},
@@ -3683,9 +3730,21 @@ function renderVipTab(){
   if(vipTab==="ai")return vBuildChat(b);
   if(vipTab==="stk")return vBuildStk(b);
   if(vipTab==="port")return vBuildPort(b);
+  if(vipTab==="calc")return vBuildCalc(b);
   if(vipTab==="rep")return vBuildRep(b);
   if(vipTab==="alerts")return vBuildAlerts(b);
   if(vipTab==="set")return vBuildSet(b);
+}
+
+/* ══════════════ TAB — الحاسبات (داخل مركز VIP) ══════════════ */
+function vBuildCalc(b){
+  b.innerHTML=`<div class="vbox" style="padding:13px;">
+    <div class="vbox-title" style="margin-bottom:6px;">🧮 حاسبات المستثمر</div>
+    <div style="color:var(--t4);font-size:10.5px;line-height:1.85;margin-bottom:10px;">الأدوات الكاملة المفتوحة لاشتراكك: المدخلات والحساب والرسوم والسيناريوهات والسجل. الموصل يتحقق من الاشتراك على الخادم في كل فتح، والنتيجة تقديرية ولا تمثل توصية.</div>
+    <div id="vip-calculators"></div>
+  </div>`;
+  const host=b.querySelector("#vip-calculators");
+  mountCalculatorShell(host);
 }
 
 /* ══════════════ TAB 1 — الرئيسية ══════════════ */
@@ -7320,7 +7379,7 @@ async function loadOpps(force=false){
               <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:9px;font-size:12px;color:var(--t2);">${f}</div>`).join("")}
           </div>
           <button class="btn btn-au btn-full" style="max-width:360px;padding:14px;font-size:14px;font-weight:800;" onclick="goNav('vip')">⭐ اشترك في VIP للاطلاع على عناصر المتابعة</button>
-          <div style="margin-top:10px;color:var(--t4);font-size:12px;">💬 قناة الدعم غير متاحة حالياً</div>
+          <a href="https://wa.me/201008605139" target="_blank" rel="noopener noreferrer" style="display:flex;margin-top:10px;color:var(--g);font-size:12px;justify-content:center;">💬 الدعم على واتساب 01008605139</a>
         </div>`;
     }
     return;
@@ -7477,7 +7536,7 @@ function openOppDetail(id){
     ${o.details?`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:15px;margin-bottom:16px;"><div style="color:var(--g);font-size:11px;font-weight:700;margin-bottom:8px;">📋 تفاصيل إضافية</div><div style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;">${sanitize(o.details)}</div></div>`:""}
     <div style="display:flex;gap:8px;margin-top:6px;">
       <button class="btn btn-g btn-full" style="padding:13px;" onclick='toggleSaveOppFromDetail(${idArg},this)'>📌 حفظ الفرصة</button>
-      <div class="btn btn-full" style="padding:13px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.18);color:var(--t4);text-align:center;cursor:default;">💬 الدعم غير متاح حالياً</div>
+      <a class="btn btn-full" href="https://wa.me/201008605139" target="_blank" rel="noopener noreferrer" style="padding:13px;background:rgba(148,163,184,.08);border:1px solid rgba(52,211,153,.2);color:var(--g);text-align:center;justify-content:center;">💬 استفسر على واتساب</a>
     </div>`}
   </div>`;
   document.body.appendChild(ov);
