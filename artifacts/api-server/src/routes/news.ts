@@ -343,33 +343,58 @@ async function readFeedText(response: Response): Promise<string> {
   return new TextDecoder().decode(merged);
 }
 
-function pickImage(it: Record<string, unknown>): string | undefined {
+/* Feed images arrive in several shapes. Relative and protocol-relative URLs
+ * are resolved against the feed's own origin so they do not break inside the
+ * client, and anything non-http(s) is dropped. Only the URLs the publisher
+ * itself carried in the feed are used — no image is invented for items
+ * without one. */
+function resolveImageUrl(raw: string, baseUrl: string): string {
+  const v = (raw || "").trim();
+  if (!v) return "";
+  try {
+    const url = new URL(v, baseUrl || "https://example.invalid");
+    return /^https?:$/.test(url.protocol) ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function pickImage(it: Record<string, unknown>, baseUrl = ""): string | undefined {
   const enclosure = it["enclosure"] as Record<string, unknown> | undefined;
   if (
     enclosure &&
     typeof enclosure["@_url"] === "string" &&
     /^https?:\/\//.test(enclosure["@_url"] as string)
   ) {
-    return enclosure["@_url"] as string;
+    const resolved = resolveImageUrl(enclosure["@_url"], baseUrl);
+    if (resolved) return resolved;
   }
   const mediaThumb = it["media:thumbnail"] as
     | Record<string, unknown>
     | Array<Record<string, unknown>>
     | undefined;
   const mt = Array.isArray(mediaThumb) ? mediaThumb[0] : mediaThumb;
-  if (mt && typeof mt["@_url"] === "string") return mt["@_url"] as string;
+  if (mt && typeof mt["@_url"] === "string") {
+    const resolved = resolveImageUrl(mt["@_url"], baseUrl);
+    if (resolved) return resolved;
+  }
   const mediaContent = it["media:content"] as
     | Record<string, unknown>
     | Array<Record<string, unknown>>
     | undefined;
   const mc = Array.isArray(mediaContent) ? mediaContent[0] : mediaContent;
-  if (mc && typeof mc["@_url"] === "string") return mc["@_url"] as string;
+  if (mc && typeof mc["@_url"] === "string") {
+    const resolved = resolveImageUrl(mc["@_url"], baseUrl);
+    if (resolved) return resolved;
+  }
   const desc = pickText(it["description"]) || pickText(it["content:encoded"]);
   if (desc) {
     const m = desc.match(/<img[^>]+src=["']([^"']+)["']/i);
-    if (m && /^https?:\/\//.test(m[1] || "")) return m[1];
-    const m2 = desc.match(/src=["']([^"']+\.(?:jpg|jpeg|png|webp))/i);
-    if (m2 && /^https?:\/\//.test(m2[1] || "")) return m2[1];
+    const candidate = m ? m[1] : (desc.match(/src=["']([^"']+\.(?:jpg|jpeg|png|webp))/i)?.[1] ?? "");
+    if (candidate) {
+      const resolved = resolveImageUrl(candidate, baseUrl);
+      if (resolved) return resolved;
+    }
   }
   return undefined;
 }
@@ -389,7 +414,7 @@ type FeedItem = {
   enclosure?: { url: string };
 };
 
-function parseFeed(xml: string): FeedItem[] {
+function parseFeed(xml: string, baseUrl = ""): FeedItem[] {
   const obj = parser.parse(xml) as Record<string, unknown>;
   let rawItems: Array<Record<string, unknown>> = [];
 
@@ -438,7 +463,7 @@ function parseFeed(xml: string): FeedItem[] {
       // must be based on publisher metadata, not fetch time.
       const pubDate = parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : "";
       const guid = clean(pickText(it["guid"]).replace(/["'<>\\)\\]/g, "")) || link || title;
-      const img = pickImage(it);
+      const img = pickImage(it, baseUrl);
       return {
         title,
         link,
@@ -500,7 +525,7 @@ async function fetchSource(src: SourceMeta): Promise<{
       throw new Error(`upstream ${res.status} for ${src.id}`);
     }
     const xml = await readFeedText(res);
-    const items = parseFeed(xml).slice(0, 12);
+    const items = parseFeed(xml, src.url).slice(0, 12);
     const data = { status: "ok" as const, items, meta: src };
     if (items.length > 0) {
       CACHE.set(src.id, { ts: Date.now(), data });
