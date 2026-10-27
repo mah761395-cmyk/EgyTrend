@@ -1801,6 +1801,47 @@ function setCurrentUser(user){
    * verify hasVip() themselves; this merely keeps expiry labels coherent. */
   U={...user,exp:user.vipExpiresAt||user.exp||null};
 }
+/* ─── Single source of truth for (re)validating auth state ─────────────────
+ * Every protected feature re-asks the server instead of trusting the cached
+ * client plan. syncUserFromServer refreshes U from /api/user/me and returns
+ * the fresh user (or null). onAuthFailure maps a 401/403/503 to exactly one
+ * of: "login" | "vip" | "server" — and authGateHtml renders that truth with
+ * the matching CTA, so a lapsed session never reads as a broken feature. */
+async function syncUserFromServer(){
+  try{
+    const r=await fetch("/api/user/me",{credentials:"same-origin"});
+    const d=await r.json().catch(()=>({}));
+    if(r.ok&&d.status==="ok"&&d.user){setCurrentUser({...d.user,trial:d.trial||null,subscription:d.subscription||null});return U;}
+  }catch{ /* network failure: keep current state, the caller decides the gate */ }
+  return null;
+}
+async function onAuthFailure(status){
+  try{
+    if(status===503)return "server";
+    if(status===401||status===403){
+      const fresh=await syncUserFromServer();
+      if(fresh&&(fresh.plan==="vip"||fresh.plan==="admin"))return "server"; /* deny + valid VIP = transient server denial */
+      if(status===401){
+        if(U){U=null;if(typeof renderHdrVip==="function")renderHdrVip();}
+        return "login";
+      }
+      return fresh?"vip":"login";
+    }
+  }catch{ /* fall through to the honest generic server state */ }
+  return "server";
+}
+let authGateRetry=null;
+function authGateRetryNow(){if(typeof authGateRetry==="function")authGateRetry();}
+function authGateHtml(kind,retry){
+  authGateRetry=typeof retry==="function"?retry:null;
+  const cfg=kind==="login"
+    ?{icon:"🔐",title:"لم تعد مسجّل الدخول",body:"انتهت جلسة الدخول أو أصبحت غير صالحة. سجّل الدخول مرة أخرى لمتابعة هذه الأداة.",color:"var(--dn)",btns:'<button class="btn btn-au" onclick="openAuthModal(\'login\')">🔐 سجّل الدخول الآن</button>'}
+    :kind==="vip"
+    ?{icon:"🔒",title:"هذه الأداة متاحة لاشتراك VIP فعّال",body:"افتح اشتراك VIP للمتابعة — التحقق يتم على الخادم في كل طلب.",color:"var(--au)",btns:'<button class="btn btn-au" onclick="openSub()">⭐ عرض اشتراك VIP</button><button class="btn btn-ghost" onclick="openMySubscription()">📋 اشتراكي</button>'}
+    :{icon:"⚠️",title:"تعذر التحقق من حالتك الآن",body:"خطأ مؤقت في الخادم وليس نهاية اشتراكك — أعد المحاولة بعد لحظات.",color:"var(--dn)",btns:""};
+  const retryBtn=authGateRetry?'<button class="btn btn-ghost" onclick="void authGateRetryNow()">↻ إعادة المحاولة</button>':"";
+  return `<div style="max-width:620px;margin:34px auto;text-align:center;background:var(--s1);border:1px solid var(--b1);border-radius:17px;padding:24px 18px;"><div style="font-size:35px;margin-bottom:8px;">${cfg.icon}</div><div style="color:${cfg.color};font-size:16px;font-weight:900;margin-bottom:7px;">${cfg.title}</div><div style="color:var(--t3);font-size:12px;line-height:1.8;">${cfg.body}</div><div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:14px;">${cfg.btns}${retryBtn}</div></div>`;
+}
 let activeCat="all", activeSrc="all", searchQ="";
 /* News is server-aggregated and ranked. Empty does not mean "still loading". */
 let newsFreshness={loading:false,unavailable:false,reason:"",fetchedAt:0,approvedSources:0};
@@ -3028,7 +3069,13 @@ function doAuth(){
       const email=document.getElementById("a-email").value.trim();
       const referralCode=document.getElementById("a-referral")?.value.trim().toUpperCase().slice(0,32)||"";
       if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){showE("البريد الإلكتروني غير صحيح");return;}
-      const rr=await fetch("/api/user/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,phone,password:pass,email:email||undefined,referralCode:referralCode||undefined})});
+      let rr;
+      try{
+        rr=await fetch("/api/user/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,phone,password:pass,email:email||undefined,referralCode:referralCode||undefined})});
+      }catch{
+        showE("تعذر الاتصال بالخادم — لم يصل رد على طلب إنشاء الحساب. تحقق من اتصالك ثم أعد المحاولة.");
+        return;
+      }
       const rd=await rr.json().catch(()=>({}));
       if(!rr.ok||rd.status!=="ok"||!rd.user){showE(rd.message||"تعذر إنشاء الحساب");return;}
       setCurrentUser({...rd.user,trial:rd.trial||null,subscription:rd.subscription||null});
@@ -3037,29 +3084,64 @@ function doAuth(){
       /* Admin authentication is server-verified and establishes an HttpOnly
        * same-origin session cookie. There is no offline/admin fallback. */
       if(phone==="admin"||/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(phone)){
+        const isEmail=/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(phone);
+        /* Email → employee JWT flow; "admin" → legacy ADMIN_PASSWORD flow. */
+        const adminBody = isEmail ? {email:phone.trim().toLowerCase(),password:pass} : {password:pass};
+        const aCtrl=new AbortController(),aTimer=setTimeout(()=>aCtrl.abort(),15000);
+        let lr;
         try{
-          /* Email → employee JWT flow; "admin" → legacy ADMIN_PASSWORD flow. */
-          const adminBody = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(phone)
-            ? {email:phone.trim().toLowerCase(),password:pass}
-            : {password:pass};
-          const lr = await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(adminBody)});
-          const lj = await lr.json();
-          if(lr.ok && lj.status==="ok"){
-            U={name:lj.employee?.name||"المدير",phone:"admin",plan:"admin",role:lj.employee?.role||"admin"};
-          } else {
-            showE("كلمة مرور المدير غير صحيحة");
-            return;
-          }
-        }catch{
-          // Offline fallback: legacy local admin (no server CRUD privileges)
-           showE("تعذر الاتصال بالخادم");return;
+          lr=await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(adminBody),signal:aCtrl.signal});
+        }catch(e){
+          clearTimeout(aTimer);
+          /* Network-level: the browser never received a response (dropped POST,
+             offline, or the 15s cap). Say which, so a flaky link is distinguishable
+             from a server fault. */
+          showE(e&&e.name==="AbortError"
+            ?"انتهت مهلة الاتصال بالخادم (15 ثانية). تحقق من اتصالك ثم أعد المحاولة."
+            :"تعذر الاتصال بالخادم — لم يصل رد على طلب الدخول. تحقق من اتصالك ثم أعد المحاولة.");
+          return;
+        }
+        clearTimeout(aTimer);
+        let lj;
+        try{lj=await lr.json();}catch{
+          /* The function answered but not with JSON — a platform error page
+             (502/504 = timeout, 500 = crash). Surface the status so it can be
+             diagnosed instead of reading as a random connection problem. */
+          showE(`استجابة غير متوقعة من الخادم (HTTP ${lr.status}). أعد المحاولة، وإذا استمرت تواصل معنا.`);
+          return;
+        }
+        if(lr.ok&&lj.status==="ok"){
+          U={name:lj.employee?.name||"المدير",phone:"admin",plan:"admin",role:lj.employee?.role||"admin"};
+        } else {
+          /* The server message is the truth. Collapsing every failure into
+             «كلمة مرور غير صحيحة» hid rate limits (429), disabled accounts and
+             misconfiguration — exactly what made this incident undiagnosable. */
+          const m=lj.message||"";
+          const adminMsg = (m==="invalid credentials"||m==="invalid password")
+            ?"كلمة مرور المدير غير صحيحة"
+            : m==="account disabled"
+            ?"حساب المدير موقوف — تواصل مع المشرف"
+            : m==="too many failed attempts — try again in 15 minutes"
+            ?"محاولات كثيرة — انتظر 15 دقيقة ثم أعد المحاولة"
+            : /too many login attempts/i.test(m)
+            ?`محاولات كثيرة — حاول مرة أخرى بعد ${lj.retryAfter||5} ثانية`
+            : (m==="admin password is not configured"||m==="use an active employee account")
+            ?"دخول المدير بكلمة المرور غير مُفعّل — استخدم حساب الموظف النشط"
+            :(m||"تعذر تسجيل دخول المدير");
+          showE(adminMsg);
+          return;
         }
       }
       else{
-        const ur=await fetch("/api/user/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,password:pass})});
-        const ud=await ur.json().catch(()=>({}));
-        if(!ur.ok||ud.status!=="ok"||!ud.user){showE(ud.message==="invalid credentials"?"الرقم أو كلمة المرور غير صحيحة":ud.message||"تعذر تسجيل الدخول");return;}
-        setCurrentUser({...ud.user,trial:ud.trial||null,subscription:ud.subscription||null});
+        try{
+          const ur=await fetch("/api/user/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,password:pass})});
+          const ud=await ur.json().catch(()=>({}));
+          if(!ur.ok||ud.status!=="ok"||!ud.user){showE(ud.message==="invalid credentials"?"الرقم أو كلمة المرور غير صحيحة":ud.message||"تعذر تسجيل الدخول");return;}
+          setCurrentUser({...ud.user,trial:ud.trial||null,subscription:ud.subscription||null});
+        }catch{
+          showE("تعذر الاتصال بالخادم — لم يصل رد على طلب الدخول. تحقق من اتصالك ثم أعد المحاولة.");
+          return;
+        }
       }
     }
     bootApp();
@@ -4406,7 +4488,7 @@ function renderVIP(){
  * The public shell intentionally contains only an honest preview. The complete
  * calculation UI and math module are fetched from server-side requireVipUser
  * routes after a fresh entitlement check; no browser plan flag grants access. */
-const CALCULATOR_PREVIEW_NAMES=["الربح والخسارة","حجم المركز والمخاطرة","حاسبة المستثمر","متوسط الشراء","عائد التوزيعات","CAGR ومضاعف رأس المال","العائد الحقيقي بعد التضخم","محول العملات"];
+const CALCULATOR_PREVIEW_NAMES=["الربح والخسارة","حجم المركز والمخاطرة","حاسبة المستثمر","متوسط الشراء","عائد التوزيعات","محفظة التوزيعات","CAGR ومضاعف رأس المال","العائد الحقيقي بعد التضخم","محول العملات"];
 let calculatorRuntimeLoading=false;
 function calculatorPreviewMarkup(){
   return `<div style="max-width:760px;margin:0 auto;">

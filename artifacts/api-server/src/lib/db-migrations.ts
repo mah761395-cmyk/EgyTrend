@@ -36,6 +36,7 @@ import up0011 from "../../../../lib/db/migrations/0011_user_onboarding.up.sql";
 import up0012 from "../../../../lib/db/migrations/0012_payment_tx_idempotency.up.sql";
 import up0013 from "../../../../lib/db/migrations/0013_vip_onboarding_tour.up.sql";
 import up0014 from "../../../../lib/db/migrations/0014_auth_hardening.up.sql";
+import up0015 from "../../../../lib/db/migrations/0015_user_fee_profiles.up.sql";
 
 export type SqlMigration = { id: string; sql: string };
 
@@ -54,6 +55,7 @@ const SQL_BY_ID: Record<string, string> = {
   "0012_payment_tx_idempotency": up0012,
   "0013_vip_onboarding_tour": up0013,
   "0014_auth_hardening": up0014,
+  "0015_user_fee_profiles": up0015,
 };
 
 export const SQL_MIGRATIONS: readonly SqlMigration[] = MIGRATION_IDS.map((id) => {

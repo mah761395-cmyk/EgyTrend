@@ -12,11 +12,12 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
   const compactFormatter = new Intl.NumberFormat("ar-EG", { maximumFractionDigits: 4 });
   const wholeFormatter = new Intl.NumberFormat("ar-EG", { maximumFractionDigits: 0 });
   const calculatorList = [
-    { key: "pl", title: "الربح والخسارة", icon: "↗", subtitle: "صافي الصفقة ونقطة التعادل", formula: "التكلفة = الشراء × الكمية × (1 + العمولة) · المتحصلات = البيع × الكمية × (1 − العمولة)" },
+    { key: "pl", title: "الربح والخسارة", icon: "↗", subtitle: "صافي الصفقة بعد الرسوم ونقطة التعادل", formula: "التكلفة = الشراء × الكمية + رسوم الشراء · المتحصلات = البيع × الكمية − رسوم البيع · كل بند من الرسوم = الأكبر بين (النسبة × القيمة، الحد الأدنى)" },
     { key: "risk", title: "حجم المركز والمخاطرة", icon: "◈", subtitle: "كم سهم تشتري مقابل وقف الخسارة", formula: "الكمية = أرضية(مبلغ المخاطرة ÷ |الدخول − وقف الخسارة|)" },
     { key: "compound", title: "حاسبة المستثمر", icon: "◌", subtitle: "نمو رأس المال مع مساهمات دورية وسيناريوهات", formula: "القيمة = رأس المال × (1 + r)^n + المساهمة × (((1 + r)^n − 1) ÷ r) — حيث r = العائد السنوي ÷ 12، والمساهمة تُضاف في نهاية كل شهر" },
     { key: "average", title: "متوسط الشراء", icon: "≋", subtitle: "متوسطك المرجّح وربحك غير المحقق", formula: "المتوسط = إجمالي تكلفة الشراء ÷ إجمالي عدد الأسهم" },
     { key: "dividend", title: "عائد التوزيعات", icon: "٪", subtitle: "الدخل والعائد بعد الضريبة", formula: "العائد = التوزيع السنوي للسهم ÷ السعر الحالي × 100" },
+    { key: "dividendPortfolio", title: "محفظة التوزيعات", icon: "🏦", subtitle: "كم سهمًا يشتري مبلغك وكم يدرّ من دخل سنوي", formula: "عدد الأسهم = أرضية(المبلغ ÷ السعر) · التكلفة = الأسهم × السعر · الدخل السنوي = الأسهم × السعر × نسبة التوزيع" },
     { key: "cagr", title: "CAGR ومضاعف رأس المال", icon: "⌁", subtitle: "النمو السنوي المركب ومدة المضاعفة", formula: "CAGR = (القيمة النهائية ÷ الابتدائية)^(1 ÷ السنوات) − 1" },
     { key: "inflation", title: "العائد الحقيقي بعد التضخم", icon: "◒", subtitle: "القوة الشرائية لا الرقم الاسمي فقط", formula: "العائد الحقيقي = (1 + العائد الاسمي) ÷ (1 + التضخم) − 1" },
     { key: "fx", title: "محول العملات", icon: "⇄", subtitle: "تحويل بسعر مصدره طبقة البيانات", formula: "المبلغ المستهدف = المبلغ × سعر العملة الأصلية بالجنيه ÷ سعر العملة المستهدفة بالجنيه" },
@@ -24,6 +25,7 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
   const calculatorByKey = Object.fromEntries(calculatorList.map((calculator) => [calculator.key, calculator]));
   const defaults = {
     pl: { buyPrice: "", sellPrice: "", quantity: "", commissionPercent: "0", quoteSymbol: "" },
+    dividendPortfolio: { amount: "", price: "", yieldPercent: "", taxPercent: "", quoteSymbol: "" },
     risk: { capital: "", riskPercent: "1", entryPrice: "", stopPrice: "", targetPrice: "", quoteSymbol: "" },
     compound: { initialAmount: "", monthlyContribution: "0", months: "12", annualReturnPercent: "", conservativePercent: "", optimisticPercent: "" },
     average: { lots: [{ quantity: "", price: "" }], currentPrice: "", quoteSymbol: "" },
@@ -42,6 +44,7 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
     scenarioError: "",
     historyError: "",
     fx: { rates: null, metadata: null, loading: false, error: "" },
+    fees: { catalog: [], rows: [], loading: true, error: "", profiles: [], activeProfile: "", activeName: "" },
     quoteNotice: "",
     busy: false,
   };
@@ -70,6 +73,12 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
     return value > 0 ? "positive" : value < 0 ? "negative" : "neutral";
   }
 
+  /* Percent signs inside RTL text render mirrored ("٪17.62"); the span keeps
+     the number + sign visually LTR without touching the accessible text. */
+  function percentSpan(value, digits = 2) {
+    return `<span dir="ltr">${formatPercent(value, digits)}</span>`;
+  }
+
   function displayTime(value) {
     const date = new Date(value);
     if (!Number.isFinite(date.getTime())) return "الوقت غير متاح";
@@ -91,11 +100,14 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
   }
 
   function inputControl(id, label, options = {}) {
-    const { value = "", hint = "", min = "0", step = "any", required = true, suffix = "", liveTarget = "", wide = false } = options;
+    const { value = "", hint = "", min = "0", step = "any", required = true, suffix = "", liveTarget = "", wide = false, arabic = false } = options;
+    /* arabic fields render as text (number inputs reject Arabic-Indic digits)
+       and are auto-converted to Western digits on every keystroke. */
+    const attrs = arabic ? `inputmode="decimal" type="text" data-normalize="1"` : `inputmode="decimal" type="number" min="${escapeHtml(min)}" step="${escapeHtml(step)}"`;
     return `<label class="calc-field ${wide ? "wide" : ""}">
       <span>${escapeHtml(label)}${required ? " <b aria-hidden=\"true\">*</b>" : ""}</span>
       <div class="calc-input-wrap">
-        <input id="calc-${escapeHtml(id)}" data-input="${escapeHtml(id)}" inputmode="decimal" type="number" min="${escapeHtml(min)}" step="${escapeHtml(step)}" value="${escapeHtml(value)}" ${required ? "required" : ""} />
+        <input id="calc-${escapeHtml(id)}" data-input="${escapeHtml(id)}" ${attrs} value="${escapeHtml(value)}" ${required ? "required" : ""} />
         ${suffix ? `<em>${escapeHtml(suffix)}</em>` : ""}
         ${liveTarget ? `<button class="calc-live-price" type="button" data-live-price="${escapeHtml(liveTarget)}" title="استخدم سعرًا حاليًا من المصدر">استخدم السعر الحالي</button>` : ""}
       </div>
@@ -119,12 +131,11 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
   function formFor(key) {
     const input = state.inputs[key];
     if (key === "pl") return `<div class="calc-form-grid">
-      ${inputControl("buyPrice", "سعر الشراء", { value: input.buyPrice, liveTarget: "buyPrice" })}
-      ${inputControl("sellPrice", "سعر البيع", { value: input.sellPrice, liveTarget: "sellPrice" })}
-      ${inputControl("quantity", "عدد الأسهم", { value: input.quantity, step: "1" })}
-      ${inputControl("commissionPercent", "العمولة لكل جانب", { value: input.commissionPercent, suffix: "%", required: false })}
+      ${inputControl("buyPrice", "سعر الشراء", { value: input.buyPrice, liveTarget: "buyPrice", arabic: true })}
+      ${inputControl("sellPrice", "سعر البيع", { value: input.sellPrice, liveTarget: "sellPrice", arabic: true })}
+      ${inputControl("quantity", "عدد الأسهم", { value: input.quantity, step: "1", arabic: true })}
       ${textControl("quoteSymbol", "رمز السهم لاستخدام السعر الحالي", { value: input.quoteSymbol, placeholder: "مثال: COMI", hint: "يُقبل رمز مدعوم من سوق EGX فقط." })}
-    </div>`;
+    </div>${feeSectionMarkup()}`;
     if (key === "risk") return `<div class="calc-form-grid">
       ${inputControl("capital", "رأس المال المتاح", { value: input.capital, suffix: "جنيه" })}
       ${inputControl("riskPercent", "المخاطرة من رأس المال", { value: input.riskPercent, suffix: "%" })}
@@ -161,6 +172,13 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
       ${inputControl("costPerShare", "تكلفة السهم (لعائد التكلفة)", { value: input.costPerShare, required: false })}
       ${textControl("quoteSymbol", "رمز السهم لاستخدام السعر الحالي", { value: input.quoteSymbol, placeholder: "مثال: COMI" })}
     </div>`;
+    if (key === "dividendPortfolio") return `<div class="calc-form-grid">
+      ${inputControl("amount", "المبلغ المتاح", { value: input.amount, suffix: "جنيه", arabic: true })}
+      ${inputControl("price", "سعر السهم", { value: input.price, liveTarget: "price", arabic: true })}
+      ${inputControl("yieldPercent", "نسبة التوزيع السنوي من سعر السهم", { value: input.yieldPercent, suffix: "%", min: "0", arabic: true, hint: "مثال: 6 تعني أن السهم يوزّع 6٪ من سعره سنويًا" })}
+      ${inputControl("taxPercent", "ضريبة التوزيعات", { value: input.taxPercent, suffix: "%", min: "0", required: false, arabic: true, hint: "اتركه فارغًا لعرض النتيجة قبل الضريبة" })}
+      ${textControl("quoteSymbol", "رمز السهم لاستخدام السعر الحالي", { value: input.quoteSymbol, placeholder: "مثال: COMI" })}
+    </div>`;
     if (key === "cagr") return `<div class="calc-form-grid">
       ${inputControl("initialValue", "القيمة الابتدائية", { value: input.initialValue })}
       ${inputControl("finalValue", "القيمة النهائية", { value: input.finalValue })}
@@ -181,6 +199,55 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
       ${selectControl("from", "من عملة", input.from, currencies)}
       ${selectControl("to", "إلى عملة", input.to, currencies)}
       <div class="calc-field calc-fx-source wide"><span>سعر الصرف</span><div id="calc-fx-meta">${fxMetaMarkup()}</div><button type="button" class="calc-mini-button" data-refresh-fx>تحديث من المصدر</button></div>
+    </div>`;
+  }
+
+  /* ── Fee schedules (user-entered broker fees, no platform defaults) ── */
+  function feeRowDefaults() {
+    return state.fees.catalog.map((item) => ({ key: item.key, labelAr: item.labelAr, side: "both", percent: 0, minimum: 0 }));
+  }
+
+  function currentFeeLines() {
+    const lines = state.fees.rows.map((row) => ({ key: row.key, labelAr: row.labelAr, side: row.side, percent: Number(row.percent) || 0, minimum: Number(row.minimum) || 0 }));
+    /* Old saved scenarios stored a single commissionPercent; honour it exactly
+       when the user has not entered any fee rows of their own. */
+    const legacy = Number(state.inputs.pl && state.inputs.pl.commissionPercent);
+    if (!lines.some((line) => line.percent > 0 || line.minimum > 0) && Number.isFinite(legacy) && legacy > 0) {
+      lines.push({ key: "legacy_commission", labelAr: "عمولة (من سيناريو محفوظ)", side: "both", percent: legacy, minimum: 0 });
+    }
+    return lines;
+  }
+
+  function feeSectionMarkup() {
+    const fees = state.fees;
+    let rowsMarkup;
+    if (fees.loading) {
+      rowsMarkup = `<p class="calc-fees-note">جارٍ تحميل قائمة بنود الرسوم…</p>`;
+    } else if (fees.error) {
+      rowsMarkup = `<p class="calc-fees-note calc-fees-error">${escapeHtml(fees.error)} <button type="button" class="calc-mini-button" data-retry-fees>أعد المحاولة</button></p>
+        <p class="calc-fees-note">الحساب يستمر بدون رسوم ما لم تدخل قيمًا يدويًا.</p>`;
+    } else {
+      rowsMarkup = fees.rows.map((row, index) => `
+        <div class="calc-fee-row">
+          <div class="calc-fee-name"><b>${escapeHtml(row.labelAr)}</b><small>بند من رسوم سمسارتك — اتركه فارغًا إن لا ينطبق</small></div>
+          <label><span>الجانب</span><select data-fee-side="${index}">
+            <option value="both" ${row.side === "both" ? "selected" : ""}>شراء وبيع</option>
+            <option value="buy" ${row.side === "buy" ? "selected" : ""}>شراء فقط</option>
+            <option value="sell" ${row.side === "sell" ? "selected" : ""}>بيع فقط</option>
+          </select></label>
+          <label><span>النسبة ٪</span><input data-fee-percent="${index}" type="text" inputmode="decimal" data-normalize="1" placeholder="0" value="${row.percent ? escapeHtml(row.percent) : ""}" ${row.percent === 0 ? 'aria-label="النسبة المئوية فارغة"' : ""} /></label>
+          <label><span>الحد الأدنى</span><input data-fee-minimum="${index}" type="text" inputmode="decimal" data-normalize="1" placeholder="0" value="${row.minimum ? escapeHtml(row.minimum) : ""}" ${row.minimum === 0 ? 'aria-label="الحد الأدنى فارغ"' : ""} /></label>
+        </div>`).join("");
+    }
+    const profileOptions = [{ value: "", label: "بدون ملف محفوظ" }].concat(fees.profiles.map((profile) => ({ value: profile.name, label: profile.name })));
+    return `<div class="calc-fees">
+      <div class="calc-fees-head"><b>رسوم الصفقة</b><small>أدخل رسوم سمسارتك الفعلية؛ لا توجد قيم افتراضية منا إطلاقًا</small></div>
+      ${rowsMarkup}
+      <div class="calc-fees-save">
+        ${selectControl("feeProfile", "فتح ملف رسوم محفوظ", fees.activeProfile, profileOptions)}
+        ${textControl("feeProfileName", "حفظ الملف بهذا الاسم", { value: fees.activeName, placeholder: "مثال: سمسرتي" })}
+        <div class="calc-fees-actions"><button type="button" class="calc-soft-button" data-save-fee-profile>حفظ ملف الرسوم</button></div>
+      </div>
     </div>`;
   }
 
@@ -361,8 +428,13 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
     let primary = "";
     let details = "";
     if (key === "pl") {
-      primary = `<span>صافي الربح / الخسارة</span><b class="${valueClass(result.net)}">${monetary(result.net)}</b><small class="${valueClass(result.returnPercent)}">${percentageText(result.returnPercent)}</small>`;
-      details = statistic("إجمالي التكلفة", monetary(result.cost)) + statistic("متحصلات البيع", monetary(result.proceeds)) + statistic("نقطة التعادل", monetary(result.breakEvenPrice));
+      primary = `<span>صافي الربح / الخسارة</span><b class="${valueClass(result.net)}">${monetary(result.net)}</b><small class="${valueClass(result.returnPercent)}">${percentSpan(result.returnPercent)}</small>`;
+      details = statistic("إجمالي التكلفة (بالرسوم)", monetary(result.cost)) + statistic("متحصلات البيع (بعد الرسوم)", monetary(result.proceeds)) + statistic("نقطة التعادل", result.breakEvenPrice === null ? "غير محددة — الرسوم أعلى من المتحصلات" : monetary(result.breakEvenPrice));
+      if (result.buyFeeTotal > 0 || result.sellFeeTotal > 0) {
+        details += statistic("رسوم جانب الشراء", monetary(result.buyFeeTotal)) + statistic("رسوم جانب البيع", monetary(result.sellFeeTotal));
+        if (result.fees.length) details += `<div class="calc-fee-breakdown"><b>تفصيل الرسوم</b>${result.fees.map((fee) => `<span>${escapeHtml(fee.labelAr)}: <strong>${monetary(fee.amount)}</strong><small>${escapeHtml(fee.detail)}</small></span>`).join("")}</div>`;
+      }
+      details += `<p class="calc-fees-disclaimer">النتيجة تقديرية وتعتمد على الرسوم اللي أدخلتها، وليست توصية استثمارية.</p>`;
     } else if (key === "risk") {
       primary = `<span>حجم المركز المقترح</span><b>${formatNumber(result.quantity, 0)} سهم</b><small>${result.direction === "long" ? "صفقة شراء" : "صفقة بيع"} · مخاطرة ${monetary(result.riskAmount)}</small>`;
       const rr = result.riskReward === null ? "غير صالح" : `R:R ${formatNumber(result.riskReward, 2)}`;
@@ -387,6 +459,10 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
     } else if (key === "dividend") {
       primary = `<span>عائد التوزيعات الحالي</span><b>${percentageText(result.yieldPercent)}</b><small>قبل الضريبة</small>`;
       details = statistic("الدخل السنوي الإجمالي", monetary(result.grossAnnualIncome)) + statistic("الدخل الشهري الإجمالي", monetary(result.grossMonthlyIncome)) + statistic("الصافي السنوي", monetary(result.netAnnualIncome), "positive") + statistic("الصافي الشهري", monetary(result.netMonthlyIncome), "positive") + statistic("Yield on cost", result.yieldOnCostPercent === null ? "أدخل تكلفة السهم" : percentageText(result.yieldOnCostPercent));
+    } else if (key === "dividendPortfolio") {
+      primary = `<span>الدخل السنوي المتوقع</span><b>${monetary(result.annualDividend)}</b><small>${result.annualDividendNet === null ? "قبل الضريبة" : `بعد ضريبة ${percentSpan(result.taxPercent)}: <strong class="positive">${monetary(result.annualDividendNet)}</strong>`}</small>`;
+      details = statistic("عدد الأسهم المشترى", `${formatNumber(result.shares, 0)} سهم`) + statistic("تكلفة الشراء", monetary(result.cost)) + statistic("المتبقي من المبلغ", monetary(result.remaining)) + statistic("نسبة التوزيع السنوي", percentSpan(result.yieldPercent));
+      if (result.remaining > 0) details += `<div class="calc-warning">مبلغك لا يشتري سهمًا إضافيًا كاملًا؛ المتبقي ${monetary(result.remaining)} لا يُحتسب كسهم.</div>`;
     } else if (key === "cagr") {
       primary = `<span>النمو السنوي المركب</span><b>${percentageText(result.cagrPercent)}</b><small>مضاعف رأس المال ${formatNumber(result.multiplier, 2)}×</small>`;
       details = statistic("مضاعف رأس المال", `${formatNumber(result.multiplier, 2)}×`) + statistic("مدة المضاعفة", result.doublingYears === null ? "لا يتضاعف بعائد غير موجب" : `${formatNumber(result.doublingYears, 2)} سنة`) + statistic("المدة المدخلة", `${formatNumber(result.years, 2)} سنة`);
@@ -413,6 +489,7 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
     if (key === "average") {
       return { lots: input.lots.map((lot) => ({ quantity: lot.quantity, price: lot.price })), currentPrice: input.currentPrice };
     }
+    if (key === "pl") return { buyPrice: input.buyPrice, sellPrice: input.sellPrice, quantity: input.quantity, fees: currentFeeLines() };
     if (key === "fx") return { amount: input.amount, from: input.from, to: input.to, rates: state.fx.rates || {} };
     const output = {};
     Object.keys(input).forEach((property) => { if (property !== "quoteSymbol") output[property] = input[property]; });
@@ -423,9 +500,9 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
     if (!state.math) return;
     const input = readCurrentInputs();
     const fn = {
-      pl: state.math.profitLoss, risk: state.math.positionRisk, compound: state.math.investorProjection,
-      average: state.math.averagePurchase, dividend: state.math.dividendYield, cagr: state.math.cagr,
-      inflation: state.math.inflationAdjustedReturn, fx: state.math.currencyConvert,
+      pl: state.math.feeTrade, risk: state.math.positionRisk, compound: state.math.investorProjection,
+      average: state.math.averagePurchase, dividend: state.math.dividendYield, dividendPortfolio: state.math.dividendPortfolio,
+      cagr: state.math.cagr, inflation: state.math.inflationAdjustedReturn, fx: state.math.currencyConvert,
     }[state.active];
     try {
       state.result = fn ? fn(input) : { ok: false, error: "الحاسبة غير متاحة" };
@@ -441,10 +518,24 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
     const element = event.target;
     if (!element || !element.dataset) return;
     const key = state.active;
+    /* Convert Arabic-Indic digits, ٫ and thousands separators to plain
+       Western digits while the user is typing (values stay in one shape). */
+    if (element.dataset.normalize !== undefined && state.math && typeof state.math.normalizeNumericText === "function") {
+      const normalized = state.math.normalizeNumericText(element.value);
+      if (normalized !== element.value) element.value = normalized;
+    }
     if (element.dataset.input) state.inputs[key][element.dataset.input] = element.value;
     if (element.dataset.lotQuantity !== undefined) state.inputs.average.lots[Number(element.dataset.lotQuantity)].quantity = element.value;
     if (element.dataset.lotPrice !== undefined) state.inputs.average.lots[Number(element.dataset.lotPrice)].price = element.value;
+    if (element.dataset.feeSide !== undefined) state.fees.rows[Number(element.dataset.feeSide)].side = element.value;
+    if (element.dataset.feePercent !== undefined) state.fees.rows[Number(element.dataset.feePercent)].percent = nonNegativeNumberOrZero(element.value);
+    if (element.dataset.feeMinimum !== undefined) state.fees.rows[Number(element.dataset.feeMinimum)].minimum = nonNegativeNumberOrZero(element.value);
     calculate();
+  }
+
+  function nonNegativeNumberOrZero(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }
 
   function rerender() {
@@ -467,13 +558,23 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
     root.querySelectorAll("[data-calculator]").forEach((button) => button.addEventListener("click", () => switchCalculator(button.dataset.calculator)));
     const mobilePicker = root.querySelector("#calc-mobile-picker");
     if (mobilePicker) mobilePicker.addEventListener("change", (event) => switchCalculator(event.target.value));
-    root.querySelectorAll("[data-input], [data-lot-quantity], [data-lot-price]").forEach((field) => field.addEventListener("input", updateInput));
+    root.querySelectorAll("[data-input], [data-lot-quantity], [data-lot-price], [data-fee-side], [data-fee-percent], [data-fee-minimum]").forEach((field) => field.addEventListener("input", updateInput));
+    const feeProfileSelect = root.querySelector("#calc-feeProfile");
+    if (feeProfileSelect) feeProfileSelect.addEventListener("change", applyFeeProfile);
+    const saveFeeProfile = root.querySelector("[data-save-fee-profile]");
+    if (saveFeeProfile) saveFeeProfile.addEventListener("click", saveFeeProfileAction);
+    const retryFees = root.querySelector("[data-retry-fees]");
+    if (retryFees) retryFees.addEventListener("click", async () => { await loadFeeData(); rerender(); calculate(); });
     root.querySelectorAll("[data-live-price]").forEach((button) => button.addEventListener("click", () => applyLivePrice(button.dataset.livePrice)));
     const addLot = root.querySelector("[data-add-lot]");
     if (addLot) addLot.addEventListener("click", () => { if (state.inputs.average.lots.length < 1_500) { state.inputs.average.lots.push({ quantity: "", price: "" }); rerender(); } else toast("وصلت لحد الأمان للحساب في جلسة واحدة.", "error"); });
     root.querySelectorAll("[data-remove-lot]").forEach((button) => button.addEventListener("click", () => { const index = Number(button.dataset.removeLot); if (state.inputs.average.lots.length > 1) { state.inputs.average.lots.splice(index, 1); rerender(); } }));
     const reset = root.querySelector("[data-reset]");
-    if (reset) reset.addEventListener("click", () => { state.inputs[state.active] = JSON.parse(JSON.stringify(defaults[state.active])); state.result = null; state.quoteNotice = ""; rerender(); });
+    if (reset) reset.addEventListener("click", () => {
+      state.inputs[state.active] = JSON.parse(JSON.stringify(defaults[state.active]));
+      if (state.active === "pl") state.fees.rows = feeRowDefaults();
+      state.result = null; state.quoteNotice = ""; rerender();
+    });
     const scenariosButton = root.querySelector("[data-show-scenarios]");
     if (scenariosButton) scenariosButton.addEventListener("click", toggleScenarios);
     const historyButton = root.querySelector("[data-show-history]");
@@ -579,6 +680,66 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
 
   function rerenderFxMeta() {
     const node = root.querySelector("#calc-fx-meta"); if (node) node.innerHTML = fxMetaMarkup();
+  }
+
+  /* Fail-open by design: if the fee catalog or the user's schedules cannot be
+     loaded, the calculator still works with the values typed in the form
+     (or with zero fees) — never block the calculation on this. */
+  async function loadFeeData() {
+    const fees = state.fees;
+    fees.loading = true; fees.error = "";
+    try {
+      const catalogPayload = await apiFetch("/fee-catalog");
+      const items = Array.isArray(catalogPayload.items) ? catalogPayload.items.filter((item) => item && item.key && item.labelAr) : [];
+      fees.catalog = items;
+      if (!fees.rows.length) fees.rows = feeRowDefaults();
+      let profilesPayload = { profiles: [] };
+      try { profilesPayload = await apiFetch("/fee-profiles"); } catch { /* schedules are optional */ }
+      fees.profiles = Array.isArray(profilesPayload.profiles) ? profilesPayload.profiles : [];
+    } catch (error) {
+      fees.catalog = [];
+      fees.error = "تعذر تحميل قائمة بنود الرسوم من الخادم حاليًا. " + (error.message || "");
+    } finally {
+      fees.loading = false;
+    }
+  }
+
+  async function refreshFeeProfiles() {
+    try {
+      const payload = await apiFetch("/fee-profiles");
+      state.fees.profiles = Array.isArray(payload.profiles) ? payload.profiles : [];
+    } catch { /* keep the last known list */ }
+  }
+
+  async function saveFeeProfileAction() {
+    const name = (String(inputValue("feeProfileName") || "") || String(state.fees.activeProfile || "")).trim();
+    if (!name) { toast("اكتب اسمًا لملف الرسوم قبل الحفظ.", "error"); return; }
+    try {
+      await apiFetch("/fee-profiles", { method: "POST", body: JSON.stringify({ name, items: currentFeeLines() }) });
+      state.fees.activeProfile = name; state.fees.activeName = name;
+      await refreshFeeProfiles();
+      toast("اتحفظ ملف الرسوم بأمان في حسابك.", "success");
+    } catch (error) {
+      toast(`تعذر حفظ ملف الرسوم: ${error.message || "حاول مرة أخرى"}`, "error");
+    }
+  }
+
+  function applyFeeProfile() {
+    const name = String(inputValue("feeProfile") || "");
+    const profile = state.fees.profiles.find((item) => item.name === name);
+    if (!profile) { state.fees.activeProfile = ""; state.fees.activeName = ""; return; }
+    state.fees.activeProfile = name; state.fees.activeName = name;
+    const byKey = new Map(state.fees.rows.map((row) => [row.key, row]));
+    (Array.isArray(profile.items) ? profile.items : []).forEach((item) => {
+      if (!item || !item.key) return;
+      byKey.set(item.key, {
+        key: item.key, labelAr: item.labelAr || item.key, side: ["buy", "sell", "both"].includes(item.side) ? item.side : "both",
+        percent: Number(item.percent) > 0 ? Number(item.percent) : 0, minimum: Number(item.minimum) > 0 ? Number(item.minimum) : 0,
+      });
+    });
+    state.fees.catalog.forEach((item) => { if (!byKey.has(item.key)) byKey.set(item.key, { key: item.key, labelAr: item.labelAr, side: "both", percent: 0, minimum: 0 }); });
+    state.fees.rows = Array.from(byKey.values());
+    rerender();
   }
 
   function copyText() {
@@ -726,6 +887,32 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
   function styles() {
     return `
       .calc-app{--ink:#f0f6ff;--muted:#6b85a0;--line:rgba(255,255,255,.09);--paper:#060f1c;--green:#10b981;--green-dark:#34d399;--mint:rgba(16,185,129,.10);--red:#ef4444;--shadow:0 16px 42px rgba(0,0,0,.22);color:var(--ink);font-family:inherit;direction:rtl}.calc-app *{box-sizing:border-box}.calc-topline{border:1px solid #b9e3d3;background:linear-gradient(90deg,#f0faf6,#f9fffc);padding:10px 13px;border-radius:12px;font-size:12px;color:#356154;display:flex;gap:8px;align-items:center;margin:0 0 14px}.calc-vip-badge{border-radius:99px;background:#d5f3e6;color:#056348;padding:3px 8px;font-weight:800;letter-spacing:.7px}.calc-layout{display:grid;grid-template-columns:252px minmax(0,1fr);gap:18px}.calc-sidebar,.calc-card{background:var(--paper);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:18px}.calc-sidebar{padding:18px;height:max-content;position:sticky;top:14px}.calc-sidebar h2{font-size:18px;margin:0 0 5px}.calc-sidebar>p{font-size:12px;color:var(--muted);margin:0 0 13px}.calc-nav-item{width:100%;display:flex;text-align:right;gap:10px;padding:11px 10px;border:0;background:transparent;border-radius:12px;color:var(--ink);cursor:pointer;margin:2px 0;transition:.18s}.calc-nav-item:hover,.calc-nav-item.active{background:var(--mint);color:var(--green-dark)}.calc-nav-item i{font-style:normal;border-radius:9px;width:30px;height:30px;display:grid;place-items:center;background:#edf2f2;font-weight:800}.calc-nav-item.active i{background:#c7eadb}.calc-nav-item b,.calc-nav-item small{display:block}.calc-nav-item b{font-size:13px}.calc-nav-item small{font-size:10px;line-height:1.4;color:var(--muted);margin-top:2px}.calc-main{min-width:0}.calc-mobile-select{display:none}.calc-header{display:flex;align-items:start;justify-content:space-between;gap:15px;margin:2px 2px 14px}.calc-eyebrow{font-size:11px;font-weight:700;letter-spacing:.6px;color:var(--green)}.calc-header h2{font-size:25px;letter-spacing:-.3px;margin:3px 0}.calc-header p{color:var(--muted);font-size:13px;margin:0}.calc-header-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.calc-card{padding:18px;margin-bottom:14px}.calc-card h3{font-size:15px;margin:0 0 15px}.calc-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.calc-field{display:block;min-width:0}.calc-field.wide{grid-column:span 2}.calc-field>span,.calc-lot-row label>span{font-size:12px;font-weight:700;display:block;margin:0 0 6px;color:#385265}.calc-field b{color:var(--red)}.calc-field small{display:block;color:var(--muted);font-size:10px;margin-top:5px;line-height:1.4}.calc-input-wrap{position:relative;display:flex;align-items:center;gap:5px}.calc-input-wrap input,.calc-input-wrap select,.calc-lot-row input{width:100%;height:42px;border:1px solid #cbdad5;background:#fff;border-radius:10px;padding:8px 10px;color:var(--ink);font:inherit;font-size:14px;outline:none;transition:border .15s,box-shadow .15s}.calc-input-wrap input:focus,.calc-input-wrap select:focus,.calc-lot-row input:focus{border-color:#158a6d;box-shadow:0 0 0 3px rgba(21,138,109,.13)}.calc-input-wrap em{font-style:normal;color:var(--muted);font-size:11px;position:absolute;left:10px;pointer-events:none}.calc-input-wrap input:has(+ em){padding-left:38px}.calc-live-price{border:1px solid #bce3d4;background:#f3fbf7;color:#08755d;border-radius:8px;font:inherit;font-weight:700;font-size:10px;white-space:nowrap;padding:7px 8px;cursor:pointer}.calc-live-price:hover{background:#dff4e9}.calc-quote-notice{font-size:11px;color:#586f7b;min-height:18px;margin-top:12px;line-height:1.55}.stale-tag,.fresh-tag{font-size:10px;border-radius:99px;padding:3px 7px;margin-left:4px}.stale-tag{background:#fff0d7;color:#8b5700}.fresh-tag{background:#ddf5e8;color:#086544}.calc-data-unavailable{color:var(--red)}.calc-output{min-height:180px}.calc-empty-result,.calc-error-result{text-align:center;padding:22px 8px}.calc-empty-result>span,.calc-error-result>span{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:#edf5f3;color:var(--green);font-size:22px;margin:0 auto 7px}.calc-error-result>span{background:#fff0f0;color:var(--red);font-weight:800}.calc-empty-result h3,.calc-error-result h3{margin:0 0 4px}.calc-empty-result p,.calc-error-result p{color:var(--muted);font-size:12px;margin:0}.calc-primary{text-align:center;padding:8px 8px 19px;border-bottom:1px solid var(--line)}.calc-primary span,.calc-primary small{display:block}.calc-primary span{font-size:12px;color:var(--muted)}.calc-primary b{font-size:31px;letter-spacing:-.8px;margin:7px 0 3px;display:block}.calc-primary small{font-size:13px}.positive{color:var(--green)!important}.negative{color:var(--red)!important}.neutral{color:var(--ink)}.calc-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding-top:15px}.calc-stat{border:1px solid #e3ece9;background:#fbfdfc;border-radius:10px;padding:11px;min-width:0}.calc-stat span{color:var(--muted);font-size:10px;display:block;line-height:1.3}.calc-stat b{font-size:14px;display:block;margin-top:5px;overflow-wrap:anywhere}.calc-targets,.calc-warning,.calc-source-detail,.calc-chart-wrap,.calc-table-wrap{grid-column:1/-1}.calc-targets{padding:12px;background:#f7faf9;border-radius:10px;font-size:12px}.calc-targets>b{display:block;margin-bottom:8px}.calc-targets span{display:inline-block;margin-left:15px;color:#426173}.calc-targets strong{color:var(--ink)}.calc-targets small{font-size:10px}.calc-warning{border-right:3px solid #d7901c;background:#fff8e9;color:#7f570d;padding:10px;font-size:12px;line-height:1.5}.calc-source-detail{font-size:11px;padding:10px;background:#f4f8fa;border-radius:9px;color:#496070}.calc-result-actions{display:flex;gap:8px;margin-top:16px;justify-content:center;flex-wrap:wrap}.calc-primary-button,.calc-soft-button,.calc-mini-button{border-radius:9px;padding:9px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:.16s}.calc-primary-button{border:1px solid var(--green);background:var(--green);color:#fff}.calc-primary-button:hover{background:var(--green-dark)}.calc-soft-button,.calc-mini-button{background:#fff;border:1px solid #cbdad5;color:#345165}.calc-soft-button:hover,.calc-mini-button:hover{border-color:#75bfa5;background:#f4faf7}.calc-formula{background:linear-gradient(135deg,#f6fbf9,#fbfdfd)}.calc-formula code{display:block;white-space:normal;word-break:break-word;line-height:1.8;padding:11px;background:#fff;border:1px dashed #bad8cd;border-radius:10px;font-size:12px;color:#175a49}.calc-formula p{margin:11px 0 0;color:var(--muted);font-size:11px}.calc-disclaimer{text-align:center;color:#7c8790;font-size:11px;margin:18px 0}.calc-average-lots .lot-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;font-size:13px;font-weight:700}.calc-lot-row{display:grid;grid-template-columns:1fr 1fr 32px;gap:9px;align-items:end;padding:9px;background:#f9fbfa;border:1px solid #e4eeea;border-radius:11px;margin-bottom:8px}.calc-lot-row label{min-width:0}.calc-remove{height:40px;border:0;background:#ffecef;color:#b92f42;border-radius:8px;font-size:22px;cursor:pointer}.average-bottom{margin-top:11px}.calc-fx-source{padding:6px 0}.calc-fx-source #calc-fx-meta{font-size:11px;min-height:21px;color:#547080;line-height:1.65}.calc-chart-wrap{margin-top:8px;border:1px solid #e1ece8;border-radius:10px;padding:10px}.calc-chart-key{display:flex;gap:14px;font-size:10px;color:#637888;margin-bottom:5px}.calc-chart-key i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:4px}.calc-chart-key .balance{background:#08755d}.calc-chart-key .contrib{background:#78a7d3}.calc-chart-wrap svg{width:100%;height:auto;display:block}.calc-chart-wrap path{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.calc-chart-wrap .grid{stroke:#dae6e1;stroke-width:1}.calc-chart-wrap .balance-line{stroke:#08755d}.calc-chart-wrap .contrib-line{stroke:#78a7d3}.calc-table-wrap{overflow:auto;border:1px solid #e3ece8;border-radius:10px}.calc-table-wrap table{width:100%;border-collapse:collapse;min-width:450px;font-size:11px}.calc-table-wrap th,.calc-table-wrap td{text-align:right;padding:9px;border-bottom:1px solid #edf2f0}.calc-table-wrap th{background:#f7faf9;color:#5e7380}.calc-history-panel{margin-bottom:14px}.calc-history-card{position:relative;background:#fff;border:1px solid #b7dccc;border-radius:15px;padding:16px;box-shadow:var(--shadow)}.calc-history-card h3{margin:0 0 11px}.calc-history-card p{font-size:12px;color:var(--muted)}.calc-panel-error{color:#fca5a5!important;line-height:1.65}.calc-history-card ul{list-style:none;margin:0;padding:0}.calc-history-card li{border-top:1px solid #edf0ef;padding:9px 0}.calc-history-card li b,.calc-history-card li span{display:block}.calc-history-card li b{font-size:12px}.calc-history-card li span{font-size:10px;color:var(--muted);margin-top:3px}.calc-scenario-row{display:flex;align-items:center;justify-content:space-between;gap:9px}.calc-scenario-row>div:last-child{display:flex;gap:5px;flex-shrink:0}.calc-archive-scenario{border:1px solid #f3c8cd;background:#fff5f6;color:#ad3342;border-radius:8px;padding:7px 8px;font:inherit;font-size:10px;font-weight:700;cursor:pointer}.calc-history-close{position:absolute;left:11px;top:9px;border:0;background:#f2f6f4;border-radius:7px;width:28px;height:28px;font-size:19px;cursor:pointer}.calc-toast{position:fixed;bottom:20px;left:20px;z-index:30;max-width:min(360px,calc(100vw - 40px));border-radius:11px;padding:12px 14px;background:#18364a;color:#fff;box-shadow:0 12px 30px rgba(0,0,0,.18);font-size:12px}.calc-toast.success{background:#08755d}.calc-toast.error{background:#a62f42}.calc-app .calc-topline{border-color:rgba(16,185,129,.25);background:linear-gradient(90deg,rgba(16,185,129,.09),rgba(16,185,129,.025));color:#a8cdbc}.calc-app .calc-vip-badge{background:rgba(16,185,129,.17);color:#6ee7b7}.calc-app .calc-nav-item i{background:#0b1628;color:#b8c9de}.calc-app .calc-nav-item.active i{background:rgba(16,185,129,.18);color:#6ee7b7}.calc-app .calc-field>span,.calc-app .calc-lot-row label>span{color:#b8c9de}.calc-app .calc-input-wrap input,.calc-app .calc-input-wrap select,.calc-app .calc-lot-row input{border-color:rgba(255,255,255,.13);background:#0b1628;color:var(--ink)}.calc-app .calc-input-wrap input:focus,.calc-app .calc-input-wrap select:focus,.calc-app .calc-lot-row input:focus{border-color:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.13)}.calc-app .calc-live-price{border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.1);color:#6ee7b7}.calc-app .calc-live-price:hover{background:rgba(16,185,129,.18)}.calc-app .calc-quote-notice{color:#9ab1c8}.calc-app .fresh-tag{background:rgba(16,185,129,.17);color:#6ee7b7}.calc-app .stale-tag{background:rgba(245,158,11,.18);color:#fcd34d}.calc-app .calc-empty-result>span{background:rgba(16,185,129,.12);color:#6ee7b7}.calc-app .calc-error-result>span{background:rgba(239,68,68,.13);color:#fca5a5}.calc-app .calc-stat{border-color:rgba(255,255,255,.08);background:#0b1628}.calc-app .calc-targets{background:#0b1628}.calc-app .calc-targets span{color:#9ab1c8}.calc-app .calc-warning{border-color:#f59e0b;background:rgba(245,158,11,.1);color:#fcd34d}.calc-app .calc-source-detail{background:#0b1628;color:#9ab1c8}.calc-app .calc-soft-button,.calc-app .calc-mini-button{background:#0b1628;border-color:rgba(255,255,255,.14);color:#b8c9de}.calc-app .calc-soft-button:hover,.calc-app .calc-mini-button:hover{border-color:rgba(16,185,129,.6);background:rgba(16,185,129,.09)}.calc-app .calc-formula{background:linear-gradient(135deg,#071b18,#07121f)}.calc-app .calc-formula code{background:#0b1628;border-color:rgba(16,185,129,.35);color:#9de6ca}.calc-app .calc-lot-row{background:#0b1628;border-color:rgba(255,255,255,.08)}.calc-app .calc-remove{background:rgba(239,68,68,.12);color:#fca5a5}.calc-app .calc-fx-source #calc-fx-meta{color:#9ab1c8}.calc-app .calc-chart-wrap,.calc-app .calc-table-wrap{border-color:rgba(255,255,255,.1)}.calc-app .calc-chart-wrap .grid{stroke:rgba(255,255,255,.13)}.calc-app .calc-chart-wrap .balance-line{stroke:#10b981}.calc-app .calc-table-wrap th{background:#0b1628;color:#9ab1c8}.calc-app .calc-table-wrap th,.calc-app .calc-table-wrap td{border-color:rgba(255,255,255,.08)}.calc-app .calc-history-card{background:#060f1c;border-color:rgba(16,185,129,.28)}.calc-app .calc-history-card li{border-color:rgba(255,255,255,.08)}.calc-app .calc-archive-scenario{border-color:rgba(239,68,68,.28);background:rgba(239,68,68,.1);color:#fca5a5}.calc-app .calc-history-close{background:#0b1628;color:#b8c9de}.calc-app .calc-mobile-select select{background:#0b1628;border-color:rgba(255,255,255,.13);color:var(--ink)}@media(max-width:800px){.calc-layout{display:block}.calc-sidebar{display:none}.calc-mobile-select{display:block;margin-bottom:11px}.calc-mobile-select label{font-size:11px;color:var(--muted);display:block;margin-bottom:4px}.calc-mobile-select select{width:100%;height:42px;border:1px solid #cbdad5;border-radius:10px;background:#fff;padding:0 10px;font:inherit}.calc-header{align-items:flex-start}.calc-header h2{font-size:21px}.calc-header-actions{max-width:164px}.calc-card{padding:14px;border-radius:14px}.calc-form-grid{grid-template-columns:1fr}.calc-field.wide{grid-column:auto}.calc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.calc-live-price{font-size:9px;padding:7px 6px}.calc-primary b{font-size:26px}.calc-topline{align-items:flex-start}.calc-lot-row{grid-template-columns:1fr 1fr 30px}.calc-targets span{display:block;margin:6px 0}.calc-header p{font-size:12px}}@media(max-width:420px){.calc-header{display:block}.calc-header-actions{margin-top:10px;max-width:none;justify-content:flex-start}.calc-stats{grid-template-columns:1fr}.calc-result-actions{justify-content:stretch}.calc-result-actions button{flex:1}.calc-lot-row{grid-template-columns:1fr 30px}.calc-lot-row label:first-child{grid-column:span 2}.calc-topline{font-size:10px}}
+      /* ── fee schedules (user-entered broker fees) ── */
+      .calc-fees{border:1px dashed rgba(16,185,129,.35);border-radius:13px;padding:13px;margin:13px 0 2px;background:rgba(16,185,129,.04)}
+      .calc-fees-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-bottom:10px}
+      .calc-fees-head b{font-size:13.5px}
+      .calc-fees-head small{color:var(--muted);font-size:10px;line-height:1.5;text-align:left}
+      .calc-fees-note{font-size:11px;color:var(--muted);line-height:1.7;margin:6px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+      .calc-fees-error{color:#fca5a5}
+      .calc-fee-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:9px;align-items:end;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+      .calc-fee-row:last-of-type{border-bottom:0}
+      .calc-fee-name{min-width:0;padding-bottom:9px}
+      .calc-fee-name b{display:block;font-size:12.5px;color:var(--ink);margin-bottom:3px}
+      .calc-fee-name small{color:var(--muted);font-size:9.5px;line-height:1.45;display:block}
+      .calc-fee-row label{display:block;min-width:0}
+      .calc-fee-row label span{font-size:10px;font-weight:700;color:#b8c9de;display:block;margin-bottom:4px}
+      .calc-fee-row input,.calc-fee-row select{width:100%;height:38px;border:1px solid rgba(255,255,255,.13);background:#0b1628;color:var(--ink);border-radius:9px;padding:7px 9px;font:inherit;font-size:12.5px}
+      .calc-fees-save{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px;padding-top:11px;border-top:1px solid rgba(255,255,255,.07)}
+      .calc-fees-actions{grid-column:1/-1;display:flex;justify-content:flex-start}
+      .calc-fee-breakdown{grid-column:1/-1;background:#0b1628;border:1px solid rgba(255,255,255,.08);border-radius:11px;padding:11px 12px;margin-top:4px}
+      .calc-fee-breakdown b{display:block;font-size:11.5px;color:#9de6ca;margin-bottom:7px}
+      .calc-fee-breakdown span{display:flex;justify-content:space-between;gap:10px;font-size:11px;color:#9ab1c8;padding:3.5px 0;flex-wrap:wrap}
+      .calc-fee-breakdown strong{color:var(--ink)}
+      .calc-fee-breakdown small{color:var(--muted)}
+      .calc-fees-disclaimer{grid-column:1/-1;margin:8px 0 0;font-size:10.5px;color:#fcd34d;line-height:1.6;border:1px dashed rgba(245,158,11,.35);background:rgba(245,158,11,.06);border-radius:9px;padding:8px 10px}
+      .calc-app .calc-fees{background:rgba(16,185,129,.03)}
+      @media(max-width:800px){.calc-fee-row{grid-template-columns:1fr 1fr}.calc-fee-name{grid-column:1/-1;padding-bottom:2px}.calc-fees-save{grid-template-columns:1fr}}
+      @media(max-width:420px){.calc-fee-row{grid-template-columns:1fr}}
       /* ── investor calculator charts (line / split / scenarios) ── */
       .calc-chart-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:9px}
       .calc-chart-head b{color:var(--ink);font-size:12.5px}
@@ -779,6 +966,7 @@ export function mountCalculatorRuntime(root: HTMLElement): void {
   async function boot() {
     try {
       state.math = await import("/api/calculators/math.js");
+      await loadFeeData();
       rerender();
     } catch {
       root.innerHTML = `<div style="padding:18px;border:1px solid #f0b7bb;border-radius:14px;color:#a52f42;background:#fff6f6">تعذر تحميل أدوات الحاسبات للمشترك حاليًا. أعد المحاولة، وإذا استمرت المشكلة تواصل معنا.</div>`;
