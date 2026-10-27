@@ -132,7 +132,18 @@ type CalendarPayload = {
   source: string;
   delayedMinutes?: number;
   freshness?: "real-time" | "delayed" | "end-of-day" | "unknown";
+  /** Why the snapshot is empty: the client can say "source not enabled on
+   * the server" instead of a vague "unavailable". */
+  reason?: "no_configured_provider" | "source_empty";
 };
+
+/** An empty calendar snapshot (source not configured, upstream silent) must
+ * never erase the last verified snapshot: serve that one, clearly stale. */
+export function preserveCalendarSuccess(prev: CalendarPayload | null, next: CalendarPayload): CalendarPayload {
+  if (next.events.length) return next;
+  if (prev && prev.events.length) return { ...prev, stale: true, unavailable: false };
+  return next;
+}
 
 let marketsCache: MarketsPayload | null = null;
 let stocksCache: StockSnapshot | null = null;
@@ -555,11 +566,27 @@ function toCalendarPayload(events: CalendarEvent[], fetchedAt: number, stale: bo
   };
 }
 
+function calendarProviderConfigured(): boolean {
+  return marketService()
+    .descriptors()
+    .some(
+      (descriptor) =>
+        descriptor.state === "configured" &&
+        (descriptor.coverage as readonly string[]).includes("calendar"),
+    );
+}
+
 async function buildCalendarSnapshot(): Promise<CalendarPayload> {
   const snapshot = await marketService().getCalendar();
   const data = toCalendarPayload(snapshot.events, snapshot.fetchedAt, snapshot.stale);
-  calCache = data;
-  return data;
+  if (!data.events.length) {
+    /* Truthful, loggable reason — never a key, never a vendor URL. */
+    data.reason = calendarProviderConfigured() ? "source_empty" : "no_configured_provider";
+    logger.warn({ reason: data.reason }, "calendar snapshot empty");
+  }
+  const out = preserveCalendarSuccess(calCache, data);
+  if (data.events.length) calCache = data;
+  return out;
 }
 
 export async function getCalendarSnapshot(): Promise<{ status: "ok"; events: CalEvent[] } | null> {

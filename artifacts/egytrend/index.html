@@ -1642,7 +1642,15 @@ function normalizeCalendarEvents(raw){
     const text=(key,max)=>String(e[key]??"").slice(0,max);
     const date=String(e.date||e.tISO||"").slice(0,64);
     return [{ev:text("ev",300),evEn:text("evEn",300),t:text("t",80),tISO:text("tISO",64),date,imp:text("imp",40),c:safeColor(e.c),country:text("country",40),countryAr:text("countryAr",100),flag:text("flag",16),forecast:text("forecast",100),previous:text("previous",100)}];
-  }).filter(e=>e.ev||e.evEn).slice(0,30);
+  }).filter(e=>e.ev||e.evEn)
+    .filter(e=>{
+      /* A dated event in the past is never presented as upcoming; rows
+         without a parseable time are kept (the server always dates them). */
+      if(!e.tISO)return true;
+      const t=Date.parse(e.tISO);
+      return !Number.isFinite(t)||t>=Date.now();
+    })
+    .slice(0,30);
 }
 function normalizeStockList(raw){
   if(!Array.isArray(raw))return [];
@@ -1744,7 +1752,9 @@ function markMarketsUnavailable(){
 
 /* Live calendar — populated only from a licensed backend calendar provider. */
 let liveCalendar = [];
-let calendarFreshness = {fetchedAt:0,stale:true,source:"غير متاح",unavailable:false,loading:true};
+let calendarFreshness = {fetchedAt:0,stale:true,source:"غير متاح",reason:"",unavailable:false,loading:true};
+let calendarAttempts=0,calendarAutoTimer=null,calendarInFlight=false;
+const CALENDAR_MAX_ATTEMPTS=4;
 
 /* ─── EGX Stocks — loaded live from /api/markets/stocks ─── */
 const STOCKS_API    = "/api/markets/stocks";
@@ -3166,7 +3176,10 @@ async function syncSources(){
 /* ═══════════════════ LIVE MARKETS (licensed backend proxy only) ═══════════════════ */
 let liveTicks = [...TICKS_STATIC]; // current ticker items, replaced when /api/markets responds
 
+let marketsInFlightClient=false;
 async function fetchMarketsData(force){
+  if(marketsInFlightClient)return; /* one board refresh at a time */
+  marketsInFlightClient=true;
   if(!marketFreshness.fetchedAt){
     marketFreshness={...marketFreshness,loading:true,unavailable:false};
     buildTicker();buildMarkets();buildMarketStrip();
@@ -3199,15 +3212,23 @@ async function fetchMarketsData(force){
   }catch(e){
     // Preserve a verified prior snapshot as stale; otherwise say unavailable.
     markMarketsUnavailable();
+  }finally{
+    marketsInFlightClient=false;
   }
 }
 
 /* ═══════════════════ LIVE ECONOMIC CALENDAR (licensed backend proxy only) ═══════════════════ */
+/* One request at a time, a visible attempt counter, and a short capped
+ * automatic backoff only for vendor rate limits — no unbounded retrying and
+ * no double-click storms. */
 async function fetchCalendarData(){
+  if(calendarAutoTimer)return;
   if(!calendarFreshness.fetchedAt){
     calendarFreshness={...calendarFreshness,loading:true,unavailable:false};
     buildCalendar();
   }
+  if(calendarInFlight)return;
+  calendarInFlight=true;
   try{
     const d=await fetchJsonWithTimeout(CALENDAR_API,12000);
     if(d?.status!=="ok"||!Array.isArray(d.events))throw new Error("bad payload");
@@ -3217,18 +3238,36 @@ async function fetchCalendarData(){
       fetchedAt:fetchedAt>0?fetchedAt:0,
       stale:d.stale===true,
       source:String(d.source||"غير متاح").slice(0,160),
+      reason:String(d.reason||"").slice(0,40),
       delayedMinutes:finiteNumber(d.delayedMinutes,0)>0?finiteNumber(d.delayedMinutes,0):undefined,
       freshness:String(d.freshness||"").slice(0,20),
       unavailable:d.unavailable===true||events.length===0,
       loading:false,
     };
     liveCalendar=events;
+    calendarAttempts=0;
     buildCalendar();
     if(events.length)checkCalendarNotifs(liveCalendar);
   }catch(e){
+    calendarAttempts++;
+    const rateLimited=String(e?.message||"").includes("429");
     if(calendarFreshness.fetchedAt)calendarFreshness={...calendarFreshness,stale:true,loading:false};
-    else{calendarFreshness={fetchedAt:0,stale:true,source:"غير متاح",unavailable:true,loading:false};liveCalendar=[];}
+    else{
+      calendarFreshness={fetchedAt:0,stale:true,source:"غير متاح",reason:rateLimited?"rate_limited":"",unavailable:true,loading:false};
+      liveCalendar=[];
+    }
     buildCalendar();
+    if(rateLimited&&calendarAttempts<CALENDAR_MAX_ATTEMPTS){
+      const delayMs=Math.min(60_000,5_000*calendarAttempts);
+      clearTimeout(calendarAutoTimer);
+      calendarAutoTimer=setTimeout(()=>{
+        calendarAutoTimer=null;
+        buildCalendar();
+        fetchCalendarData();
+      },delayMs);
+    }
+  }finally{
+    calendarInFlight=false;
   }
 }
 
@@ -3244,7 +3283,7 @@ function buildTicker(){
       <span style="color:var(--ink4);font-size:7px;">◆</span>
       <span style="color:var(--t4);font-weight:600;">${sanitize(t.n)}</span>
       <span style="color:var(--t2);font-weight:700;">${sanitize(unavailable?"غير متاح حاليًا":t.v)}</span>
-      <span style="color:${unavailable||t.flat?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${unavailable||t.flat?"—":(t.up?"▲":"▼")+sanitize(t.c)}</span>
+      <span style="color:${unavailable||t.flat?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${unavailable||t.flat?"—":ltrChange((t.up?"▲ ":"▼ ")+sanitize(t.c))}</span>
     </span>`;
   }).join("");
 }
@@ -3260,7 +3299,7 @@ function buildMarketStrip(){
     return `<div class="ms-item">
       <div class="ms-n">${sanitize(t.n)}</div>
       <div class="ms-v">${sanitize(unavailable?"غير متاح حاليًا":t.v)}</div>
-      <div class="ms-c" style="color:${unavailable||t.flat?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${unavailable||t.flat?"—":(t.up?"▲":"▼")+sanitize(t.c)}</div>
+      <div class="ms-c" style="color:${unavailable||t.flat?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${unavailable||t.flat?"—":ltrChange((t.up?"▲ ":"▼ ")+sanitize(t.c))}</div>
     </div>`;
   }).join("");
 }
@@ -3725,10 +3764,18 @@ function buildMarkets(){
       return `<div class="mc clickable${wl.includes(m.n)?" wl":""}" onclick="openMarketDetail('${key}',${idx})">
         <div class="mc-hdr"><div class="mc-name">${sanitize(m.n)}</div><button class="wl-btn" onclick='event.stopPropagation();toggleWL(${safeJsArg(m.n)})'>${wl.includes(m.n)?"⭐":"☆"}</button></div>
         <div class="mc-val">${sanitize(unavailable?"غير متاح حاليًا":m.v)}</div>
-        <div class="mc-chg" style="color:${unavailable||m.flat?"var(--t5)":m.up?"var(--up)":"var(--dn)"};">${unavailable||m.flat?"—":(m.up?"▲":"▼")+" "+sanitize(m.c)}</div>
+        <div class="mc-chg" style="color:${unavailable||m.flat?"var(--t5)":m.up?"var(--up)":"var(--dn)"};">${unavailable||m.flat?"—":ltrChange((m.up?"▲ ":"▼ ")+sanitize(m.c))}</div>
         ${sparklineMarkup(m.instrumentId)}
         <div class="mc-sub">${sanitize(m.s||"")}</div>
-        <div style="color:var(--t5);font-size:8px;margin-top:3px;">المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")} · وقت المصدر: ${sanitize(cairoTimestampLabel(m.asOf))} · ${sanitize(marketStateLabel({...marketFreshness,delayedMinutes:secMeta.delayedMinutes,freshness:secMeta.freshness}))}</div>
+        ${(()=>{
+          const asOf=Number(m.asOf);
+          const age=cairoAgeLabel(asOf);
+          /* A source timestamp older than an hour (intraday data only —
+             end-of-day references are judged by their trading date, not the
+             wall clock) is shown as OLD, not as "متأخر" alone. */
+          const srcOld=Number.isFinite(asOf)&&asOf>0&&m.freshness!=="end-of-day"&&(Date.now()-asOf)>60*60_000;
+          return `<div style="color:var(--t5);font-size:8px;margin-top:3px;">المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")} · وقت المصدر: ${sanitize(cairoTimestampLabel(asOf))}${age?` (${sanitize(age)})`:""} · ${sanitize(marketStateLabel({...marketFreshness,delayedMinutes:secMeta.delayedMinutes,freshness:secMeta.freshness}))}${srcOld?" · <b style='color:var(--dn)'>⚠️ بيانات قديمة</b>":""}</div>`;
+        })()}
       </div>`;
     }).join("");
     ensureTvQuotes(key,el,liveTv?.[key]);
@@ -3817,6 +3864,23 @@ function cairoTimestampLabel(value){
   if(!Number.isFinite(epoch)||epoch<=0)return "وقت المصدر غير متاح";
   try{return new Intl.DateTimeFormat("ar-EG",{timeZone:"Africa/Cairo",year:"numeric",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(epoch));}catch{return "وقت المصدر غير متاح";}
 }
+/* Relative age of the LAST SUCCESSFUL source timestamp (never page-load time),
+ * in Cairo wall-clock terms: "منذ 3 د" etc. */
+function cairoAgeLabel(value){
+  const t=Number(value);
+  if(!Number.isFinite(t)||t<=0)return "";
+  const sec=Math.max(0,Math.round((Date.now()-t)/1000));
+  if(sec<60)return "منذ "+sec+" ث";
+  const min=Math.round(sec/60);
+  if(min<60)return "منذ "+min+" د";
+  const hr=Math.round(min/60);
+  if(hr<48)return "منذ "+hr+" س";
+  return "منذ "+Math.round(hr/24)+" يوم";
+}
+/* Signed percents are bidi-neutral landmines in RTL paragraphs: "+2.45%" can
+ * visually flip to "2.45%+" or detach the minus. Every change value is
+ * rendered inside a left-to-right isolated span; the surrounding UI stays RTL. */
+function ltrChange(text){return `<span dir="ltr" style="unicode-bidi:isolate;">${text}</span>`;}
 function chartNumber(value){
   const n=Number(value);
   if(!Number.isFinite(n))return "—";
@@ -4001,7 +4065,12 @@ function refreshAssetDetail(){
   state.refresh();
 }
 function detailStatsMarkup(stats){
-  return stats.map(stat=>`<div class="mkt-stat"><label>${sanitize(stat.label)}</label><div class="sv" style="${sanitize(stat.style||"")}">${sanitize(stat.value||"—")}</div></div>`).join("");
+  return stats.map(stat=>{
+    const raw=String(stat.value||"—");
+    /* Any percent value is rendered LTR-isolated so the sign never flips in RTL. */
+    const val=raw.includes("%")?ltrChange(sanitize(raw)):sanitize(raw);
+    return `<div class="mkt-stat"><label>${sanitize(stat.label)}</label><div class="sv" style="${sanitize(stat.style||"")}">${val}</div></div>`;
+  }).join("");
 }
 function openAssetDetail(spec){
   closeMarketDetail();
@@ -4024,7 +4093,7 @@ function openAssetDetail(spec){
         </div>
         <div style="text-align:left;flex-shrink:0;">
           <div style="color:var(--t1);font-size:22px;font-weight:900;font-family:var(--mono);">${sanitize(spec.price||"غير متاح حاليًا")}</div>
-          <div style="font-size:13px;font-weight:700;font-family:var(--mono);color:${changeColor};">${sanitize(spec.change||"—")}</div>
+          <div style="font-size:13px;font-weight:700;font-family:var(--mono);color:${changeColor};">${spec.change?ltrChange(sanitize(spec.change)):"—"}</div>
         </div>
       </div>
       <section class="mkt-chart-card" aria-label="رسم بياني تاريخي">
@@ -4081,11 +4150,13 @@ async function refreshMktDetail(sec,idx){
   await fetchMarketsData(true);openMarketDetail(sec,idx);
 }
 
-/* Batched SVG sparklines draw only persisted closes. No points means no line. */
+/* Batched SVG sparklines draw only persisted closes. No points means NO
+ * element at all: a placeholder dash reads like a data error, while hiding
+ * the row's decoration is the honest rendering of "no licensed history". */
 function sparklineMarkup(instrumentId,extraClass=""){
   if(!instrumentId)return "";
   const entry=sparklineData.get(instrumentId);
-  if(!entry?.available||entry.points.length<2)return `<div class="mkt-spark no-data ${extraClass}" title="لا تتوفر بيانات كافية للرسم">—</div>`;
+  if(!entry?.available||entry.points.length<2)return "";
   const values=entry.points.map(point=>point.close);
   const low=Math.min(...values),high=Math.max(...values),spread=high-low||1;
   const width=96,height=27,pad=2;
@@ -4132,13 +4203,26 @@ function buildCalendar(){
     if(calendarFreshness.loading){
       wrap.innerHTML=`<div style="padding:18px;"><div class="sk" style="height:14px;margin-bottom:9px;"></div><div class="sk" style="height:14px;width:74%;margin-bottom:9px;"></div><div class="sk" style="height:14px;width:86%;"></div></div>`;
     }else{
-      wrap.innerHTML=`<div style="padding:18px;text-align:center;color:var(--t4);font-size:12px;line-height:1.8;">📡 بيانات التقويم الاقتصادي غير متاحة حاليًا<br/><span style="font-size:10px;color:var(--t5);">المصدر: ${sanitize(calendarFreshness.source||"غير متاح")}</span><br/><button onclick="fetchCalendarData()" style="margin-top:8px;background:none;border:1px solid var(--b2);border-radius:6px;color:var(--t3);font:inherit;cursor:pointer;padding:3px 8px;">↻ إعادة المحاولة</button></div>`;
+      const why=calendarFreshness.reason==="no_configured_provider"
+        ?"المصدر غير مُفعّل على الخادم حاليًا (لا مفتاح/ترخيص معتمد) — راجع الإدارة ثم أعد المحاولة."
+        :calendarFreshness.reason==="rate_limited"
+        ?"المصدر فرض حدًّا للمحاولات — ستُعاد المحاولة تلقائيًا بعد لحظات."
+        :"المصدر: "+sanitize(calendarFreshness.source||"غير متاح");
+      const autoPending=Boolean(calendarAutoTimer);
+      const canRetry=!autoPending;
+      const label=autoPending?"⏳ محاولة تلقائية قادمة…":`↻ إعادة المحاولة${calendarAttempts>0?` (${Math.min(calendarAttempts+1,CALENDAR_MAX_ATTEMPTS)}/${CALENDAR_MAX_ATTEMPTS})`:""}`;
+      wrap.innerHTML=`<div style="padding:18px;text-align:center;color:var(--t4);font-size:12px;line-height:1.8;">📡 بيانات التقويم الاقتصادي غير متاحة حاليًا<br/><span style="font-size:10px;color:var(--t5);">${why}</span><br/><button onclick="fetchCalendarData()" ${canRetry?"":"disabled"} style="margin-top:8px;background:none;border:1px solid var(--b2);border-radius:6px;color:var(--t3);font:inherit;cursor:pointer;padding:3px 8px;${canRetry?"":"opacity:.6;cursor:not-allowed;"}">${label}</button></div>`;
     }
     return;
   }
-  // Show next ~12 events
+  // Show next ~12 events (the server already filters to dated rows; past ones
+  // are dropped client-side in normalizeCalendarEvents).
   const evs=liveCalendar.slice(0,12);
-  const footer=`<div style="color:var(--t5);font-size:9px;text-align:center;padding:8px 0 2px;">${marketAgeLabel(calendarFreshness)} · ${marketStateLabel(calendarFreshness)} · المصدر: ${sanitize(calendarFreshness.source||"غير متاح")}</div>`;
+  /* These rows are ALWAYS the last verified successful fetch (the server
+     never presents fabricated events): label them as such, and mark age
+     explicitly when the provider could not be reached again. */
+  const savedNote=calendarFreshness.stale?"⚠️ آخر نتيجة ناجحة محفوظة (قد تكون قديمة)":"آخر تحديث ناجح";
+  const footer=`<div style="color:var(--t5);font-size:9px;text-align:center;padding:8px 0 2px;">${marketAgeLabel(calendarFreshness)} · ${marketStateLabel(calendarFreshness)} · ${savedNote} · المصدر: ${sanitize(calendarFreshness.source||"غير متاح")}</div>`;
   wrap.innerHTML=evs.map((ev,i)=>{
     const c=safeColor(ev.c);
     const flag=sanitize(ev.flag||"🌐");
@@ -4166,7 +4250,7 @@ function openEgx(name){
   const m=liveMarkets.eg.find(x=>x.n===name);
   document.getElementById("egx-name").textContent=name;
   document.getElementById("egx-val").textContent=m?.v||"";
-  document.getElementById("egx-chg").innerHTML=`<span style="color:${m?.flat?"var(--t5)":m?.up?"var(--up)":"var(--dn)"};">${m?.flat?"—":(m?.up?"▲":"▼")} ${sanitize(m?.flat?"":(m?.c||""))}</span>`;
+  document.getElementById("egx-chg").innerHTML=`<span style="color:${m?.flat?"var(--t5)":m?.up?"var(--up)":"var(--dn)"};">${m?.flat?"—":ltrChange((m?.up?"▲ ":"▼ ")+sanitize(m?.flat?"":(m?.c||"")))}</span>`;
   curStocks=[...liveStocks];
   document.querySelectorAll(".sort-btn").forEach((b,i)=>b.classList.toggle("active",i===0));
   renderStocks();document.getElementById("egx-page").classList.add("open");
@@ -4514,8 +4598,8 @@ function vBuildHome(b){
     <div class="vhome-grid" style="margin-bottom:4px;">
       <button class="vstat" onclick="vGo('news')"><div class="vstat-ic">🚨</div><div class="vstat-n">${allArts.length}</div><div class="vstat-l">خبر اليوم</div>${breaking.length?`<div class="vstat-sub" style="color:var(--dn);">${breaking.length} عاجل</div>`:""}</button>
       <button class="vstat" onclick="vGo('opps')"><div class="vstat-ic">💡</div><div class="vstat-n">${oppsData.length||"…"}</div><div class="vstat-l">عنصر متابعة نشط</div></button>
-      <button class="vstat" onclick="vGo('mkt')"><div class="vstat-ic">📈</div><div class="vstat-n">${sanitize(liveMarkets.eg[0]?.v||"…")}</div><div class="vstat-l">EGX30 ${sanitize(liveMarkets.eg[0]?.c||"")}</div></button>
-      <button class="vstat" onclick="vGo('port')"><div class="vstat-ic">💼</div><div class="vstat-n">${portfolio.length}</div><div class="vstat-l">سهم في محفظتك</div>${portfolio.length&&st.plPct!==null?`<div class="vstat-sub" style="color:${st.plPct>=0?"var(--g)":"var(--dn)"};">${st.plPct>=0?"+":""}${st.plPct.toFixed(1)}%</div>`:""}</button>
+      <button class="vstat" onclick="vGo('mkt')"><div class="vstat-ic">📈</div><div class="vstat-n">${sanitize(liveMarkets.eg[0]?.v||"…")}</div><div class="vstat-l">EGX30 ${liveMarkets.eg[0]?.c?ltrChange(sanitize(liveMarkets.eg[0].c)):""}</div></button>
+      <button class="vstat" onclick="vGo('port')"><div class="vstat-ic">💼</div><div class="vstat-n">${portfolio.length}</div><div class="vstat-l">سهم في محفظتك</div>${portfolio.length&&st.plPct!==null?`<div class="vstat-sub" style="color:${st.plPct>=0?"var(--g)":"var(--dn)"};">${ltrChange((st.plPct>=0?"+":"")+st.plPct.toFixed(1)+"%")}</div>`:""}</button>
     </div>
 
     ${vSect("🚨","أهم الأخبار","news")}
@@ -4554,7 +4638,7 @@ function vBuildHome(b){
         <div class="vstat" style="cursor:default;">
           <div class="vstat-l" style="font-weight:800;color:var(--t2);">${sanitize(m.n)}</div>
           <div class="vstat-n" style="font-size:14px;">${sanitize(m.v)}</div>
-          <div class="vstat-sub" style="color:${m.flat?"var(--t5)":m.up?"var(--g)":"var(--dn)"};">${m.flat?"—":(m.up?"▲":"▼")} ${sanitize(m.flat?"":m.c)}</div>
+          <div class="vstat-sub" style="color:${m.flat?"var(--t5)":m.up?"var(--g)":"var(--dn)"};">${m.flat?"—":ltrChange((m.up?"▲ ":"▼ ")+sanitize(m.flat?"":m.c))}</div>
         </div>`).join("")}
     </div>
 
@@ -4575,7 +4659,7 @@ function vBuildHome(b){
       <div class="vbox">
         <div class="row between" style="margin-bottom:9px;">
           <div><div style="color:var(--t5);font-size:9.5px;">القيمة الحالية</div><div style="color:var(--t1);font-weight:900;font-size:17px;font-family:var(--mono);">${st.cur===null?"غير متاحة":st.cur.toFixed(0)+" ج"}</div></div>
-          <div style="text-align:left;"><div style="color:var(--t5);font-size:9.5px;">الفرق الحسابي</div><div style="color:${st.pl===null?"var(--t5)":st.pl>=0?"var(--g)":"var(--dn)"};font-weight:900;font-size:15px;font-family:var(--mono);">${st.pl===null?"سعر ناقص":(st.pl>=0?"+":"")+st.pl.toFixed(0)+" ج ("+(st.plPct>=0?"+":"")+st.plPct.toFixed(2)+"%)"}</div></div>
+          <div style="text-align:left;"><div style="color:var(--t5);font-size:9.5px;">الفرق الحسابي</div><div style="color:${st.pl===null?"var(--t5)":st.pl>=0?"var(--g)":"var(--dn)"};font-weight:900;font-size:15px;font-family:var(--mono);">${st.pl===null?"سعر ناقص":ltrChange((st.pl>=0?"+":"")+st.pl.toFixed(0)+" ج ("+(st.plPct>=0?"+":"")+st.plPct.toFixed(2)+"%)")}</div></div>
         </div>
         ${st.rows.slice(0,4).map(r=>`<div class="p-row"><div class="row" style="gap:7px;"><span style="background:var(--bld);border:1px solid rgba(59,130,246,.22);border-radius:7px;padding:2px 8px;color:#93c5fd;font-weight:700;font-size:11px;font-family:var(--mono);">${sanitize(r.p.sym)}</span><span style="color:var(--t4);font-size:10.5px;">${r.pr?r.pr.toFixed(2)+" ج":"بانتظار السعر"}</span></div><span style="color:${r.pnl==null?"var(--t5)":r.pnl>=0?"var(--g)":"var(--dn)"};font-weight:800;font-size:11.5px;font-family:var(--mono);">${r.pnl==null?"—":(r.pnl>=0?"+":"")+r.pnl.toFixed(2)+"%"}</span></div>`).join("")}
         <button class="btn btn-bl btn-full" style="margin-top:9px;padding:8px;font-size:12px;" onclick="vGo('port')">إدارة المحفظة ←</button>
@@ -4744,7 +4828,7 @@ function vBuildMkts(b){
           <div class="vstat"${m.clickable?` onclick='openEgx(${safeJsArg(m.n)})'`:""} style="${m.clickable?"cursor:pointer;":""}">
             <div class="vstat-l" style="font-weight:800;color:var(--t2);">${sanitize(m.n)}</div>
             <div class="vstat-n" style="font-size:15px;">${sanitize(m.v)}</div>
-            <div class="vstat-sub" style="color:${m.flat?"var(--t5)":m.up?"var(--g)":"var(--dn)"};">${m.flat?"—":(m.up?"▲":"▼")} ${sanitize(m.flat?"":m.c)}</div>
+            <div class="vstat-sub" style="color:${m.flat?"var(--t5)":m.up?"var(--g)":"var(--dn)"};">${m.flat?"—":ltrChange((m.up?"▲ ":"▼ ")+sanitize(m.flat?"":m.c))}</div>
           </div>`).join("")}
       </div>`).join("")}
 
@@ -4774,12 +4858,17 @@ function vMoverRow(s,dir){
   return `<div class="vnews-row" style="cursor:default;">
     <span style="background:var(--bld);border:1px solid rgba(59,130,246,.22);border-radius:7px;padding:2px 8px;color:#93c5fd;font-weight:700;font-size:11px;font-family:var(--mono);">${sanitize(s.sym)}</span>
     <div style="flex:1;min-width:0;"><div style="color:var(--t3);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${sanitize(s.name||"")}</div></div>
-    <div style="text-align:left;"><div style="color:${dir==="up"?"var(--g)":"var(--dn)"};font-weight:800;font-size:11.5px;font-family:var(--mono);">${stockChangeText(s.chgPct)}</div><div style="color:var(--t5);font-size:9px;font-family:var(--mono);">${s.price.toFixed(2)} ج</div></div>
+    <div style="text-align:left;"><div style="color:${dir==="up"?"var(--g)":"var(--dn)"};font-weight:800;font-size:11.5px;font-family:var(--mono);">${stockChangeText(s.chgPct)!=="—"?ltrChange(stockChangeText(s.chgPct)):stockChangeText(s.chgPct)}</div><div style="color:var(--t5);font-size:9px;font-family:var(--mono);">${s.price.toFixed(2)} ج</div></div>
   </div>`;
 }
 function vBuildCal(){
   const wrap=document.getElementById("vcal-wrap");if(!wrap)return;
-  if(!liveCalendar||!liveCalendar.length){wrap.innerHTML=`<div style="padding:14px;text-align:center;color:var(--t4);font-size:11px;">جارٍ تحميل التقويم الاقتصادي...</div>`;return;}
+  if(!liveCalendar||!liveCalendar.length){
+    wrap.innerHTML=calendarFreshness.loading
+      ?`<div style="padding:14px;text-align:center;color:var(--t4);font-size:11px;">جارٍ تحميل التقويم الاقتصادي...</div>`
+      :`<div style="padding:14px;text-align:center;color:var(--t4);font-size:11px;line-height:1.8;">📡 بيانات التقويم غير متاحة حاليًا<br/><span style="font-size:9.5px;color:var(--t5);">${calendarFreshness.reason==="no_configured_provider"?"المصدر غير مُفعّل على الخادم":calendarFreshness.reason==="rate_limited"?"حد المحاولات قيد التراجع التلقائي":"المصدر: "+sanitize(calendarFreshness.source||"غير متاح")}</span></div>`;
+    return;
+  }
   wrap.innerHTML=liveCalendar.slice(0,10).map((ev,i)=>{
     const c=safeColor(ev.c);
     return `<div class="vnews-row" style="cursor:default;${i===9?"border:none":""}">
@@ -5309,11 +5398,18 @@ function normalizeServerPortfolio(raw){
   }).slice(0,100);
 }
 async function loadServerPortfolio(force=false){
-  if(!U||U.plan==="admin")return;
+  if(!U){
+    /* No session: a terminal state (login CTA), never a skeleton that
+       re-triggers itself forever. */
+    if(!portfolioState.loaded)portfolioState={loaded:true,loading:false,error:"login_required",marketAvailable:false};
+    if(vipTab==="port")renderVipTab();
+    void onAuthFailure(401);
+    return;
+  }
   if(portfolioState.loading||(!force&&portfolioState.loaded))return;
   portfolioState={...portfolioState,loading:true,error:""};
   if(vipTab==="port")renderVipTab();
-  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
   try{
     const r=await fetch("/api/portfolio",{credentials:"same-origin",cache:"no-store",signal:ctrl.signal});
     const j=await r.json().catch(()=>null);
@@ -5323,8 +5419,14 @@ async function loadServerPortfolio(force=false){
     if(!r.ok||!j||j.status!=="ok")throw new Error("portfolio_unavailable");
     portfolio=normalizeServerPortfolio(j.positions);
     portfolioState={loaded:true,loading:false,error:"",marketAvailable:j.marketAvailable===true};
-  }catch{
-    portfolio=[];portfolioState={loaded:false,loading:false,error:"تعذر تحميل المحفظة من الخادم. تحقق من الاتصال ثم أعد المحاولة.",marketAvailable:false};
+  }catch(e){
+    /* A timeout is the SERVER being slow (cold instance), not the user's
+       network — say that, and keep any previously loaded positions on screen
+       instead of erasing them. */
+    const timedOut=e?.name==="AbortError";
+    portfolioState={...portfolioState,loaded:portfolio.length>0||portfolioState.loaded,loading:false,error:timedOut
+      ?"انتهت مهلة الاتصال بالخادم (10 ثوانٍ) — الخادم بطيء حاليًا، أعد المحاولة."
+      :"تعذر الوصول إلى الخادم — تحقق من الاتصال ثم أعد المحاولة.",marketAvailable:portfolioState.marketAvailable};
   }finally{
     clearTimeout(timer);
     if(vipTab==="port")renderVipTab();
@@ -5596,29 +5698,37 @@ function portAnalyticsBody(){
   return `${allocationCard}${pfHistoryCard()}${pfPnlCard(stats)}${pfPerformanceCard()}`;
 }
 function vBuildPort(b){
+  if(!U){
+    b.innerHTML=`<div class="vbox bl"><div class="vbox-title" style="color:#93c5fd;">💼 محفظتي</div><div class="vempty"><div style="font-size:28px;">🔐</div><div style="color:var(--dn);font-weight:700;margin-top:6px;">لم تعد مسجّل الدخول</div><div style="color:var(--t5);font-size:10.5px;margin-top:5px;">انتهت جلسة الدخول أو أصبحت غير صالحة. سجّل الدخول مرة أخرى لمتابعة محفظتك.</div><button class="btn btn-au" style="margin-top:10px;padding:8px 13px;" onclick="openAuthModal('login')">🔐 سجّل الدخول الآن</button><button class="btn btn-ghost" style="margin-top:10px;padding:8px 13px;" onclick="loadServerPortfolio(true)">↻ إعادة المحاولة</button></div></div>`;
+    return;
+  }
   if(portfolioState.loading){b.innerHTML=vLoading("جارٍ تحميل محفظتك من الخادم...");return;}
+  let errBanner="";
   if(portfolioState.error){
     const errKind=portfolioState.error;
     const portMsg=errKind==="login_required"?{icon:"🔐",t:"لم تعد مسجّل الدخول",d:"انتهت جلسة الدخول. سجّل الدخول مرة أخرى لمتابعة محفظتك."}
       :errKind==="vip_required"?{icon:"⭐",t:"اشتراك VIP غير فعّال",d:"يعرض الخادم بيانات المحفظة فقط بعد التحقق من اشتراك VIP فعّال. جدّد الاشتراك للمتابعة."}
       :errKind==="server_error"?{icon:"⚠️",t:"تعذّر التحقق من الخادم الآن",d:"خطأ مؤقت في الخادم وليس نهاية اشتراكك — أعد المحاولة بعد لحظات."}
-      :{icon:"⚠️",t:"تعذر تحميل المحفظة",d:sanitize(errKind)};
-    b.innerHTML=`<div class="vbox bl"><div class="vbox-title" style="color:#93c5fd;">💼 محفظتي</div><div class="vempty"><div style="font-size:28px;">${portMsg.icon}</div><div style="color:${errKind==="server_error"?"var(--t1)":"var(--dn)"};font-weight:700;margin-top:6px;">${portMsg.t}</div><div style="color:var(--t5);font-size:10.5px;margin-top:5px;">${portMsg.d}</div>${errKind==="login_required"?'<button class="btn btn-au" style="margin-top:10px;padding:8px 13px;" onclick="openAuthModal(\'login\')">🔐 سجّل الدخول الآن</button>':''}${errKind==="vip_required"?'<button class="btn btn-au" style="margin-top:10px;padding:8px 13px;" onclick="openSub()">⭐ جدّد اشتراكك</button>':''}<button class="btn btn-ghost" style="margin-top:10px;padding:8px 13px;" onclick="portfolioState={...portfolioState,error:'',loaded:false};loadServerPortfolio(true)">↻ إعادة المحاولة</button></div></div>`;
-    return;
+      :{icon:"⚠️",t:errKind,plain:true,d:""};
+    const keepNote=portfolio.length?`<div style="color:var(--t5);font-size:9.5px;margin-top:7px;">⬇️ آخر بيانات محفظتك المعروفة معروضة أدناه — لم يتم تعديلها أو حذفها.</div>`:"";
+    errBanner=`<div class="vbox bl" style="border-color:${errKind==="server_error"?"var(--b1)":"var(--dnd)"}"><div class="vbox-title" style="color:#93c5fd;">💼 محفظتي</div><div class="vempty" style="padding:14px 10px 4px;"><div style="font-size:28px;">${portMsg.icon}</div><div style="color:${errKind==="server_error"?"var(--t1)":"var(--dn)"};font-weight:700;margin-top:6px;">${portMsg.plain?sanitize(errKind==="login_required"||errKind==="vip_required"||errKind==="server_error"?"":errKind)||portMsg.t:portMsg.t}</div><div style="color:var(--t5);font-size:10.5px;margin-top:5px;">${portMsg.plain?"":portMsg.d}</div>${errKind==="login_required"?'<button class="btn btn-au" style="margin-top:10px;padding:8px 13px;" onclick="openAuthModal(\'login\')">🔐 سجّل الدخول الآن</button>':''}${errKind==="vip_required"?'<button class="btn btn-au" style="margin-top:10px;padding:8px 13px;" onclick="openSub()">⭐ جدّد اشتراكك</button>':''}<button class="btn btn-ghost" style="margin-top:10px;padding:8px 13px;" onclick="portfolioState={...portfolioState,error:'',loaded:false};loadServerPortfolio(true)">↻ إعادة المحاولة</button>${keepNote}</div></div>`;
+    if(!portfolio.length){b.innerHTML=errBanner;return;}
   }
   if(!portfolioState.loaded){b.innerHTML=vLoading("جارٍ تحميل محفظتك من الخادم...");loadServerPortfolio();return;}
   const st=portStats();
   b.innerHTML=`
+    ${errBanner}
     ${portfolio.length?`
     <div class="vbox bl" style="background:linear-gradient(135deg,rgba(59,130,246,.07),rgba(16,185,129,.03));">
       <div class="row between" style="margin-bottom:10px;">
         <div><div style="color:var(--t5);font-size:9.5px;">قيمة المحفظة الحالية</div><div style="color:var(--t1);font-weight:900;font-size:20px;font-family:var(--mono);">${st.cur===null?"غير متاحة":st.cur.toFixed(0)+" ج"}</div><div style="color:var(--t4);font-size:9.5px;">${st.cur===null?"يلزم سعر موثّق لكل مركز لإجمالي القيمة":"التكلفة المدخلة: "+st.cost.toFixed(0)+" ج"}</div></div>
-        <div style="text-align:left;"><div style="color:var(--t5);font-size:9.5px;">الفرق الحسابي</div><div style="color:${st.pl===null?"var(--t5)":st.pl>=0?"var(--g)":"var(--dn)"};font-weight:900;font-size:17px;font-family:var(--mono);">${st.pl===null?"—":(st.pl>=0?"+":"")+st.pl.toFixed(0)+" ج"}</div><div style="color:${st.pl===null?"var(--t5)":st.pl>=0?"var(--g)":"var(--dn)"};font-size:11px;font-family:var(--mono);">${st.plPct===null?"سعر سوق ناقص":(st.plPct>=0?"+":"")+st.plPct.toFixed(2)+"%"}</div></div>
+        <div style="text-align:left;"><div style="color:var(--t5);font-size:9.5px;">الفرق الحسابي</div><div style="color:${st.pl===null?"var(--t5)":st.pl>=0?"var(--g)":"var(--dn)"};font-weight:900;font-size:17px;font-family:var(--mono);">${st.pl===null?"—":ltrChange((st.pl>=0?"+":"")+st.pl.toFixed(0)+" ج")}</div><div style="color:${st.pl===null?"var(--t5)":st.pl>=0?"var(--g)":"var(--dn)"};font-size:11px;font-family:var(--mono);">${st.plPct===null?"سعر سوق ناقص":ltrChange((st.plPct>=0?"+":"")+st.plPct.toFixed(2)+"%")}</div></div>
       </div>
     </div>`:""}
     ${portfolio.length?`<div id="port-analytics">${portAnalyticsBody()}</div>`:""}
     <div class="vbox bl">
       <div class="vbox-title" style="color:#93c5fd;">💼 متابع المحفظة</div>
+      ${!portfolio.length?`<div style="text-align:center;padding:16px 0 12px;"><div style="font-size:28px;">💼</div><div style="color:var(--t1);font-weight:800;font-size:13.5px;margin-top:6px;">محفظتك فارغة</div><div style="color:var(--t5);font-size:10.5px;margin-top:4px;line-height:1.7;">أضف أول سهم بالرمز ومتوسط سعر الإدخال والكمية — القيمة والأداء يُحتسبان من أسعار الخادم الموثّقة عند توفرها.</div><button class="btn btn-au" style="margin-top:10px;padding:8px 14px;" onclick="document.getElementById('p-sym')?.focus()">＋ أضف أول سهم</button></div>`:""}
       <div class="p-inputs">
         <input class="mini-in" id="p-sym" placeholder="رمز السهم" oninput="this.value=this.value.toUpperCase().slice(0,10)"/>
         <input class="mini-in" id="p-pr" placeholder="متوسط سعر الإدخال" type="number" min="0" step="0.01"/>
@@ -5654,7 +5764,7 @@ function vBuildPort(b){
     ${(liveCalendar||[]).length?`<div class="vbox" style="padding:0;overflow:hidden;">${liveCalendar.slice(0,3).map(ev=>`
       <div class="vnews-row" style="cursor:default;"><div style="font-size:15px;">${sanitize(ev.flag||"🌐")}</div>
       <div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-weight:600;">${sanitize(ev.ev||ev.evEn||"")}</div><div style="color:var(--t5);font-size:9px;">${sanitize(ev.t||"")}</div></div>
-      <span class="vimp" style="color:${safeColor(ev.c)};background:${safeColor(ev.c)}18;">${sanitize(ev.imp||"")}</span></div>`).join("")}</div>`:vEmpty("📅","التقويم قيد التحميل...")}
+      <span class="vimp" style="color:${safeColor(ev.c)};background:${safeColor(ev.c)}18;">${sanitize(ev.imp||"")}</span></div>`).join("")}</div>`:vEmpty("📅",calendarFreshness.loading?"التقويم قيد التحميل...":"التقويم غير متاح حاليًا")}
     ${vSect("🔔","تنبيهات المحفظة","alerts")}
     ${(()=>{const s=getNotifsStore();const rel=s.items.filter(n=>n.type==="opps"||portfolio.some(p=>(n.title+n.body).toUpperCase().includes(p.sym))).slice(0,3);return rel.length?`<div class="vbox" style="padding:0;overflow:hidden;">${rel.map(n=>`<div class="vnews-row" onclick='openVipAlert(${safeJsArg(n.link||"")})'><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;">${sanitize(n.icon)} ${sanitize(n.title)}</div><div style="color:var(--t5);font-size:9px;">${vTime(n.ts)}</div></div></div>`).join("")}</div>`:vEmpty("🔕","لا تنبيهات متعلقة بمحفظتك");})()}`;
   renderPortList();
@@ -5974,7 +6084,7 @@ function vBuildRep(b){
     ${evs.length?`<div class="vbox" style="padding:0;overflow:hidden;">${evs.map(ev=>`
       <div class="vnews-row" style="cursor:default;"><div style="font-size:15px;">${sanitize(ev.flag||"🌐")}</div>
       <div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-weight:600;">${sanitize(ev.ev||ev.evEn||"")}</div><div style="color:var(--t5);font-size:9px;">${sanitize(ev.t||"")}</div></div>
-      <span class="vimp" style="color:${safeColor(ev.c)};background:${safeColor(ev.c)}18;">${sanitize(ev.imp||"")}</span></div>`).join("")}</div>`:vEmpty("📅","التقويم قيد التحميل...")}`;
+      <span class="vimp" style="color:${safeColor(ev.c)};background:${safeColor(ev.c)}18;">${sanitize(ev.imp||"")}</span></div>`).join("")}</div>`:vEmpty("📅",calendarFreshness.loading?"التقويم قيد التحميل...":"التقويم غير متاح حاليًا")}`;
 }
 
 /* ══════════════ TAB 10 — التنبيهات ══════════════ */
@@ -6373,7 +6483,7 @@ function renderScrResults(){
         <div class="scr-sname">${sanitize(s.name.slice(0,18))}</div>
       </td>
       <td class="scr-td" style="text-align:left;font-family:var(--mono);color:var(--t2);">${s.price.toFixed(2)} <span style="color:var(--t5);font-size:9px;">${cur}</span></td>
-      <td class="scr-td" style="text-align:left;font-family:var(--mono);font-weight:700;color:${chgClr};">${change}</td>
+      <td class="scr-td" style="text-align:left;font-family:var(--mono);font-weight:700;color:${chgClr};">${change!=="—"?ltrChange(change):change}</td>
       <td class="scr-td" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${fmtVol(s.vol)}</td>
       <td class="scr-td" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${s.mktCapM?fmtMktCap(s.mktCapM)+"<span style='color:var(--t5);font-size:9px;'> "+cur+"</span>":"—"}</td>
       <td class="scr-td" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${s.pe&&s.pe>0?s.pe.toFixed(1):"—"}</td>
