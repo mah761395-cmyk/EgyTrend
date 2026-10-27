@@ -1,16 +1,17 @@
 {
   "elaosboa": {
     "id": "elaosboa",
-    "name": "أوليكس بوابة",
-    "icon": "📰",
+    "name": "الأسبوع",
+    "icon": "🗞️",
     "lang": "ar",
     "cat": "egypt",
     "color": "#0ea5e9",
-    "url": "https://www.elaosboa.com/feed",
+    "url": "https://www.elaosboa.com/category/economy/feed/",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-23T00:00:00.000Z",
-      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+      "status": "approved",
+      "reviewedAt": "2026-10-27T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed (official economy category). Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Feed verified live 2026-10-27: 30 items, all dated, economy-titled. Twenty carry the publisher's own image URLs inside the feed; images are shown only when the feed itself includes them."
     }
   },
   "masrawy": {
@@ -84,7 +85,7 @@
     "commercialRedisplay": {
       "status": "pending",
       "reviewedAt": "2026-10-23T00:00:00.000Z",
-      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+      "note": "Re-verified 2026-10-27: both the configured SectionID feed and alternate public RSS paths return HTML, not parseable XML. Kept off until the publisher exposes a valid XML feed or redisplay terms are verified."
     }
   },
   "alarabiya": {
@@ -114,7 +115,7 @@
       "status": "pending",
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
-      "note": "General-news feed without market focus; kept off for relevance."
+      "note": "General-news feed without market focus; kept off for relevance. Re-verified 2026-10-27: parses fine (90 items; images carried in feed) but remains a general-category feed."
     }
   },
   "bbcar": {
@@ -129,7 +130,7 @@
       "status": "pending",
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
-      "note": "General-news feed without market focus; kept off for relevance."
+      "note": "Re-verified 2026-10-27: unreachable (connection timeout) from our serving region. Kept off until connectivity is confirmed from the production environment."
     }
   },
   "alain": {
@@ -142,8 +143,8 @@
     "url": "https://news.google.com/rss/search?q=site:al-ain.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=AE&ceid=AE:ar",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-23T00:00:00.000Z",
-      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+      "reviewedAt": "2026-10-27T00:00:00.000Z",
+      "note": "Re-verified 2026-10-27: returns ~100 Google-News wrapped items but no image URLs and no per-item publish dates in the response window; kept off until redisplay terms are verified."
     }
   },
   "reuters": {
@@ -186,8 +187,8 @@
     "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC&region=US&lang=en-US",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-23T00:00:00.000Z",
-      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+      "reviewedAt": "2026-10-27T00:00:00.000Z",
+      "note": "Re-verified 2026-10-27: parses fine (19 items, dated) but carries no image URLs and is an aggregator of other publishers' headlines; kept off until redisplay terms are verified."
     }
   },
   "marketwatch": {
@@ -213,11 +214,11 @@
     "cat": "global",
     "color": "#ef4444",
     "url": "https://www.investing.com/rss/news_25.rss",
-    "archivedAt": "2026-10-16T00:00:00.000Z",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-23T00:00:00.000Z",
-      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+      "status": "approved",
+      "reviewedAt": "2026-10-27T00:00:00.000Z",
+      "evidence": "Publisher-provided public RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Verified live 2026-10-27: 10 items, dated, ten carry the feed's own image URLs. Headline + feed excerpt + attribution + link-back only."
     }
   },
   "ft": {
@@ -229,10 +230,10 @@
     "color": "#9d6e3f",
     "url": "https://www.ft.com/markets?format=rss",
     "commercialRedisplay": {
-      "status": "approved",
-      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "status": "pending",
+      "reviewedAt": "2026-10-27T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
-      "note": "Headline + feed excerpt + attribution + link-back only."
+      "note": "Re-verified 2026-10-27: unreachable (connection error twice) — kept off until connectivity is confirmed so the source never advertises as active while silent."
     }
   },
   "coindesk": {
@@ -290,8 +291,8 @@
     "url": "https://www.argaam.com/ar/rss",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-23T00:00:00.000Z",
-      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+      "reviewedAt": "2026-10-27T00:00:00.000Z",
+      "note": "Re-verified 2026-10-27: serving HTML, not RSS — no parseable items. The publisher's site exposes no working public RSS endpoint we could verify."
     }
   },
   "aleqtisadiyah": {
@@ -304,22 +305,23 @@
     "url": "https://news.google.com/rss/search?q=site:aleqtisadiyah.com+when:2d&hl=ar&gl=SA&ceid=SA:ar",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-23T00:00:00.000Z",
-      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+      "reviewedAt": "2026-10-27T00:00:00.000Z",
+      "note": "Re-verified 2026-10-27: Google-News wrapper returned zero items (intermittent upstream coverage); kept off."
     }
   },
   "asharq": {
     "id": "asharq",
-    "name": "بلومبرج الشرق",
+    "name": "الشرق للأخبار",
     "icon": "💼",
     "lang": "ar",
     "cat": "global",
     "color": "#f59e0b",
     "url": "https://news.google.com/rss/search?q=site:asharq.com+when:2d&hl=ar&gl=SA&ceid=SA:ar",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-23T00:00:00.000Z",
-      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+      "status": "approved",
+      "reviewedAt": "2026-10-27T00:00:00.000Z",
+      "evidence": "Aggregator-provided syndication feed (Google News wrapper over asharq.com). Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Verified live 2026-10-27: 100 items returned within the 2-day query window. Headline + feed excerpt + attribution + link-back only."
     }
   },
   "almal": {
@@ -344,12 +346,27 @@
     "lang": "ar",
     "cat": "egypt",
     "color": "#b91c1c",
-    "url": "https://news.google.com/rss/search?q=site:dostor.org+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
+    "url": "https://www.dostor.org/rss",
     "commercialRedisplay": {
       "status": "approved",
-      "reviewedAt": "2026-10-23T00:00:00.000Z",
+      "reviewedAt": "2026-10-27T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
-      "note": "Headline + feed excerpt + attribution + link-back only."
+      "note": "Switched from the Google News aggregation wrapper to the paper's own feed (verified live 2026-10-27: 30 items, direct publisher links, dated). Items that carry an image URL in the feed show it."
+    }
+  },
+  "dailynews-eg": {
+    "id": "dailynews-eg",
+    "name": "ديلي نيوز إيجيبت",
+    "icon": "🌐",
+    "lang": "en",
+    "cat": "egypt",
+    "color": "#2563eb",
+    "url": "https://www.dailynewsegypt.com/feed/",
+    "commercialRedisplay": {
+      "status": "approved",
+      "reviewedAt": "2026-10-27T00:00:00.000Z",
+      "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Verified live 2026-10-27: 10 items, dated, ten carry the feed's own image URLs. Headline + feed excerpt + attribution + link-back only."
     }
   },
   "cnnar": {
@@ -362,22 +379,23 @@
     "url": "https://news.google.com/rss/search?q=site:arabic.cnn.com+%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+when:2d&hl=ar&gl=EG&ceid=EG:ar",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-23T00:00:00.000Z",
-      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+      "reviewedAt": "2026-10-27T00:00:00.000Z",
+      "note": "Re-verified 2026-10-27: parses fine (20 items) with no image URLs; coverage overlaps with already-active sources, kept off for now."
     }
   },
   "zawya": {
     "id": "zawya",
-    "name": "زاوية",
+    "name": "Zawya",
     "icon": "🌏",
     "lang": "en",
-    "cat": "global",
+    "cat": "egypt",
     "color": "#0369a1",
     "url": "https://news.google.com/rss/search?q=site:zawya.com+egypt+finance+when:2d&hl=en&gl=AE&ceid=AE:en",
     "commercialRedisplay": {
-      "status": "pending",
-      "reviewedAt": "2026-10-23T00:00:00.000Z",
-      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+      "status": "approved",
+      "reviewedAt": "2026-10-27T00:00:00.000Z",
+      "evidence": "Aggregator-provided syndication feed (Google News wrapper over zawya.com, same treatment as the other approved wrapper sources). Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
+      "note": "Verified live 2026-10-27: 100 items returned; Egypt-finance focused query. Headline + feed excerpt + attribution + link-back only."
     }
   },
   "enterprise": {
@@ -390,8 +408,8 @@
     "url": "https://news.google.com/rss/search?q=site:enterprise.press+egypt+business+when:2d&hl=en&gl=EG&ceid=EG:en",
     "commercialRedisplay": {
       "status": "pending",
-      "reviewedAt": "2026-10-23T00:00:00.000Z",
-      "note": "Kept off: the feed did not return parseable items or its redisplay terms are unverified."
+      "reviewedAt": "2026-10-27T00:00:00.000Z",
+      "note": "Re-verified 2026-10-27: Google-News wrapper returned zero items (intermittent upstream coverage); kept off."
     }
   },
   "arabfinance": {
