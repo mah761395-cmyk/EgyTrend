@@ -39,6 +39,21 @@ export class ProviderRateGate {
   }
 }
 
+/** Max time one request may spend sleeping before a vendor retry. A rate-limit
+ * window longer than this is better handled by serving the last verified
+ * snapshot and trying again on the next cache cycle than by blocking the
+ * request (serverless functions have a hard duration budget). */
+export const MAX_RETRY_WAIT_MS = 15_000;
+
+/** `Retry-After` is seconds or an HTTP date; anything else means "no hint". */
+export function parseRetryAfterMs(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const dateMs = Date.parse(value);
+  return Number.isFinite(dateMs) ? Math.max(0, dateMs - Date.now()) : undefined;
+}
+
 export type ResilientFetchOptions = {
   providerId: string;
   timeoutMs?: number;
@@ -92,6 +107,7 @@ export class ResilientHttpClient {
     const attempts = Math.max(1, Math.min(3, opts.attempts ?? 2));
     const timeoutMs = Math.max(500, opts.timeoutMs ?? 8_000);
     let lastError: unknown;
+    let lastRetryAfterMs: number | undefined;
 
     for (let attempt = 0; attempt < attempts; attempt++) {
       await this.gate.wait(opts.providerId, opts.minIntervalMs ?? 0);
@@ -112,8 +128,15 @@ export class ResilientHttpClient {
         if (!response.ok) {
           const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
           const error = new UpstreamHttpError(`upstream HTTP ${response.status}`, response.status);
-          if (!retryable || attempt + 1 === attempts) throw error;
           lastError = error;
+          lastRetryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
+          /* Stop retrying when the status is not transient, this was the last
+           * attempt, or the vendor's rate-limit window is longer than the cap:
+           * a long window is not recoverable inside this request — the caller
+           * serves its last verified snapshot and the next cache cycle retries
+           * after the window has passed (serverless duration budget). A throw
+           * here would be swallowed by the catch below, so break instead. */
+          if (!retryable || attempt + 1 === attempts || (lastRetryAfterMs !== undefined && lastRetryAfterMs > MAX_RETRY_WAIT_MS)) break;
         } else {
           return await response.text();
         }
@@ -128,8 +151,10 @@ export class ResilientHttpClient {
         clearTimeout(timeout);
       }
 
-      // Exponential backoff with deterministic bounded jitter. No unbounded retry.
-      const backoff = 250 * (2 ** attempt) + (attempt * 37);
+      // Exponential backoff with deterministic bounded jitter, widened by the
+      // vendor's own Retry-After when present (still capped). No unbounded retry.
+      const base = 250 * (2 ** attempt) + (attempt * 37);
+      const backoff = Math.max(base, Math.min(lastRetryAfterMs ?? base, MAX_RETRY_WAIT_MS));
       await this.sleep(backoff);
     }
 

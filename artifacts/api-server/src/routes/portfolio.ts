@@ -7,6 +7,7 @@ import { EGX_STOCKS } from "../lib/market-data/catalog";
 import { currentUser, requireVipFeature } from "../lib/userAuth";
 import { getStocksSnapshot, type StockQuote } from "./markets";
 import { logger } from "../lib/logger";
+import { withTimeout } from "../lib/with-timeout";
 
 const router = Router();
 const SYMBOL_RX = /^[A-Z0-9._-]{1,16}$/;
@@ -74,9 +75,12 @@ router.get("/portfolio", requireVipFeature("portfolio"), async (req: Request, re
       .orderBy(portfolioPositionsTable.createdAt);
 
     /* Quotes are optional presentation data. A failed/unlicensed provider
-     * produces `market: null`, not a fabricated zero or server timestamp. */
+     * produces `market: null`, not a fabricated zero or server timestamp.
+     * A cold instance may still be fetching the full stock snapshot when this
+     * request arrives; positions must return immediately, so the quote wait
+     * is time-boxed (the in-flight snapshot keeps finishing for the cache). */
     let quotes: Awaited<ReturnType<typeof getStocksSnapshot>> = null;
-    try { quotes = await getStocksSnapshot(); } catch (error) {
+    try { quotes = await withTimeout(getStocksSnapshot(), 4_000, null); } catch (error) {
       logger.warn({ err: (error as Error).message }, "portfolio quote snapshot unavailable");
     }
     const quoteBySymbol = new Map((quotes || []).map((quote) => [quote.sym.toUpperCase(), quote]));
