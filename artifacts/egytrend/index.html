@@ -1801,6 +1801,47 @@ function setCurrentUser(user){
    * verify hasVip() themselves; this merely keeps expiry labels coherent. */
   U={...user,exp:user.vipExpiresAt||user.exp||null};
 }
+/* ─── Single source of truth for (re)validating auth state ─────────────────
+ * Every protected feature re-asks the server instead of trusting the cached
+ * client plan. syncUserFromServer refreshes U from /api/user/me and returns
+ * the fresh user (or null). onAuthFailure maps a 401/403/503 to exactly one
+ * of: "login" | "vip" | "server" — and authGateHtml renders that truth with
+ * the matching CTA, so a lapsed session never reads as a broken feature. */
+async function syncUserFromServer(){
+  try{
+    const r=await fetch("/api/user/me",{credentials:"same-origin"});
+    const d=await r.json().catch(()=>({}));
+    if(r.ok&&d.status==="ok"&&d.user){setCurrentUser({...d.user,trial:d.trial||null,subscription:d.subscription||null});return U;}
+  }catch{ /* network failure: keep current state, the caller decides the gate */ }
+  return null;
+}
+async function onAuthFailure(status){
+  try{
+    if(status===503)return "server";
+    if(status===401||status===403){
+      const fresh=await syncUserFromServer();
+      if(fresh&&(fresh.plan==="vip"||fresh.plan==="admin"))return "server"; /* deny + valid VIP = transient server denial */
+      if(status===401){
+        if(U){U=null;if(typeof renderHdrVip==="function")renderHdrVip();}
+        return "login";
+      }
+      return fresh?"vip":"login";
+    }
+  }catch{ /* fall through to the honest generic server state */ }
+  return "server";
+}
+let authGateRetry=null;
+function authGateRetryNow(){if(typeof authGateRetry==="function")authGateRetry();}
+function authGateHtml(kind,retry){
+  authGateRetry=typeof retry==="function"?retry:null;
+  const cfg=kind==="login"
+    ?{icon:"🔐",title:"لم تعد مسجّل الدخول",body:"انتهت جلسة الدخول أو أصبحت غير صالحة. سجّل الدخول مرة أخرى لمتابعة هذه الأداة.",color:"var(--dn)",btns:'<button class="btn btn-au" onclick="openAuthModal(\'login\')">🔐 سجّل الدخول الآن</button>'}
+    :kind==="vip"
+    ?{icon:"🔒",title:"هذه الأداة متاحة لاشتراك VIP فعّال",body:"افتح اشتراك VIP للمتابعة — التحقق يتم على الخادم في كل طلب.",color:"var(--au)",btns:'<button class="btn btn-au" onclick="openSub()">⭐ عرض اشتراك VIP</button><button class="btn btn-ghost" onclick="openMySubscription()">📋 اشتراكي</button>'}
+    :{icon:"⚠️",title:"تعذر التحقق من حالتك الآن",body:"خطأ مؤقت في الخادم وليس نهاية اشتراكك — أعد المحاولة بعد لحظات.",color:"var(--dn)",btns:""};
+  const retryBtn=authGateRetry?'<button class="btn btn-ghost" onclick="void authGateRetryNow()">↻ إعادة المحاولة</button>':"";
+  return `<div style="max-width:620px;margin:34px auto;text-align:center;background:var(--s1);border:1px solid var(--b1);border-radius:17px;padding:24px 18px;"><div style="font-size:35px;margin-bottom:8px;">${cfg.icon}</div><div style="color:${cfg.color};font-size:16px;font-weight:900;margin-bottom:7px;">${cfg.title}</div><div style="color:var(--t3);font-size:12px;line-height:1.8;">${cfg.body}</div><div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:14px;">${cfg.btns}${retryBtn}</div></div>`;
+}
 let activeCat="all", activeSrc="all", searchQ="";
 /* News is server-aggregated and ranked. Empty does not mean "still loading". */
 let newsFreshness={loading:false,unavailable:false,reason:"",fetchedAt:0,approvedSources:0};
@@ -4406,7 +4447,7 @@ function renderVIP(){
  * The public shell intentionally contains only an honest preview. The complete
  * calculation UI and math module are fetched from server-side requireVipUser
  * routes after a fresh entitlement check; no browser plan flag grants access. */
-const CALCULATOR_PREVIEW_NAMES=["الربح والخسارة","حجم المركز والمخاطرة","حاسبة المستثمر","متوسط الشراء","عائد التوزيعات","CAGR ومضاعف رأس المال","العائد الحقيقي بعد التضخم","محول العملات"];
+const CALCULATOR_PREVIEW_NAMES=["الربح والخسارة","حجم المركز والمخاطرة","حاسبة المستثمر","متوسط الشراء","عائد التوزيعات","محفظة التوزيعات","CAGR ومضاعف رأس المال","العائد الحقيقي بعد التضخم","محول العملات"];
 let calculatorRuntimeLoading=false;
 function calculatorPreviewMarkup(){
   return `<div style="max-width:760px;margin:0 auto;">

@@ -239,6 +239,17 @@ export async function createMemoryDatabase(): Promise<{
     );
     CREATE INDEX user_calculator_scenarios_user_updated_idx ON user_calculator_scenarios(user_id, updated_at);
     CREATE INDEX user_calculator_scenarios_user_status_idx ON user_calculator_scenarios(user_id, status);
+    CREATE TABLE user_fee_profiles (
+      id text PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES app_users(id),
+      name text NOT NULL,
+      items jsonb NOT NULL,
+      status text NOT NULL DEFAULT 'active',
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE UNIQUE INDEX user_fee_profiles_user_name_uidx ON user_fee_profiles(user_id, name);
+    CREATE INDEX user_fee_profiles_user_status_idx ON user_fee_profiles(user_id, status);
     CREATE TABLE user_calculator_activity (
       id text PRIMARY KEY,
       user_id integer NOT NULL REFERENCES app_users(id),

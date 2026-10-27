@@ -404,11 +404,174 @@ export function currencyConvert(input: Record<string, unknown>): CalculatorResul
  * All helpers are named functions and have no closure dependency, so the
  * protected endpoint can safely send this ES module only after hasVip().
  */
+/** Normalize user-entered numerals before validation: Arabic-Indic digits
+ * ٠-٩, the Arabic decimal separator ٫, thousands separators ٬/،/, and
+ * whitespace. Returns a plain numeric string (or "" for blank/garbage) so the
+ * labelled validators produce an honest message either way. */
+export function normalizeNumericText(raw: unknown): string {
+  if (typeof raw === "number") return Number.isFinite(raw) ? String(raw) : "";
+  if (typeof raw !== "string") return "";
+  const mapped = raw
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
+    .replace(/٫/g, ".")
+    .replace(/[،٬]/g, ",")
+    .replace(/,/g, "")
+    .replace(/\s+/g, "");
+  if (mapped === "") return "";
+  return Number.isFinite(Number(mapped)) ? String(Number(mapped)) : "";
+}
+
+/** 9) Dividend portfolio builder: with a fixed budget and an expected annual
+ * dividend yield, how many whole shares can be bought, at what cost, and what
+ * annual dividend income does that position produce? */
+export function dividendPortfolio(input: Record<string, unknown>): CalculatorResult<{
+  amount: number; price: number; yieldPercent: number; taxPercent: number | null;
+  shares: number; cost: number; remaining: number; annualDividend: number; annualDividendNet: number | null;
+}> {
+  if (!isPlainRecord(input)) return failure("بيانات حافظة التوزيعات غير صحيحة");
+  const amount = positive(input.amount, "المبلغ المتاح");
+  const price = positive(input.price, "سعر السهم");
+  const yieldPercent = percentage(input.yieldPercent, "عائد التوزيعات السنوي");
+  const taxRaw = input.taxPercent;
+  const taxBlank = taxRaw === undefined || taxRaw === null || (typeof taxRaw === "string" && taxRaw.trim() === "");
+  const taxPercent = taxBlank ? null : percentage(taxRaw, "نسبة ضريبة التوزيعات");
+  if ([amount, price, yieldPercent, taxPercent].some(valueOrError)) {
+    return [amount, price, yieldPercent, taxPercent].find(valueOrError)!;
+  }
+  const shares = Math.floor((amount as number) / (price as number));
+  if (shares < 1) return failure("المبلغ المتاح لا يكفي لشراء سهم واحد بالسعر المدخل");
+  if (shares > 1_000_000_000) return failure("عدد الأسهم أكبر من الحد المسموح");
+  const cost = (shares as number) * (price as number);
+  const remaining = (amount as number) - cost;
+  const annualDividend = cost * ((yieldPercent as number) / 100);
+  if (!Number.isFinite(annualDividend) || annualDividend > 1_000_000_000_000_000) return failure("النتيجة أكبر من الحد المسموح");
+  return {
+    ok: true,
+    amount: amount as number, price: price as number, yieldPercent: yieldPercent as number,
+    taxPercent, shares,
+    cost: rounded(cost), remaining: rounded(remaining), annualDividend: rounded(annualDividend),
+    annualDividendNet: taxPercent === null ? null : rounded(annualDividend * (1 - (taxPercent as number) / 100)),
+  };
+}
+
+export type FeeLine = {
+  key: string;
+  labelAr: string;
+  side: "buy" | "sell" | "both";
+  percent: number;
+  minimum: number;
+};
+
+export type FeeLineDetail = FeeLine & { fee: number };
+
+/** Validate the user's fee schedule. Blank percent/minimum mean 0 — the
+ * platform never injects a rate on the user's behalf. */
+function feeLines(input: Record<string, unknown>): FeeLine[] | CalculatorError {
+  const raw = input.fees;
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw) || raw.length > 50) return failure("جدول الرسوم غير صحيح");
+  const lines: FeeLine[] = [];
+  for (const item of raw) {
+    if (!isPlainRecord(item)) return failure("بند في جدول الرسوم غير صحيح");
+    const key = String(item["key"] || "").trim().slice(0, 64);
+    if (!key) return failure("بند في جدول الرسوم بلا معرّف");
+    const side = item["side"] === "buy" || item["side"] === "sell" || item["side"] === "both" ? item["side"] : "both";
+    const percentRaw = item["percent"];
+    const minimumRaw = item["minimum"];
+    const percent = percentRaw === undefined || percentRaw === null || percentRaw === "" ? 0 : percentage(percentRaw, "نسبة بند من الرسوم");
+    const minimum = minimumRaw === undefined || minimumRaw === null || minimumRaw === "" ? 0 : nonNegative(minimumRaw, "حد أدنى لبند من الرسوم");
+    if (valueOrError(percent) || valueOrError(minimum)) return valueOrError(percent) ? percent : minimum;
+    lines.push({ key, labelAr: String(item["labelAr"] || key).slice(0, 80), side, percent, minimum });
+  }
+  return lines;
+}
+
+/** Total fees on one side: for each applicable line, max(percent × notional,
+ * minimum). Pure-minimum lines (percent 0) are flat charges. */
+function sideFees(lines: FeeLine[], side: "buy" | "sell", notional: number): { total: number; breakdown: FeeLineDetail[] } {
+  const breakdown: FeeLineDetail[] = lines
+    .filter((line) => line.side === side || line.side === "both")
+    .map((line) => ({
+      ...line,
+      fee: rounded(Math.max((line.percent / 100) * notional, line.minimum)),
+    }));
+  return { total: rounded(breakdown.reduce((sum, line) => sum + line.fee, 0)), breakdown };
+}
+
+/** Break-even sell price with fees. Sell fees are piecewise linear in price
+ * (each line flips from its minimum to its percent at a breakpoint), so the
+ * solution is found interval by interval: inside one interval the set of
+ * minimum-dominated lines is fixed and proceeds(P) is linear. */
+function feeBreakEven(cost: number, quantity: number, lines: FeeLine[]): number | null {
+  const sellLines = lines.filter((line) => line.side === "sell" || line.side === "both");
+  if (!sellLines.length) return cost / quantity;
+  const variable = sellLines.filter((line) => line.percent > 0);
+  const breakpoint = (line: FeeLine): number => line.minimum / ((line.percent / 100) * quantity);
+  const edges: number[] = [0, ...variable.filter((line) => line.minimum > 0).map(breakpoint).sort((a, b) => a - b), Infinity];
+  for (let i = 0; i < edges.length - 1; i += 1) {
+    const low = edges[i];
+    const high = edges[i + 1];
+    /* Inside (low, high) a variable line stays at its minimum iff its
+     * breakpoint is at/above the interval's upper edge. */
+    const atMin = variable.filter((line) => breakpoint(line) >= high);
+    const pctPart = variable.filter((line) => !atMin.includes(line)).reduce((sum, line) => sum + line.percent / 100, 0);
+    const minPart = atMin.reduce((sum, line) => sum + line.minimum, 0);
+    const flatMin = sellLines.filter((line) => line.percent <= 0).reduce((sum, line) => sum + line.minimum, 0);
+    const denominator = quantity * (1 - pctPart);
+    if (denominator <= 0) continue; /* fees grow as fast as proceeds — no break-even */
+    const candidate = (cost + minPart + flatMin) / denominator;
+    const within = candidate > low && (high === Infinity ? candidate >= low : candidate < high);
+    if (within) return candidate;
+  }
+  return null;
+}
+
+/** 10) Buy/sell with a user fee schedule: each side's fees are the sum of
+ * max(percent × notional, minimum) over the lines charged on that side. */
+export function feeTrade(input: Record<string, unknown>): CalculatorResult<{
+  buyPrice: number; sellPrice: number; quantity: number;
+  buyFeeTotal: number; sellFeeTotal: number;
+  buyFees: FeeLineDetail[]; sellFees: FeeLineDetail[];
+  cost: number; proceeds: number; net: number; returnPercent: number;
+  breakEvenPrice: number | null;
+}> {
+  if (!isPlainRecord(input)) return failure("بيانات حاسبة الصفقة بالرسوم غير صحيحة");
+  const buyPrice = positive(input.buyPrice, "سعر الشراء");
+  const sellPrice = positive(input.sellPrice, "سعر البيع");
+  const quantity = positive(input.quantity, "عدد الأسهم");
+  const lines = feeLines(input);
+  const firstFailure = [buyPrice, sellPrice, quantity].find(valueOrError);
+  if (firstFailure) return firstFailure;
+  if (!Array.isArray(lines)) return lines;
+  const feeList: FeeLine[] = lines;
+  const buy = sideFees(feeList, "buy", (buyPrice as number) * (quantity as number));
+  const sell = sideFees(feeList, "sell", (sellPrice as number) * (quantity as number));
+  const cost = (buyPrice as number) * (quantity as number) + buy.total;
+  const proceeds = (sellPrice as number) * (quantity as number) - sell.total;
+  if (!Number.isFinite(cost) || !Number.isFinite(proceeds) || cost <= 0 || proceeds < -1_000_000_000_000_000) {
+    return failure("تعذر حساب النتيجة بهذه القيم");
+  }
+  const net = proceeds - cost;
+  return {
+    ok: true,
+    buyPrice: buyPrice as number, sellPrice: sellPrice as number, quantity: quantity as number,
+    buyFeeTotal: buy.total, sellFeeTotal: sell.total,
+    buyFees: buy.breakdown, sellFees: sell.breakdown,
+    cost: rounded(cost), proceeds: rounded(proceeds), net: rounded(net),
+    returnPercent: rounded((net / cost) * 100),
+    breakEvenPrice: (() => {
+      const value = feeBreakEven(cost, quantity as number, feeList);
+      return value === null || !Number.isFinite(value) ? null : rounded(value);
+    })(),
+  };
+}
+
 export function getCalculatorMathModuleSource(): string {
   const helpers = [
     failure, isPlainRecord, numberInRange, positive, nonNegative, percentage, valueOrError, rounded,
     profitLoss, positionRisk, compoundGrowth, investorSeries, thinPoints, investorProjection,
     averagePurchase, dividendYield, cagr, inflationAdjustedReturn, currencyConvert,
+    normalizeNumericText, dividendPortfolio, feeLines, sideFees, feeBreakEven, feeTrade,
   ].map((fn) => fn.toString()).join("\n\n");
   /* A TypeScript/esbuild transform (tsx's keepNames, for one) prints each
    * declaration as `var f = __name(function …, "f")` and leaves that helper
@@ -416,5 +579,5 @@ export function getCalculatorMathModuleSource(): string {
    * would throw ReferenceError while it is being evaluated — before any
    * calculator runs. The shim is exactly what esbuild itself injects. */
   const keepNamesShim = "const __name = (target, _name) => target;\n";
-  return `${keepNamesShim}${helpers}\n\nexport { profitLoss, positionRisk, compoundGrowth, investorProjection, averagePurchase, dividendYield, cagr, inflationAdjustedReturn, currencyConvert };\n`;
+  return `${keepNamesShim}${helpers}\n\nexport { profitLoss, positionRisk, compoundGrowth, investorProjection, averagePurchase, dividendYield, cagr, inflationAdjustedReturn, currencyConvert, normalizeNumericText, dividendPortfolio, feeTrade };\n`;
 }

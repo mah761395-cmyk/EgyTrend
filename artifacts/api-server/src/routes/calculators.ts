@@ -2,7 +2,13 @@ import crypto from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { userCalculatorActivityTable, userCalculatorScenariosTable } from "@workspace/db/schema";
+import {
+  appSettingsTable,
+  userCalculatorActivityTable,
+  userCalculatorScenariosTable,
+  userFeeProfilesTable,
+  type FeeProfileItem,
+} from "@workspace/db/schema";
 import { EGX_STOCKS } from "../lib/market-data/catalog";
 import { getMarketDataService } from "../lib/market-data/service";
 import { getCalculatorMathModuleSource } from "../lib/calculators/math";
@@ -318,6 +324,130 @@ router.post("/calculators/export", requireVipFeature("calculators"), async (req:
   } catch (error) {
     logger.error({ err: error, userId: user.sub }, "calculator export authorization failed");
     res.status(503).json({ status: "error", message: "تعذر التحقق من التصدير حاليًا؛ لم يتم تأكيد إنشاء PDF." });
+  }
+});
+
+/* ── Fee catalog & user fee schedules ─────────────────────────────────────
+ * The catalog (which fee lines exist) is admin-managed data in app_settings —
+ * never hardcoded rates. Every percent/minimum value is entered by the user
+ * for their own broker and stored in their own fee schedule. */
+const FEE_CATALOG_SETTING_KEY = "calculator_fee_items";
+const FEE_SIDES = new Set(["buy", "sell", "both"]);
+
+async function readFeeCatalog(): Promise<{ ok: true; items: Array<{ key: string; labelAr: string }> } | { ok: false }> {
+  try {
+    const [row] = await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, FEE_CATALOG_SETTING_KEY));
+    const parsed: unknown = row ? JSON.parse(row.value) : null;
+    if (!Array.isArray(parsed) || !parsed.length || parsed.length > 50) return { ok: false };
+    const items = parsed.map((item) => ({
+      key: String((item as SafeObject)?.key || "").trim().slice(0, 64),
+      labelAr: String((item as SafeObject)?.labelAr || "").trim().slice(0, 80),
+    })).filter((item) => item.key && item.labelAr);
+    return items.length ? { ok: true, items } : { ok: false };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function parseFeeProfilePayload(raw: unknown): { name: string; items: FeeProfileItem[] } | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const body = raw as Record<string, unknown>;
+  const name = String(body.name || "").trim().replace(/\s+/g, " ");
+  if (!name || name.length > 60) return null;
+  const rawItems = body.items;
+  if (!Array.isArray(rawItems) || rawItems.length > 50) return null;
+  const items: FeeProfileItem[] = [];
+  for (const entry of rawItems) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+    const record = entry as SafeObject;
+    const key = String(record.key || "").trim().slice(0, 64);
+    const rawSide = String(record.side || "");
+    const side: FeeProfileItem["side"] | null = FEE_SIDES.has(rawSide) ? (rawSide as FeeProfileItem["side"]) : null;
+    if (!key || !side) return null;
+    const percentRaw = record.percent;
+    const minimumRaw = record.minimum;
+    const percent = percentRaw === undefined || percentRaw === null || percentRaw === "" ? 0 : Number(percentRaw);
+    const minimum = minimumRaw === undefined || minimumRaw === null || minimumRaw === "" ? 0 : Number(minimumRaw);
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) return null;
+    if (!Number.isFinite(minimum) || minimum < 0 || minimum > 1_000_000_000_000) return null;
+    items.push({ key, labelAr: String(record.labelAr || key).slice(0, 80), side, percent, minimum });
+  }
+  return { name, items };
+}
+
+router.get("/calculators/fee-catalog", requireVipFeature("calculators"), async (_req: Request, res: Response) => {
+  const catalog = await readFeeCatalog();
+  if (!catalog.ok) {
+    res.status(503).json({ status: "error", message: "قائمة بنود الرسوم غير متاحة حاليًا؛ تأكد من تنفيذ ترحيل قاعدة البيانات في بيئة آمنة." });
+    return;
+  }
+  res.set("Cache-Control", "private, no-store").json({ status: "ok", items: catalog.items });
+});
+
+router.get("/calculators/fee-profiles", requireVipFeature("calculators"), async (req: Request, res: Response) => {
+  const user = currentUser(req)!;
+  try {
+    const rows = await db.select().from(userFeeProfilesTable).where(and(
+      eq(userFeeProfilesTable.userId, user.sub),
+      eq(userFeeProfilesTable.status, "active"),
+    )).orderBy(desc(userFeeProfilesTable.updatedAt)).limit(50);
+    res.set("Cache-Control", "private, no-store").json({
+      status: "ok",
+      profiles: rows.map((row) => ({
+        id: row.id, name: row.name, items: row.items,
+        createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
+      })),
+    });
+  } catch (error) {
+    logger.error({ err: error, userId: user.sub }, "fee profiles read failed");
+    res.status(503).json({ status: "error", message: "ملفات الرسوم غير متاحة حاليًا؛ تأكد من تنفيذ ترحيل قاعدة البيانات في بيئة آمنة." });
+  }
+});
+
+router.post("/calculators/fee-profiles", requireVipFeature("calculators"), async (req: Request, res: Response) => {
+  const user = currentUser(req)!;
+  const parsed = parseFeeProfilePayload(req.body);
+  if (!parsed) {
+    res.status(400).json({ status: "error", message: "بيانات ملف الرسوم غير صحيحة" });
+    return;
+  }
+  const now = new Date();
+  try {
+    /* Same name = an explicit update of that user's schedule. */
+    const [row] = await db.insert(userFeeProfilesTable).values({
+      id: crypto.randomUUID(), userId: user.sub, name: parsed.name, items: parsed.items,
+      status: "active", createdAt: now, updatedAt: now,
+    }).onConflictDoUpdate({
+      target: [userFeeProfilesTable.userId, userFeeProfilesTable.name],
+      set: { items: parsed.items, updatedAt: now },
+    }).returning({ id: userFeeProfilesTable.id });
+    res.status(201).json({ status: "ok", id: row.id });
+  } catch (error) {
+    logger.error({ err: error, userId: user.sub }, "fee profile save failed");
+    res.status(503).json({ status: "error", message: "تعذر حفظ ملف الرسوم حاليًا؛ لم نؤكد نجاح الحفظ." });
+  }
+});
+
+router.delete("/calculators/fee-profiles/:id", requireVipFeature("calculators"), async (req: Request, res: Response) => {
+  const user = currentUser(req)!;
+  const id = String(req.params["id"] || "").trim();
+  if (!ID_RX.test(id)) {
+    res.status(400).json({ status: "error", message: "معرّف ملف الرسوم غير صحيح" });
+    return;
+  }
+  try {
+    const rows = await db.update(userFeeProfilesTable).set({ updatedAt: new Date() })
+      .where(and(eq(userFeeProfilesTable.id, id), eq(userFeeProfilesTable.userId, user.sub)))
+      .returning({ id: userFeeProfilesTable.id });
+    if (!rows.length) {
+      res.status(404).json({ status: "error", message: "ملف الرسوم غير موجود" });
+      return;
+    }
+    await db.delete(userFeeProfilesTable).where(eq(userFeeProfilesTable.id, id));
+    res.json({ status: "ok", deleted: true });
+  } catch (error) {
+    logger.error({ err: error, userId: user.sub }, "fee profile delete failed");
+    res.status(503).json({ status: "error", message: "تعذر حذف ملف الرسوم حاليًا" });
   }
 });
 

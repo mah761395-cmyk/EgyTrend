@@ -20,3 +20,4 @@ export * from "./price_alerts";
 export * from "./market_ohlc";
 export * from "./onboarding";
 export * from "./calculator_scenarios";
+export * from "./fee_profiles";

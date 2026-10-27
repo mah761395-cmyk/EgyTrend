@@ -229,3 +229,146 @@ test("strict validation returns Arabic errors instead of NaN or Infinity", () =>
   const huge = compoundGrowth({ initialAmount: 1e13, annualReturnPercent: 12, monthlyContribution: 0, months: 12 });
   assert.equal(huge.ok, false);
 });
+
+import { feeTrade, dividendPortfolio, normalizeNumericText } from "./math";
+
+test("normalizeNumericText accepts Arabic-Indic digits, ٫ and thousands separators", () => {
+  assert.equal(normalizeNumericText("١٢٣٫٥"), "123.5");
+  assert.equal(normalizeNumericText("٥٦٫٢٧"), "56.27");
+  assert.equal(normalizeNumericText("1٬234"), "1234");
+  assert.equal(normalizeNumericText("١٢٬٣٤٥٫٦"), "12345.6");
+  assert.equal(normalizeNumericText("1,234.56"), "1234.56");
+  assert.equal(normalizeNumericText("  12 "), "12");
+  assert.equal(normalizeNumericText("-٧٫٥"), "-7.5");
+  assert.equal(normalizeNumericText(12.5), "12.5");
+  assert.equal(normalizeNumericText(""), "");
+  assert.equal(normalizeNumericText("abc"), "");
+  assert.equal(normalizeNumericText("12.34.56"), "");
+});
+
+test("dividend portfolio floors shares and reports cost, remainder and annual income", () => {
+  const exact = valid(dividendPortfolio({ amount: 100000, price: 25, yieldPercent: 6 }));
+  assert.equal(exact.shares, 4000);
+  close(exact.cost, 100000);
+  close(exact.remaining, 0);
+  close(exact.annualDividend, 6000);
+  assert.equal(exact.annualDividendNet, null);
+
+  const floored = valid(dividendPortfolio({ amount: 100000, price: 33, yieldPercent: 5 }));
+  assert.equal(floored.shares, 3030); /* floor(100000/33) = 3030.30… */
+  close(floored.cost, 99990);
+  close(floored.remaining, 10);
+  close(floored.annualDividend, 4999.5);
+
+  const taxed = valid(dividendPortfolio({ amount: 100000, price: 33, yieldPercent: 5, taxPercent: 10 }));
+  close(taxed.annualDividend, 4999.5);
+  close(taxed.annualDividendNet, 4499.55);
+});
+
+test("dividend portfolio fails closed on insufficient amount, zero price and huge inputs", () => {
+  const poor = dividendPortfolio({ amount: 10, price: 25, yieldPercent: 6 });
+  assert.equal(poor.ok, false);
+  assert.match(poor.ok ? "" : poor.error, /لا يكفي/);
+
+  const zeroPrice = dividendPortfolio({ amount: 100000, price: 0, yieldPercent: 6 });
+  assert.equal(zeroPrice.ok, false);
+
+  const negative = dividendPortfolio({ amount: -1000, price: 25, yieldPercent: 6 });
+  assert.equal(negative.ok, false);
+
+  const huge = dividendPortfolio({ amount: 1e12, price: 0.1, yieldPercent: 6 });
+  assert.equal(huge.ok, false);
+  assert.match(huge.ok ? "" : huge.error, /الحد المسموح/);
+
+  const beyondInputCap = dividendPortfolio({ amount: 1e15, price: 1, yieldPercent: 6 });
+  assert.equal(beyondInputCap.ok, false); /* rejected at input validation */
+});
+
+test("fee trade with no fees equals the plain P/L result", () => {
+  const result = valid(feeTrade({ buyPrice: 10, sellPrice: 12, quantity: 100, fees: [] }));
+  close(result.cost, 1000);
+  close(result.proceeds, 1200);
+  close(result.net, 200);
+  close(result.returnPercent, 20);
+  close(result.breakEvenPrice as number, 10);
+});
+
+test("fee trade applies percent fees per side and prices break-even through them", () => {
+  const result = valid(feeTrade({
+    buyPrice: 10, sellPrice: 12, quantity: 100,
+    fees: [{ key: "broker_commission", labelAr: "عمولة الوساطة", side: "both", percent: 1, minimum: 0 }],
+  }));
+  close(result.buyFeeTotal, 10);   /* 1% × 1000 */
+  close(result.sellFeeTotal, 12);  /* 1% × 1200 */
+  close(result.cost, 1010);
+  close(result.proceeds, 1188);
+  close(result.net, 178);
+  close(result.returnPercent, 17.6237623762, 10);
+  close(result.breakEvenPrice as number, 1010 / (100 * 0.99), 10);
+});
+
+test("fee minimums dominate small notionals (max of percent and minimum)", () => {
+  const result = valid(feeTrade({
+    buyPrice: 10, sellPrice: 12, quantity: 100,
+    fees: [{ key: "broker_commission", labelAr: "عمولة الوساطة", side: "buy", percent: 1, minimum: 50 }],
+  }));
+  close(result.buyFeeTotal, 50);   /* max(10, 50) */
+  close(result.sellFeeTotal, 0);
+  close(result.cost, 1050);
+  close(result.net, 150);
+  close(result.breakEvenPrice as number, 10.5);
+});
+
+test("fee break-even flips from minimum to percent at the breakpoint", () => {
+  /* Breakpoint = 50 / (1% × 100) = 50. Below it the flat minimum applies. */
+  const below = valid(feeTrade({
+    buyPrice: 10, sellPrice: 12, quantity: 100,
+    fees: [{ key: "stamp_duty", labelAr: "ضريبة الدمغة", side: "sell", percent: 1, minimum: 50 }],
+  }));
+  close(below.breakEvenPrice as number, 10.5);
+
+  /* Same fee, much larger cost: the solution must sit above 50, where the
+   * percent leg applies. */
+  const above = valid(feeTrade({
+    buyPrice: 60, sellPrice: 62, quantity: 100,
+    fees: [{ key: "stamp_duty", labelAr: "ضريبة الدمغة", side: "sell", percent: 1, minimum: 50 }],
+  }));
+  close(above.breakEvenPrice as number, 6000 / (100 * 0.99), 10);
+});
+
+test("pure-minimum sell fees are flat and included in break-even", () => {
+  const result = valid(feeTrade({
+    buyPrice: 10, sellPrice: 12, quantity: 100,
+    fees: [{ key: "stamp_duty", labelAr: "ضريبة الدمغة", side: "sell", percent: 0, minimum: 25 }],
+  }));
+  close(result.sellFeeTotal, 25);
+  close(result.proceeds, 1175);
+  close(result.net, 175);
+  close(result.breakEvenPrice as number, 10.25);
+});
+
+test("a 100 percent sell fee removes any break-even but still reports the loss", () => {
+  const result = valid(feeTrade({
+    buyPrice: 10, sellPrice: 12, quantity: 100,
+    fees: [{ key: "exchange_fee", labelAr: "رسوم البورصة", side: "sell", percent: 100, minimum: 0 }],
+  }));
+  close(result.sellFeeTotal, 1200);
+  close(result.proceeds, 0);
+  close(result.net, -1000);
+  assert.equal(result.breakEvenPrice, null);
+});
+
+test("fee trade validates inputs and rejects malformed fee schedules", () => {
+  assert.equal(feeTrade({ buyPrice: 10, sellPrice: 12, quantity: 0 }).ok, false);
+  assert.equal(feeTrade({ buyPrice: -1, sellPrice: 12, quantity: 100 }).ok, false);
+  assert.equal(feeTrade({ buyPrice: 10, sellPrice: 12, quantity: 100, fees: "بدون" }).ok, false);
+  assert.equal(feeTrade({ buyPrice: 10, sellPrice: 12, quantity: 100, fees: [{ labelAr: "بلا مفتاح", percent: 1 }] }).ok, false);
+  const negativeFee = feeTrade({
+    buyPrice: 10, sellPrice: 12, quantity: 100,
+    fees: [{ key: "x", labelAr: "سالب", side: "buy", percent: -1, minimum: 0 }],
+  });
+  assert.equal(negativeFee.ok, false);
+  /* Undefined fees behave exactly like an empty schedule. */
+  const noFeesKey = feeTrade({ buyPrice: 10, sellPrice: 12, quantity: 100 });
+  assert.equal(noFeesKey.ok, true);
+});
