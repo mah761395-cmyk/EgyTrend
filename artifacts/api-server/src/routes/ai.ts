@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { logger } from "../lib/logger";
-import { currentUser, getVipEntitlement, hasVipFeature, isActivePrivilegedAdmin } from "../lib/userAuth";
+import { currentUser, isActivePrivilegedAdmin, resolveVipFeature, type VipEntitlement } from "../lib/userAuth";
 import { db } from "@workspace/db";
 import { aiConfigTable, aiUsageTable } from "@workspace/db";
 import { and, eq, gte, sql } from "drizzle-orm";
@@ -158,13 +158,28 @@ router.post("/chat", async (req: Request, res: Response) => {
   // A JWT role claim alone is not enough: this rechecks that the staff row is
   // active and still privileged before granting an AI/admin bypass.
   const isAdmin = await isActivePrivilegedAdmin(req);
-  const entitlement = !isAdmin ? await getVipEntitlement(claims) : null;
-  if (!isAdmin && !(await hasVipFeature(claims, "ai"))) {
-    /* A signed, non-VIP session (including a stale VIP token whose entitlement
-     * was cancelled) is denied as unauthenticated for this paid route: the
-     * entitlement table, not the JWT claim, decides access. */
-    res.status(req.header("authorization") ? 403 : 401).json({ status: "error", message: "VIP subscription required" });
-    return;
+  let entitlement: VipEntitlement | null = null;
+  if (!isAdmin) {
+    if (!claims) {
+      /* No session at all (anonymous): 401, same as every other gate. */
+      res.status(401).json({ status: "error", message: "login required" });
+      return;
+    }
+    const check = await resolveVipFeature(claims, "ai");
+    if (check.error) {
+      /* Entitlement DB unreachable: deny, but say it's the server and not the
+       * subscription — a valid VIP must get a retry, not "not VIP". */
+      res.status(503).json({ status: "error", message: "server_error", detail: "تعذر التحقق من اشتراكك الآن — أعد المحاولة" });
+      return;
+    }
+    entitlement = check.entitlement;
+    if (!check.vip) {
+      /* Signed-in but not (currently) VIP, including a stale VIP JWT whose
+       * entitlement was cancelled: 403. 401 stays reserved for missing or
+       * invalid sessions so the client can tell the two apart. */
+      res.status(403).json({ status: "error", message: "VIP subscription required" });
+      return;
+    }
   }
   if (!(await isAiEnabled())) {
     res.status(503).json({ status: "error", message: "ai_disabled_by_admin" });

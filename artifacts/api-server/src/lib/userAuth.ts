@@ -13,6 +13,8 @@ export type UserClaims = {
   jti?: string;
   /** Issued-at (seconds), set by jsonwebtoken. */
   iat?: number;
+  /** Expiry (seconds), set by jsonwebtoken; used for sliding refresh. */
+  exp?: number;
 };
 
 /* Read lazily: the value arrives from the environment (Vercel, .env loaded at
@@ -379,6 +381,39 @@ export async function getVipEntitlement(claims: Pick<UserClaims, "sub"> | null, 
   return legacyEntitlement(user, now);
 }
 
+/**
+ * Resolves VIP for an optional feature WITHOUT hiding database failures.
+ * Gates must still fail closed on `error: true`, but with an honest 503 so
+ * the client can offer a retry instead of telling a valid VIP that their
+ * subscription is over.
+ */
+export interface VipFeatureCheck {
+  /** True when the entitlement was readable AND covers the requested feature. */
+  vip: boolean;
+  /** The entitlement row when readable, otherwise null. */
+  entitlement: VipEntitlement | null;
+  /** True when the entitlement store itself could not be read. */
+  error: boolean;
+}
+
+export async function resolveVipFeature(
+  claims: Pick<UserClaims, "sub"> | null,
+  feature?: string,
+): Promise<VipFeatureCheck> {
+  try {
+    const entitlement = await getVipEntitlement(claims);
+    let vip = entitlement.active;
+    if (vip && feature !== undefined && entitlement.subscriptionType === "trial") {
+      vip =
+        entitlement.trialFeatureScope === "all" ||
+        (Array.isArray(entitlement.trialFeatureScope) && entitlement.trialFeatureScope.includes(feature));
+    }
+    return { vip, entitlement, error: false };
+  } catch {
+    return { vip: false, entitlement: null, error: true };
+  }
+}
+
 /** The one authorization predicate used by every paid API/content gate. */
 export async function hasVip(claims: Pick<UserClaims, "sub"> | null): Promise<boolean> {
   try {
@@ -404,13 +439,26 @@ export async function hasVipFeature(claims: Pick<UserClaims, "sub"> | null, feat
   }
 }
 
+/* Status-code contract shared by every paid gate, so the client can tell the
+ * three failure modes apart instead of showing one generic message:
+ *   401 — no (valid) session at all            -> "log in"
+ *   403 — signed in, entitlement not active    -> "subscription over / renew"
+ *   503 — entitlement store unreachable        -> "server hiccup, retry"
+ * All three DENY access (fail closed); they only differ in the truth told. */
+const SERVER_ERROR_BODY = { status: "error", message: "server_error", detail: "تعذر التحقق من اشتراكك الآن — أعد المحاولة" } as const;
+
 export async function requireVipUser(req: Request, res: Response, next: NextFunction): Promise<void> {
   const claims = currentUser(req);
   if (!claims) {
     res.status(401).json({ status: "error", message: "login required" });
     return;
   }
-  if (!(await hasVip(claims))) {
+  const check = await resolveVipFeature(claims);
+  if (check.error) {
+    res.status(503).json(SERVER_ERROR_BODY);
+    return;
+  }
+  if (!check.vip) {
     res.status(403).json({ status: "error", message: "VIP subscription required" });
     return;
   }
@@ -424,7 +472,12 @@ export function requireVipFeature(feature: string) {
       res.status(401).json({ status: "error", message: "login required" });
       return;
     }
-    if (!(await hasVipFeature(claims, feature))) {
+    const check = await resolveVipFeature(claims, feature);
+    if (check.error) {
+      res.status(503).json(SERVER_ERROR_BODY);
+      return;
+    }
+    if (!check.vip) {
       res.status(403).json({ status: "error", message: "هذه الميزة غير متاحة ضمن اشتراكك الحالي" });
       return;
     }

@@ -334,7 +334,10 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
     method: "POST",
     body: JSON.stringify({ messages: [{ role: "user", content: "test" }] }),
   });
-  assert.equal(staleVipAttempt.response.status, 401, "stale JWT VIP must not grant paid access");
+  /* 403, not 401: the session IS valid, the entitlement is not. 401 stays
+   * reserved for missing/invalid sessions so the client can offer "log in"
+   * vs "renew subscription" vs "server hiccup" accordingly. */
+  assert.equal(staleVipAttempt.response.status, 403, "stale JWT VIP must not grant paid access (denied as non-VIP, not anonymous)");
 
   /* A public status probe cannot trigger a provider health call. */
   const anonymousProbe = await api("/api/ai/status?verify=1", {});

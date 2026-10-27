@@ -1447,6 +1447,7 @@ async function callAI({system, messages, max_tokens=2000, context=null, memory=f
       const d = await r.json().catch(()=>({}));
       if(r.status===429) throw new Error("rate_limit");
       if(r.status===504) throw new Error("timeout");
+      if(r.status===401||r.status===403) void onAuthFailure(r.status);
       const err=new Error(d.message||"HTTP "+r.status);
       err.status=r.status;
       err.detail=d.detail||"";
@@ -1477,13 +1478,15 @@ function aiErrMsg(e){
   if(m==="ai_daily_limit") return "⏳ وصلت للحد اليومي من طلبات الذكاء الاصطناعي — جدّد الاشتراك أو حاول غدًا. (الحد يُدار من لوحة التحكم)";
   if(m==="ai_upstream_failed") return detail ? "⚠️ "+detail : "⚠️ لم أتمكن من الوصول إلى بيانات حديثة لهذا الطلب حاليًا — حاول بعد لحظات.";
   if(m==="ai_disabled_by_admin") return "⚙️ المشرف أوقف خدمة الذكاء الاصطناعي مؤقتاً من لوحة التحكم.";
+  if(m==="server_error") return "⚠️ تعذّر التحقق من الخادم الآن — خطأ مؤقت وليس نهاية اشتراكك، أعد المحاولة بعد لحظات.";
   if(m==="timeout"||m.includes("timeout")) return "⌛ انتهت مهلة الاتصال — حاول مرة أخرى.";
   if(m==="rate_limit"||s===429) return "⚠️ وصلت للحد الأقصى من الطلبات — انتظر دقيقة ثم حاول.";
   if(m==="empty_response") return "⚠️ لم يُنتج AI رداً — حاول مجدداً.";
-  /* جلسة منتهية أو غير VIP لا علاقة لها بالإنترنت — قلها بصراحة بدل إلقاء
-   * اللوم على الشبكة (كان يظهر «تحقق من اتصالك بالإنترنت» في كلتا الحالتين). */
-  if(s===401) return "🔐 لم تسجّل الدخول — سجّل الدخول مرة أخرى ثم أعد المحاولة.";
-  if(s===403) return "⭐ هذه الميزة لمشتركي VIP — إن كان اشتراكك فعّالاً أعد تسجيل الدخول، وإن انتهت مدّته جدّد الاشتراك للمتابعة.";
+  /* 401/403 هما حالتان مختلفتان تماماً: جلسة انتهت (سجّل دخول) ضد
+   * اشتراك غير فعّال (جدّد) — ولا شيء منهما له علاقة بالشبكة، فلا يظهر
+   * «تحقق من اتصالك بالإنترنت» في أي منهما. */
+  if(s===401) return "🔐 لم تعد مسجّل الدخول — انتهت الجلسة، سجّل الدخول ثم أعد المحاولة.";
+  if(s===403) return "⭐ اشتراك VIP غير فعّال حالياً — جدّد اشتراكك ثم أعد المحاولة.";
   if(s===502||s===503) return "🤖 الخدمة لا تستجيب مؤقتاً — حاول بعد لحظات.";
   if(s===504) return "⌛ استغرق الطلب وقتاً أطول من المعتاد — حاول مرة أخرى.";
   return "❌ تعذر الاتصال بالخادم — تحقق من اتصالك بالإنترنت ثم أعد المحاولة.";
@@ -4360,8 +4363,15 @@ async function loadVipCalculatorRuntime(host){
     try{response=await fetch("/api/calculators/bootstrap",{credentials:"same-origin",cache:"no-store",signal:controller.signal});}finally{clearTimeout(timer);}
     const boot=await response.json().catch(()=>({}));
     if(!response.ok){
-      const access=response.status===401||response.status===403;
-      host.innerHTML=calculatorRuntimeError(access?"يتم فتح الحاسبات فقط بعد تحقق الخادم من اشتراك VIP فعّال.":"تعذر التحقق من الوصول الآن. أعد المحاولة لاحقًا.",access);
+      if(response.status===401||response.status===403||response.status===503){
+        /* Session ended / subscription not active / entitlement DB hiccup —
+           one gate decides the message and the CTA; no more "VIP locked"
+           shown to a user whose only problem was an expired session. */
+        const kind=await onAuthFailure(response.status);
+        host.innerHTML=authGateHtml(kind,()=>renderCalculatorsPage());
+        return;
+      }
+      host.innerHTML=calculatorRuntimeError("تعذر الوصول إلى خدمة الحاسبات الآن. أعد المحاولة لاحقًا.",false);
       return;
     }
     if(typeof boot.runtime!=="string"||!boot.runtime.startsWith("/api/calculators/"))throw new Error("invalid calculator runtime");
@@ -4382,15 +4392,10 @@ async function renderCalculatorsPage(){
    * approval (or an admin upgrade), one fresh /api/user/me decides the view.
    * The server bootstrap remains the authority for actual access. */
   if(U){
-    try{
-      const mr=await fetch("/api/user/me",{credentials:"same-origin",cache:"no-store"});
-      const md=await mr.json().catch(()=>({}));
-      if(mr.ok&&md.status==="ok"&&md.user){
-        setCurrentUser({...md.user,trial:md.trial||null,subscription:md.subscription||null});
-        renderHdrVip();
-        if(U.plan==="vip"||U.plan==="admin"){mountCalculatorShell(el);return;}
-      }
-    }catch{}
+    /* Same single-source revalidation as everywhere else (see
+       syncUserFromServer): one /me decides both the badge and this view. */
+    const u=await syncUserFromServer();
+    if(u&&(u.plan==="vip"||u.plan==="admin")){mountCalculatorShell(el);return;}
   }
   el.innerHTML=calculatorPreviewMarkup();
 }
@@ -5312,7 +5317,9 @@ async function loadServerPortfolio(force=false){
   try{
     const r=await fetch("/api/portfolio",{credentials:"same-origin",cache:"no-store",signal:ctrl.signal});
     const j=await r.json().catch(()=>null);
-    if(r.status===403){portfolio=[];portfolioState={loaded:true,loading:false,error:"vip_required",marketAvailable:false};return;}
+    if(r.status===401){portfolio=[];portfolioState={loaded:true,loading:false,error:"login_required",marketAvailable:false};void onAuthFailure(401);return;}
+    if(r.status===403){portfolio=[];portfolioState={loaded:true,loading:false,error:"vip_required",marketAvailable:false};void onAuthFailure(403);return;}
+    if(r.status===503){portfolio=[];portfolioState={loaded:true,loading:false,error:"server_error",marketAvailable:false};return;}
     if(!r.ok||!j||j.status!=="ok")throw new Error("portfolio_unavailable");
     portfolio=normalizeServerPortfolio(j.positions);
     portfolioState={loaded:true,loading:false,error:"",marketAvailable:j.marketAvailable===true};
@@ -5591,7 +5598,12 @@ function portAnalyticsBody(){
 function vBuildPort(b){
   if(portfolioState.loading){b.innerHTML=vLoading("جارٍ تحميل محفظتك من الخادم...");return;}
   if(portfolioState.error){
-    b.innerHTML=`<div class="vbox bl"><div class="vbox-title" style="color:#93c5fd;">💼 محفظتي</div><div class="vempty"><div style="font-size:28px;">⚠️</div><div style="color:var(--dn);font-weight:700;margin-top:6px;">${sanitize(portfolioState.error==="vip_required"?"هذه الميزة لمشتركي VIP":"تعذر تحميل المحفظة")}</div><div style="color:var(--t5);font-size:10.5px;margin-top:5px;">${portfolioState.error==="vip_required"?"يعرض الخادم بيانات المحفظة فقط بعد التحقق من اشتراك VIP فعّال.":sanitize(portfolioState.error)}</div><button class="btn btn-ghost" style="margin-top:10px;padding:8px 13px;" onclick="portfolioState={...portfolioState,error:'',loaded:false};loadServerPortfolio(true)">↻ إعادة المحاولة</button></div></div>`;
+    const errKind=portfolioState.error;
+    const portMsg=errKind==="login_required"?{icon:"🔐",t:"لم تعد مسجّل الدخول",d:"انتهت جلسة الدخول. سجّل الدخول مرة أخرى لمتابعة محفظتك."}
+      :errKind==="vip_required"?{icon:"⭐",t:"اشتراك VIP غير فعّال",d:"يعرض الخادم بيانات المحفظة فقط بعد التحقق من اشتراك VIP فعّال. جدّد الاشتراك للمتابعة."}
+      :errKind==="server_error"?{icon:"⚠️",t:"تعذّر التحقق من الخادم الآن",d:"خطأ مؤقت في الخادم وليس نهاية اشتراكك — أعد المحاولة بعد لحظات."}
+      :{icon:"⚠️",t:"تعذر تحميل المحفظة",d:sanitize(errKind)};
+    b.innerHTML=`<div class="vbox bl"><div class="vbox-title" style="color:#93c5fd;">💼 محفظتي</div><div class="vempty"><div style="font-size:28px;">${portMsg.icon}</div><div style="color:${errKind==="server_error"?"var(--t1)":"var(--dn)"};font-weight:700;margin-top:6px;">${portMsg.t}</div><div style="color:var(--t5);font-size:10.5px;margin-top:5px;">${portMsg.d}</div>${errKind==="login_required"?'<button class="btn btn-au" style="margin-top:10px;padding:8px 13px;" onclick="openAuthModal(\'login\')">🔐 سجّل الدخول الآن</button>':''}${errKind==="vip_required"?'<button class="btn btn-au" style="margin-top:10px;padding:8px 13px;" onclick="openSub()">⭐ جدّد اشتراكك</button>':''}<button class="btn btn-ghost" style="margin-top:10px;padding:8px 13px;" onclick="portfolioState={...portfolioState,error:'',loaded:false};loadServerPortfolio(true)">↻ إعادة المحاولة</button></div></div>`;
     return;
   }
   if(!portfolioState.loaded){b.innerHTML=vLoading("جارٍ تحميل محفظتك من الخادم...");loadServerPortfolio();return;}

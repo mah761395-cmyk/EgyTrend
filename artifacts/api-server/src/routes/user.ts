@@ -262,7 +262,25 @@ router.get("/me", async (req: Request, res: Response) => {
     getVipEntitlement({ sub: user.id }),
     freeTrialAccountStatus(user.id),
   ]);
-  res.json({ status: "ok", user: publicUser(user, entitlement), subscription: publicSubscription(entitlement), trial });
+  const normalized = publicUser(user, entitlement);
+  /* Sliding refresh: an active session with under 24h left gets a fresh
+   * 7-day cookie, so an all-day market screen does not die mid-use. This does
+   * not weaken revocation: a password change revokes by issued-after (the new
+   * token is issued now), logout revokes by jti, and a deleted/cancelled row
+   * is still denied because this route re-reads the user row every time. */
+  const remainingMs = claims.exp ? claims.exp * 1000 - Date.now() : Number.POSITIVE_INFINITY;
+  if (Number.isFinite(remainingMs) && remainingMs < 24 * 60 * 60 * 1000) {
+    const fresh = signUserToken({
+      sub: user.id,
+      phone: user.phone,
+      name: user.name,
+      role: "user",
+      plan: normalized.plan,
+      ...(normalized.vipExpiresAt ? { vipExpiresAt: normalized.vipExpiresAt } : {}),
+    });
+    res.cookie(USER_SESSION_COOKIE, fresh, sessionCookieOptions(7 * 24 * 60 * 60 * 1000));
+  }
+  res.json({ status: "ok", user: normalized, subscription: publicSubscription(entitlement), trial });
 });
 
 /* ═══════════ FIRST-USE ONBOARDING (authenticated account only) ═══════════ */
