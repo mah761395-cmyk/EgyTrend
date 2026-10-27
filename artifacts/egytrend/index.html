@@ -3069,7 +3069,13 @@ function doAuth(){
       const email=document.getElementById("a-email").value.trim();
       const referralCode=document.getElementById("a-referral")?.value.trim().toUpperCase().slice(0,32)||"";
       if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){showE("البريد الإلكتروني غير صحيح");return;}
-      const rr=await fetch("/api/user/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,phone,password:pass,email:email||undefined,referralCode:referralCode||undefined})});
+      let rr;
+      try{
+        rr=await fetch("/api/user/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,phone,password:pass,email:email||undefined,referralCode:referralCode||undefined})});
+      }catch{
+        showE("تعذر الاتصال بالخادم — لم يصل رد على طلب إنشاء الحساب. تحقق من اتصالك ثم أعد المحاولة.");
+        return;
+      }
       const rd=await rr.json().catch(()=>({}));
       if(!rr.ok||rd.status!=="ok"||!rd.user){showE(rd.message||"تعذر إنشاء الحساب");return;}
       setCurrentUser({...rd.user,trial:rd.trial||null,subscription:rd.subscription||null});
@@ -3078,29 +3084,64 @@ function doAuth(){
       /* Admin authentication is server-verified and establishes an HttpOnly
        * same-origin session cookie. There is no offline/admin fallback. */
       if(phone==="admin"||/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(phone)){
+        const isEmail=/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(phone);
+        /* Email → employee JWT flow; "admin" → legacy ADMIN_PASSWORD flow. */
+        const adminBody = isEmail ? {email:phone.trim().toLowerCase(),password:pass} : {password:pass};
+        const aCtrl=new AbortController(),aTimer=setTimeout(()=>aCtrl.abort(),15000);
+        let lr;
         try{
-          /* Email → employee JWT flow; "admin" → legacy ADMIN_PASSWORD flow. */
-          const adminBody = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(phone)
-            ? {email:phone.trim().toLowerCase(),password:pass}
-            : {password:pass};
-          const lr = await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(adminBody)});
-          const lj = await lr.json();
-          if(lr.ok && lj.status==="ok"){
-            U={name:lj.employee?.name||"المدير",phone:"admin",plan:"admin",role:lj.employee?.role||"admin"};
-          } else {
-            showE("كلمة مرور المدير غير صحيحة");
-            return;
-          }
-        }catch{
-          // Offline fallback: legacy local admin (no server CRUD privileges)
-           showE("تعذر الاتصال بالخادم");return;
+          lr=await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(adminBody),signal:aCtrl.signal});
+        }catch(e){
+          clearTimeout(aTimer);
+          /* Network-level: the browser never received a response (dropped POST,
+             offline, or the 15s cap). Say which, so a flaky link is distinguishable
+             from a server fault. */
+          showE(e&&e.name==="AbortError"
+            ?"انتهت مهلة الاتصال بالخادم (15 ثانية). تحقق من اتصالك ثم أعد المحاولة."
+            :"تعذر الاتصال بالخادم — لم يصل رد على طلب الدخول. تحقق من اتصالك ثم أعد المحاولة.");
+          return;
+        }
+        clearTimeout(aTimer);
+        let lj;
+        try{lj=await lr.json();}catch{
+          /* The function answered but not with JSON — a platform error page
+             (502/504 = timeout, 500 = crash). Surface the status so it can be
+             diagnosed instead of reading as a random connection problem. */
+          showE(`استجابة غير متوقعة من الخادم (HTTP ${lr.status}). أعد المحاولة، وإذا استمرت تواصل معنا.`);
+          return;
+        }
+        if(lr.ok&&lj.status==="ok"){
+          U={name:lj.employee?.name||"المدير",phone:"admin",plan:"admin",role:lj.employee?.role||"admin"};
+        } else {
+          /* The server message is the truth. Collapsing every failure into
+             «كلمة مرور غير صحيحة» hid rate limits (429), disabled accounts and
+             misconfiguration — exactly what made this incident undiagnosable. */
+          const m=lj.message||"";
+          const adminMsg = (m==="invalid credentials"||m==="invalid password")
+            ?"كلمة مرور المدير غير صحيحة"
+            : m==="account disabled"
+            ?"حساب المدير موقوف — تواصل مع المشرف"
+            : m==="too many failed attempts — try again in 15 minutes"
+            ?"محاولات كثيرة — انتظر 15 دقيقة ثم أعد المحاولة"
+            : /too many login attempts/i.test(m)
+            ?`محاولات كثيرة — حاول مرة أخرى بعد ${lj.retryAfter||5} ثانية`
+            : (m==="admin password is not configured"||m==="use an active employee account")
+            ?"دخول المدير بكلمة المرور غير مُفعّل — استخدم حساب الموظف النشط"
+            :(m||"تعذر تسجيل دخول المدير");
+          showE(adminMsg);
+          return;
         }
       }
       else{
-        const ur=await fetch("/api/user/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,password:pass})});
-        const ud=await ur.json().catch(()=>({}));
-        if(!ur.ok||ud.status!=="ok"||!ud.user){showE(ud.message==="invalid credentials"?"الرقم أو كلمة المرور غير صحيحة":ud.message||"تعذر تسجيل الدخول");return;}
-        setCurrentUser({...ud.user,trial:ud.trial||null,subscription:ud.subscription||null});
+        try{
+          const ur=await fetch("/api/user/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,password:pass})});
+          const ud=await ur.json().catch(()=>({}));
+          if(!ur.ok||ud.status!=="ok"||!ud.user){showE(ud.message==="invalid credentials"?"الرقم أو كلمة المرور غير صحيحة":ud.message||"تعذر تسجيل الدخول");return;}
+          setCurrentUser({...ud.user,trial:ud.trial||null,subscription:ud.subscription||null});
+        }catch{
+          showE("تعذر الاتصال بالخادم — لم يصل رد على طلب الدخول. تحقق من اتصالك ثم أعد المحاولة.");
+          return;
+        }
       }
     }
     bootApp();
