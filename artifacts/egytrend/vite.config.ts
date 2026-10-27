@@ -1,4 +1,5 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin, type ViteDevServer } from "vite";
+import type { IncomingMessage, ServerResponse } from "http";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
@@ -16,9 +17,32 @@ const port = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 3000;
 
 const basePath = process.env.BASE_PATH ?? "/";
 
+/* Local entry alias for the standalone admin portal. Vercel serves /admin via a
+ * rewrite in vercel.json; in dev/preview we fall back to a URL rewrite so the
+ * same entry (/admin) works locally instead of the SPA serving index.html. */
+function adminEntryAlias(): Plugin {
+  const middleware = (req: IncomingMessage, _res: ServerResponse, next: () => void): void => {
+    const url = req.originalUrl ?? req.url ?? "";
+    if (url === "/admin" || url.startsWith("/admin?") || url.startsWith("/admin/")) {
+      req.url = url.replace(/^\/admin(?=$|\?|\/)/, "/admin.html");
+    }
+    next();
+  };
+  return {
+    name: "admin-entry-alias",
+    configureServer(server) {
+      server.middlewares.use(middleware);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(middleware);
+    },
+  };
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
+    adminEntryAlias(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),

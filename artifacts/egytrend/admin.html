@@ -1983,16 +1983,33 @@ document.addEventListener("DOMContentLoaded",async()=>{
    * cookie. Local storage remains for non-sensitive UI preferences only. */
   loadUserScopedData();
   try{
-    const r=await fetch("/api/user/me",{credentials:"same-origin"});
-    const d=await r.json().catch(()=>({}));
-    if(r.ok&&d.status==="ok"&&d.user){setCurrentUser({...d.user,trial:d.trial||null,subscription:d.subscription||null});bootApp();}
-    else{
-      const ar=await fetch("/api/admin/session",{credentials:"same-origin"});
-      const ad=await ar.json().catch(()=>({}));
-      if(ar.ok&&ad.status==="ok"&&ad.employee){
+    if(IS_ADMIN_PORTAL){
+      /* The admin portal resolves the staff cookie first: a staff member who
+       * also uses the public site in the same browser keeps a user session, and
+       * that session must not bounce them off the portal. The employee session
+       * is still verified server-side (same cookies the API rbac-checks). */
+      const ad=await fetch("/api/admin/session",{credentials:"same-origin"}).then(r=>r.json().catch(()=>({}))).catch(()=>({}));
+      if(ad&&ad.status==="ok"&&ad.employee){
         U={name:ad.employee.name||"المدير",phone:"admin",plan:"admin",role:ad.employee.role};
         bootApp();
-      }else showGuestLanding();
+      }else{
+        const r=await fetch("/api/user/me",{credentials:"same-origin"});
+        const d=await r.json().catch(()=>({}));
+        if(r.ok&&d.status==="ok"&&d.user){setCurrentUser({...d.user,trial:d.trial||null,subscription:d.subscription||null});bootApp();}
+        else showGuestLanding();
+      }
+    }else{
+      const r=await fetch("/api/user/me",{credentials:"same-origin"});
+      const d=await r.json().catch(()=>({}));
+      if(r.ok&&d.status==="ok"&&d.user){setCurrentUser({...d.user,trial:d.trial||null,subscription:d.subscription||null});bootApp();}
+      else{
+        const ar=await fetch("/api/admin/session",{credentials:"same-origin"});
+        const ad=await ar.json().catch(()=>({}));
+        if(ar.ok&&ad.status==="ok"&&ad.employee){
+          U={name:ad.employee.name||"المدير",phone:"admin",plan:"admin",role:ad.employee.role};
+          bootApp();
+        }else showGuestLanding();
+      }
     }
   }catch{showGuestLanding();}
   /* Guests may receive guest-targeted announcements; this runs after the
