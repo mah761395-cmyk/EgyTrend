@@ -221,6 +221,86 @@ export async function isActivePrivilegedAdmin(req: Request): Promise<boolean> {
   return admin?.role === "admin" || admin?.role === "super_admin";
 }
 
+/* ═══ Staff → app identity bridge (admin login = full VIP, safely) ═══════
+ * A verified, active, privileged staff session (admin / super_admin) maps to
+ * a stable, dedicated app_users row (phone "staff-<employeeId>") so its
+ * user-scoped data (fee profiles, scenarios, portfolio, alerts) has an owner
+ * without ever touching a real customer account.
+ *
+ * Safety properties:
+ *  - The staff phone contains non-digits, so normalizeUserPhone() reduces it
+ *    to "" — it can never be found by phone login, SMS, or referral matching.
+ *  - The password hash is a random unusable value; user password login can
+ *    never succeed against it.
+ *  - currentActiveAdmin() re-checks the live employee row on every call, so a
+ *    suspended/deleted staff member loses app VIP immediately (fail closed).
+ *  - An archived/banned staff row is a kill switch: the bridge refuses to map
+ *    (401 on data and entitlement gates) until the row is active again.
+ * ══════════════════════════════════════════════════════════════════════ */
+export const STAFF_PHONE_PREFIX = "staff-";
+export function staffPhoneFor(employeeId: number): string {
+  return `${STAFF_PHONE_PREFIX}${employeeId}`;
+}
+export function isStaffLinkedPhone(phone: unknown): boolean {
+  return typeof phone === "string" && phone.startsWith(STAFF_PHONE_PREFIX);
+}
+
+export type AppOwner = {
+  /** The app_users.id that owns all user-scoped data for this request. */
+  sub: number;
+  /** true when the owner is the staff-linked row (not a customer account). */
+  staff: boolean;
+};
+
+async function ensureStaffUserRow(admin: AdminClaims): Promise<number | null> {
+  const { db } = await import("@workspace/db");
+  const { appUsersTable } = await import("@workspace/db/schema");
+  const { eq } = await import("drizzle-orm");
+  const { isDuplicateKeyError } = await import("./dbErrors");
+  const phone = staffPhoneFor(admin.sub);
+  const [row] = await db.select({ id: appUsersTable.id, status: appUsersTable.status })
+    .from(appUsersTable).where(eq(appUsersTable.phone, phone)).limit(1);
+  if (row) return row.status === "active" ? row.id : null;
+  const now = new Date();
+  try {
+    const [created] = await db.insert(appUsersTable).values({
+      phone,
+      name: `موظف — ${admin.name}`.slice(0, 120),
+      /* Unusable by construction: user login looks accounts up by a
+       * digit-normalized phone, which can never match this namespace. */
+      passwordHash: `staff-unusable$${crypto.randomBytes(24).toString("hex")}`,
+      plan: "vip",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    }).returning({ id: appUsersTable.id });
+    return created?.id ?? null;
+  } catch (error) {
+    if (!isDuplicateKeyError(error)) return null;
+    const [again] = await db.select({ id: appUsersTable.id, status: appUsersTable.status })
+      .from(appUsersTable).where(eq(appUsersTable.phone, phone)).limit(1);
+    return again && again.status === "active" ? again.id : null;
+  }
+}
+
+/**
+ * The app data owner for a request: the customer's user session when present
+ * (behavior unchanged), else a verified, active, privileged staff session
+ * mapped to its dedicated staff-linked user row.
+ */
+export async function currentAppOwner(req: Request): Promise<AppOwner | null> {
+  const user = currentUser(req);
+  if (user) return { sub: user.sub, staff: false };
+  const admin = await currentActiveAdmin(req);
+  if (!admin || (admin.role !== "admin" && admin.role !== "super_admin")) return null;
+  try {
+    const sub = await ensureStaffUserRow(admin);
+    return sub ? { sub, staff: true } : null;
+  } catch {
+    return null;
+  }
+}
+
 export type VipEntitlement = {
   /** `true` only after a server-side user + entitlement check. */
   active: boolean;
@@ -447,9 +527,18 @@ export async function hasVipFeature(claims: Pick<UserClaims, "sub"> | null, feat
  * All three DENY access (fail closed); they only differ in the truth told. */
 const SERVER_ERROR_BODY = { status: "error", message: "server_error", detail: "تعذر التحقق من اشتراكك الآن — أعد المحاولة" } as const;
 
+/* A customer session always wins (same priority the client boot uses). Only
+ * when no user session exists does a verified, active, privileged staff
+ * session unlock the paid features — the same bypass the AI and markets
+ * routes already grant. */
+async function staffVipBypass(req: Request): Promise<boolean> {
+  return currentUser(req) === null && (await isActivePrivilegedAdmin(req));
+}
+
 export async function requireVipUser(req: Request, res: Response, next: NextFunction): Promise<void> {
   const claims = currentUser(req);
   if (!claims) {
+    if (await staffVipBypass(req)) { next(); return; }
     res.status(401).json({ status: "error", message: "login required" });
     return;
   }
@@ -469,6 +558,7 @@ export function requireVipFeature(feature: string) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const claims = currentUser(req);
     if (!claims) {
+      if (await staffVipBypass(req)) { next(); return; }
       res.status(401).json({ status: "error", message: "login required" });
       return;
     }

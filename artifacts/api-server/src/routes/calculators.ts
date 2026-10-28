@@ -13,7 +13,7 @@ import { EGX_STOCKS } from "../lib/market-data/catalog";
 import { getMarketDataService } from "../lib/market-data/service";
 import { getCalculatorMathModuleSource } from "../lib/calculators/math";
 import { getCalculatorRuntimeModuleSource } from "../lib/calculators/runtime";
-import { currentUser, requireVipFeature } from "../lib/userAuth";
+import { currentAppOwner, requireVipFeature } from "../lib/userAuth";
 import { getStocksSnapshot, type StockQuote } from "./markets";
 import { logger } from "../lib/logger";
 
@@ -235,7 +235,11 @@ router.get("/calculators/fx", requireVipFeature("calculators"), async (_req: Req
 });
 
 router.get("/calculators/scenarios", requireVipFeature("calculators"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   const calculatorKey = String(req.query["calculator"] || "").trim();
   if (!CALCULATOR_KEYS.has(calculatorKey)) {
     res.status(400).json({ status: "error", message: "نوع الحاسبة غير صحيح" });
@@ -255,7 +259,11 @@ router.get("/calculators/scenarios", requireVipFeature("calculators"), async (re
 });
 
 router.post("/calculators/scenarios", requireVipFeature("calculators"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   const input = parsePayload(req.body, "scenario");
   if (!input || !input.name) {
     res.status(400).json({ status: "error", message: "اسم السيناريو وبيانات الحاسبة الصحيحة مطلوبان" });
@@ -283,7 +291,11 @@ router.post("/calculators/scenarios", requireVipFeature("calculators"), async (r
 
 /** Archive rather than delete a financial scenario. */
 router.delete("/calculators/scenarios/:id", requireVipFeature("calculators"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   const id = String(req.params["id"] || "").trim();
   if (!ID_RX.test(id)) {
     res.status(400).json({ status: "error", message: "معرّف السيناريو غير صحيح" });
@@ -308,7 +320,11 @@ router.delete("/calculators/scenarios/:id", requireVipFeature("calculators"), as
  * PDF. This authorization/log endpoint must succeed before the protected
  * runtime writes any exportable result into the print window. */
 router.post("/calculators/export", requireVipFeature("calculators"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   const raw = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body as Record<string, unknown> : {};
   const input = parsePayload({ ...raw, action: "exported" }, "activity");
   if (!input) {
@@ -385,7 +401,11 @@ router.get("/calculators/fee-catalog", requireVipFeature("calculators"), async (
 });
 
 router.get("/calculators/fee-profiles", requireVipFeature("calculators"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   try {
     const rows = await db.select().from(userFeeProfilesTable).where(and(
       eq(userFeeProfilesTable.userId, user.sub),
@@ -405,7 +425,11 @@ router.get("/calculators/fee-profiles", requireVipFeature("calculators"), async 
 });
 
 router.post("/calculators/fee-profiles", requireVipFeature("calculators"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   const parsed = parseFeeProfilePayload(req.body);
   if (!parsed) {
     res.status(400).json({ status: "error", message: "بيانات ملف الرسوم غير صحيحة" });
@@ -429,7 +453,11 @@ router.post("/calculators/fee-profiles", requireVipFeature("calculators"), async
 });
 
 router.delete("/calculators/fee-profiles/:id", requireVipFeature("calculators"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   const id = String(req.params["id"] || "").trim();
   if (!ID_RX.test(id)) {
     res.status(400).json({ status: "error", message: "معرّف ملف الرسوم غير صحيح" });
@@ -452,7 +480,11 @@ router.delete("/calculators/fee-profiles/:id", requireVipFeature("calculators"),
 });
 
 router.get("/calculators/history", requireVipFeature("calculators"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   try {
     const rows = await db.select().from(userCalculatorActivityTable)
       .where(and(eq(userCalculatorActivityTable.userId, user.sub), eq(userCalculatorActivityTable.status, "active")))
@@ -465,7 +497,11 @@ router.get("/calculators/history", requireVipFeature("calculators"), async (req:
 });
 
 router.post("/calculators/history", requireVipFeature("calculators"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   const input = parsePayload(req.body, "activity");
   if (!input || !input.action) {
     res.status(400).json({ status: "error", message: "بيانات العملية غير صحيحة" });

@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { appUsersTable, userNotificationsTable, userPriceAlertsTable } from "@workspace/db/schema";
 import { EGX_STOCKS } from "../lib/market-data/catalog";
-import { currentUser, requireVipFeature } from "../lib/userAuth";
+import { currentAppOwner, requireVipFeature } from "../lib/userAuth";
 import { escapeHtml, isSmtpConfigured, sendMail } from "../lib/mailer";
 import { logger } from "../lib/logger";
 import { getStocksSnapshot, type StockQuote } from "./markets";
@@ -74,7 +74,11 @@ function publicAlert(row: typeof userPriceAlertsTable.$inferSelect) {
 }
 
 router.get("/price-alerts", requireVipFeature("price_alerts"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   try {
     const rows = await db.select().from(userPriceAlertsTable)
       .where(eq(userPriceAlertsTable.userId, user.sub))
@@ -87,7 +91,11 @@ router.get("/price-alerts", requireVipFeature("price_alerts"), async (req: Reque
 });
 
 router.post("/price-alerts", requireVipFeature("price_alerts"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   const input = parseAlertInput(req.body);
   if (!input) {
     res.status(400).json({ status: "error", message: "بيانات التنبيه غير صحيحة" });
@@ -160,7 +168,11 @@ router.post("/price-alerts", requireVipFeature("price_alerts"), async (req: Requ
 });
 
 router.delete("/price-alerts/:id", requireVipFeature("price_alerts"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   const id = String(req.params["id"] || "").trim();
   if (!ID_RX.test(id)) {
     res.status(400).json({ status: "error", message: "معرّف التنبيه غير صحيح" });

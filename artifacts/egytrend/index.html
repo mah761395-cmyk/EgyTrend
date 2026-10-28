@@ -1822,7 +1822,11 @@ async function onAuthFailure(status){
       const fresh=await syncUserFromServer();
       if(fresh&&(fresh.plan==="vip"||fresh.plan==="admin"))return "server"; /* deny + valid VIP = transient server denial */
       if(status===401){
-        if(U){U=null;if(typeof renderHdrVip==="function")renderHdrVip();}
+        /* An admin (panel) session is a different identity from a user
+           session — and app VIP features now accept it server-side, so a 401
+           here means the admin session itself died, not "use a user account".
+           Never wipe it; the login modal accepts an admin sign-in again. */
+        if(U&&U.plan!=="admin"){U=null;if(typeof renderHdrVip==="function")renderHdrVip();}
         return "login";
       }
       return fresh?"vip":"login";
@@ -7113,6 +7117,7 @@ function renderSub(){
   if(subStep===1){
     el.innerHTML=`
       <div style="text-align:center;margin-bottom:18px;"><div style="font-size:32px;margin-bottom:4px;color:var(--vip);">${uiIcon("star")}</div><div style="color:var(--vip);font-weight:900;font-size:18px;">اشتراك VIP</div><div style="color:var(--t4);font-size:11.5px;margin-top:2px;">الأسعار وطرق الدفع أدناه من إعدادات الخادم الحالية</div></div>
+      ${U&&U.plan==="admin"?`<div style="background:var(--aud);border:1px solid rgba(245,158,11,.3);border-radius:11px;padding:10px 12px;margin-bottom:11px;color:var(--au);font-size:12px;line-height:1.7;font-weight:600;">👑 حساب الأدمن يفتح كل ميزات الـ VIP تلقائيًا — لا يحتاج دفعًا أو اشتراكًا. يمكنك إغلاق هذه النافذة ومتابعة الاستخدام.</div>`:""}
       <div class="plan-grid">${Object.entries(P).map(([k,p])=>`<div class="plan-c${selPlan===k?" active":""}" onclick='sPlan(${safeJsArg(k)})'>${(p.priceBadge||p.badge)?`<span class="plan-badge">${sanitize(p.priceBadge||p.badge)}</span>`:""}<div class="plan-label">${sanitize(p.l)}</div><div class="plan-price">${subscriptionPriceMarkup(p,{showPeriod:false})}</div><div class="plan-period">${sanitize(p.per)}</div>${subscriptionCountdownMarkup(p)}</div>`).join("")}</div>
       <div style="color:var(--t4);font-size:10.5px;line-height:1.75;background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:9px 10px;margin:11px 0;">بعد اختيار الباقة، تظهر وسائل الدفع المفعّلة من الخادم. لا يُفعّل الاشتراك إلا بعد مراجعة إثبات الدفع.</div>
       ${planComparisonHtml(P)}
