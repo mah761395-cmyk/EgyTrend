@@ -5,6 +5,7 @@ import {
   adminSessionToken,
   currentUser,
   currentActiveAdmin,
+  isStaffLinkedPhone,
   readSessionCookie,
   sessionCookieOptions,
 } from "../lib/userAuth";
@@ -2419,6 +2420,17 @@ router.post("/free-trial/users/:id/grant", requireAuth, requireWriteRate, requir
   const userId = trialUserId(req.params["id"]);
   const days = req.body?.days === undefined ? undefined : Number(req.body.days);
   if (!userId || (days !== undefined && (!Number.isInteger(days) || days < 1 || days > 31))) { res.status(400).json({ status: "error", message: "المدة اليدوية يجب أن تكون من 1 إلى 31 يومًا." }); return; }
+  /* Staff-linked app rows (admin login data store) are VIP by session, never
+   * by subscription: a trial grant to them would be inert but confusing, so
+   * refuse it explicitly. */
+  try {
+    const [target] = await db.select({ phone: appUsersTable.phone }).from(appUsersTable)
+      .where(eq(appUsersTable.id, userId)).limit(1);
+    if (target && isStaffLinkedPhone(target.phone)) {
+      res.status(409).json({ status: "error", message: "هذا الحساب مرتبط بحساب موظف ولا يقبل تجربة مجانية — ميزات الـ VIP مفعّلة بدخول الموظف نفسه." });
+      return;
+    }
+  } catch { /* selection hiccup: fall through, startFreeTrial re-validates the row */ }
   try {
     const result = await startFreeTrial({ userId, mode: "admin", durationDays: days, actorEmployeeId: req.actor?.sub || null, ip: req.ip || "", device: "admin-manual-grant" });
     if (result.reason !== "started") { res.status(409).json({ status: "error", reason: result.reason, message: "تعذر منح التجربة: الحساب لديه تجربة نشطة أو اشتراك مدفوع." }); return; }

@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { portfolioPositionsTable } from "@workspace/db/schema";
 import { EGX_STOCKS } from "../lib/market-data/catalog";
-import { currentUser, requireVipFeature } from "../lib/userAuth";
+import { currentAppOwner, requireVipFeature } from "../lib/userAuth";
 import { getStocksSnapshot, type StockQuote } from "./markets";
 import { logger } from "../lib/logger";
 import { withTimeout } from "../lib/with-timeout";
@@ -68,7 +68,11 @@ function publicPosition(row: typeof portfolioPositionsTable.$inferSelect, quote?
 /* All portfolio reads/writes require the central server-side entitlement.
  * Local storage may still hold old UI preferences, but never portfolio truth. */
 router.get("/portfolio", requireVipFeature("portfolio"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   try {
     const rows = await db.select().from(portfolioPositionsTable)
       .where(and(eq(portfolioPositionsTable.userId, user.sub), eq(portfolioPositionsTable.status, "active")))
@@ -96,7 +100,11 @@ router.get("/portfolio", requireVipFeature("portfolio"), async (req: Request, re
 });
 
 router.post("/portfolio/positions", requireVipFeature("portfolio"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   const input = parsePositionInput(req.body);
   if (!input) {
     res.status(400).json({ status: "error", message: "أدخل رمزًا صحيحًا وكمية صحيحة ومتوسط تكلفة أكبر من صفر" });
@@ -151,7 +159,11 @@ router.post("/portfolio/positions", requireVipFeature("portfolio"), async (req: 
 });
 
 router.put("/portfolio/positions/:id", requireVipFeature("portfolio"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   const id = String(req.params["id"] || "").trim();
   const input = parsePositionInput(req.body);
   if (!ID_RX.test(id) || !input) {
@@ -187,7 +199,11 @@ router.put("/portfolio/positions/:id", requireVipFeature("portfolio"), async (re
 });
 
 router.delete("/portfolio/positions/:id", requireVipFeature("portfolio"), async (req: Request, res: Response) => {
-  const user = currentUser(req)!;
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
   const id = String(req.params["id"] || "").trim();
   if (!ID_RX.test(id)) {
     res.status(400).json({ status: "error", message: "معرّف المركز غير صحيح" });
