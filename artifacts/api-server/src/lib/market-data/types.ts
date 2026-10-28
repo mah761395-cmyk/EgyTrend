@@ -40,6 +40,12 @@ export type CanonicalQuote = {
   currency?: string;
   /** Provider timestamp, in epoch milliseconds. */
   asOf: number;
+  /**
+   * True when the source gives no data timestamp and `asOf` is the server's
+   * fetch time (HTML scrape, public scanner). Freshness for such quotes is
+   * judged by session state at fetch time, never by wall-clock age.
+   */
+  sourceAsOfUnknown?: boolean;
   sourceId: string;
   sourceName: string;
   /** The provider's contractual latency. 0 is real-time; undefined is not guessed. */

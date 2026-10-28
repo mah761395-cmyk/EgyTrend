@@ -42,6 +42,8 @@ They are intentionally SQL files rather than a `drizzle-kit push`: no verified i
 - `0011_user_onboarding` adds an account-owned tour/checklist record. It contains only product-navigation progress; it never changes a subscription, payment, entitlement, or portfolio/alert record. Its rollback only removes that onboarding state.
 - `0012_payment_tx_idempotency` adds a normalized, case-insensitive unique index for payment transfer references so concurrent application instances cannot create duplicate payment requests. It refuses to guess which pre-existing duplicate is valid; an operator must review those records before running it. Its rollback drops only the index and does not remove payment evidence.
 - `0013_vip_onboarding_tour` adds display-state columns for the guided VIP welcome tour on the existing `user_onboarding` row (version, status and timestamps). It is shown once when an account first holds an active VIP entitlement and never grants, extends, or renews access. Its rollback removes only those tour columns.
+- `0017_data_quality_events` adds the bounded, anomaly-only telemetry table for data-source monitoring (proposal: `docs/data-quality-monitoring-plan.md`). Additive only; its rollback drops the telemetry table and nothing else.
+- `0018_user_onboarding_tour_replayed` adds the `vip_tour_replayed_at` timestamp so a VIP-tour replay is recorded server-side without clearing the permanent completion/skip state. Additive only; its rollback removes only that column.
 
 ## Safe execution sequence
 

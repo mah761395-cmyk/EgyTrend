@@ -70,10 +70,11 @@ function vipFeatureProjection(entitlement: Awaited<ReturnType<typeof getVipEntit
     ai: allowed("ai"),
     opportunities: allowed("opportunities"),
     indicators: allowed("indicators"),
-    /* Markets, reports and subscription management ship inside the VIP area
-     * itself and are not individually scoped features. */
+    /* Markets, the screener, reports and subscription management ship inside
+     * the VIP area itself and are not individually scoped features. */
     markets: entitlement.active,
     reports: entitlement.active,
+    screener: entitlement.active,
   };
 }
 
@@ -88,6 +89,9 @@ function vipTourState(record: OnboardingRecord, entitlement: Awaited<ReturnType<
     startedAt: iso(record.vipTourStartedAt),
     completedAt: iso(record.vipTourCompletedAt),
     skippedAt: iso(record.vipTourSkippedAt),
+    /* Replay bookkeeping (A2-a simple analytics): set when the user replays
+     * after first acknowledging; never affects shouldShow or entitlements. */
+    replayedAt: iso(record.vipTourReplayedAt),
   };
 }
 
@@ -171,19 +175,34 @@ export async function setOnboardingTourAction(
 ) {
   const record = await ensureOnboardingRecord(userId, now);
   if (tour === "vip") {
+    /* Permanent state rule: once the VIP tour is acknowledged (terminal
+     * status at the current version) a replay must not clear it — an
+     * unfinished replay would otherwise re-arm the auto-start on the next
+     * visit. Replays are bookkept in vipTourReplayedAt only; the deliberate
+     * reset action (settings) is the single path back to "new". */
+    const acknowledged = record.vipTourVersion >= VIP_ONBOARDING_TOUR_VERSION
+      && ["completed", "skipped"].includes(record.vipTourStatus);
     if (action === "started") {
       await db.update(userOnboardingTable).set({
-        vipTourStartedAt: record.vipTourStartedAt || now, updatedAt: now,
+        vipTourStartedAt: record.vipTourStartedAt || now,
+        ...(acknowledged ? { vipTourReplayedAt: now } : {}),
+        updatedAt: now,
       }).where(eq(userOnboardingTable.userId, userId));
     } else if (action === "completed") {
       await db.update(userOnboardingTable).set({
-        vipTourVersion: VIP_ONBOARDING_TOUR_VERSION, vipTourStatus: "completed",
-        vipTourCompletedAt: now, vipTourSkippedAt: null, updatedAt: now,
+        vipTourVersion: acknowledged ? record.vipTourVersion : VIP_ONBOARDING_TOUR_VERSION,
+        vipTourStatus: acknowledged ? record.vipTourStatus : "completed",
+        vipTourCompletedAt: record.vipTourStatus === "completed" ? now : record.vipTourCompletedAt,
+        vipTourSkippedAt: record.vipTourStatus === "completed" ? null : record.vipTourSkippedAt,
+        updatedAt: now,
       }).where(eq(userOnboardingTable.userId, userId));
     } else {
       await db.update(userOnboardingTable).set({
-        vipTourVersion: VIP_ONBOARDING_TOUR_VERSION, vipTourStatus: "skipped",
-        vipTourSkippedAt: now, vipTourCompletedAt: null, updatedAt: now,
+        vipTourVersion: acknowledged ? record.vipTourVersion : VIP_ONBOARDING_TOUR_VERSION,
+        vipTourStatus: acknowledged ? record.vipTourStatus : "skipped",
+        vipTourSkippedAt: record.vipTourStatus === "skipped" ? now : record.vipTourSkippedAt,
+        vipTourCompletedAt: record.vipTourStatus === "skipped" ? null : record.vipTourCompletedAt,
+        updatedAt: now,
       }).where(eq(userOnboardingTable.userId, userId));
     }
     return onboardingState(userId, now);
@@ -216,7 +235,8 @@ export async function resetOnboardingTour(
   if (tour === "vip") {
     await db.update(userOnboardingTable).set({
       vipTourVersion: 0, vipTourStatus: "new", vipTourStartedAt: null,
-      vipTourCompletedAt: null, vipTourSkippedAt: null, updatedAt: now,
+      vipTourCompletedAt: null, vipTourSkippedAt: null, vipTourReplayedAt: null,
+      updatedAt: now,
     }).where(eq(userOnboardingTable.userId, userId));
   } else {
     await db.update(userOnboardingTable).set({

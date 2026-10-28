@@ -1,11 +1,13 @@
 import { createMarketCache, loadCached, type JsonCache } from "./cache";
 import { MARKET_INSTRUMENTS, type StockDefinition } from "./catalog";
+import { classifyQuote, sessionForInstrument } from "./freshness";
 import { ProviderHealthMonitor } from "./health";
 import {
   CoinGeckoFreeProvider,
   CoinGeckoProvider,
   EgidContractProvider,
   ExchangeRateApiProvider,
+  FxProCalendarProvider,
   TradingEconomicsCalendarProvider,
   TradingEconomicsEgxIndexProvider,
   TradingViewScannerProvider,
@@ -99,7 +101,10 @@ export class MarketDataService {
       return events
         .filter((event) => Number.isFinite(event.at) && Boolean(event.title))
         .sort((a, b) => a.at - b.at)
-        .slice(0, 50);
+        /* The FxPro feed spans two weeks (up to ~90 upcoming events on a
+         * Monday); the cap must stay above that so the merged CBE meetings
+         * are never truncated. The UI itself only renders the first 30. */
+        .slice(0, 120);
     });
     return {
       events: cached.value,
@@ -158,12 +163,24 @@ export class MarketDataService {
     // provider's own timestamp may already be beyond this snapshot's maximum
     // cache age. Keep serving it transparently, but expose it as stale rather
     // than refreshing the browser's confidence with our fetch time.
-    /* End-of-day reference data is not late just because the wall clock moved:
-     * its freshness is the provider's trading date, so only intraday quotes
-     * are measured against the cache-age window. */
-    const sourceStale = cached.value.some(
-      (quote) => quote.freshness !== "end-of-day" && Date.now() - quote.asOf > staleMs,
-    );
+    //
+    // The judgement is session-aware: a closed market whose quote is its
+    // latest official close is current, not stale (the old wall-clock rule
+    // here is what made every index/commodity card read "بيانات قديمة"
+    // from close until the next open). End-of-day references (FX) and
+    // session-less instruments are exempt, as before.
+    const now = Date.now();
+    const sourceStale = cached.value.some((quote) => {
+      if (quote.freshness === "end-of-day") return false;
+      const session = sessionForInstrument(quote.instrumentId);
+      if (!session) return false;
+      const { state } = classifyQuote(
+        { asOf: quote.asOf, sourceAsOfUnknown: quote.sourceAsOfUnknown, delayedMinutes: quote.delayedMinutes },
+        session,
+        now,
+      );
+      return state === "stale";
+    });
     return {
       quotes: cached.value,
       fetchedAt: cached.cachedAt,
@@ -228,7 +245,10 @@ export function getMarketDataService(): MarketDataService {
         new TradingViewScannerProvider(),
         new CoinGeckoFreeProvider(),
       ],
-      [new TradingEconomicsCalendarProvider()],
+      /* A licensed Trading Economics calendar always wins; the free FxPro
+       * feed (plus the official CBE meeting schedule) is the fallback so the
+       * calendar is never "غير متاح" merely because no paid key is set. */
+      [new TradingEconomicsCalendarProvider(), new FxProCalendarProvider()],
     );
   }
   return singleton;

@@ -5,4 +5,4 @@ Allow: /
 Disallow: /vip
 Disallow: /admin
 
-Sitemap: https://egytrend.com/sitemap.xml
+Sitemap: https://egy-trend.vercel.app/sitemap.xml

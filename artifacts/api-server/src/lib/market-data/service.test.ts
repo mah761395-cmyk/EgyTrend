@@ -50,7 +50,7 @@ class SyntheticProvider implements MarketDataProvider {
   ) {}
   get name(): string { return this.id; }
   descriptor = () => descriptor(this.id);
-  canServe = () => true;
+  canServe = (_item: MarketInstrument): boolean => true;
   async getQuotes(instruments: MarketInstrument[]): Promise<ProviderQuoteResult> {
     if (this.behavior === "throw") throw new Error("synthetic upstream unavailable");
     if (this.behavior === "empty") return { quotes: [], requestedCount: instruments.length };
@@ -71,14 +71,35 @@ test("market service falls back only to the next configured provider", async () 
 });
 
 test("market service marks an old provider timestamp stale even after a successful fetch", async () => {
+  // Session-aware: 80h old predates the most recent close of every board
+  // session (worst case: the EGX Thursday close seen on a Sunday morning),
+  // so the quote is stale no matter when the test runs. A quote that is
+  // merely "after the close" must NOT be stale: the latest close is the
+  // current official value.
   const service = new MarketDataService(
-    [new SyntheticProvider("old-source", "quote", Date.now() - (16 * 60_000))],
+    [new SyntheticProvider("old-source", "quote", Date.now() - (80 * 3_600_000))],
     [],
     new MemoryJsonCache(),
   );
   const snapshot = await service.getBoard();
   assert.equal(snapshot.stale, true);
   assert.ok(snapshot.quotes.length > 0);
+});
+
+test("a closed market serving its latest close is not stale", async () => {
+  // A quote timestamped just before the most recent close of a closed
+  // session is the final official value of that session — not stale.
+  const { lastCloseAt, sessionOpenAt, EGX_SESSION } = await import("./freshness");
+  if (sessionOpenAt(EGX_SESSION, Date.now()).open) return; // verdict is "live" while open
+  const lastClose = lastCloseAt(EGX_SESSION, Date.now());
+  if (lastClose === undefined) return; // never happens within 14 days of a session
+  const provider = new SyntheticProvider("close-source", "quote", lastClose - 5 * 60_000);
+  provider.canServe = (item) => item.id === "egx:EGX30"; // EGX row only
+  const service = new MarketDataService([provider], [], new MemoryJsonCache());
+  const snapshot = await service.getBoard();
+  const egx = snapshot.quotes.find((item) => item.instrumentId === "egx:EGX30");
+  assert.ok(egx, "EGX quote present");
+  assert.equal(snapshot.stale, false, "the latest close of a closed session is current data");
 });
 
 test("market service uses a verified stale cache when all providers fail", async () => {

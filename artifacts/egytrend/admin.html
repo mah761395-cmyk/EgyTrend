@@ -332,7 +332,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 /* AI output is multi-line plain text (headings, bullets, blank lines).
  * Without pre-wrap every reply collapses into one unreadable wall of text,
  * which reads like the feature is broken. */
-.msg,#sig-res,#rep-res,#ai-det-res,#ai-rw-res,#vstk-txt,#ai-analysis-txt,#port-ai-res,#ai-txt,#ai-rw-txt,#adm-ai-txt{white-space:pre-wrap;word-break:break-word;}
+.msg,#rep-res,#ai-det-res,#ai-rw-res,#port-ai-res,#ai-txt,#ai-rw-txt,#adm-ai-txt{white-space:pre-wrap;word-break:break-word;}
 .chat-row{display:flex;gap:6px;}
 .chat-in{flex:1;background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:9px 12px;color:var(--t1);font-size:13px;outline:none;font-family:var(--sans);direction:rtl;transition:border .18s;}
 .chat-in:focus{border-color:rgba(16,185,129,.3);}
@@ -889,16 +889,26 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .ob-task-arrow{color:var(--t5);font-size:13px;padding-top:2px;}
 .ob-tour-backdrop{position:fixed;inset:0;z-index:1200;background:rgba(3,7,18,.76);backdrop-filter:blur(2px);animation:obFade .18s ease;}
 .ob-tour-highlight{position:relative!important;z-index:1201!important;outline:3px solid #34d399!important;outline-offset:5px;border-radius:12px;box-shadow:0 0 0 9999px rgba(3,7,18,.13),0 0 26px rgba(52,211,153,.62)!important;transition:outline .18s ease;}
+/* The VIP tour spotlights with a gold frame, not the platform's green. */
+.ob-tour-highlight-vip{outline-color:#F5C451!important;box-shadow:0 0 0 9999px rgba(3,7,18,.13),0 0 26px rgba(245,196,81,.6)!important;}
 .ob-panel{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:1202;width:min(calc(100% - 24px),430px);background:linear-gradient(160deg,#17243a,#101827);border:1px solid rgba(110,231,183,.3);border-radius:20px;padding:15px;box-shadow:0 18px 60px rgba(0,0,0,.56);color:var(--t2);}
 .ob-panel-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
 .ob-step-count{color:#86efac;background:rgba(16,185,129,.12);border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;}
-.ob-skip{border:0;background:transparent;color:var(--t4);font:inherit;font-size:11px;cursor:pointer;padding:5px;}
+.ob-skip{border:0;background:transparent;color:var(--t4);font:inherit;font-size:11px;cursor:pointer;padding:5px 10px;min-height:44px;display:inline-flex;align-items:center;}
 .ob-panel-icon{font-size:25px;line-height:1;margin-bottom:7px;}
 .ob-panel-title{color:#f0fdf4;font-size:16px;font-weight:900;line-height:1.4;}
 .ob-panel-copy{color:#cbd5e1;font-size:11.5px;line-height:1.72;margin-top:5px;}
 .ob-panel-note{color:#94a3b8;font-size:9.5px;line-height:1.55;margin-top:6px;}
 .ob-panel-actions{display:flex;gap:8px;margin-top:13px;}
-.ob-panel-actions button{font-family:var(--sans);cursor:pointer;border-radius:10px;padding:10px 12px;font-size:11.5px;font-weight:800;}
+.ob-panel-actions button{font-family:var(--sans);cursor:pointer;border-radius:10px;padding:10px 12px;font-size:11.5px;font-weight:800;min-height:44px;display:inline-flex;align-items:center;justify-content:center;}
+.ob-panel-actions button:focus-visible,.ob-skip:focus-visible{outline:3px solid #F5C451;outline-offset:2px;}
+.ob-panel-welcome{border-color:rgba(251,191,36,.5);box-shadow:0 18px 60px rgba(0,0,0,.56),0 0 34px rgba(245,196,81,.14);}
+.ob-tour-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
+.ob-end-tasks{display:flex;flex-direction:column;gap:7px;margin:10px 0 4px;}
+.ob-end-task{display:flex;align-items:center;gap:9px;min-height:44px;padding:8px 12px;border:1px solid rgba(251,191,36,.35);border-radius:10px;background:rgba(245,158,11,.08);color:#fcd34d;font:inherit;font-weight:800;font-size:12.5px;cursor:pointer;text-align:right;}
+.ob-end-task:hover{background:rgba(245,158,11,.16);}
+.ob-end-task:focus-visible{outline:2px solid #fbbf24;outline-offset:2px;}
+.ob-end-task-icon{flex:none;display:inline-flex;}
 .ob-next{border:1px solid rgba(52,211,153,.48);background:var(--g);color:#06281e;flex:1;}
 .ob-back{border:1px solid var(--b2);background:var(--s1);color:var(--t3);min-width:74px;}
 @keyframes obFade{from{opacity:0}to{opacity:1}}
@@ -907,7 +917,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .ob-panel-vip .ob-step-count{color:#fde68a;background:rgba(245,158,11,.14);}
 .ob-panel-vip .ob-panel-title{color:#fef3c7;}
 .ob-panel-vip .ob-next{border-color:rgba(251,191,36,.5);background:#f59e0b;color:#2a1c04;}
-@media (prefers-reduced-motion:reduce){.ob-tour-backdrop,.ob-progress-value{animation:none;transition:none;}}
+@media (prefers-reduced-motion:reduce){.ob-tour-backdrop,.ob-panel,.ob-progress-value,.ob-tour-highlight{animation:none;transition:none;}}
 
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1351,6 +1361,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
     <button class="adm-tab" type="button" data-tab="aiconfig" onclick="admTab('aiconfig')"><svg class="et-icon"><use href="#i-spark"></use></svg> إدارة AI</button>
     <button class="adm-tab" type="button" data-tab="audit" onclick="admTab('audit')"><svg class="et-icon"><use href="#i-source"></use></svg> سجل العمليات</button>
     <button class="adm-tab" type="button" data-tab="opps" onclick="admTab('opps')"><svg class="et-icon"><use href="#i-bulb"></use></svg> الفرص</button>
+    <button class="adm-tab" type="button" data-tab="dq" onclick="admTab('dq')"><svg class="et-icon"><use href="#i-chart"></use></svg> جودة البيانات</button>
   </div>
   <div class="adm-body" id="adm-body"></div>
 </div>
@@ -1799,6 +1810,9 @@ function loadUserScopedData(){
 let firstUseState=null,firstUseLoadSeq=0,firstUseAutoTimer=null,firstUseAutoAttempts=0;
 let activeTour=null;
 let tourAutoSuppressed={};
+let tourRenderSeq=0;
+let tourPreNav=null;
+let tourTriggerEl=null;
 function firstUseEligible(){return Boolean(U&&U.plan!=="admin"&&Number.isInteger(U.id));}
 function firstUseMaybeAutoStart(){
   if(!firstUseEligible()||activeTour||document.getElementById("first-use-tour"))return;
@@ -1847,15 +1861,26 @@ function platformTourSteps(){
   return steps;
 }
 /* VIP tour: only the features the server says this account may actually open. */
+/* VIP tour (v2): a dedicated gold welcome screen, then one step per real
+ * feature the server says this account may open. Every step targets a
+ * concrete rendered element; a step whose target never appears is skipped
+ * safely at render time, and progress counts real steps only. Remaining
+ * feature steps are added back in phase 3 of this work. */
 function vipTourSteps(){
   const f=firstUseState?.vipFeatures&&typeof firstUseState.vipFeatures==="object"?firstUseState.vipFeatures:{};
   const on=k=>f[k]===true;
-  const steps=[{id:"welcome",nav:"vip",tab:"home",target:"#vtabs-bar",icon:"star",title:"مرحبًا بك في مزايا VIP",copy:"اشتراكك فعّال الآن. هذه الجولة تعرّضك على المزايا المتاحة لحسابك حاليًا — كل خطوة تفتح صفحتها مباشرة، والخطوات تُعرض فقط للمزايا المشمولة في اشتراكك."}];
+  const steps=[];
   if(on("calculators"))steps.push({id:"calc",nav:"calculators",target:"#calculators-el",icon:"chart",title:"حاسبة المستثمر ورسومها البيانية",copy:"أدخل رأس المال والمساهمة الشهرية والمدة والعائد المتوقع لترى القيمة النهائية، مع رسم نمو الاستثمار ورسم المساهمات مقابل الأرباح ومقارنة السيناريوهات — والنتيجة تُحسب من مدخلاتك لحظيًا وفق افتراضات معلنة."});
-  if(on("portfolio"))steps.push({id:"portfolio",nav:"vip",tab:"port",target:"#vip-body",icon:"star",title:"المحفظة والرسوم البيانية",copy:"أضف أسهمك وتابع قيمتها الحالية والربح والخسارة لكل سهم وإجمالًا، مع عرض أداء المحفظة والبيانات المتاحة لكل سهم."});
-  if(on("indicators"))steps.push({id:"analysis",nav:"vip",tab:"stk",target:"#vip-body",icon:"chart",title:"أدوات التحليل الفني",copy:"افتح أي سهم من الأسواق لرؤية مؤشرات VIP: متوسط MA(20) و RSI(14) فوق الشارت، واستخدم تبويب «تحليل AI» و Sceener لفرز السهم بحسب معاييرك."});
-  if(on("ai"))steps.push({id:"assistant",nav:"vip",tab:"ai",target:"#vip-body",icon:"spark",title:"المستشار الذكي",copy:"اسأل عن السوق أو عن سهم بعينه واحصل على إجابة مبنية على البيانات المتاحة — مع حدود استخدام عادل محسوب لحسابك."});
-  if(on("opportunities"))steps.push({id:"opps",nav:"vip",tab:"opps",target:"#vip-body",icon:"bulb",title:"الفرص داخل VIP",copy:"نفس عناصر متابعة السوق مع تصفية أدق حسب النوع والسوق، واحفظ العناصر التي تهمك للمراجعة لاحقًا."});
+  /* Honest scope (A1): the portfolio really compares the chosen period's
+   * closing-price change against the EGX30 reference benchmark when shared
+   * closing points exist — it never invents the comparison. */
+  if(on("portfolio"))steps.push({id:"portfolio",nav:"vip",tab:"port",target:"#vip-body",icon:"star",title:"المحفظة ومقارنتها بمؤشر EGX30",copy:"أضف أسهمك وتابع قيمتها الحالية والربح والخسارة لكل سهم وإجمالًا، وقارن تغير أداء مدّتك مع مؤشر EGX30 المرجعي — تظهر المقارنة عندما تتوفر نقاط إغلاق مشتركة، ولا تُستبدل أبدًا ببيانات تقديرية."});
+  /* The screener ships inside the VIP area itself (no separate server scope),
+   * so it is part of the tour for every active VIP entitlement. */
+  steps.push({id:"scr",nav:"vip",tab:"scr",target:"#scr-box",icon:"chart",title:"Stock Screener",copy:"فلتر الأسهم حسب القطاع والأداء والسعر والحجم، قارن النتائج ثم صدّرها CSV — وكل رقم ببيانات مصدره ووقته."});
+  if(on("indicators"))steps.push({id:"analysis",nav:"vip",tab:"stk",target:"#vip-body",icon:"chart",title:"أدوات التحليل الفني",copy:"افتح أي سهم من الأسواق لرؤية مؤشرات VIP: متوسط MA(20) و RSI(14) فوق الشارت، واستخدم تبويب «تحليل AI» و Screener لفرز السهم بحسب معاييرك."});
+  if(on("ai"))steps.push({id:"ai",nav:"vip",tab:"ai",target:"#chat-in",icon:"spark",title:"تحليل AI والأخبار",copy:"حلّل أي خبر من تفاصيله بضغطة «حلّل الآن»، أو اسأل المستشار عن السوق وسهم بعينه — إجابات على البيانات المتاحة بحدود استخدام عادل محسوبة لحسابك، ودون توصيات."});
+  if(on("opportunities"))steps.push({id:"opps",nav:"vip",tab:"opps",target:"#opps-vip-box",icon:"bulb",title:"الفرص",copy:"بطاقات عناصر متابعة السوق حسب النوع والسوق مع مصدرها ووقت المصدر عند توافرهما — للاطلاع فقط، وليست توصيات أو ترتيبًا استثماريًا."});
   steps.push({id:"markets",nav:"vip",tab:"mkt",target:"#vip-body",icon:"chart",title:"الأسواق والتقارير",copy:"متابعة الأسواق مع بيانات المصدر ووقت التحديث، وتبويب «التقارير» يعرض ملخص أحداث السوق وأداء محفظتك عندما تكون البيانات متاحة."});
   if(on("priceAlerts"))steps.push({id:"alerts",nav:"vip",tab:"alerts",target:"#vip-body",icon:"bell",title:"التنبيهات",copy:"أنشئ تنبيهات سعر لأسهمك؛ يصلك التنبيه داخل المنصة عندما يتحقق الشرط بحسب البيانات المتاحة ووقتها."});
   steps.push({id:"manage",nav:"vip",tab:"set",target:"#vip-body",icon:"settings",title:"إدارة اشتراكك",copy:"تبويب الإعدادات يدير متابعتك وتفضيلاتك، وصفحة «اشتراكي» في حسابك تعرض حالة الاشتراك وموعد الانتهاء — والتجديد اختياري بطلب جديد."});
@@ -1863,28 +1888,90 @@ function vipTourSteps(){
 }
 function tourRemove(){
   document.getElementById("first-use-tour")?.remove();
-  document.querySelectorAll(".ob-tour-highlight").forEach(el=>el.classList.remove("ob-tour-highlight"));
+  document.querySelectorAll(".ob-tour-highlight,.ob-tour-highlight-vip").forEach(el=>el.classList.remove("ob-tour-highlight","ob-tour-highlight-vip"));
 }
-function tourHighlight(step){
+function tourHighlight(step,vip){
   const target=step?.target?document.querySelector(step.target):null;
-  if(target){target.classList.add("ob-tour-highlight");try{target.scrollIntoView({block:"center",behavior:window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches?"auto":"smooth"});}catch{}}
+  if(target){target.classList.add("ob-tour-highlight",vip&&"ob-tour-highlight-vip");try{target.scrollIntoView({block:"center",behavior:window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches?"auto":"smooth"});}catch{}}
   return target;
 }
 function tourGoTo(step){
   if(step.nav)goNav(step.nav,{syncUrl:false});
   if(step.tab&&typeof switchVipTab==="function")switchVipTab(step.tab,true);
 }
+/* Wait for the step's real target to exist (tab render + first frame) with
+ * requestAnimationFrame — never a blind setTimeout — then spotlight it. If it
+ * never appears within a short deadline the step is skipped safely instead of
+ * trapping the user on an empty spotlight: progress counts real steps only. */
+function tourSpotlight(step,vip,seq){
+  const deadline=performance.now()+1200;
+  const tick=()=>{
+    const tour=activeTour;
+    if(!tour||seq!==tourRenderSeq)return;
+    const target=step?.target?document.querySelector(step.target):null;
+    if(target){tourHighlight(step,vip);return;}
+    if(performance.now()<deadline){requestAnimationFrame(tick);return;}
+    if(tour.index>=tour.steps.length-1)tourFinish("completed");else tourNext();
+  };
+  requestAnimationFrame(tick);
+}
+/* The page the user was on before the tour opened, so finishing the tour
+ * restores it instead of leaving them on the last step's tab. */
+function currentNavId(){
+  return ["home","markets","vip","opps","profile","calculators"].find(n=>!document.getElementById(`page-${n}`)?.classList.contains("hidden"))||"home";
+}
+function tourRestorePreNav(){
+  if(!tourPreNav)return;
+  const saved=tourPreNav;tourPreNav=null;
+  try{goNav(saved.nav,{syncUrl:false});if(saved.vipTab&&typeof switchVipTab==="function")switchVipTab(saved.vipTab,true);}catch{/* navigation restore is best effort */}
+}
+/* The dedicated VIP welcome screen: not counted in "N of M", no spotlight. */
+function tourRenderWelcome(){
+  const root=document.createElement("div");root.id="first-use-tour";root.dataset.tour="vip";
+  root.innerHTML=`<div class="ob-tour-backdrop" aria-hidden="true"></div><section class="ob-panel ob-panel-vip ob-panel-welcome" role="dialog" aria-modal="true" aria-labelledby="ob-tour-title"><div class="ob-panel-top"><span class="ob-step-count">جولة VIP</span><button type="button" class="ob-skip" onclick="tourFinish('skipped')">تخطّي الجولة</button></div><div class="ob-panel-icon" aria-hidden="true">${uiIcon("star")}</div><div class="ob-panel-title" id="ob-tour-title">أهلاً بيك في VIP</div><div class="ob-panel-copy">خلّينا نعرّفك على أهم الأدوات اللي هتساعدك تتابع السوق وتستخدم مميزات حسابك.</div><div class="ob-panel-note">كل خطوة هتفتح الأداة نفسها فعلًا، والخطوات المعروضة مشمولة في اشتراكك فقط.</div><div class="ob-panel-actions"><button type="button" class="ob-back" onclick="tourFinish('skipped')">تخطّي</button><button type="button" class="ob-next" onclick="tourNext()">ابدأ الجولة</button></div><div class="ob-tour-sr" role="status" aria-live="polite">جولة مزايا VIP — شاشة الترحيب. ابدأ الجولة أو تخطّاها.</div></section>`;
+  document.body.appendChild(root);
+  try{root.querySelector(".ob-next")?.focus({preventScroll:true});}catch{}
+}
+/* The dedicated VIP end screen: "ready!" with tasks that open the real
+ * features — each task exists only while the server says the feature is
+ * available, so no task is ever a dead button. Not counted in "N of M". */
+function tourRenderEnd(){
+  const f=firstUseState?.vipFeatures&&typeof firstUseState.vipFeatures==="object"?firstUseState.vipFeatures:{};
+  const on=k=>f[k]===true;
+  const tasks=[];
+  const task=(label,icon,nav,vipTab)=>tasks.push(`<button type="button" class="ob-end-task" onclick="tourEndGo('${nav}','${vipTab||""}')"><span class="ob-end-task-icon" aria-hidden="true">${uiIcon(icon)}</span><span>${label}</span></button>`);
+  if(on("portfolio"))task("أضف أول سهم لمحفزتك","star","vip","port");
+  task("جرّب منصّفة الأسهم","chart","vip","scr");
+  if(on("priceAlerts"))task("صِف أول تنبيه سعر","bell","vip","alerts");
+  if(on("calculators"))task("حسّن سيناريو استثمار","chart","calculators","");
+  if(on("ai"))task("اسأل المستشار عن سوق اليوم","spark","vip","ai");
+  const root=document.createElement("div");root.id="first-use-tour";root.dataset.tour="vip";
+  root.innerHTML=`<div class="ob-tour-backdrop" aria-hidden="true"></div><section class="ob-panel ob-panel-vip ob-panel-welcome" role="dialog" aria-modal="true" aria-labelledby="ob-tour-title"><div class="ob-panel-top"><span class="ob-step-count">جولة VIP</span><button type="button" class="ob-skip" onclick="tourFinish('skipped')">تخطّي الجولة</button></div><div class="ob-panel-icon" aria-hidden="true">${uiIcon("star")}</div><div class="ob-panel-title" id="ob-tour-title">جاهز!</div><div class="ob-panel-copy">هذي أهم الأدوات اللي تعرفتها في الجولة — جرّبها الآن من هنا:</div><div class="ob-end-tasks">${tasks.length?tasks.join(""):`<div class="ob-panel-note">افتح أي تاب داخل VIP لتبدأ المتابعة — وكل رقم ببيانات مصدره ووقته.</div>`}</div><div class="ob-panel-actions"><button type="button" class="ob-back" onclick="tourBack()">السابق</button><button type="button" class="ob-next" onclick="tourFinish('completed')">ابدأ المتابعة</button></div><div class="ob-tour-sr" role="status" aria-live="polite">انتهت الجولة. شاشة المهام: اختر أداة لفتحها مباشرة أو تابع.</div></section>`;
+  document.body.appendChild(root);
+  try{root.querySelector(".ob-next")?.focus({preventScroll:true});}catch{}
+}
+/* A task click stores the task target as the pre-tour location, so the
+ * finish path's restore lands the user on the requested real feature. */
+function tourEndGo(nav,vipTab){
+  tourPreNav={nav,vipTab:vipTab||null};
+  tourFinish("completed");
+}
 function tourRender(){
   tourRemove();
-  const tour=activeTour;if(!tour||!tour.steps.length)return;
+  const tour=activeTour;if(!tour)return;
+  const vip=tour.kind==="vip";
+  if(vip&&tour.atWelcome){tourRenderWelcome();return;}
+  if(vip&&tour.atEnd){tourRenderEnd();return;}
+  if(!tour.steps.length){activeTour=null;return;}
   tour.index=Math.max(0,Math.min(tour.index,tour.steps.length-1));
   const step=tour.steps[tour.index];
   tourGoTo(step);
-  const vip=tour.kind==="vip";
+  const seq=++tourRenderSeq;
   const root=document.createElement("div");root.id="first-use-tour";root.dataset.tour=tour.kind;
-  root.innerHTML=`<div class="ob-tour-backdrop" aria-hidden="true"></div><section class="ob-panel${vip?" ob-panel-vip":""}" role="dialog" aria-modal="true" aria-labelledby="ob-tour-title"><div class="ob-panel-top"><span class="ob-step-count">${vip?"جولة VIP · ":""}${tour.index+1} من ${tour.steps.length}</span><button type="button" class="ob-skip" onclick="tourFinish('skipped')">تخطي الجولة</button></div><div class="ob-panel-icon" aria-hidden="true">${uiIcon(step.icon)}</div><div class="ob-panel-title" id="ob-tour-title">${sanitize(step.title)}</div><div class="ob-panel-copy">${sanitize(step.copy)}</div><div class="ob-panel-note">${vip?"يمكنك إعادة جولة مزايا VIP من حسابك أو من إعدادات VIP في أي وقت.":"يمكنك إعادة هذه الجولة من إعدادات الحساب في أي وقت."}</div><div class="ob-panel-actions">${tour.index>0?'<button type="button" class="ob-back" onclick="tourBack()">السابق</button>':""}<button type="button" class="ob-next" onclick="tourNext()">${tour.index===0?"ابدأ":tour.index===tour.steps.length-1?"إنهاء":"التالي"}</button></div></section>`;
+  root.innerHTML=`<div class="ob-tour-backdrop" aria-hidden="true"></div><section class="ob-panel${vip?" ob-panel-vip":""}" role="dialog" aria-modal="true" aria-labelledby="ob-tour-title"><div class="ob-panel-top"><span class="ob-step-count">${vip?"جولة VIP · ":""}${tour.index+1} من ${tour.steps.length}</span><button type="button" class="ob-skip" onclick="tourFinish('skipped')">تخطي الجولة</button></div><div class="ob-panel-icon" aria-hidden="true">${uiIcon(step.icon)}</div><div class="ob-panel-title" id="ob-tour-title">${sanitize(step.title)}</div><div class="ob-panel-copy">${sanitize(step.copy)}</div><div class="ob-panel-note">${vip?"يمكنك إعادة جولة مزايا VIP من حسابك أو من إعدادات VIP في أي وقت.":"يمكنك إعادة هذه الجولة من إعدادات الحساب في أي وقت."}</div><div class="ob-panel-actions">${tour.index>0?'<button type="button" class="ob-back" onclick="tourBack()">السابق</button>':vip?'<button type="button" class="ob-back" onclick="tourBack()">الترحيب</button>':""}<button type="button" class="ob-next" onclick="tourNext()">${tour.index===tour.steps.length-1?"إنهاء":"التالي"}</button></div><div class="ob-tour-sr" role="status" aria-live="polite">الخطوة ${tour.index+1} من ${tour.steps.length}: ${step.title}</div></section>`;
   document.body.appendChild(root);
-  setTimeout(()=>tourHighlight(step),30);
+  try{root.querySelector(".ob-next")?.focus({preventScroll:true});}catch{}
+  tourSpotlight(step,vip,seq);
 }
 async function firstUseRequest(path,body){
   const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
@@ -1906,19 +1993,61 @@ async function loadFirstUseOnboarding(options={}){
 }
 function tourStart(kind,steps){
   if(!firstUseEligible()||!steps.length)return;
-  activeTour={kind,steps,index:0};tourRender();
+  activeTour={kind,steps,index:0,atWelcome:kind==="vip",atEnd:false};
+  tourTriggerEl=(document.activeElement&&document.activeElement!==document.body)?document.activeElement:null;
+  if(kind==="vip")tourPreNav={nav:currentNavId(),vipTab:typeof vipTab==="string"?vipTab:null};
+  tourRender();
   firstUseRequest("/api/user/onboarding/tour",{action:"started",tour:kind}).then(state=>firstUseApply(state)).catch(()=>{/* the visual tour remains; the next visit retries only what the server did not persist */});
 }
-function tourNext(){const tour=activeTour;if(!tour)return;if(tour.index>=tour.steps.length-1){tourFinish("completed");return;}tour.index+=1;tourRender();}
-function tourBack(){if(!activeTour)return;activeTour.index=Math.max(0,activeTour.index-1);tourRender();}
+function tourNext(){
+  const tour=activeTour;if(!tour)return;
+  if(tour.atWelcome){tour.atWelcome=false;tourRender();return;}
+  if(tour.atEnd){tourFinish("completed");return;}
+  if(tour.index>=tour.steps.length-1){
+    /* The VIP tour ends on the dedicated "ready!" tasks screen, not on the
+     * last step; the platform tour keeps the classic finish-on-last-step. */
+    if(tour.kind==="vip"){tour.atEnd=true;tourRender();return;}
+    tourFinish("completed");return;
+  }
+  tour.index+=1;tourRender();
+}
+function tourBack(){
+  const tour=activeTour;if(!tour)return;
+  if(tour.atEnd){tour.atEnd=false;tourRender();return;}
+  if(tour.atWelcome)return;
+  if(tour.index===0&&tour.kind==="vip"){tour.atWelcome=true;tourRender();return;}
+  tour.index=Math.max(0,tour.index-1);tourRender();
+}
 async function tourFinish(action){
-  const kind=activeTour?.kind||"user";activeTour=null;tourRemove();
+  const kind=activeTour?.kind||"user";activeTour=null;tourRenderSeq++;tourRemove();
   /* Finishing the VIP tour must not chain into the platform tour in the same
    * visit; the platform tour stays pending for a later visit if never seen. */
   if(kind==="vip")tourAutoSuppressed.user=true;
+  if(kind==="vip")tourRestorePreNav();
+  /* Focus restore: return keyboard focus to the control the user was on
+   * before the tour opened (best effort; auto-started tours have none). */
+  const trigger=tourTriggerEl;tourTriggerEl=null;
+  if(trigger&&typeof trigger.focus==="function"){try{trigger.focus({preventScroll:true});}catch{}}
   try{const state=await firstUseRequest("/api/user/onboarding/tour",{action,tour:kind});firstUseApply(state);}catch{showToast("⚠️ تعذر حفظ حالة الجولة؛ ستظهر مرة أخرى عند الدخول.");}
 }
-document.addEventListener("keydown",event=>{if(event.key==="Escape"&&activeTour){event.preventDefault();tourFinish("skipped");}});
+document.addEventListener("keydown",event=>{
+  const tour=activeTour;if(!tour)return;
+  if(event.key==="Escape"){event.preventDefault();tourFinish("skipped");return;}
+  /* RTL: forward is left, back is right. tourNext/tourBack resolve the
+   * welcome/end states internally, so arrows work from every screen. */
+  if(event.key==="ArrowLeft"){event.preventDefault();tourNext();return;}
+  if(event.key==="ArrowRight"){event.preventDefault();tourBack();return;}
+  if(event.key==="Tab"){
+    /* Focus trap: keyboard focus cycles inside the tour panel only. */
+    const panel=document.getElementById("first-use-tour");
+    if(!panel)return;
+    const focusables=[...panel.querySelectorAll('button:not([disabled]),[href],[tabindex]:not([tabindex="-1"])')];
+    if(!focusables.length)return;
+    const first=focusables[0],last=focusables[focusables.length-1];
+    if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+    else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+  }
+});
 async function firstUseStartTour(){
   if(!firstUseEligible()){showToast("⚠️ سجّل الدخول بحساب مستخدم أولًا");return;}
   if(!firstUseState){const loaded=await loadFirstUseOnboarding({auto:false});if(!loaded)return;}
@@ -1928,7 +2057,10 @@ async function vipTourReplay(){
   if(!firstUseEligible()){showToast("⚠️ سجّل الدخول بحساب مستخدم أولًا");return;}
   if(!firstUseState){const loaded=await loadFirstUseOnboarding({auto:false});if(!loaded)return;}
   if(firstUseVip().active!==true){showToast("⚠️ جولة مزايا VIP متاحة لأصحاب الاشتراك الفعّال فقط");return;}
-  try{const state=await firstUseRequest("/api/user/onboarding/reset",{tour:"vip"});firstUseApply(state);}catch{/* the replay continues even if persisting the reset fails */}
+  /* Replay never resets the server state: the started action the tour sends
+   * is bookkept as a replay (vipTourReplayedAt) without clearing the
+   * permanent completion, so an unfinished replay can never re-arm the
+   * auto-start on the next visit. */
   tourStart("vip",vipTourSteps());
 }
 async function firstUseResetTour(){
@@ -3529,7 +3661,6 @@ function renderVIP(){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px;">
         ${[
           ["🤖","مساعد البيانات","اسأل عن سهم أو قطاع — يصف البيانات والمصادر المتاحة دون توصيات"],
-          ["📡","ملاحظات السوق","ملخص وصفي للأرقام والعناوين المتاحة مع بيان المصدر والتأخر — وليس توصية تداول"],
           ["🔍","Stock Screener","فلتر 20 سهم مصري بعشرات المعايير: P/E، الحجم، القطاع — مثل Investing.com تماماً"],
           ["💼","متابع المحفظة","أدخل أسهمك وأسعار شرائها — ملخص وصفي للأداء الظاهر ومصادره دون توصيات"],
           ["🌅","موجزات يومية","موجز صباح وإغلاق وصفي من البيانات المتاحة، مع توضيح النقص والتأخر"],
@@ -3545,7 +3676,7 @@ function renderVIP(){
       <div style="background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(16,185,129,.05));border:1px solid rgba(245,158,11,.2);border-radius:16px;padding:16px;margin-bottom:14px;">
         <div style="color:var(--au);font-weight:800;font-size:13px;margin-bottom:10px;text-align:center;">✨ ما الذي ستحصل عليه؟</div>
         <div style="display:flex;flex-direction:column;gap:6px;">
-          ${["🤖 محادثة تعليمية مع AI على بيانات المنصة المتاحة","📡 ملاحظات سوق وصفية على أسهم EGX","🔍 Stock Screener احترافي بفلاتر متقدمة","💼 ملخص وصفي لمحفظتك","🌅 موجزات صباح وإغلاق وصفية","🔔 تنبيهات أسبقية لأهم الأحداث الاقتصادية","💡 بطاقات متابعة وصفية من بيانات السوق المتاحة","💬 قناة دعم معتمدة عند توفرها"].map(f=>`
+          ${["🤖 محادثة تعليمية مع AI على بيانات المنصة المتاحة","🔍 Stock Screener احترافي بفلاتر متقدمة","💼 ملخص وصفي لمحفظتك","🌅 موجزات صباح وإغلاق وصفية","🔔 تنبيهات أسبقية لأهم الأحداث الاقتصادية","💡 بطاقات متابعة وصفية من بيانات السوق المتاحة","💬 قناة دعم معتمدة عند توفرها"].map(f=>`
           <div style="display:flex;align-items:flex-start;gap:8px;"><span style="flex-shrink:0;">${f.slice(0,2)}</span><span style="color:var(--t2);font-size:11.5px;">${f.slice(3)}</span></div>`).join("")}
         </div>
       </div>
@@ -3569,7 +3700,10 @@ function renderVIP(){
     <div id="vip-body"></div>`;
 
   buildVipTabsBar();
-  switchVipTab(DB.g("vip_tab","home"),true);
+  /* A saved tab that no longer exists (or an older client version)
+     must not open the VIP shell on an empty body. */
+  const savedTab=DB.g("vip_tab","home");
+  switchVipTab(VIP_TABS.some(t=>t.id===savedTab)?savedTab:"home",true);
 }
 
 /* ══════════════ INVESTOR CALCULATORS ══════════════
@@ -3660,7 +3794,6 @@ const VIP_TABS=[
   {id:"mkt",   ic:"📊", lb:"الأسواق"},
   {id:"scr",   ic:"🔎", lb:"Screener"},
   {id:"ai",    ic:"🤖", lb:"المستشار"},
-  {id:"stk",   ic:"🎯", lb:"تحليل AI"},
   {id:"port",  ic:"💼", lb:"المحفظة"},
   {id:"calc",  ic:"🧮", lb:"الحاسبات"},
   {id:"rep",   ic:"📅", lb:"التقارير"},
@@ -3726,7 +3859,6 @@ function renderVipTab(){
   if(vipTab==="mkt")return vBuildMkts(b);
   if(vipTab==="scr")return vBuildScr(b);
   if(vipTab==="ai")return vBuildChat(b);
-  if(vipTab==="stk")return vBuildStk(b);
   if(vipTab==="port")return vBuildPort(b);
   if(vipTab==="calc")return vBuildCalc(b);
   if(vipTab==="rep")return vBuildRep(b);
@@ -3905,7 +4037,7 @@ function vBuildOpps(b){
   const saved=DB.g("saved_opps",[]);
 
   b.innerHTML=`
-    <div class="vbox" style="background:linear-gradient(135deg,rgba(245,158,11,.07),rgba(16,185,129,.04));border-color:rgba(245,158,11,.18);">
+    <div class="vbox" id="opps-vip-box" style="background:linear-gradient(135deg,rgba(245,158,11,.07),rgba(16,185,129,.04));border-color:rgba(245,158,11,.18);">
       <div class="row between">
         <div><div style="color:var(--au);font-weight:800;font-size:13px;">💡 عناصر متابعة السوق</div>
         <div style="color:var(--t4);font-size:10.5px;margin-top:3px;">بطاقات وصفية حسب المصدر ووقت المصدر عند توافرهما؛ ليست توصيات أو ترتيبًا استثماريًا</div></div>
@@ -4168,100 +4300,6 @@ function vQuickAsk(btn){
   const inp=document.getElementById("chat-in");if(!inp)return;
   inp.value=btn.textContent.trim();sendChat();
 }
-
-/* ══════════════ TAB 7 — ملخص بيانات السهم ══════════════ */
-let vStkSym="";
-function vBuildStk(b){
-  b.innerHTML=`
-    <div class="vbox au">
-      <div class="vbox-title" style="color:var(--au);">🎯 ملخص سهم محدد</div>
-      <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
-        💡 اختر سهمًا مصريًا أو أمريكيًا لعرض ملخص وصفي للحقول المتاحة والعناوين المرتبطة ومصدرها. لا توجد درجة استثمارية أو توصية أو توقع.
-      </div>
-      <div class="p-inputs">
-        <input class="mini-in" id="vstk-in" placeholder="رمز السهم — مثال: COMI" style="flex:2;" oninput="this.value=this.value.toUpperCase().slice(0,10)" onkeydown="if(event.key==='Enter')analyzeSymbolAI()"/>
-        <button class="add-btn" onclick="analyzeSymbolAI()" id="vstk-btn">لخّص</button>
-      </div>
-      <div class="scr-filters" style="margin-top:8px;">
-        ${liveStocks.slice(0,8).map(s=>`<button class="scr-f" onclick='document.getElementById("vstk-in").value=${safeJsArg(s.sym)};analyzeSymbolAI()'>${sanitize(s.sym)}</button>`).join("")}
-      </div>
-      <div id="vstk-res" style="display:none;margin-top:12px;background:rgba(245,158,11,.05);border-radius:12px;padding:13px;border:1px solid rgba(245,158,11,.15);">
-        <div style="color:var(--au);font-size:10px;font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;">
-          <span>🤖 ملخص AI · بيانات متاحة</span><span id="vstk-ts" style="color:var(--t5);font-family:var(--mono);font-size:9px;"></span>
-        </div>
-        <div id="vstk-score"></div>
-        <div id="vstk-txt" style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;"></div>
-        <div style="margin-top:10px;padding:7px;background:rgba(245,158,11,.08);border-radius:8px;">
-          <div style="color:var(--au);font-size:9.5px;text-align:center;">⚠️ تحليل تعليمي ومعلوماتي فقط — قرارات الاستثمار على مسؤوليتك الكاملة</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="vbox g">
-      <div class="vbox-title" style="color:var(--g);">
-        <span>📡 ملاحظات السوق</span>
-        <button class="btn btn-g btn-sm" id="sig-btn" onclick="getSignals()">إعداد ←</button>
-      </div>
-      <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
-        💡 <strong style="color:var(--g);">ماذا تعرض؟</strong> — وصف يومي للأرقام والعناوين المتاحة لأبرز أسهم EGX، مع بيان نقص البيانات. لا تتضمن نقاط دخول/خروج أو توصيات.
-      </div>
-      <div id="sig-res" style="display:none;color:#a7f3d0;font-size:13px;line-height:1.85;direction:rtl;white-space:pre-line;margin-top:8px;"></div>
-    </div>
-
-    <div class="vbox pu">
-      <div class="vbox-title" style="color:#c084fc;">🌐 ملخص شامل للبيانات</div>
-      <div style="color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;margin-bottom:10px;">يلخّص الأسعار والعناوين المتاحة كما هي، ويبيّن ما لا تكفي البيانات لاستنتاجه. ليس توصية أو توقعًا.</div>
-      <button class="btn btn-pu btn-full" style="padding:10px;font-size:12.5px;" id="ai-analysis-btn" onclick="getAIStockAnalysis()">🤖 اطلب ملخص البيانات</button>
-      <div id="ai-analysis-res" style="display:none;margin-top:12px;background:rgba(192,132,252,.05);border-radius:12px;padding:13px;border:1px solid rgba(192,132,252,.15);">
-        <div style="color:#c084fc;font-size:10px;font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;">
-          <span>🤖 ملخص AI · بيانات متاحة</span><span id="ai-analysis-ts" style="color:var(--t5);font-family:var(--mono);font-size:9px;"></span>
-        </div>
-        <div id="ai-analysis-txt" style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;"></div>
-      </div>
-    </div>`;
-  if(vStkSym){const i=document.getElementById("vstk-in");if(i)i.value=vStkSym;}
-}
-async function analyzeSymbolAI(){
-  const inp=document.getElementById("vstk-in");if(!inp)return;
-  const sym=inp.value.trim().toUpperCase().slice(0,10);if(!sym)return;
-  vStkSym=sym;
-  const btn=document.getElementById("vstk-btn");
-  const resEl=document.getElementById("vstk-res");
-  if(!btn||!resEl)return;
-  btn.innerHTML='<div class="sp sp-au sp-sm"></div>';btn.disabled=true;
-  resEl.style.display="none";
-  const egx=liveStocks.find(x=>x.sym===sym||x.sym===sym+".CA");
-  const stock=egx||usStocks.find(x=>x.sym===sym);
-  if(!stock||!stock.source||stock.source==="غير متاح"){
-    showToast("📡 بيانات موثّقة غير متاحة لهذا السهم حاليًا");btn.innerHTML="لخّص";btn.disabled=false;return;
-  }
-  const sourceMeta=egx?egxStocksFreshness:usStocksFreshness;
-  const relNews=allArts.filter(article=>(stock.name&&article.title.includes(stock.name))||article.title.toUpperCase().includes(sym)).slice(0,5);
-  try{
-    const currency=egx?"ج":"$";
-    const info=`${stock.sym} (${stock.name||"?"}): السعر ${stock.price.toFixed(2)} ${currency} (${stockChangeText(stock.chgPct)}) | المصدر: ${stock.source} | ${marketAgeLabel(sourceMeta)}${stock.pe!==undefined?` | P/E: ${stock.pe.toFixed(1)}`:""}${stock.vol!==undefined?` | حجم: ${fmtVol(stock.vol)}`:""}${stock.high52w!==undefined?` | أعلى 52 أسبوع: ${stock.high52w}`:""}${stock.low52w!==undefined?` | أدنى 52 أسبوع: ${stock.low52w}`:""}`;
-    const newsTxt=relNews.length?relNews.map(article=>`- ${article.title} (${article.srcName})`).join("\n"):"لا توجد عناوين مرخّصة مرتبطة بهذا السهم حاليًا";
-    const txt=await callAI({
-      max_tokens:1600,
-      system:"أنت محرر بيانات سهم تعليمي بالعربية. استخدم الحقائق الواردة فقط. ممنوع إصدار تقييم استثماري أو توصية شراء/بيع/احتفاظ أو هدف سعري أو توقع أو وصف السهم كفرصة/رخيص/غالي. لا تستنتج علاقة سببية من عنوان خبر وسعر؛ اذكر المصدر والنقص بوضوح.",
-      messages:[{role:"user",content:`أنشئ ملخصًا وصفيًا للسهم التالي بالترتيب:\n1. السعر ونسبة التغير والحقول المتاحة ومصدرها\n2. ما الذي يعنيه وجود/غياب حقول مثل P/E أو الحجم أو نطاق 52 أسبوع بصورة تعريفية فقط\n3. العناوين المنشورة ذات الصلة مع مصدرها دون استنتاج سببي\n4. البيانات الناقصة والتأخر\n5. تنبيه أن الملخص ليس قرارًا استثماريًا.\n\nبيانات السهم:\n${info}\n\nالعناوين:\n${newsTxt}`}]
-    });
-    const txtEl=document.getElementById("vstk-txt");
-    const tsEl=document.getElementById("vstk-ts");
-    const scEl=document.getElementById("vstk-score");
-    if(scEl)scEl.replaceChildren();
-    if(txtEl)txtEl.textContent=txt;
-    if(tsEl)tsEl.textContent="وقت إعداد الملخص: "+new Intl.DateTimeFormat("ar-EG",{timeZone:"Africa/Cairo",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date());
-    resEl.style.display="block";
-  }catch(e){
-    const txtEl=document.getElementById("vstk-txt");
-    if(txtEl)txtEl.textContent=aiErrMsg(e);
-    const scEl=document.getElementById("vstk-score");if(scEl)scEl.replaceChildren();
-    resEl.style.display="block";
-  }
-  btn.innerHTML="لخّص";btn.disabled=false;
-}
-
 
 /* ══════════════ TAB 8 — المحفظة ══════════════ */
 function normalizeServerPortfolio(raw){
@@ -4942,41 +4980,6 @@ function deleteScrFilter(i){
   renderSavedFilters();
 }
 
-/* AI stock summary: descriptive only; all source-sensitive data stays in the input. */
-async function getAIStockAnalysis(){
-  const btn=document.getElementById("ai-analysis-btn");
-  if(!btn) return;
-  const resEl=document.getElementById("ai-analysis-res");
-  if(!reportsDataReady()){
-    const txtEl=document.getElementById("ai-analysis-txt");
-    if(txtEl)txtEl.textContent=reportUnavailableMessage();
-    if(resEl)resEl.style.display="block";
-    return;
-  }
-  btn.innerHTML='<div class="sp sp-au sp-sm"></div> جارٍ إعداد الملخص...';btn.disabled=true;
-  if(resEl) resEl.style.display="none";
-  try{
-    const topStocks=liveStocks.slice(0,12).map(s=>`${s.sym} (${s.name}): ${s.price.toFixed(2)} ج (${stockChangeText(s.chgPct)}) · المصدر: ${s.source||egxStocksFreshness.source||"غير متاح"}${s.pe!==undefined?" · P/E:"+s.pe.toFixed(1):""}${s.vol!==undefined?" · حجم:"+fmtVol(s.vol):""}`).join("\n");
-    const news=allArts.slice(0,6).map(a=>`${a.srcName}: ${a.title}`).join("\n")||"لا توجد عناوين مرخّصة متاحة";
-    const txt=await callAI({
-      max_tokens:1800,
-      system:"أنت محرر بيانات أسهم تعليمي بالعربية. استخدم المعلومات المرسلة فقط. ممنوع وصف سهم بأنه فرصة/واعد/رخيص/غالي، أو توصية شراء/بيع/احتفاظ، أو توقع، أو ربط سببي غير موثق بين خبر وسعر. اذكر الفرق بين الرقم الملاحظ والعنوان المنشور وما لا تعرفه.",
-      messages:[{role:"user",content:`لخّص بيانات الأسهم المصرية المتاحة بالترتيب:\n1. ما الأسعار ونسب التغيير والحجم المتاح الذي تعرضه القائمة، مع المصادر \n2. حقول التقييم المتاحة فقط دون حكم استثماري \n3. القطاعات التي تظهر في القائمة دون وصف أداء مستقبلي \n4. العناوين المنشورة مع نسبتها لمصدرها \n5. قيود التغطية/التأخر والحقول الناقصة.\n\nالأسهم:\n${topStocks}\n\nالعناوين المرخّصة:\n${news}`}]
-    });
-    const txtEl=document.getElementById("ai-analysis-txt");
-    const tsEl=document.getElementById("ai-analysis-ts");
-    if(txtEl) txtEl.textContent=txt;
-    if(tsEl) tsEl.textContent="وقت إعداد الملخص: "+new Intl.DateTimeFormat("ar-EG",{timeZone:"Africa/Cairo",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date());
-    if(resEl) resEl.style.display="block";
-  }catch(e){
-    const txtEl=document.getElementById("ai-analysis-txt");
-    if(txtEl) txtEl.textContent=aiErrMsg(e);
-    if(resEl) resEl.style.display="block";
-  }
-  btn.innerHTML="🔄 تحديث الملخص";btn.disabled=false;
-}
-
-
 /* Chat */
 /* AI replies are plain text with a little markdown (**bold**, bullets, blank
  * lines). Escape FIRST, then add the few tags we allow — the model output is
@@ -5029,28 +5032,6 @@ async function sendChat(){
   const ti=document.getElementById("chat-typing");if(ti)ti.remove();
   if(sendBtn){sendBtn.disabled=false;}
   renderChatUI();
-}
-
-async function getSignals(){
-  const btn=document.getElementById("sig-btn");
-  const res=document.getElementById("sig-res");
-  if(!btn||!res)return;
-  if(!reportsDataReady()){
-    res.textContent=reportUnavailableMessage();res.style.display="block";return;
-  }
-  btn.innerHTML='<div class="sp sp-g sp-sm"></div> جارٍ...';btn.disabled=true;
-  res.style.display="none";
-  try{
-    const hl=allArts.slice(0,6).map(a=>`${a.srcName}: ${a.title}`).join("\n")||"لا توجد عناوين مرخّصة متاحة";
-    const stks=liveStocks.slice(0,8).map(s=>`${s.sym}: ${s.price.toFixed(2)} ج (${stockChangeText(s.chgPct)}) · المصدر: ${s.source||egxStocksFreshness.source||"غير متاح"}`).join("\n");
-    const txt = await callAI({
-      max_tokens:1600,
-      system:"أنت محرر بيانات سوق تعليمي بالعربية. استخدم الوقائع والنصوص الواردة فقط. ممنوع تمامًا تقديم توصية شراء أو بيع أو احتفاظ أو زيادة، أو نقطة دخول/خروج، أو هدف سعري، أو وقف خسارة، أو توقع لعائد/اتجاه مستقبلي. لا تنسب سببًا لحركة سعر إلا إذا ورد صراحة في عنوان المصدر، وعندها صفه كصلة محتملة لا كحقيقة سببية.",
-      messages:[{role:"user",content:`أنشئ «ملاحظات السوق» ليوم ${new Date().toLocaleDateString("ar-EG")} بالترتيب:\n1. ما الذي تعرضه أرقام الأسهم أدناه حرفيًا\n2. أكبر التغيرات المسجلة فقط (إن وجدت)\n3. العناوين المتاحة ذات الصلة مع ذكر أن العنوان ليس إثبات سببية\n4. البيانات الناقصة أو قيود التأخر\n5. عناصر معلومات عامة للمتابعة، لا قرارات استثمارية\n\nبيانات أسهم موثقة:\n${stks}\n\nعناوين مرخّصة متاحة:\n${hl}`}]
-    });
-    res.textContent=txt;res.style.display="block";
-  }catch(e){res.textContent=aiErrMsg(e);res.style.display="block";}
-  btn.innerHTML="↻ تحديث الملاحظات";btn.disabled=false;
 }
 
 async function getMorning(){
@@ -5877,7 +5858,8 @@ function admTab(tab){
   el.innerHTML=`<div class="empty"><div style="font-size:22px;margin-bottom:8px;">⏳</div><div>جارٍ التحميل...</div></div>`;
   const fns={dash:renderAdmDash,users:renderAdmUsers,reqs:renderAdmReqs,articles:renderAdmArticles,
     sources:renderAdmSources,plans:renderAdmPlans,lifecycle:renderAdmLifecycle,broadcasts:renderAdmBroadcasts,trials:renderAdmTrials,referrals:renderAdmReferrals,coupons:renderAdmCoupons,
-    employees:renderAdmEmployees,aiconfig:renderAdmAIConfig,audit:renderAdmAudit,opps:renderAdmOpps};
+    employees:renderAdmEmployees,aiconfig:renderAdmAIConfig,audit:renderAdmAudit,opps:renderAdmOpps,
+    dq:renderAdmDataQuality};
   if(fns[tab]) fns[tab](el);
 }
 
@@ -5897,6 +5879,44 @@ function aSel(id,opts,extra=""){return `<select id="${id}" class="a-in" ${extra}
 function aBtn(label,onclick,color="var(--g)"){return `<button class="btn btn-sm" style="background:${color};color:#000;font-weight:700;border:none;padding:8px 14px;border-radius:9px;cursor:pointer;width:100%;margin-top:9px;font-family:var(--sans);" onclick="${onclick}">${label}</button>`;}
 function aBadge(label,bg,fg="#fff"){return `<span class="bdg" style="background:${bg};color:${fg};">${label}</span>`;}
 function vG(id){return (document.getElementById(id)||{}).value||"";}
+
+/* ─── Data Quality (read-only drill-down over /api/health/data) ─── */
+const ADM_DQ_KIND_LABELS={fetch_failure:"فشل جلب",empty_response:"استجابة فارغة",stale_data:"بيانات قديمة",plausibility_reject:"رفض منطقية",future_dated:"تاريخ مستقبلي",sign_anomaly:"شذوذ إشارة",parse_error:"خطأ تحليل"};
+async function renderAdmDataQuality(el){
+  const sel=document.getElementById("dq-window");
+  const windowName=sel?sel.value:"24h";
+  el.innerHTML=`<div class="empty"><div style="font-size:22px;margin-bottom:8px;">⏳</div><div>جارٍ التحميل...</div></div>`;
+  let d=null;
+  try{
+    const r=await admFetch(`/api/health/data?window=${windowName}`);
+    d=await r.json();
+    if(!r.ok||d?.status!=="ok")throw new Error(d?.message||"unavailable");
+  }catch{
+    el.innerHTML=`<div class="empty"><div style="font-size:22px;margin-bottom:8px;">📡</div><div>تعذر تحميل سجل جودة البيانات حاليًا.</div><div style="color:var(--t5);font-size:10.5px;margin-top:4px;line-height:1.7;">السجل يُكتب من الخادم فقط عند فشل مصدر أو شذوذ بيانات، ولا يؤثر على عرض البيانات للمستخدمين.</div></div>`;
+    return;
+  }
+  const kind=(k)=>ADM_DQ_KIND_LABELS[k]||k;
+  const incidents=d.incidents||[],events=d.events||[];
+  const incRows=incidents.length?incidents.map(i=>`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:11px 13px;margin-bottom:8px;">
+      <div class="row between" style="margin-bottom:5px;align-items:center;"><span style="color:var(--t1);font-weight:800;font-size:12px;">${kind(i.kind)} · <span style="color:var(--t3);font-family:var(--mono);font-size:11px;">${sanitize(i.sourceId)}</span></span>${aBadge(String(i.count),i.count>1?"var(--au)":"var(--g)","var(--s0)")}</div>
+      <div style="color:var(--t3);font-size:11px;">${sanitize(i.sampleMessage||"")}</div>
+      <div style="color:var(--t5);font-size:9.5px;margin-top:4px;">أول رصد: ${cairoTimestampLabel(i.firstSeenAt)} · آخر رصد: ${cairoTimestampLabel(i.lastSeenAt)}</div>
+    </div>`).join(""):`<div style="color:var(--t4);font-size:12px;padding:14px 0;">لا توجد حوادث جودة خلال هذه الفترة — كل المصادر تستجيب.</div>`;
+  const evRows=events.length?events.slice(0,30).map(e=>`<div style="display:flex;gap:8px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--b1);">
+      <span style="color:var(--t5);font-size:9.5px;font-family:var(--mono);min-width:105px;">${cairoTimestampLabel(e.recordedAt)}</span>
+      <span style="color:var(--t2);font-size:11px;font-weight:700;min-width:120px;">${kind(e.kind)}</span>
+      <span style="color:var(--t3);font-size:10.5px;flex:1;">${sanitize(e.message||"")}${e.latencyMs!=null?` · ${Math.round(e.latencyMs/100)/10} ث`:""}</span>
+    </div>`).join(""):`<div style="color:var(--t4);font-size:12px;padding:10px 0;">لا أحداث في هذه الفترة.</div>`;
+  el.innerHTML=`
+    ${aSection("لوحة القراءة","<div style=\"color:var(--t4);font-size:10.5px;line-height:1.7;\">قراءة فقط. الحوادث تُسجَّل من الخادم عند فشل مصدر أو شذوذ في بياناته (فشل جلب، تاريخ مستقبلي، شذوذ إشارة، ...) ولا تُسجَّل النجاحات. كل حادثة لها مفتاح تجميع واحد، والإنذار حاليًا في السجلات فقط بدون قنوات خارجية.</div>")}
+    <div class="row" style="gap:8px;margin-bottom:12px;align-items:center;">
+      <select id="dq-window" class="a-in" style="max-width:170px;" onchange="renderAdmDataQuality(document.getElementById('adm-body'))"><option value="24h" ${d.window==="24h"?"selected":""}>آخر 24 ساعة</option><option value="7d" ${d.window==="7d"?"selected":""}>آخر 7 أيام</option></select>
+      <button class="btn btn-sm" type="button" style="background:var(--s1);border:1px solid var(--b2);color:var(--t2);border-radius:9px;padding:7px 13px;cursor:pointer;font-family:var(--sans);" onclick="renderAdmDataQuality(document.getElementById('adm-body'))">↻ تحديث</button>
+    </div>
+    ${aSection("الحوادث — تجميع «إنذار واحد لكل حادثة»",incRows)}
+    ${aSection(`آخر الأحداث (${events.length})`,evRows)}`;
+}
+
 async function loadAdminUsers(){
   const r=await admFetch("/api/admin/users");
   const d=await r.json();

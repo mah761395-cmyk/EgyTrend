@@ -131,6 +131,7 @@ test("a first-time VIP sees the VIP tour once, and the platform tour stays untou
   assert.equal(active.body?.vipFeatures?.portfolio, true);
   assert.equal(active.body?.vipFeatures?.indicators, true);
   assert.equal(active.body?.vipFeatures?.priceAlerts, true);
+  assert.equal(active.body?.vipFeatures?.screener, true, "the screener ships inside the VIP area");
 
   const vipStarted = await tour(jar, "started", "vip");
   assert.equal(vipStarted.body?.vipTour?.status, "new", "starting keeps the tour pending");
@@ -215,4 +216,58 @@ test("tour inputs are validated and each tour replays independently from setting
   const replayUser = await api("/api/user/onboarding/reset", jar, { method: "POST", body: "{}" });
   assert.equal(replayUser.body?.tour?.status, "new", "the default reset replays only the platform tour");
   assert.equal(replayUser.body?.vipTour?.status, "new", "the default reset never re-arms the VIP tour");
+});
+
+test("replaying the VIP tour never clears the permanent completion and records the replay", async () => {
+  const { id, jar } = await seedUser({ phone: "01093100008", email: "vip-replay@example.test", name: "يعيد الجولة" });
+  await tour(jar, "completed"); /* the platform tour was already finished */
+  const { startFreeTrial } = await import("../lib/free-trials");
+  assert.equal((await startFreeTrial({ userId: id, now: new Date() })).reason, "started");
+
+  /* First pass: start + complete the tour — the permanent completion. */
+  await tour(jar, "started", "vip");
+  const done = await tour(jar, "completed", "vip");
+  assert.equal(done.body?.vipTour?.status, "completed");
+  assert.equal(done.body?.vipTour?.replayedAt, null, "no replay happened yet");
+
+  /* Replay: the client starts the tour without a reset. A started action on
+   * an acknowledged tour must be bookkept as a replay and must not re-arm
+   * the auto-start — an abandoned replay can never fire it again. */
+  const replayStarted = await tour(jar, "started", "vip");
+  assert.equal(replayStarted.body?.vipTour?.status, "completed", "a replay never re-arms the tour to 'new'");
+  assert.equal(replayStarted.body?.vipTour?.shouldShow, false, "an unfinished replay cannot auto-start on the next visit");
+  assert.ok(replayStarted.body?.vipTour?.replayedAt, "the replay is recorded server-side");
+
+  /* Finishing the replay keeps the permanent state and updates completion. */
+  const replayDone = await tour(jar, "completed", "vip");
+  assert.equal(replayDone.body?.vipTour?.status, "completed");
+  assert.ok(replayDone.body?.vipTour?.replayedAt);
+
+  /* A replay abandoned as "skipped" must not convert the permanent
+   * completion into a skip. */
+  const replaySkipped = await tour(jar, "skipped", "vip");
+  assert.equal(replaySkipped.body?.vipTour?.status, "completed", "a replay skip cannot flip the permanent completion");
+  assert.ok(replaySkipped.body?.vipTour?.completedAt, "the completion timestamp is preserved through the replay");
+
+  const refreshed = await state(jar);
+  assert.equal(refreshed.body?.vipTour?.shouldShow, false, "the tour stays permanently acknowledged after replays");
+  assert.equal(refreshed.body?.vipTour?.status, "completed");
+});
+
+test("a skipped VIP tour keeps its permanent skip through a completed replay", async () => {
+  const { id, jar } = await seedUser({ phone: "01093100009", email: "vip-replay-skip@example.test", name: "تخطى ثم أعاد" });
+  const { startFreeTrial } = await import("../lib/free-trials");
+  assert.equal((await startFreeTrial({ userId: id, now: new Date() })).reason, "started");
+
+  await tour(jar, "skipped", "vip");
+  const skipped = await state(jar);
+  assert.equal(skipped.body?.vipTour?.status, "skipped");
+
+  const replayStarted = await tour(jar, "started", "vip");
+  assert.equal(replayStarted.body?.vipTour?.status, "skipped", "the permanent skip survives a replay start");
+  assert.ok(replayStarted.body?.vipTour?.replayedAt);
+
+  const replayCompleted = await tour(jar, "completed", "vip");
+  assert.equal(replayCompleted.body?.vipTour?.status, "skipped", "a replay completion does not rewrite the permanent skip");
+  assert.equal(replayCompleted.body?.vipTour?.completedAt, null, "no completion timestamp is invented for a skipped tour");
 });

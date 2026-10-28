@@ -1,4 +1,5 @@
 import { logger } from "../logger";
+import { recordDataQualityEvent } from "./quality";
 
 export type FetchLike = typeof fetch;
 
@@ -80,8 +81,19 @@ export class ResilientHttpClient {
     try {
       return JSON.parse(responseText) as T;
     } catch {
+      this.recordParseFailure(opts);
       throw new UpstreamHttpError("upstream returned invalid JSON");
     }
+  }
+
+  /** Durable telemetry: a vendor answered but with a body this client cannot
+   * parse — a distinct, monitorable failure class from a network error. */
+  private recordParseFailure(opts: ResilientFetchOptions): void {
+    recordDataQualityEvent({
+      sourceId: opts.providerId,
+      kind: "parse_error",
+      message: "upstream returned invalid JSON",
+    });
   }
 
   /** Some public reference pages (HTML) act as name-labeled price tables;
@@ -95,6 +107,7 @@ export class ResilientHttpClient {
     try {
       return JSON.parse(responseText) as T;
     } catch {
+      this.recordParseFailure(opts);
       throw new UpstreamHttpError("upstream returned invalid JSON");
     }
   }
@@ -106,6 +119,7 @@ export class ResilientHttpClient {
   ): Promise<string> {
     const attempts = Math.max(1, Math.min(3, opts.attempts ?? 2));
     const timeoutMs = Math.max(500, opts.timeoutMs ?? 8_000);
+    const startedAt = Date.now();
     let lastError: unknown;
     let lastRetryAfterMs: number | undefined;
 
@@ -162,6 +176,12 @@ export class ResilientHttpClient {
       provider: opts.providerId,
       failure: safeUpstreamErrorSummary(lastError),
     }, "market upstream request exhausted retries");
+    recordDataQualityEvent({
+      sourceId: opts.providerId,
+      kind: "fetch_failure",
+      latencyMs: Date.now() - startedAt,
+      message: safeUpstreamErrorSummary(lastError),
+    });
     throw lastError instanceof Error ? lastError : new UpstreamHttpError("market upstream request failed");
   }
 }

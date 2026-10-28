@@ -1,5 +1,5 @@
 /**
- * Contract test for the portfolio + VIP analytics charts.
+ * Contract test for the portfolio charts (shared visual-analytics primitives).
  *
  * The chart builders live in the inline script of index.html, so a build cannot
  * catch a chart that silently invents a value. This test does two things:
@@ -31,10 +31,8 @@ function slice(startMarker, endMarker) {
   return html.slice(start, end);
 }
 
-const analyticsSource = [
-  slice("VISUAL ANALYTICS — shared chart primitives", "function vBuildPort(b){"),
-  slice("/* ═══════════════════ VIP ANALYTICS TAB", "/* ══════════════ TAB 9 — التقارير"),
-].join("\n");
+const analyticsSource =
+  slice("VISUAL ANALYTICS — shared chart primitives", "function vBuildPort(b){" );
 
 const sanitize = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -62,8 +60,8 @@ const factory = new Function(
   `${analyticsSource}
   return {
     vaFmt, vaCompact, vaPct, vaDaysLabel, vaCard, vaEmpty,
-    vaLineChart, vaDonut, vaSignedBars, vaScatter, vaCleanPercent,
-    pfAllocation, portStats, vaSectorGroups, vaRiskReturnCard, vaHistory,
+    vaLineChart, vaDonut, vaSignedBars,
+    pfAllocation, portStats,
   };`,
 );
 
@@ -128,7 +126,6 @@ test("a signed bar grows right of zero for gains and left of zero for losses", (
 test("no chart is drawn from fewer than two points, an empty slice or no data", () => {
   assert.equal(api.vaLineChart({ series: [{ label: "قيمة", color: "#10B981", points: [{ t: 1, y: 5 }] }] }), "");
   assert.equal(api.vaDonut({ slices: [{ label: "بنوك", value: 0, color: "#10B981" }] }), "");
-  assert.equal(api.vaScatter({ points: [] }), "");
   const line = api.vaLineChart({
     series: [
       { label: "قيمة", color: "#10B981", points: [{ t: 1, y: 10 }, { t: 2, y: 20 }] },
@@ -140,24 +137,6 @@ test("no chart is drawn from fewer than two points, an empty slice or no data", 
   assert.match(line, /vector-effect="non-scaling-stroke"/, "a responsive plot keeps its stroke width");
   assert.match(line, /data-va-chart="va-c\d+"/, "the plot is keyboard-focusable through its hover bridge");
   assert.match(line, /va-lg/, "the legend names every series");
-});
-
-test("sector comparison averages only the quoted stocks and names its source", () => {
-  const groups = api.vaSectorGroups();
-  const bySector = Object.fromEntries(groups.map((group) => [group.sector, group.avg]));
-  assert.ok(Math.abs(bySector["بنوك"] - 0.4) < 1e-9, "(1.2 + -0.4) / 2");
-  assert.equal(bySector["عقارات"], 2.5);
-  assert.equal(bySector["اتصالات"], -1.1);
-  assert.equal(groups[0].sector, "عقارات", "sorted by average change, highest first");
-});
-
-test("only a clean numeric expected return becomes a risk/return point", () => {
-  assert.equal(api.vaCleanPercent("12%"), 12);
-  assert.equal(api.vaCleanPercent("22"), 22);
-  assert.equal(api.vaCleanPercent("-3.5%"), -3.5);
-  assert.equal(api.vaCleanPercent("15% إلى 20%"), null, "a range is not guessed into a single value");
-  assert.equal(api.vaCleanPercent("عائد مرتفع"), null);
-  assert.equal(api.vaCleanPercent(""), null);
 });
 
 test("axis labels stay readable: compact money, Arabic day counts, signed percents", () => {
@@ -179,12 +158,10 @@ test("every analytics card names its source and time, and offers an explicit emp
   assert.match(empty, /va-empty/);
   assert.match(empty, /لا تتوفر بيانات كافية/);
 
-  /* Each of the four portfolio cards and the three VIP cards carries a source
-     foot; a card without one would leave the user guessing the provenance. */
+  /* Every portfolio chart card carries a source foot; a card without one
+     would leave the user guessing the provenance. */
   const portfolioBody = slice("function pfHistoryCard(){", "function vBuildPort(b){");
   assert.ok((portfolioBody.match(/foot:/g) || []).length >= 3, "each portfolio chart card declares a source foot");
-  const vipCards = slice("function vBuildAnalytics(b){", "/* ══════════════ TAB 9");
-  assert.match(vipCards, /وحدات|\u0623\u062f\u0648\u0627\u062a/);
 });
 
 test("chart code never fabricates values and never grants an entitlement", () => {
@@ -198,15 +175,3 @@ test("chart code never fabricates values and never grants an entitlement", () =>
   assert.match(analyticsSource, /لا يُرسم أي خط حتى تصل نقاط إغلاق حقيقية|لن نرسم خطًا من أيام جزئية/);
 });
 
-test("the VIP analytics tab lives inside the VIP shell and reuses the existing reads", () => {
-  assert.match(html, /\{id:"analytics", ic:"📈", lb:"التحليلات"\}/);
-  assert.match(html, /if\(vipTab==="analytics"\)return vBuildAnalytics\(b\);/);
-  /* The comparison reads the same licensed history endpoint as the asset chart
-     and the same opportunity feed as the opportunities tab: no new privileged
-     endpoint is introduced by a chart. */
-  assert.match(html, /vaHistory\(stock\.instrumentId,VA_COMPARE\.range\)/);
-  assert.match(html, /vaHistory\("egx:EGX30",VA_COMPARE\.range\)/);
-  assert.match(html, /MARKET_HISTORY_API\}/);
-  assert.match(html, /fetch\("\/api\/opportunities"/);
-  assert.doesNotMatch(analyticsSource, /\/api\/admin/, "no admin read from a user chart");
-});

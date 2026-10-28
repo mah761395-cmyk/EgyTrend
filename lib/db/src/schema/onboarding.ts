@@ -30,6 +30,10 @@ export const userOnboardingTable = pgTable("user_onboarding", {
   vipTourStartedAt: timestamp("vip_tour_started_at", { withTimezone: true }),
   vipTourCompletedAt: timestamp("vip_tour_completed_at", { withTimezone: true }),
   vipTourSkippedAt: timestamp("vip_tour_skipped_at", { withTimezone: true }),
+  /** Set when the user replays the tour after first acknowledging it. Replay
+   *  bookkeeping only: it never changes vip_tour_status, so a replay can
+   *  never re-arm the auto-start (replay must not clear permanent state). */
+  vipTourReplayedAt: timestamp("vip_tour_replayed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

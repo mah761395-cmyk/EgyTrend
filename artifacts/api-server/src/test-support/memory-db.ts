@@ -91,10 +91,24 @@ export async function createMemoryDatabase(): Promise<{
       vip_tour_started_at timestamp,
       vip_tour_completed_at timestamp,
       vip_tour_skipped_at timestamp,
+      vip_tour_replayed_at timestamp,
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX user_onboarding_tour_status_idx ON user_onboarding(tour_status, updated_at);
+    CREATE TABLE data_quality_events (
+      id serial PRIMARY KEY,
+      recorded_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      source_id text NOT NULL,
+      kind text NOT NULL,
+      instrument_id text,
+      latency_ms integer,
+      message text NOT NULL,
+      incident_key text
+    );
+    CREATE INDEX data_quality_events_recent_idx ON data_quality_events (recorded_at DESC);
+    CREATE INDEX data_quality_events_source_kind_idx ON data_quality_events (source_id, kind, recorded_at DESC);
+    CREATE INDEX data_quality_events_incident_idx ON data_quality_events (incident_key, recorded_at DESC) WHERE incident_key IS NOT NULL;
     CREATE TABLE password_resets (
       id serial PRIMARY KEY,
       user_id integer NOT NULL REFERENCES app_users(id),

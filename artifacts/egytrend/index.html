@@ -4,21 +4,82 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="theme-color" content="#070B14"/>
-<meta name="description" content="EgyTrend — متابعة الأسواق والأخبار المصرية بوضوح: المصدر ووقت التحديث وحالة البيانات عند توافرها، وأدوات تعليمية بلا توصيات أو وعود بالأرباح."/>
-<link rel="canonical" href="https://egytrend.com/"/>
+<!-- [OG-DOMAIN] كل الروابط المرتبطة بالنطاق في الكتلة التالية (description..og:locale).
+     النطاق الحالي مؤقّت: https://egy-trend.vercel.app — عند ربط نطاق خاص،
+     استبدل النطاق هنا فقط (4 مواضع: canonical, og:title/url, og:image, robots.txt). -->
+<meta name="description" content="البورصة المصرية، الذهب، الدولار، الكريبتو وأهم الأخبار في شاشة واحدة بالعربي — مع المصدر ووقت التحديث وحالة البيانات، وأدوات تعليمية بلا توصيات أو وعود بالأرباح."/>
+<link rel="canonical" href="https://egy-trend.vercel.app/"/>
 <meta property="og:type" content="website"/>
 <meta property="og:site_name" content="EgyTrend"/>
-<meta property="og:title" content="EgyTrend — نبض الأسواق المصرية"/>
-<meta property="og:description" content="متابعة الأسواق والأخبار المصرية بوضوح: المصدر ووقت التحديث وحالة البيانات عند توافرها، وأدوات تعليمية بلا توصيات أو وعود بالأرباح."/>
-<meta property="og:url" content="https://egytrend.com/"/>
-<meta property="og:image" content="https://egytrend.com/opengraph.jpg"/>
+<meta property="og:title" content="EgyTrend — متابعة البورصة المصرية والذهب والدولار لحظة بلحظة"/>
+<meta property="og:description" content="البورصة المصرية، الذهب، الدولار، الكريبتو وأهم الأخبار في شاشة واحدة بالعربي — مع المصدر ووقت التحديث وحالة البيانات، وأدوات تعليمية بلا توصيات أو وعود بالأرباح."/>
+<meta property="og:url" content="https://egy-trend.vercel.app/"/>
+<!-- og:image متوقفة مؤقتًا: https://egy-trend.vercel.app/opengraph.jpg يعيد HTTP 500 في الإنتاج
+     (خلل serving لملفات الثابتات الثنائية — انظر تقرير Landing 2026-10-28). أعد التفعيل بسطر:
+     <meta property="og:image" content="https://egy-trend.vercel.app/opengraph.jpg"/> -->
 <meta property="og:locale" content="ar_EG"/>
-<meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:title" content="EgyTrend — نبض الأسواق المصرية"/>
-<meta name="twitter:description" content="متابعة الأسواق والأخبار المصرية بوضوح: المصدر ووقت التحديث وحالة البيانات عند توافرها، وأدوات تعليمية بلا توصيات أو وعود بالأرباح."/>
-<meta name="twitter:image" content="https://egytrend.com/opengraph.jpg"/>
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="EgyTrend — متابعة البورصة المصرية والذهب والدولار لحظة بلحظة"/>
+<meta name="twitter:description" content="البورصة المصرية، الذهب، الدولار، الكريبتو وأهم الأخبار في شاشة واحدة بالعربي — مع المصدر ووقت التحديث وحالة البيانات."/>
+<!-- FAQ JSON-LD — MUST match the #faq section content exactly (kept in sync manually). -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "هل EgyTrend توصيني أشري سهم معين؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "لا. المنصة معلوماتية وتعليمية، ولا تقدم نصيحة استثمارية أو توصية شراء أو بيع. البيانات من مصادر مرخصة وتظهر مع المصدر ووقت التحديث، وأي قرار تتخذه مسؤوليتك الشخصية، وننصح باستشارة مستشار مالي مرخّص قبل أي قرار."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "إمتى تتحدث الأسعار؟ ومين مصدرها؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "الخادم يجلب الأسعار دورياً من مصادر مرخصة (مثل Yahoo Finance وCoinGecko وExchangeRate-API وTrading Economics)، وكل سعر يظهر مع مصدره وآخر تحديث. بعض الأسعار زي الدولار/الجنيه يوصل نهاية اليوم ودا بيظهر كعلامة «تحديث يومي» — ولو السعر غير متاح بنعرض «غير متاح» من غير ما نعرض رقمًا قديمًا أو بديلًا."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "إزاي أدفع اشتراك VIP؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "من داخل التطبيق (مركز VIP): تحوّل مبلغ الباقة على رقم المحفظة المعروض، وترفع صورة إثبات التحويل، وتدخل رقم العملية — والتفعيل يتم بعد التحقق. لا نطلب ولا نخزن أي بيانات بطاقات بنكية."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "هل أقدر ألغي اشتراكي؟ وإزاي أرجع فلوسي؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "الاشتراكات مدفوعة مسبقًا والتجديد اختياري بطلب دفع جديد — لا يوجد تجديد تلقائي. يمكن طلب الإلغاء خلال أول 48 ساعة من التفعيل إذا لم تُستخدم المزايا المدفوعة، ويكون الاسترداد الكامل خلال 7 أيام عمل بنفس وسيلة الدفع؛ وبعد 48 ساعة أو استخدام المزايا لا يتوفر استرداد. تواصل مع الدعم على واتساب 01008605139."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "إزاي بتحموا بياناتي؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "كلمات المرور مخزنة مشفرة بخوارزمية scrypt (تشفير أحادي الاتجاه)، وروابط استعادة كلمة المرور صالحة 30 دقيقة وتستخدم مرة واحدة، ولا نخزن أي بيانات بنكية. بيانات حسابك في قاعدة بيانات المنصة المؤمّنة — التفاصيل كاملة في سياسة الخصوصية."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "ما الفرق بين المجاني وVIP؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "المجاني: الأسعار الحية مع المصدر ووقت التحديث، أخبار من مصادر موثّقة، والشارت الأساسي للأسهم. VIP يضيف: التنبيهات السعرية، Screener، المحفظة، مستشار AI وتحليل الأخبار، تقارير الصباح ومنتصف اليوم والإغلاق، مؤشرات MA(20) وRSI(14) على الشارت، الحاسبات المتقدمة، والأخبار العاجلة."
+      }
+    }
+  ]
+}
+</script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070B14'/%3E%3Cpath d='M4 22 L10 15 L16 18 L22 9 L28 12' stroke='%2310b981' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='28' cy='12' r='2' fill='%2310b981'/%3E%3C/svg%3E"/>
-<title>EgyTrend — متابعة الأسواق والأخبار بوضوح</title>
+<title>EgyTrend — متابعة البورصة المصرية والذهب والدولار لحظة بلحظة</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
@@ -304,7 +365,6 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 
 /* ─── VISUAL ANALYTICS (portfolio + VIP) ─── */
 .va-card{background:var(--s1);border:1px solid var(--b1);border-radius:15px;padding:13px 13px 11px;margin-bottom:11px;}
-.va-card.vip{border-color:rgba(227,183,91,.22);background:linear-gradient(160deg,rgba(227,183,91,.05),rgba(14,21,36,.9) 46%);}
 .va-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
 .va-title{color:var(--t1);font-weight:800;font-size:12.5px;display:flex;align-items:center;gap:6px;line-height:1.5;}
 .va-sub{color:var(--t4);font-size:9.5px;line-height:1.7;margin-top:4px;}
@@ -357,25 +417,14 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .va-bar-v{font-family:var(--mono);font-size:9px;text-align:left;direction:ltr;white-space:nowrap;}
 .va-bar-total{background:rgba(96,165,250,.07);border:1px solid rgba(96,165,250,.16);border-radius:8px;padding:5px 6px 4px;margin-top:2px;}
 .va-bar-total .va-bar-row{grid-template-columns:46px minmax(0,1fr) 66px;}
-/* scatter */
-.va-scatter-wrap{display:flex;gap:5px;margin-top:11px;direction:ltr;}
-.va-sc-y{display:flex;flex-direction:column;justify-content:space-between;width:38px;flex-shrink:0;color:var(--t5);font-family:var(--mono);font-size:8px;text-align:right;}
-.va-scatter{position:relative;flex:1;min-width:0;height:160px;background:var(--ink2);border-radius:8px;outline:none;}
-.va-scatter:focus-visible{box-shadow:0 0 0 2px rgba(96,165,250,.5);}
-.va-sc-dot{position:absolute;width:10px;height:10px;min-width:10px;min-height:10px;line-height:0;border-radius:50%;transform:translate(-50%,-50%);cursor:pointer;border:1.5px solid rgba(7,11,20,.85);padding:0;background:transparent;}
-.va-sc-dot:focus-visible{box-shadow:0 0 0 2px #E8EEF8;}
-.va-x-risk{display:flex;justify-content:space-between;margin:4px 0 0 43px;padding:0 2.5%;color:var(--t5);font-size:8px;direction:ltr;}
-.va-risk-key{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
 /* Roomier plots where the viewport allows it; two columns on desktop so the
  * charts keep a readable aspect ratio instead of stretching full width. */
 @media (min-width:700px){
   .va-main{height:196px;}
-  .va-scatter{height:196px;}
   .va-donut svg{width:148px;height:148px;}
 }
 @media (min-width:1024px){
   #port-analytics,.va-grid-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 14px;align-items:stretch;}
-  .va-span-2{grid-column:1 / -1;}
   .va-y{width:52px;font-size:9px;}
   .va-x{margin-left:57px;}
 }
@@ -415,7 +464,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 /* AI output is multi-line plain text (headings, bullets, blank lines).
  * Without pre-wrap every reply collapses into one unreadable wall of text,
  * which reads like the feature is broken. */
-.msg,#sig-res,#rep-res,#ai-det-res,#ai-rw-res,#vstk-txt,#ai-analysis-txt,#port-ai-res,#ai-txt,#ai-rw-txt{white-space:pre-wrap;word-break:break-word;}
+.msg,#rep-res,#ai-det-res,#ai-rw-res,#port-ai-res,#ai-txt,#ai-rw-txt{white-space:pre-wrap;word-break:break-word;}
 .chat-row{display:flex;gap:6px;}
 .chat-in{flex:1;background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:9px 12px;color:var(--t1);font-size:13px;outline:none;font-family:var(--sans);direction:rtl;transition:border .18s;}
 .chat-in:focus{border-color:rgba(16,185,129,.3);}
@@ -931,16 +980,26 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .ob-task-arrow{color:var(--t5);font-size:13px;padding-top:2px;}
 .ob-tour-backdrop{position:fixed;inset:0;z-index:1200;background:rgba(3,7,18,.76);backdrop-filter:blur(2px);animation:obFade .18s ease;}
 .ob-tour-highlight{position:relative!important;z-index:1201!important;outline:3px solid #34d399!important;outline-offset:5px;border-radius:12px;box-shadow:0 0 0 9999px rgba(3,7,18,.13),0 0 26px rgba(52,211,153,.62)!important;transition:outline .18s ease;}
+/* The VIP tour spotlights with a gold frame, not the platform's green. */
+.ob-tour-highlight-vip{outline-color:#F5C451!important;box-shadow:0 0 0 9999px rgba(3,7,18,.13),0 0 26px rgba(245,196,81,.6)!important;}
 .ob-panel{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:1202;width:min(calc(100% - 24px),430px);background:linear-gradient(160deg,#17243a,#101827);border:1px solid rgba(110,231,183,.3);border-radius:20px;padding:15px;box-shadow:0 18px 60px rgba(0,0,0,.56);color:var(--t2);}
 .ob-panel-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
 .ob-step-count{color:#86efac;background:rgba(16,185,129,.12);border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;}
-.ob-skip{border:0;background:transparent;color:var(--t4);font:inherit;font-size:11px;cursor:pointer;padding:5px;}
+.ob-skip{border:0;background:transparent;color:var(--t4);font:inherit;font-size:11px;cursor:pointer;padding:5px 10px;min-height:44px;display:inline-flex;align-items:center;}
 .ob-panel-icon{font-size:25px;line-height:1;margin-bottom:7px;}
 .ob-panel-title{color:#f0fdf4;font-size:16px;font-weight:900;line-height:1.4;}
 .ob-panel-copy{color:#cbd5e1;font-size:11.5px;line-height:1.72;margin-top:5px;}
 .ob-panel-note{color:#94a3b8;font-size:9.5px;line-height:1.55;margin-top:6px;}
 .ob-panel-actions{display:flex;gap:8px;margin-top:13px;}
-.ob-panel-actions button{font-family:var(--sans);cursor:pointer;border-radius:10px;padding:10px 12px;font-size:11.5px;font-weight:800;}
+.ob-panel-actions button{font-family:var(--sans);cursor:pointer;border-radius:10px;padding:10px 12px;font-size:11.5px;font-weight:800;min-height:44px;display:inline-flex;align-items:center;justify-content:center;}
+.ob-panel-actions button:focus-visible,.ob-skip:focus-visible{outline:3px solid #F5C451;outline-offset:2px;}
+.ob-panel-welcome{border-color:rgba(251,191,36,.5);box-shadow:0 18px 60px rgba(0,0,0,.56),0 0 34px rgba(245,196,81,.14);}
+.ob-tour-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
+.ob-end-tasks{display:flex;flex-direction:column;gap:7px;margin:10px 0 4px;}
+.ob-end-task{display:flex;align-items:center;gap:9px;min-height:44px;padding:8px 12px;border:1px solid rgba(251,191,36,.35);border-radius:10px;background:rgba(245,158,11,.08);color:#fcd34d;font:inherit;font-weight:800;font-size:12.5px;cursor:pointer;text-align:right;}
+.ob-end-task:hover{background:rgba(245,158,11,.16);}
+.ob-end-task:focus-visible{outline:2px solid #fbbf24;outline-offset:2px;}
+.ob-end-task-icon{flex:none;display:inline-flex;}
 .ob-next{border:1px solid rgba(52,211,153,.48);background:var(--g);color:#06281e;flex:1;}
 .ob-back{border:1px solid var(--b2);background:var(--s1);color:var(--t3);min-width:74px;}
 @keyframes obFade{from{opacity:0}to{opacity:1}}
@@ -949,7 +1008,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .ob-panel-vip .ob-step-count{color:#fde68a;background:rgba(245,158,11,.14);}
 .ob-panel-vip .ob-panel-title{color:#fef3c7;}
 .ob-panel-vip .ob-next{border-color:rgba(251,191,36,.5);background:#f59e0b;color:#2a1c04;}
-@media (prefers-reduced-motion:reduce){.ob-tour-backdrop,.ob-progress-value{animation:none;transition:none;}}
+@media (prefers-reduced-motion:reduce){.ob-tour-backdrop,.ob-panel,.ob-progress-value,.ob-tour-highlight{animation:none;transition:none;}}
 
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -992,16 +1051,229 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .ob-checklist{border-radius:18px;background:linear-gradient(145deg,rgba(16,185,129,.105),rgba(14,21,36,.94));border-color:rgba(16,185,129,.26);}.ob-panel{background:linear-gradient(145deg,#16223A,#0E1524);border-color:rgba(16,185,129,.32);box-shadow:0 22px 66px rgba(0,0,0,.62);}
 .sk{background:linear-gradient(90deg,#151F32 25%,#23334F 45%,#151F32 65%);background-size:600px 100%;}.ob-skeleton{display:grid;gap:9px;}.sk-line{display:block;height:10px;width:100%;border-radius:999px;}.sk-line.md{width:72%;}.sk-line.lg{width:44%;height:13px;}.ticker-skeleton{display:flex;align-items:center;gap:14px;padding:0 17px;min-width:260px;}.ticker-skeleton .sk{width:68px;height:10px;border-radius:999px;display:block;}.market-strip-skeleton{width:100%;display:flex;gap:1px;background:var(--b1);}.market-strip-skeleton .sk{height:53px;flex:1;min-width:78px;border-radius:0;}
 
-/* Guest landing */
-#landing{min-height:100vh;overflow:hidden;background:radial-gradient(900px 470px at 75% -15%,rgba(16,185,129,.15),transparent 68%),radial-gradient(600px 520px at -15% 45%,rgba(96,165,250,.055),transparent 70%),var(--ink);color:var(--t1);}
-#landing[hidden]{display:none!important;}.landing-nav{height:76px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid rgba(28,39,64,.65);max-width:1180px;margin:0 auto;}.landing-brand{display:flex;align-items:center;gap:10px;color:var(--t1);text-decoration:none;}.landing-brand-mark{width:38px;height:38px;border:1px solid;border-radius:13px;display:grid;place-items:center;box-shadow:0 0 24px rgba(16,185,129,.11);}.landing-brand-mark .et-icon{font-size:19px;}.landing-brand strong{display:block;font-size:17px;font-weight:900;line-height:1.05;}.landing-brand small{display:block;color:var(--t4);font-size:8.5px;font-weight:700;letter-spacing:.8px;margin-top:3px;}.landing-login{border:1px solid var(--b2);background:rgba(14,21,36,.66);padding:0 16px;border-radius:12px;color:var(--t2);font:800 12px var(--sans);cursor:pointer;transition:.2s ease;}.landing-login:hover{border-color:rgba(16,185,129,.5);color:var(--t1);background:var(--s3);}.landing-shell{max-width:1180px;margin:0 auto;padding:44px 20px 34px;}.landing-hero{display:grid;grid-template-columns:1fr;gap:36px;align-items:center;}.landing-eyebrow,.landing-kicker{display:flex;align-items:center;gap:8px;color:var(--g);font-size:11px;font-weight:800;letter-spacing:.1px;margin-bottom:13px;}.live-dot{width:7px;height:7px;border-radius:50%;background:var(--g);box-shadow:0 0 0 5px rgba(16,185,129,.1);}.landing-copy h1{font-size:clamp(34px,9vw,58px);line-height:1.23;letter-spacing:-1.2px;font-weight:900;margin:0;color:var(--t1);}.landing-copy h1 em{font-style:normal;background:linear-gradient(100deg,#A5F3D0,#10B981);-webkit-background-clip:text;background-clip:text;color:transparent;}.landing-lede{max-width:580px;color:var(--t3);font-size:14px;line-height:2;margin:18px 0 22px;}.landing-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}.landing-primary{border:0;border-radius:14px;padding:0 18px;background:linear-gradient(135deg,#059669,#10B981);color:#ECFDF5;font:900 14px var(--sans);cursor:pointer;box-shadow:0 12px 30px rgba(16,185,129,.18);display:inline-flex;align-items:center;gap:8px;transition:transform .2s,box-shadow .2s;}.landing-primary:hover{transform:translateY(-2px);box-shadow:0 16px 37px rgba(16,185,129,.24);}.landing-primary .et-icon{transform:rotate(180deg);}.landing-secondary{color:var(--t2);border:1px solid var(--b1);border-radius:14px;padding:0 17px;display:inline-flex;align-items:center;text-decoration:none;font-size:13px;font-weight:800;transition:.2s;}.landing-secondary:hover{background:var(--s2);border-color:var(--b2);}.landing-note{font-size:10.5px;line-height:1.7;color:var(--t4);margin-top:15px;max-width:520px;}.landing-visual{position:relative;padding:17px 12px 10px;background:linear-gradient(145deg,rgba(22,35,59,.78),rgba(10,17,30,.6));border:1px solid rgba(28,39,64,.9);border-radius:24px;box-shadow:inset 0 1px rgba(255,255,255,.025),0 22px 60px rgba(0,0,0,.2);overflow:hidden;}.landing-visual::after{content:"";position:absolute;width:180px;height:180px;left:-55px;bottom:-80px;border-radius:50%;background:rgba(16,185,129,.08);filter:blur(35px);}.landing-visual svg{display:block;width:100%;height:auto;position:relative;z-index:1;}.visual-grid{stroke:#2A3955;stroke-opacity:.55;stroke-width:1;}.visual-caption,.visual-status{position:absolute;z-index:2;display:flex;align-items:center;gap:8px;background:rgba(7,11,20,.7);border:1px solid rgba(42,57,85,.9);backdrop-filter:blur(12px);border-radius:10px;color:var(--t3);font-size:9.5px;font-weight:700;}.visual-caption{top:14px;right:14px;padding:7px 9px;}.visual-caption .et-icon{color:var(--g);}.visual-status{bottom:18px;left:14px;padding:8px 10px;}.status-check{width:28px;height:28px;display:grid;place-items:center;background:var(--gd);border-radius:8px;color:var(--g);}.visual-status b,.visual-status small{display:block;}.visual-status b{color:var(--t2);font-size:9.5px;}.visual-status small{color:var(--t4);font-size:8.5px;margin-top:1px;}.landing-features{display:grid;grid-template-columns:1fr;gap:10px;margin:42px 0;}.landing-feature{padding:18px;background:rgba(14,21,36,.56);border:1px solid var(--b1);border-radius:18px;}.feature-icon{width:38px;height:38px;display:grid;place-items:center;border-radius:12px;background:var(--gd);color:var(--g);margin-bottom:13px;}.feature-icon .et-icon{font-size:19px;}.landing-feature h2{font-size:14px;color:var(--t1);margin:0 0 5px;font-weight:900;}.landing-feature p{color:var(--t3);font-size:11.5px;line-height:1.8;margin:0;}.landing-how{padding:24px 18px;border:1px solid var(--b1);border-radius:22px;background:linear-gradient(120deg,rgba(16,185,129,.07),rgba(14,21,36,.83) 45%);}.landing-how h2{font-size:22px;line-height:1.5;max-width:350px;}.landing-steps{list-style:none;margin:24px 0 19px;padding:0;display:grid;gap:14px;}.landing-steps li{display:flex;gap:11px;align-items:flex-start;}.landing-steps li>span{height:29px;width:29px;border-radius:10px;border:1px solid rgba(16,185,129,.3);background:var(--gd);color:var(--g);display:grid;place-items:center;font:800 12px var(--mono);flex:0 0 auto;}.landing-steps b{color:var(--t2);font-size:12px;}.landing-steps p{color:var(--t4);font-size:10.5px;line-height:1.7;margin:2px 0 0;}.landing-outline{border:1px solid rgba(16,185,129,.42);background:var(--gd);color:var(--g);border-radius:13px;padding:0 15px;font:900 12px var(--sans);cursor:pointer;display:inline-flex;align-items:center;gap:7px;}.landing-outline .et-icon{transform:rotate(180deg);}.landing-footer{max-width:1180px;margin:0 auto;padding:20px;border-top:1px solid rgba(28,39,64,.7);display:flex;justify-content:space-between;gap:16px;align-items:center;color:var(--t5);font:700 9.5px var(--sans);}.landing-footer span:last-child{display:flex;gap:13px;}.landing-footer a{color:var(--t4);text-decoration:none;}.landing-footer a:hover{color:var(--t2);}
-
-/* Auth now reads as a focused premium dialog over the public entry point. */
-#auth{background:rgba(7,11,20,.86);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);}.auth-card{background:linear-gradient(145deg,rgba(22,34,58,.94),rgba(14,21,36,.96));border-color:rgba(42,57,85,.95);box-shadow:0 28px 80px rgba(0,0,0,.54);}.auth-close{position:absolute;top:20px;left:20px;width:44px;height:44px;border-radius:12px;border:1px solid var(--b1);background:rgba(14,21,36,.7);color:var(--t3);display:grid;place-items:center;cursor:pointer;}.auth-close:hover{color:var(--t1);border-color:var(--b2);}.auth-brand{text-align:center;margin-bottom:23px;}.auth-brand-mark{width:66px;height:66px;border:1px solid;border-radius:20px;display:grid;place-items:center;margin:0 auto 10px;box-shadow:0 0 30px rgba(16,185,129,.12);}.auth-brand-mark .et-icon{font-size:29px;}.auth-brand-name{font-size:28px;font-weight:900;background:linear-gradient(90deg,#E8FFF6,#10B981);-webkit-background-clip:text;background-clip:text;color:transparent;}.auth-brand-sub{color:var(--t4);font-size:10px;letter-spacing:1.7px;margin-top:2px;font-weight:700;}.auth-tabs{background:#09111F;border:1px solid var(--b1);}.a-tab{min-height:44px;}.a-tab.active{background:var(--gd);color:var(--g);}
-
-@media (min-width:680px){.landing-nav{padding:0 34px;}.landing-shell{padding:76px 34px 50px;}.landing-hero{grid-template-columns:minmax(0,1.02fr) minmax(340px,.98fr);gap:54px;}.landing-copy h1{font-size:clamp(42px,5.3vw,62px);}.landing-lede{font-size:15px;}.landing-features{grid-template-columns:repeat(3,1fr);gap:14px;margin:68px 0;}.landing-feature{padding:22px;}.landing-how{padding:32px;display:grid;grid-template-columns:.78fr 1.25fr auto;gap:30px;align-items:center;}.landing-steps{margin:0;}.landing-footer{padding:22px 34px;}.auth-close{top:28px;left:28px;}}
-@media (min-width:1024px){#landing{margin-right:-240px;}.landing-nav{max-width:1240px;}.landing-shell,.landing-footer{max-width:1240px;}.landing-visual{border-radius:24px;}.landing-how{grid-template-columns:.8fr 1.2fr auto;}.landing-outline{white-space:nowrap;}}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important;}.landing-primary:hover{transform:none;}.ticker-skeleton .sk,.market-strip-skeleton .sk{animation:none;}}
+/* ══ Guest landing — multi-section (palette: #0A1128 bg · #101A3B cards · #24305E/#2F3F7A borders · #EAF0FF/#B9C4E6 text · #34D399 green · #F5C451 gold) ══ */
+#landing{min-height:100vh;color:#EAF0FF;background:radial-gradient(900px 480px at 82% -12%,rgba(52,211,153,.10),transparent 65%),radial-gradient(640px 520px at -12% 40%,rgba(96,165,250,.06),transparent 70%),#0A1128;}
+#landing[hidden]{display:none!important}
+#landing .lnd-main,#landing .lnd-footer{max-width:1180px;}
+.lnd-nav{position:sticky;top:0;z-index:60;background:rgba(10,17,40,.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid #24305E;}
+.lnd-nav-inner{max-width:1180px;margin:0 auto;height:64px;display:flex;align-items:center;gap:14px;padding:0 20px;}
+.lnd-brand{display:flex;align-items:center;gap:10px;color:#EAF0FF;text-decoration:none;}
+.lnd-brand-mark{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(52,211,153,.18),rgba(52,211,153,.03));border:1px solid rgba(52,211,153,.4);color:#34D399;box-shadow:0 0 22px rgba(52,211,153,.12);}
+.lnd-brand-mark .et-icon{font-size:19px;}
+.lnd-brand strong{display:block;font-size:16.5px;font-weight:900;line-height:1.1;}
+.lnd-brand small{display:block;font-size:8.5px;font-weight:700;color:#B9C4E6;letter-spacing:.4px;margin-top:2px;}
+.lnd-links{display:none;align-items:center;gap:2px;margin-inline-start:6px;}
+.lnd-links a{color:#B9C4E6;text-decoration:none;font-size:12.5px;font-weight:700;padding:8px 12px;border-radius:10px;transition:background .15s,color .15s;}
+.lnd-links a:hover{color:#EAF0FF;background:rgba(47,63,122,.38);}
+.lnd-links a:focus-visible{outline:2px solid #34D399;outline-offset:2px;}
+.lnd-nav-actions{margin-inline-start:auto;display:flex;align-items:center;gap:8px;}
+.lnd-login{border:1px solid #2F3F7A;background:rgba(12,21,51,.7);color:#C9D4F2;border-radius:11px;padding:0 14px;min-height:40px;font:800 12px var(--sans);cursor:pointer;transition:border-color .15s,color .15s;}
+.lnd-login:hover{border-color:#34D399;color:#EAF0FF;}
+.lnd-cta{border:0;border-radius:11px;padding:0 15px;min-height:40px;background:linear-gradient(135deg,#0E9F6E,#34D399);color:#04121F;font:900 12px var(--sans);cursor:pointer;box-shadow:0 8px 22px rgba(52,211,153,.22);transition:filter .15s;}
+.lnd-cta:hover{filter:brightness(1.07);}
+.lnd-login:focus-visible,.lnd-cta:focus-visible,.lnd-burger:focus-visible{outline:2px solid #34D399;outline-offset:2px;}
+.lnd-burger{display:inline-grid;place-items:center;width:40px;height:40px;border-radius:11px;border:1px solid #2F3F7A;background:rgba(12,21,51,.7);color:#C9D4F2;cursor:pointer;}
+.lnd-burger svg{display:block;}
+.lnd-menu{max-width:1180px;border-top:1px solid #24305E;background:rgba(10,17,40,.97);margin:0 auto;padding:12px 20px 18px;display:grid;gap:7px;}
+.lnd-menu[hidden]{display:none;}
+.lnd-menu a{color:#C9D4F2;text-decoration:none;font-size:14px;font-weight:800;padding:11px 13px;border-radius:12px;background:rgba(16,26,59,.65);border:1px solid #24305E;}
+.lnd-menu a:hover{border-color:#34D399;color:#EAF0FF;}
+.lnd-menu-acts{display:flex;gap:8px;margin-top:9px;}
+.lnd-menu-acts .lnd-login,.lnd-menu-acts .lnd-cta{flex:1;min-height:44px;display:inline-flex;align-items:center;justify-content:center;}
+@media (min-width:900px){.lnd-links{display:flex;}.lnd-burger{display:none;}.lnd-menu{display:none!important;}}
+.lnd-main{margin:0 auto;padding:0 20px;}
+.lnd-hero{display:grid;grid-template-columns:1fr;gap:34px;padding:40px 0 26px;align-items:center;}
+.lnd-badge{display:inline-flex;align-items:center;gap:7px;background:rgba(52,211,153,.10);border:1px solid rgba(52,211,153,.35);color:#34D399;font-size:11px;font-weight:800;border-radius:999px;padding:6px 13px;margin:0 0 16px;}
+.lnd-badge .et-icon{font-size:13px;}
+.lnd-hero-copy h1{font-size:clamp(31px,8.2vw,52px);line-height:1.34;letter-spacing:-.5px;font-weight:900;margin:0;color:#EAF0FF;}
+.lnd-hero-copy h1 em{font-style:normal;color:#34D399;}
+.lnd-lede{max-width:560px;color:#B9C4E6;font-size:14.5px;line-height:2.05;margin:16px 0 22px;}
+.lnd-actions{display:flex;gap:10px;flex-wrap:wrap;}
+.lnd-primary{border:0;border-radius:14px;padding:13px 22px;min-height:48px;background:linear-gradient(135deg,#0E9F6E,#34D399);color:#04121F;font:900 14.5px var(--sans);cursor:pointer;box-shadow:0 14px 34px rgba(52,211,153,.25);display:inline-flex;align-items:center;gap:8px;transition:transform .18s,box-shadow .18s;}
+.lnd-primary .et-icon{transform:rotate(180deg);}
+.lnd-primary:hover{transform:translateY(-2px);box-shadow:0 18px 40px rgba(52,211,153,.32);}
+.lnd-primary:focus-visible{outline:2px solid #EAF0FF;outline-offset:2px;}
+.lnd-secondary{color:#C9D4F2;border:1px solid #2F3F7A;background:rgba(12,21,51,.6);border-radius:14px;padding:13px 20px;min-height:48px;display:inline-flex;align-items:center;font-size:13.5px;font-weight:800;text-decoration:none;transition:background .15s,border-color .15s,color .15s;}
+.lnd-secondary:hover{background:rgba(47,63,122,.42);border-color:#34D399;color:#EAF0FF;}
+.lnd-secondary:focus-visible{outline:2px solid #34D399;outline-offset:2px;}
+.lnd-trust{margin:16px 0 0;font-size:11px;color:#B9C4E6;display:flex;align-items:center;gap:7px;flex-wrap:wrap;line-height:1.8;}
+.lnd-trust .et-icon{font-size:14px;color:#34D399;flex:0 0 auto;}
+.lnd-visual{position:relative;background:linear-gradient(150deg,rgba(16,26,59,.92),rgba(12,21,51,.78));border:1px solid #24305E;border-radius:24px;padding:16px 14px 18px;box-shadow:0 26px 70px rgba(3,7,18,.55);overflow:hidden;}
+.lnd-visual::after{content:"";position:absolute;width:200px;height:200px;left:-60px;bottom:-90px;border-radius:50%;background:rgba(52,211,153,.09);filter:blur(38px);pointer-events:none;}
+.lnd-mock-status{position:relative;z-index:1;display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;}
+.lnd-chip{display:inline-flex;align-items:center;gap:6px;font-size:9.5px;font-weight:800;color:#B9C4E6;background:rgba(12,21,51,.85);border:1px solid #24305E;border-radius:999px;padding:5px 10px;}
+.lnd-chip-live{color:#34D399;border-color:rgba(52,211,153,.42);}
+.lnd-chip-live i{width:6px;height:6px;border-radius:50%;background:#34D399;box-shadow:0 0 0 4px rgba(52,211,153,.15);display:inline-block;}
+.lnd-mock-grid{position:relative;z-index:1;display:grid;grid-template-columns:1fr;gap:10px;}
+.lnd-mock-card{background:#101A3B;border:1px solid #24305E;border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px;min-width:0;}
+.lnd-mock-card .m-id{min-width:0;flex:1 1 auto;}
+.m-name{font-size:11.5px;font-weight:800;color:#C9D4F2;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.m-sub{font-size:9px;color:#8FA0C9;font-weight:700;margin-top:2px;}
+.m-val{font-family:var(--mono);font-size:15.5px;font-weight:700;color:#EAF0FF;direction:ltr;text-align:left;white-space:nowrap;margin-top:4px;}
+.m-delta{font-family:var(--mono);font-size:10px;font-weight:700;border-radius:8px;padding:3px 8px;direction:ltr;white-space:nowrap;}
+.m-delta.up{color:#34D399;background:rgba(52,211,153,.12);}
+.m-delta.down{color:#F87171;background:rgba(248,113,113,.12);}
+.m-delta.flat{color:#B9C4E6;background:rgba(47,63,122,.30);}
+.m-src{font-size:8.5px;color:#8FA0C9;margin-top:6px;display:flex;gap:4px;align-items:center;flex-wrap:wrap;line-height:1.6;}
+.m-src .et-icon{font-size:10px;color:#34D399;}
+.m-spark{flex:0 0 auto;margin-inline-start:auto;}
+.m-spark svg{display:block;width:96px;height:27px;}
+.lnd-mock-summary{background:linear-gradient(135deg,rgba(245,196,81,.10),rgba(16,26,59,.92));border-color:rgba(245,196,81,.35);}
+.lnd-mock-summary .s-ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:rgba(245,196,81,.14);color:#F5C451;flex:0 0 auto;}
+.lnd-mock-summary .s-ic .et-icon{font-size:19px;}
+.lnd-mock-summary b{font-size:12.5px;color:#EAF0FF;display:block;line-height:1.5;}
+.lnd-mock-summary small{font-size:9.5px;color:#B9C4E6;display:block;margin-top:3px;line-height:1.7;}
+.lnd-skel-card{background:#101A3B;border:1px solid #24305E;border-radius:16px;padding:16px 14px;display:grid;gap:8px;}
+.lnd-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:4px 0 26px;}
+.lnd-stats[hidden]{display:none;}
+.lnd-stat{background:rgba(12,21,51,.62);border:1px solid #24305E;border-radius:16px;padding:15px 12px;text-align:center;}
+.lnd-stat b{display:block;font-family:var(--mono);font-size:20px;font-weight:800;color:#34D399;line-height:1.3;}
+.lnd-stat span{display:block;font-size:10px;color:#B9C4E6;font-weight:700;margin-top:5px;line-height:1.6;}
+@media (min-width:760px){.lnd-stats{grid-template-columns:repeat(4,1fr);}}
+@media (min-width:680px){.lnd-nav-inner{padding:0 34px;}.lnd-main{padding:0 34px;}.lnd-hero{padding:64px 0 34px;gap:54px;grid-template-columns:minmax(0,1.02fr) minmax(340px,.98fr);}.lnd-hero-copy h1{font-size:clamp(40px,5.1vw,58px);}.lnd-lede{font-size:15px;}}
+@media (min-width:1024px){.lnd-nav-inner,.lnd-menu{max-width:1240px;}.lnd-main,.lnd-footer{max-width:1240px;}}
+#landing #features,#landing .landing-how,#landing .landing-features,#landing #vip,#landing #calculator,#landing #pricing,#landing #faq{scroll-margin-top:84px;}
+/* Retained pre-upgrade sections (features / how-it-works) keep their original
+   styling — replaced in full by the Phase-2 "Why" cards. */
+.landing-kicker{display:flex;align-items:center;gap:8px;color:var(--g);font-size:11px;font-weight:800;letter-spacing:.1px;margin-bottom:13px;}
+.landing-features{display:grid;grid-template-columns:1fr;gap:10px;margin:42px 0;}
+.landing-feature{padding:18px;background:rgba(14,21,36,.56);border:1px solid var(--b1);border-radius:18px;}
+.feature-icon{width:38px;height:38px;display:grid;place-items:center;border-radius:12px;background:var(--gd);color:var(--g);margin-bottom:13px;}
+.feature-icon .et-icon{font-size:19px;}
+.landing-feature h2{font-size:14px;color:var(--t1);margin:0 0 5px;font-weight:900;}
+.landing-feature p{color:var(--t3);font-size:11.5px;line-height:1.8;margin:0;}
+.landing-how{padding:24px 18px;border:1px solid var(--b1);border-radius:22px;background:linear-gradient(120deg,rgba(16,185,129,.07),rgba(14,21,36,.83) 45%);}
+.landing-how h2{font-size:22px;line-height:1.5;max-width:350px;}
+.landing-steps{list-style:none;margin:24px 0 19px;padding:0;display:grid;gap:14px;}
+.landing-steps li{display:flex;gap:11px;align-items:flex-start;}
+.landing-steps li>span{height:29px;width:29px;border-radius:10px;border:1px solid rgba(16,185,129,.3);background:var(--gd);color:var(--g);display:grid;place-items:center;font:800 12px var(--mono);flex:0 0 auto;}
+.landing-steps b{color:var(--t2);font-size:12px;}
+.landing-steps p{color:var(--t4);font-size:10.5px;line-height:1.7;margin:2px 0 0;}
+.landing-outline{border:1px solid rgba(16,185,129,.42);background:var(--gd);color:var(--g);border-radius:13px;padding:0 15px;min-height:44px;font:900 12px var(--sans);cursor:pointer;display:inline-flex;align-items:center;gap:7px;}
+.landing-outline .et-icon{transform:rotate(180deg);}
+@media (min-width:680px){.landing-features{grid-template-columns:repeat(3,1fr);gap:14px;margin:68px 0;}.landing-feature{padding:22px;}.landing-how{padding:32px;display:grid;grid-template-columns:.78fr 1.25fr auto;gap:30px;align-items:center;}.landing-steps{margin:0;}}
+@media (min-width:1024px){.landing-how{grid-template-columns:.8fr 1.2fr auto;}.landing-outline{white-space:nowrap;}}
+.lnd-footer{margin:36px auto 0;padding:22px 20px 28px;border-top:1px solid #24305E;display:flex;flex-direction:column;gap:12px;}
+.lnd-footer .f-disc{font-size:10px;color:#8FA0C9;line-height:1.9;max-width:760px;margin:0;}
+.lnd-footer nav{display:flex;gap:16px;flex-wrap:wrap;align-items:center;}
+.lnd-footer nav a{color:#B9C4E6;text-decoration:none;font-size:11px;font-weight:700;}
+.lnd-footer nav a:hover{color:#34D399;}
+.lnd-footer .f-copy{font-size:10px;color:#8FA0C9;font-weight:700;}
+@media (min-width:760px){.lnd-footer{flex-direction:row;align-items:center;justify-content:space-between;padding:26px 20px 32px;}}
+/* ══ Landing Phase 2+3: why · VIP · calculator · pricing · FAQ · final CTA · mobile bar ══ */
+.lnd-sec{padding:34px 0 8px;}
+.lnd-sec-head{max-width:640px;margin-bottom:20px;}
+.lnd-kicker2{display:inline-flex;align-items:center;gap:7px;background:rgba(47,63,122,.30);border:1px solid #2F3F7A;color:#C9D4F2;font-size:10.5px;font-weight:800;border-radius:999px;padding:5px 12px;margin:0 0 12px;}
+.lnd-sec-head h2{font-size:clamp(21px,4.6vw,30px);font-weight:900;color:#EAF0FF;line-height:1.45;margin:0;}
+.lnd-sec-sub{color:#B9C4E6;font-size:13px;line-height:1.95;margin:10px 0 0;}
+.lnd-why{display:grid;grid-template-columns:1fr;gap:10px;}
+.lnd-why-card{background:rgba(12,21,51,.62);border:1px solid #24305E;border-radius:16px;padding:18px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;}
+.lnd-why-ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:rgba(52,211,153,.12);color:#34D399;}
+.lnd-why-ic .et-icon{font-size:19px;}
+.lnd-why-card h3{font-size:14px;font-weight:900;color:#EAF0FF;margin:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.lnd-why-card p{font-size:11.5px;color:#B9C4E6;line-height:1.85;margin:0;}
+.lnd-plan-tag{font-size:9px;font-weight:900;border-radius:999px;padding:3px 9px;border:1px solid rgba(245,196,81,.5);color:#F5C451;background:rgba(245,196,81,.10);}
+@media (min-width:700px){.lnd-why{grid-template-columns:repeat(2,1fr);gap:12px;}}
+@media (min-width:1024px){.lnd-why{grid-template-columns:repeat(4,1fr);}}
+.lnd-vip{border:1px solid rgba(245,196,81,.42);border-radius:24px;background:linear-gradient(160deg,rgba(245,196,81,.07),rgba(16,26,59,.85) 38%,rgba(12,21,51,.9));padding:24px 18px;box-shadow:0 22px 60px rgba(3,7,18,.5);}
+@media (min-width:700px){.lnd-vip{padding:32px 28px;}}
+.lnd-vip-head{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:18px;}
+.lnd-vip-head .lnd-sec-head{margin-bottom:0;flex:1 1 300px;}
+.lnd-vip-cta{display:inline-flex;align-items:center;gap:8px;border:0;border-radius:13px;padding:13px 20px;min-height:48px;background:linear-gradient(135deg,#D9A63C,#F5C451);color:#231a04;font:900 13.5px var(--sans);text-decoration:none;box-shadow:0 12px 30px rgba(245,196,81,.22);transition:filter .15s;cursor:pointer;}
+.lnd-vip-cta:hover{filter:brightness(1.06);}
+.lnd-vip-cta:focus-visible{outline:2px solid #F5C451;outline-offset:2px;}
+.lnd-vip-grid{display:grid;grid-template-columns:1fr;gap:10px;}
+@media (min-width:700px){.lnd-vip-grid{grid-template-columns:repeat(2,1fr);}}
+@media (min-width:1024px){.lnd-vip-grid{grid-template-columns:repeat(3,1fr);}}
+.lnd-vip-item{background:rgba(10,17,40,.6);border:1px solid #24305E;border-radius:14px;padding:15px 14px;}
+.lnd-vip-item .lnd-why-ic{background:rgba(245,196,81,.12);color:#F5C451;margin-bottom:9px;}
+.lnd-vip-item h3{font-size:13px;font-weight:900;color:#EAF0FF;margin:0 0 5px;}
+.lnd-vip-item p{font-size:11px;color:#B9C4E6;line-height:1.8;margin:0;}
+.lnd-demo-badge{display:inline-flex;align-items:center;gap:5px;font-size:8.5px;font-weight:900;color:#F5C451;background:rgba(245,196,81,.12);border:1px dashed rgba(245,196,81,.55);border-radius:999px;padding:3px 9px;margin-bottom:8px;}
+.lnd-demo-rows{display:grid;gap:7px;margin-top:9px;}
+.lnd-demo-row{display:flex;align-items:center;gap:8px;background:rgba(12,21,51,.75);border:1px solid #24305E;border-radius:10px;padding:8px 10px;font-size:10px;color:#C9D4F2;}
+.lnd-demo-row b{font-family:var(--mono);font-size:10.5px;color:#EAF0FF;direction:ltr;}
+.lnd-demo-row .d-ret{font-family:var(--mono);direction:ltr;color:#34D399;font-size:10px;font-weight:700;}
+.lnd-demo-row .d-risk{font-size:9px;color:#B9C4E6;background:rgba(47,63,122,.35);border-radius:999px;padding:2px 8px;margin-inline-start:auto;}
+.lnd-calc-box{background:rgba(12,21,51,.7);border:1px solid #24305E;border-radius:20px;padding:18px 16px;}
+@media (min-width:700px){.lnd-calc-box{padding:26px 26px;}}
+.lnd-calc-grid{display:grid;grid-template-columns:1fr;gap:13px;}
+@media (min-width:700px){.lnd-calc-grid{grid-template-columns:repeat(4,1fr);}}
+.lnd-calc-grid label{display:grid;gap:6px;font-size:11px;font-weight:800;color:#C9D4F2;}
+.lnd-calc-grid input{background:#0A1128;border:1px solid #2F3F7A;border-radius:11px;color:#EAF0FF;font:600 14px var(--mono);padding:11px 12px;min-height:44px;width:100%;box-sizing:border-box;}
+.lnd-calc-grid input:focus-visible{outline:2px solid #34D399;outline-offset:1px;}
+.lnd-calc-results{display:grid;grid-template-columns:1fr;gap:9px;margin-top:16px;}
+@media (min-width:560px){.lnd-calc-results{grid-template-columns:repeat(3,1fr);}}
+.lnd-calc-res{background:#101A3B;border:1px solid #24305E;border-radius:14px;padding:13px 14px;text-align:center;}
+.lnd-calc-res b{display:block;font-family:var(--mono);font-size:17px;font-weight:800;color:#34D399;line-height:1.4;}
+.lnd-calc-res span{display:block;font-size:10px;color:#B9C4E6;font-weight:700;margin-top:4px;line-height:1.6;}
+.lnd-calc-err{margin-top:14px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.4);color:#F87171;border-radius:12px;padding:11px 13px;font-size:12px;font-weight:800;}
+.lnd-calc-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px;}
+.lnd-calc-actions .lnd-primary,.lnd-calc-actions .lnd-secondary{flex:1 1 auto;justify-content:center;}
+.lnd-calc-note{margin:13px 0 0;font-size:10px;color:#8FA0C9;line-height:1.8;}
+.lnd-calc-cmp{margin-top:16px;background:rgba(12,21,51,.7);border:1px solid #24305E;border-radius:16px;padding:15px 14px;}
+.lnd-calc-cmp h3{font-size:13px;font-weight:900;color:#EAF0FF;margin:0 0 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.lnd-cmp-table{width:100%;border-collapse:collapse;font-size:11px;color:#C9D4F2;}
+.lnd-cmp-table th{font-size:9.5px;color:#8FA0C9;text-align:start;padding:7px 8px;border-bottom:1px solid #24305E;font-weight:800;}
+.lnd-cmp-table td{padding:8px;border-bottom:1px solid rgba(36,48,94,.55);font-family:var(--mono);direction:ltr;text-align:left;}
+.lnd-cmp-table td:first-child{font-family:var(--sans);direction:rtl;text-align:right;}
+.lnd-cmp-x{background:none;border:0;color:#8FA0C9;cursor:pointer;font-size:13px;padding:2px 6px;border-radius:7px;}
+.lnd-cmp-x:hover{color:#F87171;background:rgba(248,113,113,.1);}
+.lnd-cmp-clear{background:none;border:0;color:#B9C4E6;font-size:10px;font-weight:800;cursor:pointer;padding:4px 8px;border-radius:8px;}
+.lnd-cmp-clear:hover{color:#F87171;}
+.lnd-plans{display:grid;grid-template-columns:1fr;gap:14px;align-items:stretch;}
+@media (min-width:860px){.lnd-plans{grid-template-columns:1fr 1.15fr;gap:18px;}}
+.lnd-plan{background:rgba(12,21,51,.7);border:1px solid #24305E;border-radius:22px;padding:22px 18px;display:flex;flex-direction:column;position:relative;}
+@media (min-width:700px){.lnd-plan{padding:26px 24px;}}
+.lnd-plan-vip{border:1.5px solid rgba(245,196,81,.55);background:linear-gradient(160deg,rgba(245,196,81,.08),rgba(16,26,59,.88) 40%);}
+.lnd-plan-badge{position:absolute;top:-12px;inset-inline-start:20px;background:linear-gradient(135deg,#D9A63C,#F5C451);color:#231a04;font-size:10px;font-weight:900;border-radius:999px;padding:5px 13px;box-shadow:0 8px 20px rgba(245,196,81,.25);}
+.lnd-plan-name{font-size:15px;font-weight:900;color:#EAF0FF;margin-bottom:8px;}
+.lnd-plan-price{display:flex;align-items:baseline;gap:7px;margin-bottom:14px;}
+.lnd-plan-price b{font-family:var(--mono);font-size:30px;font-weight:800;color:#34D399;direction:ltr;}
+.lnd-plan-price span{font-size:10.5px;color:#B9C4E6;font-weight:700;}
+.lnd-plan-feats{list-style:none;margin:0 0 18px;padding:0;display:grid;gap:8px;flex:1 1 auto;}
+.lnd-plan-feats li{display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:#C9D4F2;line-height:1.7;}
+.lnd-plan-feats li .et-icon{font-size:14px;color:#34D399;flex:0 0 auto;margin-top:3px;}
+.lnd-plan-vip .lnd-plan-feats li .et-icon{color:#F5C451;}
+.lnd-plan-cta{width:100%;justify-content:center;}
+.lnd-vip-plans{display:grid;gap:8px;margin-bottom:14px;}
+.lnd-vip-plan{display:flex;align-items:center;gap:10px;background:rgba(10,17,40,.65);border:1px solid rgba(245,196,81,.28);border-radius:13px;padding:11px 13px;}
+.lnd-vip-plan .vp-name{font-size:12px;font-weight:900;color:#EAF0FF;}
+.lnd-vip-plan .vp-per{font-size:9.5px;color:#B9C4E6;font-weight:700;margin-top:1px;}
+.lnd-vip-plan .vp-price{margin-inline-start:auto;display:flex;align-items:baseline;gap:7px;direction:ltr;}
+.lnd-vip-plan .vp-price b{font-family:var(--mono);font-size:17px;font-weight:800;color:#F5C451;}
+.lnd-vip-plan .vp-price s{font-family:var(--mono);font-size:11px;color:#8FA0C9;}
+.lnd-vip-plan .vp-badge{font-size:8.5px;font-weight:900;color:#F5C451;background:rgba(245,196,81,.14);border:1px solid rgba(245,196,81,.45);border-radius:999px;padding:2px 8px;}
+.lnd-vip-plans .sk{height:14px;border-radius:7px;}
+.lnd-pay-methods{display:grid;gap:7px;margin-bottom:16px;}
+.lnd-pay-method{display:flex;align-items:flex-start;gap:8px;background:rgba(10,17,40,.55);border:1px solid #24305E;border-radius:11px;padding:10px 12px;font-size:10.5px;color:#C9D4F2;line-height:1.7;}
+.lnd-pay-method .pm-ic{color:#34D399;flex:0 0 auto;margin-top:2px;}
+.lnd-pay-method b{color:#EAF0FF;font-weight:900;}
+.lnd-pay-method .pm-num{font-family:var(--mono);direction:ltr;display:inline-block;}
+.lnd-policy{margin-top:12px;}
+.lnd-faq{display:grid;gap:9px;max-width:820px;}
+.lnd-faq details{background:rgba(12,21,51,.62);border:1px solid #24305E;border-radius:14px;overflow:hidden;}
+.lnd-faq summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:15px 16px;font-size:13px;font-weight:800;color:#EAF0FF;transition:background .15s;}
+.lnd-faq summary::-webkit-details-marker{display:none;}
+.lnd-faq summary:hover{background:rgba(47,63,122,.25);}
+.lnd-faq summary:focus-visible{outline:2px solid #34D399;outline-offset:-2px;}
+.lnd-faq summary .et-icon{color:#34D399;flex:0 0 auto;transition:transform .2s;}
+.lnd-faq details[open] summary .et-icon{transform:rotate(180deg);}
+.lnd-faq .lnd-faq-a{padding:0 16px 15px;font-size:12px;color:#B9C4E6;line-height:2;}
+.lnd-faq .lnd-faq-a a{color:#34D399;font-weight:700;}
+.lnd-cta-final{margin:40px 0 6px;text-align:center;background:linear-gradient(150deg,rgba(52,211,153,.10),rgba(16,26,59,.9) 55%);border:1px solid rgba(52,211,153,.35);border-radius:26px;padding:34px 20px;}
+@media (min-width:700px){.lnd-cta-final{padding:44px 28px;}}
+.lnd-cta-final h2{font-size:clamp(22px,5vw,32px);font-weight:900;color:#EAF0FF;margin:0 0 10px;line-height:1.5;}
+.lnd-cta-final p{color:#B9C4E6;font-size:13px;line-height:2;max-width:520px;margin:0 auto 20px;}
+.lnd-cta-final .lnd-actions{justify-content:center;}
+.lnd-mobbar{display:none;}
+@media (max-width:719px){
+  .lnd-mobbar{position:fixed;bottom:0;left:0;right:0;z-index:80;display:flex;gap:9px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:rgba(10,17,40,.94);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid #24305E;}
+  #landing{padding-bottom:70px;}
+  .lnd-mobbar-link{flex:1 1 auto;display:inline-flex;align-items:center;justify-content:center;min-height:46px;border-radius:13px;border:1px solid #2F3F7A;background:rgba(12,21,51,.7);color:#C9D4F2;font-size:12.5px;font-weight:800;text-decoration:none;}
+  .lnd-mobbar-cta{flex:1.4 1 auto;justify-content:center;min-height:46px;border-radius:13px;font-size:13px;}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important;}.lnd-primary:hover{transform:none;}.ticker-skeleton .sk,.market-strip-skeleton .sk{animation:none;}}
 
 
 
@@ -1056,58 +1328,276 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
 </svg>
 <div id="app">
 
-<!-- Public landing: a calm, factual entry point before authentication. -->
+<!-- Public landing — upgraded multi-section guest entry (2026-10-28).
+     Order: nav · hero (live data) · stats · features (#features) · #vip · #calculator ·
+     #pricing · how (#landing-how) · #faq · footer. Empty anchors mark the final
+     positions of Phase-2/3 sections; no placeholder content is shown before they exist. -->
 <section id="landing" aria-labelledby="landing-title">
-  <header class="landing-nav">
-    <a class="landing-brand" href="/" aria-label="EgyTrend الرئيسية">
-      <span class="landing-brand-mark"><svg class="et-icon"><use href="#i-logo"></use></svg></span>
-      <span><strong>EgyTrend</strong><small>متابعة السوق بوضوح</small></span>
-    </a>
-    <button type="button" class="landing-login" onclick="openAuthModal('login')">تسجيل الدخول</button>
-  </header>
-  <main class="landing-shell">
-    <section class="landing-hero" aria-labelledby="landing-title">
-      <div class="landing-copy">
-        <p class="landing-eyebrow"><span class="live-dot" aria-hidden="true"></span> واجهة متابعة عربية هادئة</p>
-        <h1 id="landing-title">افهم حركة السوق،<br><em>من غير ضوضاء.</em></h1>
-        <p class="landing-lede">تابع الأخبار وحالة البيانات المتاحة في مكان واحد. عند توافر المصدر ووقت التحديث، يظهران بوضوح — وعند غيابهما تقول المنصة ذلك بصراحة.</p>
-        <div class="landing-actions">
-          <button type="button" class="landing-primary" onclick="openAuthModal('register')">ابدأ مجاناً <svg class="et-icon" aria-hidden="true"><use href="#i-arrow"></use></svg></button>
-          <a class="landing-secondary" href="#landing-how">اعرف طريقة العمل</a>
-        </div>
-        <p class="landing-note">للاطلاع والتعليم فقط، وليست توصية استثمارية أو وعدًا بالأرباح.</p>
+  <header class="lnd-nav">
+    <div class="lnd-nav-inner">
+      <a class="lnd-brand" href="#landing" aria-label="EgyTrend — الرئيسية">
+        <span class="lnd-brand-mark"><svg class="et-icon" aria-hidden="true"><use href="#i-logo"></use></svg></span>
+        <span><strong>EgyTrend</strong><small>البورصة المصرية بالعربي</small></span>
+      </a>
+      <nav class="lnd-links" aria-label="أقسام الصفحة">
+        <a href="#features">المميزات</a>
+        <a href="#vip">VIP</a>
+        <a href="#calculator">جرّب الحاسبة</a>
+        <a href="#pricing">الأسعار</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="lnd-nav-actions">
+        <button type="button" class="lnd-login" onclick="openAuthModal('login')">تسجيل الدخول</button>
+        <button type="button" class="lnd-cta" onclick="openAuthModal('register')">ابدأ مجاناً</button>
+        <button type="button" class="lnd-burger" id="lnd-burger" aria-expanded="false" aria-controls="lnd-menu" aria-label="فتح القائمة">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
       </div>
-      <div class="landing-visual" aria-label="رسم توضيحي لمسار متابعة السوق" role="img">
-        <div class="visual-caption"><svg class="et-icon"><use href="#i-pulse"></use></svg><span>الصورة أوضح لما المصدر والحالة ظاهرين.</span></div>
-        <svg viewBox="0 0 560 360" fill="none" aria-hidden="true">
-          <defs><linearGradient id="chart-line" x1="40" y1="312" x2="520" y2="42" gradientUnits="userSpaceOnUse"><stop stop-color="#10B981" stop-opacity=".35"/><stop offset="1" stop-color="#72E6BB"/></linearGradient><linearGradient id="chart-fill" x1="280" y1="38" x2="280" y2="322" gradientUnits="userSpaceOnUse"><stop stop-color="#10B981" stop-opacity=".18"/><stop offset="1" stop-color="#10B981" stop-opacity="0"/></linearGradient></defs>
-          <path class="visual-grid" d="M42 70H518M42 140H518M42 210H518M42 280H518M120 38V322M200 38V322M280 38V322M360 38V322M440 38V322"/>
-          <path d="M42 285C78 272 83 204 120 218c38 14 45-43 79-35 30 7 40-83 82-72 38 10 40 69 79 50 39-20 34-101 80-92 29 6 45-18 78-36V322H42Z" fill="url(#chart-fill)"/>
-          <path d="M42 285C78 272 83 204 120 218c38 14 45-43 79-35 30 7 40-83 82-72 38 10 40 69 79 50 39-20 34-101 80-92 29 6 45-18 78-36" stroke="url(#chart-line)" stroke-width="3" stroke-linecap="round"/>
-          <circle cx="440" cy="69" r="6" fill="#10B981"/><circle cx="440" cy="69" r="13" stroke="#10B981" stroke-opacity=".24"/>
-        </svg>
-        <div class="visual-status"><span class="status-check"><svg class="et-icon"><use href="#i-source"></use></svg></span><span><b>المصدر ظاهر عند توافره</b><small>وحالة التأخر واضحة</small></span></div>
+    </div>
+    <nav class="lnd-menu" id="lnd-menu" hidden aria-label="قائمة الصفحة">
+      <a href="#features">المميزات</a>
+      <a href="#vip">VIP</a>
+      <a href="#calculator">جرّب الحاسبة</a>
+      <a href="#pricing">الأسعار</a>
+      <a href="#faq">FAQ</a>
+      <div class="lnd-menu-acts">
+        <button type="button" class="lnd-login" onclick="openAuthModal('login')">تسجيل الدخول</button>
+        <button type="button" class="lnd-cta" onclick="openAuthModal('register')">ابدأ مجاناً</button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="lnd-main">
+    <section class="lnd-hero" aria-labelledby="landing-title">
+      <div class="lnd-hero-copy">
+        <p class="lnd-badge"><svg class="et-icon" aria-hidden="true"><use href="#i-pulse"></use></svg> البورصة المصرية بالعربي</p>
+        <h1 id="landing-title">بدل ما تلف على <em>5 مواقع</em>، كل سوقك في شاشة واحدة.</h1>
+        <p class="lnd-lede">من EGX إلى الذهب، من الدولار إلى الكريبتو، مع أهم الأخبار والملخصات المختصرة — كل حاجة مرتبة بالعربي في مكان واحد، وكل رقم يظهر مع مصدره ووقت تحديثه.</p>
+        <div class="lnd-actions">
+          <button type="button" class="lnd-primary" onclick="openAuthModal('register')">ابدأ مجاناً <svg class="et-icon" aria-hidden="true"><use href="#i-arrow"></use></svg></button>
+          <a class="lnd-secondary" href="#calculator">جرّب الحاسبة الآن</a>
+        </div>
+        <p class="lnd-trust"><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> سجّل بسهولة • بدون بطاقة بنكية • بدون التزام</p>
+      </div>
+      <div class="lnd-visual" aria-label="نموذج من شاشة EgyTrend ببيانات حية">
+        <div class="lnd-mock-status" id="lnd-mock-status" role="status"><span class="lnd-chip">جارِ جلب الأسعار الحية…</span></div>
+        <div class="lnd-mock-grid" id="lnd-mock-grid">
+          <div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>
+          <div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line md"></span></div>
+          <div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line md"></span></div>
+          <div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line"></span></div>
+        </div>
       </div>
     </section>
 
-    <section class="landing-features" aria-label="ما ستجده داخل المنصة">
-      <article class="landing-feature"><span class="feature-icon"><svg class="et-icon"><use href="#i-source"></use></svg></span><h2>أخبار بسياقها</h2><p>اقرأ الخبر مع المصدر ووقت النشر المتاحين، بدل ما تعتمد على عنوان منفصل.</p></article>
-      <article class="landing-feature"><span class="feature-icon"><svg class="et-icon"><use href="#i-pulse"></use></svg></span><h2>حالة بيانات صريحة</h2><p>لو البيانات متأخرة أو غير متاحة، ستظهر الحالة كما هي من غير أرقام بديلة.</p></article>
-      <article class="landing-feature"><span class="feature-icon"><svg class="et-icon"><use href="#i-compass"></use></svg></span><h2>متابعة على طريقتك</h2><p>رتّب ما يهمك واستكشف الأدوات المتاحة لحسابك، مع بقاء القرار مسؤوليتك.</p></article>
+    <section class="lnd-stats" id="lnd-stats" aria-label="أرقام من المنصة الآن" hidden>
+      <div class="lnd-stat" id="lnd-stat-stocks" hidden><b>—</b><span>سهمًا مصرى على المتابعة</span></div>
+      <div class="lnd-stat" id="lnd-stat-sources" hidden><b>—</b><span>مصادر أخبار موثّقة</span></div>
+      <div class="lnd-stat" id="lnd-stat-news" hidden><b>—</b><span>خبرًا خلال آخر 24 ساعة</span></div>
+      <div class="lnd-stat" id="lnd-stat-update" hidden><b>—</b><span>آخر تحديث للأسعار</span></div>
+    </section>
+
+    <section id="features" class="lnd-sec" aria-labelledby="lnd-features-title">
+      <div class="lnd-sec-head">
+        <p class="lnd-kicker2">ليش EgyTrend؟</p>
+        <h2 id="lnd-features-title">كل حاجة تفهم بيها يومك مع السوق، في مكان واحد.</h2>
+        <p class="lnd-sec-sub">أربع أدوات جوهرية — وكل بطاقة موصوفة بالمزايا الفعلية وخطة اشتراكها كما هي.</p>
+      </div>
+      <div class="lnd-why">
+        <article class="lnd-why-card">
+          <span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-clock"></use></svg></span>
+          <h3>ملخصات وتقارير <span class="lnd-plan-tag">VIP</span></h3>
+          <p>موجز صباحي ومنتصف اليوم وإغلاق: وصف واضح لأهم التحركات والأخبار من البيانات المتاحة — مع بيان صريح لما لا تكفيه البيانات للحكم عليه. بلا استنتاجات وبلا وعود.</p>
+        </article>
+        <article class="lnd-why-card">
+          <span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-bell"></use></svg></span>
+          <h3>تنبيهات سعرية <span class="lnd-plan-tag">VIP</span></h3>
+          <p>تنبيهات على الأسهم اللي تتابعها: تُقيَّم من الخادم على الأسعار المتاحة وتوصلك — من غير ما تكون قاعد على الشاشة طول اليوم.</p>
+        </article>
+        <article class="lnd-why-card">
+          <span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-card"></use></svg></span>
+          <h3>المحفظة <span class="lnd-plan-tag">VIP</span></h3>
+          <p>اسجّل صفقاتك وراجع أرقام محفظتك في مكان واحد. كل طلب يتحقق من الخادم (الحساب والصلاحية) — لا حساب يلمس بيانات التاني.</p>
+        </article>
+        <article class="lnd-why-card">
+          <span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-calculator"></use></svg></span>
+          <h3>حاسبات <span class="lnd-plan-tag">VIP</span></h3>
+          <p>حاسبات استثمار وأرباح تُحسب من مدخلاتك أمامك بالافتراضات معلنة — والنتيجة تقديرية وليست توصية. (والحاسبة اللي تحت شغالة دلوقتي من غير تسجيل.)</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="vip" class="lnd-sec" aria-labelledby="lnd-vip-title">
+      <div class="lnd-vip">
+        <div class="lnd-vip-head">
+          <div class="lnd-sec-head">
+            <p class="lnd-kicker2" style="color:#F5C451;border-color:rgba(245,196,81,.45);background:rgba(245,196,81,.08);">VIP</p>
+            <h2 id="lnd-vip-title">أدوات الكبار، بالعربي وفي مكان واحد.</h2>
+            <p class="lnd-sec-sub">كل أداة في القائمة منفذة فعليًا وتتحقق صلاحيتها من الخادم. العيّنات التوضيحية موسومة بوضوح — لا نتوهم نتيجة ونبيعها كحقيقية.</p>
+          </div>
+          <a class="lnd-vip-cta" href="#pricing">افتح VIP <svg class="et-icon" aria-hidden="true" style="transform:rotate(180deg)"><use href="#i-arrow"></use></svg></a>
+        </div>
+        <div class="lnd-vip-grid">
+          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-megaphone"></use></svg></span><h3>الأخبار العاجلة</h3><p>الخبر العاجل في تبويب خاص مرتب حسب الأولوية — مع المصدر ووقت النشر، لا عنوان منقطع عن سياقه.</p></article>
+          <article class="lnd-vip-item"><span class="lnd-demo-badge">مثال توضيحي — ليست فرصًا حقيقية</span><h3>الفرص</h3><p>بطاقات متابعة وصفية من بيانات السوق المتاحة. عيّنة بالأصناف الوهمية:</p>
+            <div class="lnd-demo-rows" aria-label="عيّنات توضيحية بأسماء وهمية">
+              <div class="lnd-demo-row"><span>أصل (أ) — تقني</span><b>+8.5%</b><span class="d-risk">مخاطرة: متوسطة</span></div>
+              <div class="lnd-demo-row"><span>صندوق (ب) — أسهم مصري</span><b>+4.2%</b><span class="d-risk">مخاطرة: منخفضة</span></div>
+              <div class="lnd-demo-row"><span>مؤشر (ج) — عالمي</span><b>+6.0%</b><span class="d-risk">مخاطرة: متوسطة-عالية</span></div>
+            </div>
+          </article>
+          <article class="lnd-vip-item"><span class="lnd-demo-badge">نص توضيحي — التحليل الفعلي على حسابك</span><h3>محلل الأخبار</h3><p>عيّنات قراءة الخبر:</p>
+            <div class="lnd-demo-rows">
+              <div class="lnd-demo-row"><span>«نتائج قطاع البنوك تتجاوز التوقعات» — التوجه: إيجابي · القطاع: بنوك · التأثير: متوسط</span></div>
+            </div>
+          </article>
+          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-spark"></use></svg></span><h3>المستشار AI</h3><p>تحلّل الخبر أو السوق بضغطة «حلّل الآن»، وحوار تعليمي على بيانات المنصة المتاحة — بحدود يومية مخصصة للحساب.</p></article>
+          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-search"></use></svg></span><h3>Screener</h3><p>فلتر الأسهم المصرية بعشرات المعايير: P/E، الحجم، السوق، القطاع — مثل ما تعمل في Investing.com، بس بالعربي وداخل المنصة.</p></article>
+          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-card"></use></svg></span><h3>المحفظة</h3><p>أرقام محفظتك وصفقاتك في ملخص وصفي واحد — مع حماية ملكية الحساب من الخادم في كل طلب.</p></article>
+          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-calendar"></use></svg></span><h3>التقارير</h3><p>موجزات الصباح ومنتصف اليوم والإغلاق المبنية على البيانات المتاحة، مع ذكر صريح للنواقص والتأخر.</p></article>
+          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-bell"></use></svg></span><h3>التنبيهات</h3><p>تنبيهات سعرية على اختيارك تُقيَّم دوريًا من الخادم على أسعار المصادر المرخصة.</p></article>
+          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-chart"></use></svg></span><h3>مؤشرات الشارت</h3><p>MA(20) وRSI(14) فوق شارت السهم محسوبين من السجل اليومي. الشارت الأساسي متاح للجميع — المؤشرات ميزة VIP.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="calculator" class="lnd-sec" aria-labelledby="lnd-calc-title">
+      <div class="lnd-sec-head">
+        <p class="lnd-kicker2">جرّب الحاسبة</p>
+        <h2 id="lnd-calc-title">حاسبة عائد أرباح الأسهم</h2>
+        <p class="lnd-sec-sub">أدخل مبلغك وسعر السهم ونسبة التوزيع السنوية، وشوف كم سهم يشتري المبلغ وكم العائد المتوقع — تُحسب أمامك لحظيًا.</p>
+      </div>
+      <div class="lnd-calc-box">
+        <div class="lnd-calc-grid">
+          <label for="lnd-calc-amt">المبلغ (ج.م)
+            <input id="lnd-calc-amt" type="number" inputmode="decimal" value="10000" min="0" step="any" dir="ltr">
+          </label>
+          <label for="lnd-calc-price">سعر السهم (ج.م)
+            <input id="lnd-calc-price" type="number" inputmode="decimal" value="25" min="0" step="any" dir="ltr">
+          </label>
+          <label for="lnd-calc-pct">نسبة التوزيع السنوي (%)
+            <input id="lnd-calc-pct" type="number" inputmode="decimal" value="6" min="0" max="100" step="any" dir="ltr">
+          </label>
+          <label for="lnd-calc-sym">اسم السهم (اختياري)
+            <input id="lnd-calc-sym" type="text" maxlength="24" placeholder="مثال: CIB">
+          </label>
+        </div>
+        <div class="lnd-calc-results" id="lnd-calc-results" aria-live="polite"></div>
+        <div class="lnd-calc-actions">
+          <button type="button" id="lnd-calc-save" class="lnd-secondary">احفظ النتيجة وقارن بين الأسهم</button>
+          <button type="button" class="lnd-primary" onclick="openAuthModal('register')">سجّل مجاناً</button>
+        </div>
+        <p class="lnd-calc-note">النتيجة تقديرية بناءً على المدخلات — وليست توصية استثمارية. النتائج المحفوظة تبقى على جهازك فقط ولا تُرسل لأي خادم.</p>
+      </div>
+      <div id="lnd-calc-cmp" class="lnd-calc-cmp" hidden></div>
+    </section>
+    <section id="pricing" class="lnd-sec" aria-labelledby="lnd-pricing-title">
+      <div class="lnd-sec-head">
+        <p class="lnd-kicker2">الأسعار</p>
+        <h2 id="lnd-pricing-title">ابدأ مجاناً — واطوّر لما تحتاج.</h2>
+        <p class="lnd-sec-sub">الأسعار وطرق الدفع هنا تُجلب مباشرة من المصدر المركزي للمنصة — لا نسخة ثابتة من أي سعر في الصفحة، وأي تعديل من الإدارة يظهر تلقائيًا.</p>
+      </div>
+      <div class="lnd-plans">
+        <div class="lnd-plan">
+          <div class="lnd-plan-name">Free</div>
+          <div class="lnd-plan-price"><b>٠</b><span>ج.م — مجاني</span></div>
+          <ul class="lnd-plan-feats">
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> الأسعار الحية مع المصدر ووقت التحديث</li>
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> أخبار من مصادر موثّقة</li>
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> الشارت الأساسي للأسهم (OHLC)</li>
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> حساب مجاني — بدون بطاقة بنكية</li>
+          </ul>
+          <button type="button" class="lnd-primary lnd-plan-cta" onclick="openAuthModal('register')">ابدأ مجاناً</button>
+        </div>
+        <div class="lnd-plan lnd-plan-vip">
+          <span class="lnd-plan-badge">الأكثر طلباً</span>
+          <div class="lnd-plan-name">VIP</div>
+          <div id="lnd-vip-plans" class="lnd-vip-plans" role="status" aria-label="جارٍ تحميل الباقات من الخادم"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>
+          <ul class="lnd-plan-feats">
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> كل مزايا Free</li>
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> تنبيهات سعرية</li>
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> Screener بفلاتر متقدمة</li>
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> المحفظة</li>
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> مستشار AI وتحليل الأخبار</li>
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> تقارير الصباح ومنتصف اليوم والإغلاق</li>
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> مؤشرات MA(20) وRSI(14) على الشارت</li>
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> الحاسبات المتقدمة والأخبار العاجلة</li>
+          </ul>
+          <div id="lnd-pay-methods" class="lnd-pay-methods"></div>
+          <button type="button" class="lnd-vip-cta lnd-plan-cta" style="width:100%" onclick="openAuthModal('register')">افتح VIP — سجّل واختار باقتك</button>
+          <div id="lnd-policy" class="lnd-policy"></div>
+        </div>
+      </div>
     </section>
 
     <section id="landing-how" class="landing-how" aria-labelledby="landing-how-title">
       <div><p class="landing-kicker">بداية بسيطة</p><h2 id="landing-how-title">من أول تسجيل لحد أول متابعة.</h2></div>
       <ol class="landing-steps">
-        <li><span>١</span><div><b>أنشئ حسابك المجاني</b><p>سجّل بياناتك وادخل للواجهة المناسبة لحسابك.</p></div></li>
-        <li><span>٢</span><div><b>اختَر اللي يهمك</b><p>استكشف الأخبار والأسواق وعناصر المتابعة المتاحة.</p></div></li>
-        <li><span>٣</span><div><b>راجع الحالة والمصدر</b><p>استخدم المعلومات كمدخل واعي، لا كبديل عن بحثك.</p></div></li>
+        <li><span>١</span><div><b>سجّل مجاناً</b><p>حساب برقم موبايلك — من غير بطاقة بنكية ولا أي التزام.</p></div></li>
+        <li><span>٢</span><div><b>اختار الأسهم اللي يهمك</b><p>تصفّح الأسواق والأخبار ورتّب المتابعة اللي تناسبك.</p></div></li>
+        <li><span>٣</span><div><b>تابع الملخص</b><p>موجزات اليوم وأهم التحركات في شاشة واحدة — والمصدر ووقت التحديث ظاهرين دايماً.</p></div></li>
       </ol>
       <button type="button" class="landing-outline" onclick="openAuthModal('register')">ابدأ مجاناً <svg class="et-icon" aria-hidden="true"><use href="#i-arrow"></use></svg></button>
     </section>
+    <section id="faq" class="lnd-sec" aria-labelledby="lnd-faq-title">
+      <div class="lnd-sec-head">
+        <p class="lnd-kicker2">FAQ</p>
+        <h2 id="lnd-faq-title">أسئلة بتتكرر قبل ما تسجّل.</h2>
+      </div>
+      <div class="lnd-faq">
+        <details>
+          <summary><svg class="et-icon" aria-hidden="true"><use href="#i-chevron"></use></svg> هل EgyTrend توصيني أشري سهم معين؟</summary>
+          <div class="lnd-faq-a">لا. المنصة معلوماتية وتعليمية، ولا تقدم نصيحة استثمارية أو توصية شراء أو بيع. البيانات من مصادر مرخصة وتظهر مع المصدر ووقت التحديث، وأي قرار تتخذه مسؤوليتك الشخصية، وننصح باستشارة مستشار مالي مرخّص قبل أي قرار.</div>
+        </details>
+        <details>
+          <summary><svg class="et-icon" aria-hidden="true"><use href="#i-chevron"></use></svg> إمتى تتحدث الأسعار؟ ومين مصدرها؟</summary>
+          <div class="lnd-faq-a">الخادم يجلب الأسعار دورياً من مصادر مرخصة (مثل Yahoo Finance وCoinGecko وExchangeRate-API وTrading Economics)، وكل سعر يظهر مع مصدره وآخر تحديث. بعض الأسعار زي الدولار/الجنيه يوصل نهاية اليوم ودا بيظهر كعلامة «تحديث يومي» — ولو السعر غير متاح بنعرض «غير متاح» من غير ما نعرض رقمًا قديمًا أو بديلًا.</div>
+        </details>
+        <details>
+          <summary><svg class="et-icon" aria-hidden="true"><use href="#i-chevron"></use></svg> إزاي أدفع اشتراك VIP؟</summary>
+          <div class="lnd-faq-a">من داخل التطبيق (مركز VIP): تحوّل مبلغ الباقة على رقم المحفظة المعروض، وترفع صورة إثبات التحويل، وتدخل رقم العملية — والتفعيل يتم بعد التحقق. لا نطلب ولا نخزن أي بيانات بطاقات بنكية.</div>
+        </details>
+        <details>
+          <summary><svg class="et-icon" aria-hidden="true"><use href="#i-chevron"></use></svg> هل أقدر ألغي اشتراكي؟ وإزاي أرجع فلوسي؟</summary>
+          <div class="lnd-faq-a">الاشتراكات مدفوعة مسبقًا والتجديد اختياري بطلب دفع جديد — لا يوجد تجديد تلقائي. يمكن طلب الإلغاء خلال أول 48 ساعة من التفعيل إذا لم تُستخدم المزايا المدفوعة، ويكون الاسترداد الكامل خلال 7 أيام عمل بنفس وسيلة الدفع؛ وبعد 48 ساعة أو استخدام المزايا لا يتوفر استرداد. تواصل مع الدعم على واتساب <a href="https://wa.me/201008605139" dir="ltr">01008605139</a>.</div>
+        </details>
+        <details>
+          <summary><svg class="et-icon" aria-hidden="true"><use href="#i-chevron"></use></svg> إزاي بتحموا بياناتي؟</summary>
+          <div class="lnd-faq-a">كلمات المرور مخزنة مشفرة بخوارزمية scrypt (تشفير أحادي الاتجاه)، وروابط استعادة كلمة المرور صالحة 30 دقيقة وتستخدم مرة واحدة، ولا نخزن أي بيانات بنكية. بيانات حسابك في قاعدة بيانات المنصة المؤمّنة — التفاصيل كاملة في <a href="/privacy.html">سياسة الخصوصية</a>.</div>
+        </details>
+        <details>
+          <summary><svg class="et-icon" aria-hidden="true"><use href="#i-chevron"></use></svg> ما الفرق بين المجاني وVIP؟</summary>
+          <div class="lnd-faq-a">المجاني: الأسعار الحية مع المصدر ووقت التحديث، أخبار من مصادر موثّقة، والشارت الأساسي للأسهم. VIP يضيف: التنبيهات السعرية، Screener، المحفظة، مستشار AI وتحليل الأخبار، تقارير الصباح ومنتصف اليوم والإغلاق، مؤشرات MA(20) وRSI(14) على الشارت، الحاسبات المتقدمة، والأخبار العاجلة.</div>
+        </details>
+      </div>
+    </section>
+
+    <section class="lnd-cta-final" aria-labelledby="lnd-final-title">
+      <h2 id="lnd-final-title">ابدأ النهارده.</h2>
+      <p>سجّل مجاناً، وافتح كل سوقك في شاشة واحدة — الأسعار والأخبار والأدوات، بالعربي وبمصدر واضح لكل رقم.</p>
+      <div class="lnd-actions">
+        <button type="button" class="lnd-primary" onclick="openAuthModal('register')">ابدأ مجاناً <svg class="et-icon" aria-hidden="true"><use href="#i-arrow"></use></svg></button>
+        <a class="lnd-secondary" href="#pricing">شوف الأسعار</a>
+      </div>
+    </section>
   </main>
-  <footer class="landing-footer"><span>© 2026 EgyTrend</span><span><a href="/privacy.html" target="_blank" rel="noopener noreferrer">الخصوصية</a><a href="/terms.html" target="_blank" rel="noopener noreferrer">الشروط</a></span></footer>
+
+  <footer class="lnd-footer">
+    <p class="f-disc">المعلومات المعروضة لأغراض الاطلاع والتعليم فقط، وليست توصية استثمارية أو وعدًا بتحقيق الأرباح. التداول في الأسواق المالية ينطوي على مخاطر قد تؤدي إلى خسارة رأس المال.</p>
+    <nav aria-label="روابط المنصة">
+      <span class="f-copy">© 2026 EgyTrend</span>
+      <a href="/privacy.html">سياسة الخصوصية</a>
+      <a href="/terms.html">الشروط والأحكام</a>
+      <a href="https://wa.me/201008605139" target="_blank" rel="noopener noreferrer">الدعم: واتساب 01008605139</a>
+    </nav>
+  </footer>
+
+  <div class="lnd-mobbar" id="lnd-mobbar" aria-label="إجراءات سريعة">
+    <a href="#pricing" class="lnd-mobbar-link">الأسعار</a>
+    <button type="button" class="lnd-cta lnd-mobbar-cta" onclick="openAuthModal('register')">ابدأ مجاناً</button>
+  </div>
 </section>
+
 
 <!-- ══ AUTH ══ -->
 <div id="auth" role="dialog" aria-modal="true" aria-labelledby="auth-title">
@@ -1924,6 +2414,9 @@ function loadUserScopedData(){
 let firstUseState=null,firstUseLoadSeq=0,firstUseAutoTimer=null,firstUseAutoAttempts=0;
 let activeTour=null;
 let tourAutoSuppressed={};
+let tourRenderSeq=0;
+let tourPreNav=null;
+let tourTriggerEl=null;
 function firstUseEligible(){return Boolean(U&&U.plan!=="admin"&&Number.isInteger(U.id));}
 function firstUseMaybeAutoStart(){
   if(!firstUseEligible()||activeTour||document.getElementById("first-use-tour"))return;
@@ -1971,16 +2464,26 @@ function platformTourSteps(){
   }
   return steps;
 }
-/* VIP tour: only the features the server says this account may actually open. */
+/* VIP tour (v2): a dedicated gold welcome screen, then one step per real
+ * feature the server says this account may open. Every step targets a
+ * concrete rendered element; a step whose target never appears is skipped
+ * safely at render time, and progress counts real steps only. Remaining
+ * feature steps are added back in phase 3 of this work. */
 function vipTourSteps(){
   const f=firstUseState?.vipFeatures&&typeof firstUseState.vipFeatures==="object"?firstUseState.vipFeatures:{};
   const on=k=>f[k]===true;
-  const steps=[{id:"welcome",nav:"vip",tab:"home",target:"#vtabs-bar",icon:"star",title:"مرحبًا بك في مزايا VIP",copy:"اشتراكك فعّال الآن. هذه الجولة تعرّضك على المزايا المتاحة لحسابك حاليًا — كل خطوة تفتح صفحتها مباشرة، والخطوات تُعرض فقط للمزايا المشمولة في اشتراكك."}];
+  const steps=[];
   if(on("calculators"))steps.push({id:"calc",nav:"calculators",target:"#calculators-el",icon:"chart",title:"حاسبة المستثمر ورسومها البيانية",copy:"أدخل رأس المال والمساهمة الشهرية والمدة والعائد المتوقع لترى القيمة النهائية، مع رسم نمو الاستثمار ورسم المساهمات مقابل الأرباح ومقارنة السيناريوهات — والنتيجة تُحسب من مدخلاتك لحظيًا وفق افتراضات معلنة."});
-  if(on("portfolio"))steps.push({id:"portfolio",nav:"vip",tab:"port",target:"#vip-body",icon:"star",title:"المحفظة والرسوم البيانية",copy:"أضف أسهمك وتابع قيمتها الحالية والربح والخسارة لكل سهم وإجمالًا، مع عرض أداء المحفظة والبيانات المتاحة لكل سهم."});
-  if(on("indicators"))steps.push({id:"analysis",nav:"vip",tab:"stk",target:"#vip-body",icon:"chart",title:"أدوات التحليل الفني",copy:"افتح أي سهم من الأسواق لرؤية مؤشرات VIP: متوسط MA(20) و RSI(14) فوق الشارت، واستخدم تبويب «تحليل AI» و Sceener لفرز السهم بحسب معاييرك."});
-  if(on("ai"))steps.push({id:"assistant",nav:"vip",tab:"ai",target:"#vip-body",icon:"spark",title:"المستشار الذكي",copy:"اسأل عن السوق أو عن سهم بعينه واحصل على إجابة مبنية على البيانات المتاحة — مع حدود استخدام عادل محسوب لحسابك."});
-  if(on("opportunities"))steps.push({id:"opps",nav:"vip",tab:"opps",target:"#vip-body",icon:"bulb",title:"الفرص داخل VIP",copy:"نفس عناصر متابعة السوق مع تصفية أدق حسب النوع والسوق، واحفظ العناصر التي تهمك للمراجعة لاحقًا."});
+  /* Honest scope (A1): the portfolio really compares the chosen period's
+   * closing-price change against the EGX30 reference benchmark when shared
+   * closing points exist — it never invents the comparison. */
+  if(on("portfolio"))steps.push({id:"portfolio",nav:"vip",tab:"port",target:"#vip-body",icon:"star",title:"المحفظة ومقارنتها بمؤشر EGX30",copy:"أضف أسهمك وتابع قيمتها الحالية والربح والخسارة لكل سهم وإجمالًا، وقارن تغير أداء مدّتك مع مؤشر EGX30 المرجعي — تظهر المقارنة عندما تتوفر نقاط إغلاق مشتركة، ولا تُستبدل أبدًا ببيانات تقديرية."});
+  /* The screener ships inside the VIP area itself (no separate server scope),
+   * so it is part of the tour for every active VIP entitlement. */
+  steps.push({id:"scr",nav:"vip",tab:"scr",target:"#scr-box",icon:"chart",title:"Stock Screener",copy:"فلتر الأسهم حسب القطاع والأداء والسعر والحجم، قارن النتائج ثم صدّرها CSV — وكل رقم ببيانات مصدره ووقته."});
+  if(on("indicators"))steps.push({id:"analysis",nav:"vip",tab:"stk",target:"#vip-body",icon:"chart",title:"أدوات التحليل الفني",copy:"افتح أي سهم من الأسواق لرؤية مؤشرات VIP: متوسط MA(20) و RSI(14) فوق الشارت، واستخدم تبويب «تحليل AI» و Screener لفرز السهم بحسب معاييرك."});
+  if(on("ai"))steps.push({id:"ai",nav:"vip",tab:"ai",target:"#chat-in",icon:"spark",title:"تحليل AI والأخبار",copy:"حلّل أي خبر من تفاصيله بضغطة «حلّل الآن»، أو اسأل المستشار عن السوق وسهم بعينه — إجابات على البيانات المتاحة بحدود استخدام عادل محسوبة لحسابك، ودون توصيات."});
+  if(on("opportunities"))steps.push({id:"opps",nav:"vip",tab:"opps",target:"#opps-vip-box",icon:"bulb",title:"الفرص",copy:"بطاقات عناصر متابعة السوق حسب النوع والسوق مع مصدرها ووقت المصدر عند توافرهما — للاطلاع فقط، وليست توصيات أو ترتيبًا استثماريًا."});
   steps.push({id:"markets",nav:"vip",tab:"mkt",target:"#vip-body",icon:"chart",title:"الأسواق والتقارير",copy:"متابعة الأسواق مع بيانات المصدر ووقت التحديث، وتبويب «التقارير» يعرض ملخص أحداث السوق وأداء محفظتك عندما تكون البيانات متاحة."});
   if(on("priceAlerts"))steps.push({id:"alerts",nav:"vip",tab:"alerts",target:"#vip-body",icon:"bell",title:"التنبيهات",copy:"أنشئ تنبيهات سعر لأسهمك؛ يصلك التنبيه داخل المنصة عندما يتحقق الشرط بحسب البيانات المتاحة ووقتها."});
   steps.push({id:"manage",nav:"vip",tab:"set",target:"#vip-body",icon:"settings",title:"إدارة اشتراكك",copy:"تبويب الإعدادات يدير متابعتك وتفضيلاتك، وصفحة «اشتراكي» في حسابك تعرض حالة الاشتراك وموعد الانتهاء — والتجديد اختياري بطلب جديد."});
@@ -1988,28 +2491,90 @@ function vipTourSteps(){
 }
 function tourRemove(){
   document.getElementById("first-use-tour")?.remove();
-  document.querySelectorAll(".ob-tour-highlight").forEach(el=>el.classList.remove("ob-tour-highlight"));
+  document.querySelectorAll(".ob-tour-highlight,.ob-tour-highlight-vip").forEach(el=>el.classList.remove("ob-tour-highlight","ob-tour-highlight-vip"));
 }
-function tourHighlight(step){
+function tourHighlight(step,vip){
   const target=step?.target?document.querySelector(step.target):null;
-  if(target){target.classList.add("ob-tour-highlight");try{target.scrollIntoView({block:"center",behavior:window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches?"auto":"smooth"});}catch{}}
+  if(target){target.classList.add("ob-tour-highlight",vip&&"ob-tour-highlight-vip");try{target.scrollIntoView({block:"center",behavior:window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches?"auto":"smooth"});}catch{}}
   return target;
 }
 function tourGoTo(step){
   if(step.nav)goNav(step.nav,{syncUrl:false});
   if(step.tab&&typeof switchVipTab==="function")switchVipTab(step.tab,true);
 }
+/* Wait for the step's real target to exist (tab render + first frame) with
+ * requestAnimationFrame — never a blind setTimeout — then spotlight it. If it
+ * never appears within a short deadline the step is skipped safely instead of
+ * trapping the user on an empty spotlight: progress counts real steps only. */
+function tourSpotlight(step,vip,seq){
+  const deadline=performance.now()+1200;
+  const tick=()=>{
+    const tour=activeTour;
+    if(!tour||seq!==tourRenderSeq)return;
+    const target=step?.target?document.querySelector(step.target):null;
+    if(target){tourHighlight(step,vip);return;}
+    if(performance.now()<deadline){requestAnimationFrame(tick);return;}
+    if(tour.index>=tour.steps.length-1)tourFinish("completed");else tourNext();
+  };
+  requestAnimationFrame(tick);
+}
+/* The page the user was on before the tour opened, so finishing the tour
+ * restores it instead of leaving them on the last step's tab. */
+function currentNavId(){
+  return ["home","markets","vip","opps","profile","calculators"].find(n=>!document.getElementById(`page-${n}`)?.classList.contains("hidden"))||"home";
+}
+function tourRestorePreNav(){
+  if(!tourPreNav)return;
+  const saved=tourPreNav;tourPreNav=null;
+  try{goNav(saved.nav,{syncUrl:false});if(saved.vipTab&&typeof switchVipTab==="function")switchVipTab(saved.vipTab,true);}catch{/* navigation restore is best effort */}
+}
+/* The dedicated VIP welcome screen: not counted in "N of M", no spotlight. */
+function tourRenderWelcome(){
+  const root=document.createElement("div");root.id="first-use-tour";root.dataset.tour="vip";
+  root.innerHTML=`<div class="ob-tour-backdrop" aria-hidden="true"></div><section class="ob-panel ob-panel-vip ob-panel-welcome" role="dialog" aria-modal="true" aria-labelledby="ob-tour-title"><div class="ob-panel-top"><span class="ob-step-count">جولة VIP</span><button type="button" class="ob-skip" onclick="tourFinish('skipped')">تخطّي الجولة</button></div><div class="ob-panel-icon" aria-hidden="true">${uiIcon("star")}</div><div class="ob-panel-title" id="ob-tour-title">أهلاً بيك في VIP</div><div class="ob-panel-copy">خلّينا نعرّفك على أهم الأدوات اللي هتساعدك تتابع السوق وتستخدم مميزات حسابك.</div><div class="ob-panel-note">كل خطوة هتفتح الأداة نفسها فعلًا، والخطوات المعروضة مشمولة في اشتراكك فقط.</div><div class="ob-panel-actions"><button type="button" class="ob-back" onclick="tourFinish('skipped')">تخطّي</button><button type="button" class="ob-next" onclick="tourNext()">ابدأ الجولة</button></div><div class="ob-tour-sr" role="status" aria-live="polite">جولة مزايا VIP — شاشة الترحيب. ابدأ الجولة أو تخطّاها.</div></section>`;
+  document.body.appendChild(root);
+  try{root.querySelector(".ob-next")?.focus({preventScroll:true});}catch{}
+}
+/* The dedicated VIP end screen: "ready!" with tasks that open the real
+ * features — each task exists only while the server says the feature is
+ * available, so no task is ever a dead button. Not counted in "N of M". */
+function tourRenderEnd(){
+  const f=firstUseState?.vipFeatures&&typeof firstUseState.vipFeatures==="object"?firstUseState.vipFeatures:{};
+  const on=k=>f[k]===true;
+  const tasks=[];
+  const task=(label,icon,nav,vipTab)=>tasks.push(`<button type="button" class="ob-end-task" onclick="tourEndGo('${nav}','${vipTab||""}')"><span class="ob-end-task-icon" aria-hidden="true">${uiIcon(icon)}</span><span>${label}</span></button>`);
+  if(on("portfolio"))task("أضف أول سهم لمحفزتك","star","vip","port");
+  task("جرّب منصّفة الأسهم","chart","vip","scr");
+  if(on("priceAlerts"))task("صِف أول تنبيه سعر","bell","vip","alerts");
+  if(on("calculators"))task("حسّن سيناريو استثمار","chart","calculators","");
+  if(on("ai"))task("اسأل المستشار عن سوق اليوم","spark","vip","ai");
+  const root=document.createElement("div");root.id="first-use-tour";root.dataset.tour="vip";
+  root.innerHTML=`<div class="ob-tour-backdrop" aria-hidden="true"></div><section class="ob-panel ob-panel-vip ob-panel-welcome" role="dialog" aria-modal="true" aria-labelledby="ob-tour-title"><div class="ob-panel-top"><span class="ob-step-count">جولة VIP</span><button type="button" class="ob-skip" onclick="tourFinish('skipped')">تخطّي الجولة</button></div><div class="ob-panel-icon" aria-hidden="true">${uiIcon("star")}</div><div class="ob-panel-title" id="ob-tour-title">جاهز!</div><div class="ob-panel-copy">هذي أهم الأدوات اللي تعرفتها في الجولة — جرّبها الآن من هنا:</div><div class="ob-end-tasks">${tasks.length?tasks.join(""):`<div class="ob-panel-note">افتح أي تاب داخل VIP لتبدأ المتابعة — وكل رقم ببيانات مصدره ووقته.</div>`}</div><div class="ob-panel-actions"><button type="button" class="ob-back" onclick="tourBack()">السابق</button><button type="button" class="ob-next" onclick="tourFinish('completed')">ابدأ المتابعة</button></div><div class="ob-tour-sr" role="status" aria-live="polite">انتهت الجولة. شاشة المهام: اختر أداة لفتحها مباشرة أو تابع.</div></section>`;
+  document.body.appendChild(root);
+  try{root.querySelector(".ob-next")?.focus({preventScroll:true});}catch{}
+}
+/* A task click stores the task target as the pre-tour location, so the
+ * finish path's restore lands the user on the requested real feature. */
+function tourEndGo(nav,vipTab){
+  tourPreNav={nav,vipTab:vipTab||null};
+  tourFinish("completed");
+}
 function tourRender(){
   tourRemove();
-  const tour=activeTour;if(!tour||!tour.steps.length)return;
+  const tour=activeTour;if(!tour)return;
+  const vip=tour.kind==="vip";
+  if(vip&&tour.atWelcome){tourRenderWelcome();return;}
+  if(vip&&tour.atEnd){tourRenderEnd();return;}
+  if(!tour.steps.length){activeTour=null;return;}
   tour.index=Math.max(0,Math.min(tour.index,tour.steps.length-1));
   const step=tour.steps[tour.index];
   tourGoTo(step);
-  const vip=tour.kind==="vip";
+  const seq=++tourRenderSeq;
   const root=document.createElement("div");root.id="first-use-tour";root.dataset.tour=tour.kind;
-  root.innerHTML=`<div class="ob-tour-backdrop" aria-hidden="true"></div><section class="ob-panel${vip?" ob-panel-vip":""}" role="dialog" aria-modal="true" aria-labelledby="ob-tour-title"><div class="ob-panel-top"><span class="ob-step-count">${vip?"جولة VIP · ":""}${tour.index+1} من ${tour.steps.length}</span><button type="button" class="ob-skip" onclick="tourFinish('skipped')">تخطي الجولة</button></div><div class="ob-panel-icon" aria-hidden="true">${uiIcon(step.icon)}</div><div class="ob-panel-title" id="ob-tour-title">${sanitize(step.title)}</div><div class="ob-panel-copy">${sanitize(step.copy)}</div><div class="ob-panel-note">${vip?"يمكنك إعادة جولة مزايا VIP من حسابك أو من إعدادات VIP في أي وقت.":"يمكنك إعادة هذه الجولة من إعدادات الحساب في أي وقت."}</div><div class="ob-panel-actions">${tour.index>0?'<button type="button" class="ob-back" onclick="tourBack()">السابق</button>':""}<button type="button" class="ob-next" onclick="tourNext()">${tour.index===0?"ابدأ":tour.index===tour.steps.length-1?"إنهاء":"التالي"}</button></div></section>`;
+  root.innerHTML=`<div class="ob-tour-backdrop" aria-hidden="true"></div><section class="ob-panel${vip?" ob-panel-vip":""}" role="dialog" aria-modal="true" aria-labelledby="ob-tour-title"><div class="ob-panel-top"><span class="ob-step-count">${vip?"جولة VIP · ":""}${tour.index+1} من ${tour.steps.length}</span><button type="button" class="ob-skip" onclick="tourFinish('skipped')">تخطي الجولة</button></div><div class="ob-panel-icon" aria-hidden="true">${uiIcon(step.icon)}</div><div class="ob-panel-title" id="ob-tour-title">${sanitize(step.title)}</div><div class="ob-panel-copy">${sanitize(step.copy)}</div><div class="ob-panel-note">${vip?"يمكنك إعادة جولة مزايا VIP من حسابك أو من إعدادات VIP في أي وقت.":"يمكنك إعادة هذه الجولة من إعدادات الحساب في أي وقت."}</div><div class="ob-panel-actions">${tour.index>0?'<button type="button" class="ob-back" onclick="tourBack()">السابق</button>':vip?'<button type="button" class="ob-back" onclick="tourBack()">الترحيب</button>':""}<button type="button" class="ob-next" onclick="tourNext()">${tour.index===tour.steps.length-1?"إنهاء":"التالي"}</button></div><div class="ob-tour-sr" role="status" aria-live="polite">الخطوة ${tour.index+1} من ${tour.steps.length}: ${step.title}</div></section>`;
   document.body.appendChild(root);
-  setTimeout(()=>tourHighlight(step),30);
+  try{root.querySelector(".ob-next")?.focus({preventScroll:true});}catch{}
+  tourSpotlight(step,vip,seq);
 }
 async function firstUseRequest(path,body){
   const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
@@ -2031,19 +2596,61 @@ async function loadFirstUseOnboarding(options={}){
 }
 function tourStart(kind,steps){
   if(!firstUseEligible()||!steps.length)return;
-  activeTour={kind,steps,index:0};tourRender();
+  activeTour={kind,steps,index:0,atWelcome:kind==="vip",atEnd:false};
+  tourTriggerEl=(document.activeElement&&document.activeElement!==document.body)?document.activeElement:null;
+  if(kind==="vip")tourPreNav={nav:currentNavId(),vipTab:typeof vipTab==="string"?vipTab:null};
+  tourRender();
   firstUseRequest("/api/user/onboarding/tour",{action:"started",tour:kind}).then(state=>firstUseApply(state)).catch(()=>{/* the visual tour remains; the next visit retries only what the server did not persist */});
 }
-function tourNext(){const tour=activeTour;if(!tour)return;if(tour.index>=tour.steps.length-1){tourFinish("completed");return;}tour.index+=1;tourRender();}
-function tourBack(){if(!activeTour)return;activeTour.index=Math.max(0,activeTour.index-1);tourRender();}
+function tourNext(){
+  const tour=activeTour;if(!tour)return;
+  if(tour.atWelcome){tour.atWelcome=false;tourRender();return;}
+  if(tour.atEnd){tourFinish("completed");return;}
+  if(tour.index>=tour.steps.length-1){
+    /* The VIP tour ends on the dedicated "ready!" tasks screen, not on the
+     * last step; the platform tour keeps the classic finish-on-last-step. */
+    if(tour.kind==="vip"){tour.atEnd=true;tourRender();return;}
+    tourFinish("completed");return;
+  }
+  tour.index+=1;tourRender();
+}
+function tourBack(){
+  const tour=activeTour;if(!tour)return;
+  if(tour.atEnd){tour.atEnd=false;tourRender();return;}
+  if(tour.atWelcome)return;
+  if(tour.index===0&&tour.kind==="vip"){tour.atWelcome=true;tourRender();return;}
+  tour.index=Math.max(0,tour.index-1);tourRender();
+}
 async function tourFinish(action){
-  const kind=activeTour?.kind||"user";activeTour=null;tourRemove();
+  const kind=activeTour?.kind||"user";activeTour=null;tourRenderSeq++;tourRemove();
   /* Finishing the VIP tour must not chain into the platform tour in the same
    * visit; the platform tour stays pending for a later visit if never seen. */
   if(kind==="vip")tourAutoSuppressed.user=true;
+  if(kind==="vip")tourRestorePreNav();
+  /* Focus restore: return keyboard focus to the control the user was on
+   * before the tour opened (best effort; auto-started tours have none). */
+  const trigger=tourTriggerEl;tourTriggerEl=null;
+  if(trigger&&typeof trigger.focus==="function"){try{trigger.focus({preventScroll:true});}catch{}}
   try{const state=await firstUseRequest("/api/user/onboarding/tour",{action,tour:kind});firstUseApply(state);}catch{showToast("⚠️ تعذر حفظ حالة الجولة؛ ستظهر مرة أخرى عند الدخول.");}
 }
-document.addEventListener("keydown",event=>{if(event.key==="Escape"&&activeTour){event.preventDefault();tourFinish("skipped");}});
+document.addEventListener("keydown",event=>{
+  const tour=activeTour;if(!tour)return;
+  if(event.key==="Escape"){event.preventDefault();tourFinish("skipped");return;}
+  /* RTL: forward is left, back is right. tourNext/tourBack resolve the
+   * welcome/end states internally, so arrows work from every screen. */
+  if(event.key==="ArrowLeft"){event.preventDefault();tourNext();return;}
+  if(event.key==="ArrowRight"){event.preventDefault();tourBack();return;}
+  if(event.key==="Tab"){
+    /* Focus trap: keyboard focus cycles inside the tour panel only. */
+    const panel=document.getElementById("first-use-tour");
+    if(!panel)return;
+    const focusables=[...panel.querySelectorAll('button:not([disabled]),[href],[tabindex]:not([tabindex="-1"])')];
+    if(!focusables.length)return;
+    const first=focusables[0],last=focusables[focusables.length-1];
+    if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+    else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+  }
+});
 async function firstUseStartTour(){
   if(!firstUseEligible()){showToast("⚠️ سجّل الدخول بحساب مستخدم أولًا");return;}
   if(!firstUseState){const loaded=await loadFirstUseOnboarding({auto:false});if(!loaded)return;}
@@ -2053,7 +2660,10 @@ async function vipTourReplay(){
   if(!firstUseEligible()){showToast("⚠️ سجّل الدخول بحساب مستخدم أولًا");return;}
   if(!firstUseState){const loaded=await loadFirstUseOnboarding({auto:false});if(!loaded)return;}
   if(firstUseVip().active!==true){showToast("⚠️ جولة مزايا VIP متاحة لأصحاب الاشتراك الفعّال فقط");return;}
-  try{const state=await firstUseRequest("/api/user/onboarding/reset",{tour:"vip"});firstUseApply(state);}catch{/* the replay continues even if persisting the reset fails */}
+  /* Replay never resets the server state: the started action the tour sends
+   * is bookkept as a replay (vipTourReplayedAt) without clearing the
+   * permanent completion, so an unfinished replay can never re-arm the
+   * auto-start on the next visit. */
   tourStart("vip",vipTourSteps());
 }
 async function firstUseResetTour(){
@@ -2078,6 +2688,7 @@ function openAuthModal(mode="login"){
   const landing=document.getElementById("landing"),auth=document.getElementById("auth");
   if(landing)landing.setAttribute("aria-hidden","true");
   if(auth){auth.classList.add("open");auth.setAttribute("aria-hidden","false");}
+  if(window.__lndAuthOpen)window.__lndAuthOpen(true);
   swAuth(mode);
   setTimeout(()=>document.getElementById(mode==="register"?"a-name":"a-phone")?.focus(),40);
 }
@@ -2086,13 +2697,314 @@ function closeAuthModal(){
   const auth=document.getElementById("auth"),landing=document.getElementById("landing");
   if(auth){auth.classList.remove("open");auth.setAttribute("aria-hidden","true");}
   if(landing)landing.removeAttribute("aria-hidden");
+  if(window.__lndAuthOpen)window.__lndAuthOpen(false);
 }
 function showGuestLanding(){
   const landing=document.getElementById("landing"),main=document.getElementById("main"),auth=document.getElementById("auth");
   if(main)main.style.display="none";
   if(landing){landing.hidden=false;landing.removeAttribute("aria-hidden");}
   if(auth){auth.classList.remove("open");auth.setAttribute("aria-hidden","true");}
+  if(window.__lndStart)window.__lndStart();
 }
+
+/* ═══════════════════ GUEST LANDING — live hero, stats, mobile menu ═══════════════════
+   Reads the SAME live market state the app already loads pre-login (liveMarkets /
+   marketFreshness / liveTicks) so the landing shows real numbers with source + last
+   update — never synthetic values. Any row that is not verified renders an honest
+   "غير متاح" chip instead. Runs only while the landing is visible and the visitor
+   has no session. No analytics are emitted. */
+(function initGuestLanding(){
+  const $=id=>document.getElementById(id);
+  const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const landingEl=()=>document.getElementById("landing");
+
+  /* Cairo wall-clock HH:MM from an epoch ms (data reference time, not page load). */
+  function fmtCairoTime(ms){
+    if(!Number.isFinite(ms)||ms<=0)return "";
+    try{
+      const p=new Intl.DateTimeFormat("ar-EG",{hour:"2-digit",minute:"2-digit",hour12:true,timeZone:"Africa/Cairo"}).formatToParts(new Date(ms));
+      const g=t=>(p.find(x=>x.type===t)||{}).value||"";
+      const h=g("hour"),min=g("minute"),ampm=g("dayPeriod")||"";
+      return `${h}:${min}${ampm?" "+ampm:""}`;
+    }catch(e){
+      const d=new Date(ms);
+      let h=d.getHours();const ap=h>=12?"م":"ص";h=h%12||12;
+      return `${h}:${String(d.getMinutes()).padStart(2,"0")} ${ap}`;
+    }
+  }
+  const fmtInt=n=>{try{return new Intl.NumberFormat("ar-EG").format(Math.round(Number(n)));}catch(e){return String(n);}};
+
+  /* Board row by id, from the live in-memory state (no extra network round-trips). */
+  function rowById(id){
+    for(const k of ["eg","gl","cm","cr"]){
+      const r=(liveMarkets?.[k]||[]).find(x=>x&&x.id===id);
+      if(r)return r;
+    }
+    return null;
+  }
+  /* A row is only "real" when the server priced it (not the "غير متاح" placeholder). */
+  const isReal=r=>!!r&&typeof r.v==="string"&&r.v!==""&&!/غير متاح/.test(r.v);
+  const deltaCls=r=>(!r||r.flat===true)?"flat":(r.up===true?"up":"down");
+
+  function cardHtml(r,sub){
+    const d=deltaCls(r);
+    const spark=r&&r.id==="egx:EGX30"?sparklineMarkup(r.id):"";
+    return `<div class="lnd-mock-card">
+      <div class="m-id">
+        <div class="m-name"><span>${esc(r.n)}</span>${r.c&&r.c!=="—"&&!/غير متاح/.test(r.c)?`<span class="m-delta ${d}" dir="ltr">${esc(r.c)}</span>`:""}</div>
+        <div class="m-sub">${esc(sub)}</div>
+        <div class="m-val" dir="ltr">${esc(r.v)}</div>
+        ${r.source&&r.source!=="غير متاح"?`<div class="m-src"><svg class="et-icon" aria-hidden="true"><use href="#i-source"></use></svg>${esc(r.source)}${r.freshness==="end-of-day"?`<span class="lnd-chip" style="padding:2px 7px;font-size:8px;">تحديث يومي</span>`:""}</div>`:""}
+      </div>
+      ${spark}
+    </div>`;
+  }
+
+  function renderHero(){
+    const grid=$("lnd-mock-grid");if(!grid)return;
+    if(landingEl()?.hidden)return;
+    const egx=rowById("egx:EGX30"),usd=rowById("fx:USD-EGP"),eur=rowById("fx:EUR-EGP");
+    const anyReal=[egx,usd,eur].some(isReal);
+    const fetchedAt=Number(marketFreshness?.fetchedAt)||0;
+
+    // Sparkline for the index: request it once from the shared licensed endpoint.
+    if(egx&&isReal(egx)&&!window.__lndSparkRequested){window.__lndSparkRequested=true;try{scheduleSparklines(["egx:EGX30"]);}catch(_){}}
+
+    if(!anyReal){
+      // Honest empty state — never a stale or invented price.
+      const status=$("lnd-mock-status");
+      if(status)status.innerHTML=`<span class="lnd-chip">الأسعار غير متاحة الآن — لن نعرض أرقامًا بديلة</span>`;
+      grid.innerHTML=[egx,usd,eur].map(r=>`<div class="lnd-mock-card">
+        <div class="m-id">
+          <div class="m-name"><span>${esc((r&&r.n)||"—")}</span><span class="m-delta flat" dir="ltr">—</span></div>
+          <div class="m-sub">غير متاح حاليًا</div>
+          <div class="m-val" dir="ltr">—</div>
+        </div></div>`).join("");
+      return;
+    }
+
+    const status=$("lnd-mock-status");
+    if(status){
+      const t=fetchedAt?fmtCairoTime(fetchedAt):"";
+      status.innerHTML=`<span class="lnd-chip lnd-chip-live"><i></i>بيانات حية</span>`+
+        (t?`<span class="lnd-chip">آخر تحديث ${esc(t)}</span>`:"")+
+        (marketFreshness?.stale===true?`<span class="lnd-chip">قد تكون الأرقام متأخرة</span>`:"");
+    }
+    grid.innerHTML=
+      cardHtml(egx,"مؤشر السوق المصري الرئيسي")+
+      cardHtml(usd,"دولار أمريكي / جنيه")+
+      cardHtml(eur,"يورو / جنيه")+
+      `<div class="lnd-mock-card lnd-mock-summary"><span class="s-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-megaphone"></use></svg></span>
+        <div class="m-id"><b>ملخص السوق الصباحي</b><small>يجمع أهم التحركات والأخبار في رسالة واحدة — تجده بعد تسجيلك.</small></div></div>`;
+  }
+  window.__lndRender=renderHero;
+
+  /* Stats — every number from a real endpoint; a failed metric hides itself. */
+  async function loadStats(){
+    const wrap=$("lnd-stats");if(!wrap)return;
+    const stop=()=>landingEl()?.hidden||!!U;
+    const set=(id,val)=>{const el=$(id);if(!el)return;const b=el.querySelector("b");if(b)b.textContent=val;el.hidden=false;};
+    const showWrap=()=>{if([...wrap.children].some(c=>!c.hidden))wrap.hidden=false;};
+
+    // 1) Covered stocks — from the licensed EGX snapshot.
+    try{
+      const d=await fetchJsonWithTimeout("/api/markets/stocks",12000);
+      if(stop())return;
+      const n=Array.isArray(d?.stocks)?d.stocks.length:0;
+      if(n>0){set("lnd-stat-stocks",fmtInt(n));showWrap();}
+    }catch(_){}
+
+    // 2) News sources — approved feeds only.
+    try{
+      const d=await fetchJsonWithTimeout("/api/news/sources",12000);
+      if(stop())return;
+      const n=Array.isArray(d?.sources)?d.sources.length:0;
+      if(n>0){set("lnd-stat-sources",fmtInt(n));showWrap();}
+    }catch(_){}
+
+    // 3) News in the last 24h — counted from the ranked snapshot.
+    try{
+      const d=await fetchJsonWithTimeout("/api/news",12000);
+      if(stop())return;
+      if(Array.isArray(d?.items)){
+        // FeedItem carries an RSS pubDate string; count items published in the last 24h.
+        const now=Date.now(),day=86400000;
+        const n=d.items.filter(a=>{const t=Date.parse(a?.pubDate);return Number.isFinite(t)&&t>0&&(now-t)<day;}).length;
+        if(n>0){set("lnd-stat-news",fmtInt(n));showWrap();}
+      }
+    }catch(_){}
+
+    // 4) Last price update — from the board's fetchedAt (already loaded pre-login).
+    const tick=()=>{
+      const t=Number(marketFreshness?.fetchedAt)||0;
+      if(t>0){set("lnd-stat-update",fmtCairoTime(t));showWrap();return true;}
+      return false;
+    };
+    if(!tick()){
+      let tries=0;
+      const iv=setInterval(()=>{
+        if(stop()||++tries>20){clearInterval(iv);return;}
+        if(tick())clearInterval(iv);
+      },1000);
+      setTimeout(()=>clearInterval(iv),25000);
+    }
+  }
+
+  /* Mobile menu — keyboard + Escape + focus-safe. */
+  function bindMenu(){
+    const burger=$("lnd-burger"),menu=$("lnd-menu");if(!burger||!menu)return;
+    const setOpen=open=>{
+      menu.hidden=!open;
+      burger.setAttribute("aria-expanded",open?"true":"false");
+      if(open)menu.querySelector("a,button")?.focus?.();
+    };
+    burger.addEventListener("click",()=>setOpen(menu.hidden));
+    menu.addEventListener("click",e=>{if(e.target.closest("a,button"))setOpen(false);});
+    document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!menu.hidden)setOpen(false);});
+  }
+
+  /* ── Dividend-yield calculator — pure client-side math; no server, no PII ── */
+  const CALC_KEY="egytrend_lnd_calc_cmp";
+  const fmtEGP=n=>{try{return new Intl.NumberFormat("ar-EG",{style:"currency",currency:"EGP",maximumFractionDigits:2}).format(n);}catch(e){return fmtInt(n)+" ج.م";}};
+  function calcRead(){
+    const g=id=>document.getElementById(id)?.value;
+    return {
+      amt:parseFloat(g("lnd-calc-amt")),
+      price:parseFloat(g("lnd-calc-price")),
+      pct:parseFloat(g("lnd-calc-pct")),
+      sym:String(g("lnd-calc-sym")||"").trim().slice(0,24),
+    };
+  }
+  function calcCompute({amt,price,pct}){
+    if(!Number.isFinite(amt)||!Number.isFinite(price)||!Number.isFinite(pct))return {err:"أدخل المبلغ وسعر السهم ونسبة التوزيع أولًا."};
+    if(amt<=0)return {err:"المبلغ لازم يكون أكبر من صفر."};
+    if(price<=0)return {err:"سعر السهم لازم يكون أكبر من صفر."};
+    if(pct<0||pct>100)return {err:"نسبة التوزيع لازم تكون بين 0 و100."};
+    const shares=Math.floor(amt/price);
+    if(shares<1)return {err:"المبلغ أقل من سعر سهم واحد — ارفع المبلغ عشان تشتري سهم واحد على الأقل."};
+    const cost=shares*price;
+    const annual=cost*pct/100;
+    return {shares,cost,annual,pct};
+  }
+  function renderCalc(){
+    const box=document.getElementById("lnd-calc-results");
+    if(!box)return;
+    const r=calcCompute(calcRead());
+    if(r.err){
+      box.innerHTML=`<div class="lnd-calc-err" role="alert">${esc(r.err)}</div>`;
+      window.__lndCalcLast=null;
+      return;
+    }
+    window.__lndCalcLast={...calcRead(),shares:r.shares,cost:r.cost,annual:r.annual,ts:Date.now()};
+    box.innerHTML=
+      `<div class="lnd-calc-res"><b>${fmtInt(r.shares)}</b><span>سهم يشتريه المبلغ</span></div>`+
+      `<div class="lnd-calc-res"><b>${fmtEGP(r.cost)}</b><span>التكلفة الفعلية</span></div>`+
+      `<div class="lnd-calc-res"><b>${fmtEGP(r.annual)}</b><span>العائد المتوقع سنويًا (${esc(String(r.pct))}%)</span></div>`;
+  }
+  function calcCmpLoad(){
+    try{const v=JSON.parse(localStorage.getItem(CALC_KEY)||"[]");return Array.isArray(v)?v:[];}catch(e){return [];}
+  }
+  function calcCmpRender(){
+    const wrap=document.getElementById("lnd-calc-cmp");
+    if(!wrap)return;
+    const rows=calcCmpLoad();
+    if(!rows.length){wrap.hidden=true;wrap.innerHTML="";return;}
+    wrap.hidden=false;
+    wrap.innerHTML=`<h3>قارن بين الأسهم <button type="button" class="lnd-cmp-clear" id="lnd-cmp-clear">مسح الكل</button></h3>
+      <div style="overflow-x:auto"><table class="lnd-cmp-table"><thead><tr><th>السهم</th><th>المبلغ</th><th>السعر</th><th>التوزيع %</th><th>الأسهم</th><th>العائد المتوقع سنويًا</th><th></th></tr></thead><tbody>`+
+      rows.map((r,i)=>`<tr><td>${esc(r.sym||("سهم "+(i+1)))}</td><td>${fmtEGP(Number(r.amt))}</td><td>${fmtEGP(Number(r.price))}</td><td>${esc(String(r.pct))}</td><td>${fmtInt(Number(r.shares))}</td><td>${fmtEGP(Number(r.annual))}</td><td><button type="button" class="lnd-cmp-x" data-i="${i}" aria-label="حذف ${esc(r.sym||("سهم "+(i+1)))}">×</button></td></tr>`).join("")+
+      `</tbody></table></div>`;
+    wrap.querySelectorAll(".lnd-cmp-x").forEach(b=>b.addEventListener("click",()=>{
+      const arr=calcCmpLoad();arr.splice(Number(b.dataset.i),1);
+      try{localStorage.setItem(CALC_KEY,JSON.stringify(arr));}catch(e){}
+      calcCmpRender();
+    }));
+    document.getElementById("lnd-cmp-clear")?.addEventListener("click",()=>{
+      try{localStorage.removeItem(CALC_KEY);}catch(e){}
+      calcCmpRender();
+    });
+  }
+  function bindCalc(){
+    ["lnd-calc-amt","lnd-calc-price","lnd-calc-pct","lnd-calc-sym"].forEach(id=>{
+      document.getElementById(id)?.addEventListener("input",renderCalc);
+    });
+    document.getElementById("lnd-calc-save")?.addEventListener("click",()=>{
+      const last=window.__lndCalcLast;
+      if(!last){renderCalc();return;}
+      const arr=calcCmpLoad();
+      arr.push({sym:last.sym,amt:last.amt,price:last.price,pct:last.pct,shares:last.shares,annual:last.annual,ts:Date.now()});
+      while(arr.length>10)arr.shift();
+      try{localStorage.setItem(CALC_KEY,JSON.stringify(arr));}catch(e){}
+      calcCmpRender();
+    });
+    renderCalc();
+    calcCmpRender();
+  }
+
+  /* ── Pricing — rendered ONLY from the central source (/api/payments/config) ── */
+  function renderPricing(){
+    const host=document.getElementById("lnd-vip-plans");
+    if(!host)return;
+    if(window.__lndPricingDone)return;
+    window.__lndPricingDone=true;
+    const ctrl=new AbortController();
+    const timer=setTimeout(()=>ctrl.abort(),12000);
+    (async()=>{
+      try{
+        const cfg=await fetchSubscriptionConfig(ctrl.signal);
+        if(U)return; // session started — landing is going away
+        const plans=Object.entries(cfg.plans);
+        host.setAttribute("aria-label","الباقات المتاحة من الخادم");
+        host.innerHTML=plans.length?plans.map(([key,p])=>`
+          <div class="lnd-vip-plan">
+            <div><div class="vp-name">${esc(p.l)}</div><div class="vp-per">${esc(p.per)}</div></div>
+            ${p.badge?`<span class="vp-badge">${esc(p.badge)}</span>`:""}
+            <span class="vp-price">${p.oldPrice?`<s>${fmtInt(p.oldPrice)}</s>`:""}<b>${fmtInt(p.p)}</b><span style="font-size:10px;color:#8FA0C9;">ج.م</span></span>
+          </div>`).join("")
+          :`<div class="lnd-calc-err" role="alert">لا توجد باقات منشورة من الخادم حاليًا.</div>`;
+        const pm=document.getElementById("lnd-pay-methods");
+        if(pm){
+          pm.innerHTML=(cfg.methods||[]).map(m=>`
+            <div class="lnd-pay-method"><span class="pm-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg></span>
+            <span><b>${esc(m.label)}</b> — حوّل على <span class="pm-num">${esc(m.number)}</span>${m.instructions?`<br><span style="color:#8FA0C9;font-size:9.5px;">${esc(m.instructions)}</span>`:""}</span></div>`).join("");
+        }
+        const pol=document.getElementById("lnd-policy");
+        if(pol){try{pol.innerHTML=subscriptionPolicyHtml(true);}catch(_){}}
+      }catch(_){
+        host.setAttribute("aria-label","تعذر تحميل الباقات");
+        host.innerHTML=`<div class="lnd-calc-err" role="alert">تعذر تحميل الباقات الآن — لن نعرض أسعارًا بديلة.</div>
+          <button type="button" class="lnd-secondary" id="lnd-pricing-retry" style="justify-content:center;">↻ إعادة المحاولة</button>`;
+        document.getElementById("lnd-pricing-retry")?.addEventListener("click",()=>{
+          window.__lndPricingDone=false;
+          host.innerHTML=`<span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span>`;
+          renderPricing();
+        });
+      }finally{clearTimeout(timer);}
+    })();
+  }
+
+  function start(){
+    if(window.__lndStarted)return;window.__lndStarted=true;
+    bindMenu();
+    renderHero();
+    loadStats();
+    bindCalc();
+    renderPricing();
+    /* Mobile quick bar follows the auth overlay state. */
+    window.__lndAuthOpen=open=>{
+      const bar=document.getElementById("lnd-mobbar");
+      if(bar)bar.style.display=open?"none":"";
+    };
+    // Re-render while the board settles in (first fetch / sparkline arrival), then stop.
+    let n=0;
+    const iv=setInterval(()=>{
+      if(landingEl()?.hidden||U){clearInterval(iv);return;}
+      renderHero();
+      if(++n>=8)clearInterval(iv);
+    },2000);
+  }
+  window.__lndStart=start;
+})();
 
 
 /* ═══════════════════ NAVIGATION ═══════════════════ */
@@ -3300,6 +4212,8 @@ async function fetchMarketsData(force){
     markMarketsUnavailable();
   }finally{
     marketsInFlightClient=false;
+    /* Guest landing hero reads this same board state; let it re-render (no-op for logged-in users). */
+    if(window.__lndRender){try{window.__lndRender();}catch(_){}}
   }
 }
 
@@ -3855,12 +4769,18 @@ function buildMarkets(){
         <div class="mc-sub">${sanitize(m.s||"")}</div>
         ${(()=>{
           const asOf=Number(m.asOf);
-          const age=cairoAgeLabel(asOf);
-          /* A source timestamp older than an hour (intraday data only —
-             end-of-day references are judged by their trading date, not the
-             wall clock) is shown as OLD, not as "متأخر" alone. */
-          const srcOld=Number.isFinite(asOf)&&asOf>0&&m.freshness!=="end-of-day"&&(Date.now()-asOf)>60*60_000;
-          return `<div style="color:var(--t5);font-size:8px;margin-top:3px;">المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")} · وقت المصدر: ${sanitize(cairoTimestampLabel(asOf))}${age?` (${sanitize(age)})`:""} · ${sanitize(marketStateLabel({...marketFreshness,delayedMinutes:secMeta.delayedMinutes,freshness:secMeta.freshness}))}${srcOld?" · <b style='color:var(--dn)'>⚠️ بيانات قديمة</b>":""}</div>`;
+          /* The server classifies every row against its own market session
+             (live / closed showing the real close / genuinely stale), so the
+             UI only displays that verdict — no wall-clock guessing here. */
+          const rowState=String(m.state||"").toLowerCase();
+          const stateBadge=unavailable
+            ? "<span style='color:var(--t5)'>غير متاح</span>"
+            : rowState==="stale"
+              ? "<b style='color:var(--dn)'>⚠️ بيانات قديمة</b>"
+              : rowState==="closed"
+                ? `<span style="color:var(--t4)">${sanitize(m.stateLabel||"إغلاق السوق")}</span>`
+                : "<span style='color:var(--up)'>مباشر</span>";
+          return `<div style="color:var(--t5);font-size:8px;margin-top:3px;">المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")} · وقت المصدر: ${sanitize(cairoTimestampLabel(asOf))} · ${stateBadge}</div>`;
         })()}
       </div>`;
     }).join("");
@@ -4445,7 +5365,6 @@ function renderVIP(){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px;">
         ${[
           ["🤖","مساعد البيانات","اسأل عن سهم أو قطاع — يصف البيانات والمصادر المتاحة دون توصيات"],
-          ["📡","ملاحظات السوق","ملخص وصفي للأرقام والعناوين المتاحة مع بيان المصدر والتأخر — وليس توصية تداول"],
           ["🔍","Stock Screener","فلتر 20 سهم مصري بعشرات المعايير: P/E، الحجم، القطاع — مثل Investing.com تماماً"],
           ["💼","متابع المحفظة","أدخل أسهمك وأسعار شرائها — ملخص وصفي للأداء الظاهر ومصادره دون توصيات"],
           ["🌅","موجزات يومية","موجز صباح وإغلاق وصفي من البيانات المتاحة، مع توضيح النقص والتأخر"],
@@ -4461,7 +5380,7 @@ function renderVIP(){
       <div style="background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(16,185,129,.05));border:1px solid rgba(245,158,11,.2);border-radius:16px;padding:16px;margin-bottom:14px;">
         <div style="color:var(--au);font-weight:800;font-size:13px;margin-bottom:10px;text-align:center;">✨ ما الذي ستحصل عليه؟</div>
         <div style="display:flex;flex-direction:column;gap:6px;">
-          ${["🤖 محادثة تعليمية مع AI على بيانات المنصة المتاحة","📡 ملاحظات سوق وصفية على أسهم EGX","🔍 Stock Screener احترافي بفلاتر متقدمة","💼 ملخص وصفي لمحفظتك","🌅 موجزات صباح وإغلاق وصفية","🔔 تنبيهات أسبقية لأهم الأحداث الاقتصادية","💡 بطاقات متابعة وصفية من بيانات السوق المتاحة","💬 قناة دعم معتمدة عند توفرها"].map(f=>`
+          ${["🤖 محادثة تعليمية مع AI على بيانات المنصة المتاحة","🔍 Stock Screener احترافي بفلاتر متقدمة","💼 ملخص وصفي لمحفظتك","🌅 موجزات صباح وإغلاق وصفية","🔔 تنبيهات أسبقية لأهم الأحداث الاقتصادية","💡 بطاقات متابعة وصفية من بيانات السوق المتاحة","💬 قناة دعم معتمدة عند توفرها"].map(f=>`
           <div style="display:flex;align-items:flex-start;gap:8px;"><span style="flex-shrink:0;">${f.slice(0,2)}</span><span style="color:var(--t2);font-size:11.5px;">${f.slice(3)}</span></div>`).join("")}
         </div>
       </div>
@@ -4485,7 +5404,10 @@ function renderVIP(){
     <div id="vip-body"></div>`;
 
   buildVipTabsBar();
-  switchVipTab(DB.g("vip_tab","home"),true);
+  /* A saved tab that no longer exists (or an older client version)
+     must not open the VIP shell on an empty body. */
+  const savedTab=DB.g("vip_tab","home");
+  switchVipTab(VIP_TABS.some(t=>t.id===savedTab)?savedTab:"home",true);
 }
 
 /* ══════════════ INVESTOR CALCULATORS ══════════════
@@ -4578,9 +5500,7 @@ const VIP_TABS=[
   {id:"mkt",   ic:"📊", lb:"الأسواق"},
   {id:"scr",   ic:"🔎", lb:"Screener"},
   {id:"ai",    ic:"🤖", lb:"المستشار"},
-  {id:"stk",   ic:"🎯", lb:"تحليل AI"},
   {id:"port",  ic:"💼", lb:"المحفظة"},
-  {id:"analytics", ic:"📈", lb:"التحليلات"},
   {id:"calc",  ic:"🧮", lb:"الحاسبات"},
   {id:"rep",   ic:"📅", lb:"التقارير"},
   {id:"alerts",ic:"🔔", lb:"التنبيهات"},
@@ -4645,9 +5565,7 @@ function renderVipTab(){
   if(vipTab==="mkt")return vBuildMkts(b);
   if(vipTab==="scr")return vBuildScr(b);
   if(vipTab==="ai")return vBuildChat(b);
-  if(vipTab==="stk")return vBuildStk(b);
   if(vipTab==="port")return vBuildPort(b);
-  if(vipTab==="analytics")return vBuildAnalytics(b);
   if(vipTab==="calc")return vBuildCalc(b);
   if(vipTab==="rep")return vBuildRep(b);
   if(vipTab==="alerts")return vBuildAlerts(b);
@@ -4825,7 +5743,7 @@ function vBuildOpps(b){
   const saved=DB.g("saved_opps",[]);
 
   b.innerHTML=`
-    <div class="vbox" style="background:linear-gradient(135deg,rgba(245,158,11,.07),rgba(16,185,129,.04));border-color:rgba(245,158,11,.18);">
+    <div class="vbox" id="opps-vip-box" style="background:linear-gradient(135deg,rgba(245,158,11,.07),rgba(16,185,129,.04));border-color:rgba(245,158,11,.18);">
       <div class="row between">
         <div><div style="color:var(--au);font-weight:800;font-size:13px;">💡 عناصر متابعة السوق</div>
         <div style="color:var(--t4);font-size:10.5px;margin-top:3px;">بطاقات وصفية حسب المصدر ووقت المصدر عند توافرهما؛ ليست توصيات أو ترتيبًا استثماريًا</div></div>
@@ -5094,99 +6012,6 @@ function vQuickAsk(btn){
   inp.value=btn.textContent.trim();sendChat();
 }
 
-/* ══════════════ TAB 7 — ملخص بيانات السهم ══════════════ */
-let vStkSym="";
-function vBuildStk(b){
-  b.innerHTML=`
-    <div class="vbox au">
-      <div class="vbox-title" style="color:var(--au);">🎯 ملخص سهم محدد</div>
-      <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
-        💡 اختر سهمًا مصريًا أو أمريكيًا لعرض ملخص وصفي للحقول المتاحة والعناوين المرتبطة ومصدرها. لا توجد درجة استثمارية أو توصية أو توقع.
-      </div>
-      <div class="p-inputs">
-        <input class="mini-in" id="vstk-in" placeholder="رمز السهم — مثال: COMI" style="flex:2;" oninput="this.value=this.value.toUpperCase().slice(0,10)" onkeydown="if(event.key==='Enter')analyzeSymbolAI()"/>
-        <button class="add-btn" onclick="analyzeSymbolAI()" id="vstk-btn">لخّص</button>
-      </div>
-      <div class="scr-filters" style="margin-top:8px;">
-        ${liveStocks.slice(0,8).map(s=>`<button class="scr-f" onclick='document.getElementById("vstk-in").value=${safeJsArg(s.sym)};analyzeSymbolAI()'>${sanitize(s.sym)}</button>`).join("")}
-      </div>
-      <div id="vstk-res" style="display:none;margin-top:12px;background:rgba(245,158,11,.05);border-radius:12px;padding:13px;border:1px solid rgba(245,158,11,.15);">
-        <div style="color:var(--au);font-size:10px;font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;">
-          <span>🤖 ملخص AI · بيانات متاحة</span><span id="vstk-ts" style="color:var(--t5);font-family:var(--mono);font-size:9px;"></span>
-        </div>
-        <div id="vstk-score"></div>
-        <div id="vstk-txt" style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;"></div>
-        <div style="margin-top:10px;padding:7px;background:rgba(245,158,11,.08);border-radius:8px;">
-          <div style="color:var(--au);font-size:9.5px;text-align:center;">⚠️ تحليل تعليمي ومعلوماتي فقط — قرارات الاستثمار على مسؤوليتك الكاملة</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="vbox g">
-      <div class="vbox-title" style="color:var(--g);">
-        <span>📡 ملاحظات السوق</span>
-        <button class="btn btn-g btn-sm" id="sig-btn" onclick="getSignals()">إعداد ←</button>
-      </div>
-      <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;">
-        💡 <strong style="color:var(--g);">ماذا تعرض؟</strong> — وصف يومي للأرقام والعناوين المتاحة لأبرز أسهم EGX، مع بيان نقص البيانات. لا تتضمن نقاط دخول/خروج أو توصيات.
-      </div>
-      <div id="sig-res" style="display:none;color:#a7f3d0;font-size:13px;line-height:1.85;direction:rtl;white-space:pre-line;margin-top:8px;"></div>
-    </div>
-
-    <div class="vbox pu">
-      <div class="vbox-title" style="color:#c084fc;">🌐 ملخص شامل للبيانات</div>
-      <div style="color:var(--t4);font-size:10.5px;line-height:1.6;direction:rtl;margin-bottom:10px;">يلخّص الأسعار والعناوين المتاحة كما هي، ويبيّن ما لا تكفي البيانات لاستنتاجه. ليس توصية أو توقعًا.</div>
-      <button class="btn btn-pu btn-full" style="padding:10px;font-size:12.5px;" id="ai-analysis-btn" onclick="getAIStockAnalysis()">🤖 اطلب ملخص البيانات</button>
-      <div id="ai-analysis-res" style="display:none;margin-top:12px;background:rgba(192,132,252,.05);border-radius:12px;padding:13px;border:1px solid rgba(192,132,252,.15);">
-        <div style="color:#c084fc;font-size:10px;font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;">
-          <span>🤖 ملخص AI · بيانات متاحة</span><span id="ai-analysis-ts" style="color:var(--t5);font-family:var(--mono);font-size:9px;"></span>
-        </div>
-        <div id="ai-analysis-txt" style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;"></div>
-      </div>
-    </div>`;
-  if(vStkSym){const i=document.getElementById("vstk-in");if(i)i.value=vStkSym;}
-}
-async function analyzeSymbolAI(){
-  const inp=document.getElementById("vstk-in");if(!inp)return;
-  const sym=inp.value.trim().toUpperCase().slice(0,10);if(!sym)return;
-  vStkSym=sym;
-  const btn=document.getElementById("vstk-btn");
-  const resEl=document.getElementById("vstk-res");
-  if(!btn||!resEl)return;
-  btn.innerHTML='<div class="sp sp-au sp-sm"></div>';btn.disabled=true;
-  resEl.style.display="none";
-  const egx=liveStocks.find(x=>x.sym===sym||x.sym===sym+".CA");
-  const stock=egx||usStocks.find(x=>x.sym===sym);
-  if(!stock||!stock.source||stock.source==="غير متاح"){
-    showToast("📡 بيانات موثّقة غير متاحة لهذا السهم حاليًا");btn.innerHTML="لخّص";btn.disabled=false;return;
-  }
-  const sourceMeta=egx?egxStocksFreshness:usStocksFreshness;
-  const relNews=allArts.filter(article=>(stock.name&&article.title.includes(stock.name))||article.title.toUpperCase().includes(sym)).slice(0,5);
-  try{
-    const currency=egx?"ج":"$";
-    const info=`${stock.sym} (${stock.name||"?"}): السعر ${stock.price.toFixed(2)} ${currency} (${stockChangeText(stock.chgPct)}) | المصدر: ${stock.source} | ${marketAgeLabel(sourceMeta)}${stock.pe!==undefined?` | P/E: ${stock.pe.toFixed(1)}`:""}${stock.vol!==undefined?` | حجم: ${fmtVol(stock.vol)}`:""}${stock.high52w!==undefined?` | أعلى 52 أسبوع: ${stock.high52w}`:""}${stock.low52w!==undefined?` | أدنى 52 أسبوع: ${stock.low52w}`:""}`;
-    const newsTxt=relNews.length?relNews.map(article=>`- ${article.title} (${article.srcName})`).join("\n"):"لا توجد عناوين مرخّصة مرتبطة بهذا السهم حاليًا";
-    const txt=await callAI({
-      max_tokens:1600,
-      system:"أنت محرر بيانات سهم تعليمي بالعربية. استخدم الحقائق الواردة فقط. ممنوع إصدار تقييم استثماري أو توصية شراء/بيع/احتفاظ أو هدف سعري أو توقع أو وصف السهم كفرصة/رخيص/غالي. لا تستنتج علاقة سببية من عنوان خبر وسعر؛ اذكر المصدر والنقص بوضوح.",
-      messages:[{role:"user",content:`أنشئ ملخصًا وصفيًا للسهم التالي بالترتيب:\n1. السعر ونسبة التغير والحقول المتاحة ومصدرها\n2. ما الذي يعنيه وجود/غياب حقول مثل P/E أو الحجم أو نطاق 52 أسبوع بصورة تعريفية فقط\n3. العناوين المنشورة ذات الصلة مع مصدرها دون استنتاج سببي\n4. البيانات الناقصة والتأخر\n5. تنبيه أن الملخص ليس قرارًا استثماريًا.\n\nبيانات السهم:\n${info}\n\nالعناوين:\n${newsTxt}`}]
-    });
-    const txtEl=document.getElementById("vstk-txt");
-    const tsEl=document.getElementById("vstk-ts");
-    const scEl=document.getElementById("vstk-score");
-    if(scEl)scEl.replaceChildren();
-    if(txtEl)txtEl.textContent=txt;
-    if(tsEl)tsEl.textContent="وقت إعداد الملخص: "+new Intl.DateTimeFormat("ar-EG",{timeZone:"Africa/Cairo",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date());
-    resEl.style.display="block";
-  }catch(e){
-    const txtEl=document.getElementById("vstk-txt");
-    if(txtEl)txtEl.textContent=aiErrMsg(e);
-    const scEl=document.getElementById("vstk-score");if(scEl)scEl.replaceChildren();
-    resEl.style.display="block";
-  }
-  btn.innerHTML="لخّص";btn.disabled=false;
-}
-
 
 /* ══════════════════════════════════════════════════════════════════════════
  * VISUAL ANALYTICS — shared chart primitives
@@ -5415,55 +6240,6 @@ function vaSignedBars(items){
  * Only points with a parsed numeric return are plotted; the card reports how
  * many opportunities were excluded and why.
  */
-function vaScatter(cfg){
-  const points=(cfg.points||[]).filter(point=>Number.isFinite(point.x)&&Number.isFinite(point.y));
-  if(!points.length)return "";
-  let lo=Math.min(0,...points.map(point=>point.y));
-  let hi=Math.max(0,...points.map(point=>point.y));
-  if(hi-lo<1e-9){hi+=1;lo-=1;}
-  const pad=(hi-lo)*0.12;lo-=pad;hi+=pad;
-  const ticks=[0,1,2,3,4].map(index=>hi-(hi-lo)*index/4);
-  const xMin=Number(cfg.xMin??1),xMax=Number(cfg.xMax??5);
-  /* A 2.5% inset keeps an edge dot fully inside its plot instead of half
-   * hanging over the card background. */
-  const xPct=x=>2.5+((Math.min(xMax,Math.max(xMin,x))-xMin)/(xMax-xMin))*95;
-  const yPct=y=>3+((hi-y)/(hi-lo))*94;
-  return `<div class="va-scatter-wrap">
-      <div class="va-sc-y">${ticks.map(tick=>`<span>${sanitize(vaFmt(tick,Math.abs(tick)<10?1:0))}%</span>`).join("")}</div>
-      <div class="va-scatter" data-va-scatter="${cfg.id||"sc"}" role="group" aria-label="${sanitize(cfg.ariaLabel||"مخطط المخاطرة والعائد")}">
-        <div class="va-grid">${ticks.map((tick,index)=>`<div class="va-gridline${index===ticks.length-1?" solid":""}" style="top:${(index/(ticks.length-1)*100).toFixed(2)}%"></div>`).join("")}</div>
-        <div class="va-grid">${[0,1,2,3,4].map(index=>`<div class="va-gridline" style="top:0;bottom:0;left:${(2.5+index/4*95).toFixed(2)}%;right:auto;border-top:none;border-left:1px dashed rgba(148,163,184,.1);"></div>`).join("")}</div>
-        ${points.map(point=>`<button type="button" class="va-sc-dot" style="left:${xPct(point.x).toFixed(2)}%;top:${yPct(point.y).toFixed(2)}%;background:${point.color};" aria-label="${sanitize(point.aria||"")}"${point.onclick?` onclick='${point.onclick}'`:""}><span class="va-sc-tip" hidden>${point.tip||""}</span></button>`).join("")}
-        <div class="va-tip"></div>
-      </div>
-    </div>${cfg.xLabels?`<div class="va-x-risk">${cfg.xLabels.map(label=>`<span>${sanitize(label)}</span>`).join("")}</div>`:""}`;
-}
-function vaBindScatter(root=document){
-  if(!root||!root.querySelectorAll)return;
-  root.querySelectorAll("[data-va-scatter]").forEach(box=>{
-    if(box.dataset.vaBound==="1")return;
-    box.dataset.vaBound="1";
-    const tip=box.querySelector(".va-tip");
-    box.querySelectorAll(".va-sc-dot").forEach(dot=>{
-      const show=()=>{
-        if(!tip)return;
-        tip.innerHTML=dot.querySelector(".va-sc-tip")?.innerHTML||"";
-        tip.style.display="block";
-        const width=box.clientWidth||0,tipWidth=tip.offsetWidth||0;
-        const left=(parseFloat(dot.style.left)||0)/100*width+12;
-        const top=(parseFloat(dot.style.top)||0)/100*box.clientHeight-14;
-        tip.style.left=Math.max(0,Math.min(width-tipWidth-2,left))+"px";
-        tip.style.top=Math.max(2,top)+"px";
-      };
-      const hide=()=>{if(tip)tip.style.display="none";};
-      dot.addEventListener("pointerenter",show);
-      dot.addEventListener("pointerleave",hide);
-      dot.addEventListener("focus",show);
-      dot.addEventListener("blur",hide);
-    });
-  });
-}
-
 /* ══════════════ TAB 8 — المحفظة ══════════════ */
 function normalizeServerPortfolio(raw){
   if(!Array.isArray(raw))return [];
@@ -5856,247 +6632,6 @@ function vBuildPort(b){
   renderPortList();
   vaBindCharts(b);
   if(portfolio.length&&portHistory.status==="idle")void ensurePortfolioHistory();
-}
-
-/* ═══════════════════ VIP ANALYTICS TAB ═══════════════════
- * The analytics tab visualises features that already exist for this account:
- * licensed stock/index history (the same endpoint that feeds the asset chart),
- * the published opportunity cards (already gated by the server) and the EGX
- * stock list. It introduces no privileged endpoint of its own and therefore
- * grants nothing: every paid read still goes through its own server gate.
- */
-const VA_COMPARE={sym:"",range:"1M",status:"idle",error:"",series:[],kpis:null,source:"",asOf:0};
-let vaStocksRequested=false;
-let vaOppsRequested=false;
-let vaCompareSeq=0;
-function currentCompareSym(){return VA_COMPARE.sym||vaDefaultSym();}
-function vaDefaultSym(){
-  const preferred=liveStocks.find(stock=>stock.sym==="COMI")||liveStocks[0];
-  return preferred?preferred.sym:"";
-}
-function vaCompareOptions(){
-  return liveStocks.filter(stock=>canonicalInstrumentId(stock.instrumentId)).slice(0,300)
-    .map(stock=>`<option value="${sanitize(stock.sym)}"${stock.sym===currentCompareSym()?" selected":""}>${sanitize(stock.sym)}${stock.sector?` — ${sanitize(stock.sector)}`:""}</option>`).join("");
-}
-async function vaHistory(instrumentId,range){
-  const data=await fetchJsonWithTimeout(`${MARKET_HISTORY_API}/${encodeURIComponent(instrumentId)}?range=${encodeURIComponent(range)}`,12000);
-  const normalized=normalizeHistoryResponse(data,instrumentId);
-  return normalized&&normalized.available===true?normalized:null;
-}
-async function vaLoadComparison(){
-  const sym=currentCompareSym();
-  VA_COMPARE.sym=sym;
-  const stock=liveStocks.find(item=>item.sym===sym);
-  if(!stock||!canonicalInstrumentId(stock.instrumentId)){
-    VA_COMPARE.status="unavailable";VA_COMPARE.error="no_stock";
-    patchVaCompare();
-    return;
-  }
-  const token=++vaCompareSeq;
-  VA_COMPARE.status="loading";VA_COMPARE.error="";
-  patchVaCompare();
-  try{
-    const [asset,index]=await Promise.all([
-      vaHistory(stock.instrumentId,VA_COMPARE.range),
-      vaHistory("egx:EGX30",VA_COMPARE.range),
-    ]);
-    if(token!==vaCompareSeq)return;
-    if(!asset||!index){VA_COMPARE.status="unavailable";VA_COMPARE.error="no_data";patchVaCompare();return;}
-    const indexByDay=new Map(index.points.map(point=>[point.time,point.close]));
-    const common=asset.points.filter(point=>indexByDay.has(point.time));
-    const firstAsset=common.length?common[0].close:0;
-    const firstIndex=common.length?indexByDay.get(common[0].time):0;
-    if(common.length<2||!(firstAsset>0)||!(firstIndex>0)){
-      VA_COMPARE.status="unavailable";VA_COMPARE.error="no_data";
-      patchVaCompare();
-      return;
-    }
-    const series=[
-      {label:sym,color:VA_C.g,points:common.map(point=>({t:Date.parse(`${point.time}T00:00:00Z`),y:(point.close/firstAsset-1)*100}))},
-      {label:"EGX30",color:VA_C.bl,points:common.map(point=>({t:Date.parse(`${point.time}T00:00:00Z`),y:(indexByDay.get(point.time)/firstIndex-1)*100}))},
-    ];
-    VA_COMPARE.series=series;
-    VA_COMPARE.kpis={asset:series[0].points[series[0].points.length-1].y,index:series[1].points[series[1].points.length-1].y};
-    VA_COMPARE.source=asset.source?.name||"";
-    VA_COMPARE.indexSource=index.source?.name||"";
-    VA_COMPARE.asOf=asset.source?.asOf||0;
-    VA_COMPARE.startT=series[0].points[0].t;
-    VA_COMPARE.endT=series[0].points[series[0].points.length-1].t;
-    VA_COMPARE.status="ready";
-  }catch{
-    if(token!==vaCompareSeq)return;
-    VA_COMPARE.status="unavailable";VA_COMPARE.error="error";
-  }
-  patchVaCompare();
-}
-function patchVaCompare(){
-  const host=document.getElementById("va-compare-body");
-  if(!host)return;
-  host.innerHTML=vaCompareBody();
-  vaBindCharts(host);
-}
-function vaSetCompareSym(sym){
-  const next=String(sym||"").slice(0,16).toUpperCase();
-  if(!liveStocks.some(item=>item.sym===next))return;
-  VA_COMPARE.sym=next;
-  void vaLoadComparison();
-}
-function vaSetCompareRange(range){
-  VA_COMPARE.range=["1M","3M","1Y"].includes(range)?range:"1M";
-  document.querySelectorAll("[data-va-range]").forEach(button=>button.classList.toggle("active",button.dataset.vaRange===VA_COMPARE.range));
-  void vaLoadComparison();
-}
-function vaCompareBody(){
-  if(VA_COMPARE.status==="loading"||VA_COMPARE.status==="idle"){
-    return `<div class="va-empty" style="min-height:150px;"><strong>⏳ جارٍ قراءة السجل اليومي المرخّص…</strong>يُستخدم نفس سجل شارت الأصل، بلا أي رسم بديل.</div>`;
-  }
-  if(VA_COMPARE.status!=="ready"){
-    const copy=VA_COMPARE.error==="no_stock"
-      ? {title:"اختر سهمًا متاحًا",detail:"بيانات أسهم EGX لم تُحمّل بعد، لذا لا يوجد سجل يومي للمقارنة."}
-      : VA_COMPARE.error==="no_data"
-      ? {title:"لا توجد نقاط إغلاق مشتركة كافية",detail:"السجل المرخّص لهذا النطاق لا يغطي السهم والمؤشر معًا؛ لن نرسم خطًا من أيام مختلفة."}
-      : {title:"تعذّر تحميل السجل اليومي",detail:"لم يتم استخدام بيانات بديلة. جرّب نطاقًا آخر أو أعد المحاولة."};
-    return `<div class="va-empty" style="min-height:150px;"><strong>${sanitize(copy.title)}</strong>${sanitize(copy.detail)}<div style="margin-top:9px;"><button class="btn btn-ghost" style="padding:6px 12px;font-size:10px;" onclick="vaLoadComparison()">↻ إعادة المحاولة</button></div></div>`;
-  }
-  const kpis=VA_COMPARE.kpis||{asset:0,index:0};
-  return `<div class="va-kpis">
-      <div class="va-kpi"><label>${sanitize(VA_COMPARE.sym)}</label><b style="color:${vaTone(kpis.asset)};">${vaPct(kpis.asset,2)}</b></div>
-      <div class="va-kpi"><label>مؤشر EGX30</label><b style="color:${vaTone(kpis.index)};">${vaPct(kpis.index,2)}</b></div>
-      <div class="va-kpi"><label>الفارق</label><b style="color:${vaTone(kpis.asset-kpis.index)};">${vaPct(kpis.asset-kpis.index,2)}</b></div>
-    </div>
-    ${vaLineChart({series:VA_COMPARE.series,yFmt:value=>`${vaFmt(value,1)}%`,ariaLabel:`أداء ${VA_COMPARE.sym} مقابل EGX30`})}
-    <div class="va-src"><b>المصدر:</b> ${sanitize(VA_COMPARE.source||"غير متاح")} · <b>آخر شمعة:</b> ${sanitize(vaShortDate(VA_COMPARE.asOf))} · ${sanitize(VA_COMPARE.range)}<br/><span style="color:var(--t5);">عائد سعري فقط بلا توزيعات؛ النسبة تبدأ من أول يوم مشترك بين السلسلتين.</span></div>`;
-}
-function vaCompareCard(){
-  return vaCard({
-    vip:true,icon:"📉",title:"السهم مقابل مؤشر السوق",
-    sub:"أداء نسبي من أول نقطة مشتركة في النطاق المختار",
-    body:`<div style="display:flex;gap:6px;margin-top:10px;align-items:center;">
-        <select class="mini-in" style="flex:1;min-width:0;" onchange="vaSetCompareSym(this.value)" aria-label="اختر سهمًا للمقارنة">${vaCompareOptions()||`<option value="">بيانات الأسهم غير متاحة</option>`}</select>
-      </div>
-      <div class="scr-filters" style="margin-top:7px;">${[["1M","شهر"],["3M","٣ أشهر"],["1Y","سنة"]].map(([key,label])=>`<button class="scr-f${VA_COMPARE.range===key?" active":""}" data-va-range="${key}" onclick="vaSetCompareRange('${key}')">${label}</button>`).join("")}</div>
-      <div id="va-compare-body">${vaCompareBody()}</div>`,
-  });
-}
-function vaSectorGroups(){
-  const groups=new Map();
-  liveStocks.forEach(stock=>{
-    const change=knownStockNumber(stock.chgPct);
-    if(change===null)return;
-    const key=stock.sector||"غير مصنّف";
-    const group=groups.get(key)||{sector:key,count:0,sum:0,up:0,down:0};
-    group.count+=1;
-    group.sum+=change;
-    if(change>=0)group.up+=1;else group.down+=1;
-    groups.set(key,group);
-  });
-  return [...groups.values()].map(group=>({...group,avg:group.sum/group.count})).sort((a,b)=>b.avg-a.avg);
-}
-function vaSectorCard(){
-  const groups=vaSectorGroups();
-  return vaCard({
-    vip:true,icon:"🏭",title:"مقارنة القطاعات",
-    sub:"متوسط التغير اليومي للأسهم المتاحة في كل قطاع",
-    body:groups.length
-      ? vaSignedBars(groups.map(group=>({
-        label:group.sector,
-        labelFull:`${group.sector} — ${group.count} سهم · ${group.up} صاعد / ${group.down} هابط`,
-        value:group.avg,
-        display:vaPct(group.avg,2),
-        color:group.avg>=0?VA_C.g:VA_C.r,
-      })))
-      : vaEmpty("لا توجد أسعار أسهم موثّقة","لن نصنّف قطاعًا بلا أسعار؛ انتظر تحديث بيانات أسهم EGX أو أعد المحاولة."),
-    foot:`<b>المصدر:</b> ${sanitize(egxStocksFreshness?.source||"غير متاح")} · <b>آخر تحديث:</b> ${sanitize(cairoTimestampLabel(egxStocksFreshness?.fetchedAt||0))} · ${groups.length} قطاع<br/><span style="color:var(--t5);">متوسط محسوب من الأسهم المعروضة فقط، وليس مؤشرًا قطاعيًا رسميًا، وقد يختلف عن مؤشرات البورصة.</span>`,
-  });
-}
-/* Same read-only endpoint the opportunities tab uses, without touching its DOM:
- * the analytics tab only needs the published cards for the risk/return plot. */
-async function vaLoadOpportunities(){
-  if(oppsData.length)return;
-  try{
-    const response=await fetch("/api/opportunities",{credentials:"same-origin",cache:"no-store"});
-    if(!response.ok)return;
-    const data=await response.json().catch(()=>null);
-    if(data?.status!=="ok"||!Array.isArray(data.opportunities))return;
-    oppsData=data.opportunities.map(normalizeOpportunity).filter(Boolean).filter(opportunity=>opportunity.status!=="closed");
-  }catch{ /* an unavailable feed keeps the explicit empty state */ }
-}
-function vaCleanPercent(text){
-  const raw=String(text??"").trim();
-  if(!raw)return null;
-  const match=raw.match(/^(-?\d{1,4}(?:\.\d{1,2})?)\s*%?$/);
-  if(!match)return null;
-  const value=Number(match[1]);
-  return Number.isFinite(value)?value:null;
-}
-function vaRiskReturnCard(){
-  const plotted=[],excluded=[];
-  oppsData.forEach(opportunity=>{
-    const percent=vaCleanPercent(opportunity.expectedReturn);
-    const risk=Math.round(Number(opportunity.riskLevel));
-    if(percent===null||!Number.isFinite(risk)||risk<1||risk>5){excluded.push(opportunity);return;}
-    plotted.push({opportunity,percent,risk});
-  });
-  const points=plotted.map(item=>({
-    x:item.risk,
-    y:item.percent,
-    color:RISK_COLORS[item.risk-1]||VA_C.nu,
-    tip:`<b>${sanitize(item.opportunity.title).slice(0,90)}</b>
-      <div class="tip-row"><span>المخاطرة</span><span>${sanitize(RISK_LABELS[item.risk]||"—")}</span></div>
-      <div class="tip-row"><span>العائد المتوقع</span><span>${sanitize(item.opportunity.expectedReturn)}</span></div>
-      <div class="tip-row"><span>النوع</span><span>${sanitize((OPP_TYPES[item.opportunity.type]||OPP_TYPES.stock).l)}</span></div>`,
-    aria:`${item.opportunity.title} — مخاطرة ${RISK_LABELS[item.risk]} — عائد متوقع ${item.opportunity.expectedReturn}`,
-    onclick:`openOppDetail(${safeJsArg(item.opportunity.id)})`,
-  }));
-  return vaCard({
-    vip:true,icon:"⚖️",title:"الفرص: المخاطرة مقابل العائد",
-    sub:"كل نقطة فرصة منشورة؛ المحور الأفقي المخاطرة (1–5) والرأسي العائد المتوقع %",
-    badge:plotted.length?`${plotted.length} من ${oppsData.length}`:null,
-    body:points.length
-      ? `${vaScatter({id:"va-risk",points,xMin:1,xMax:5,xLabels:["1","2","3","4","5"],ariaLabel:"مخطط المخاطرة والعائد المتوقع للفرص"})}
-        <div class="va-risk-key">${[1,2,3,4,5].map(level=>`<span class="va-lg"><i style="background:${RISK_COLORS[level-1]};"></i>${sanitize(level+" "+RISK_LABELS[level])}</span>`).join("")}</div>
-        ${excluded.length?`<div class="va-note">⚠️ ${excluded.length} فرصة غير مرسومة لأن العائد المتوقع مكتوب كنص أو مدى غير رقمي، ولم نخمّن قيمة له.</div>`:""}
-        <div class="va-note">اضغط أي نقطة لفتح تفاصيل الفرصة. العائد المتوقع المعلن من الفرصة، وليس وعدًا أو نتيجة محققة.</div>`
-      : vaEmpty(oppsData.length?"لا توجد فرص بعائد رقمي":"لم تُحمّل عناصر المتابعة بعد",oppsData.length?"كل الفرص المنشورة تكتب العائد كنص أو مدى، فلا يمكن رسمها كمحور رقمي.":"افتح تبويب الفرص لتحميلها، ثم عُد إلى هنا."),
-    foot:`<b>المصدر:</b> بطاقات الفرص المنشورة على الخادم · <b>عدد العناصر:</b> ${oppsData.length}`,
-  });
-}
-function vBuildAnalytics(b){
-  b.innerHTML=`
-    <div class="vbox au" style="border-color:rgba(227,183,91,.25);">
-      <div class="vbox-title" style="color:var(--vip);">📈 تحليلات VIP</div>
-      <div style="color:var(--t4);font-size:10.5px;line-height:1.85;">رسوم مبنية على ما هو متاح فعلًا: أسعار مرخّصة وسجل يومي مرخّص ومراكز محفظتك. كل رسم يذكر مصدره ووقت بياناته، وعند نقص البيانات يظهر السبب بدلًا من رسم مضلل.</div>
-    </div>
-    <div id="va-analytics-body" class="va-grid-2">
-      <div class="va-span-2">${vaCompareCard()}</div>
-      ${vaSectorCard()}
-      ${vaRiskReturnCard()}
-    </div>
-    <div class="vbox" style="padding:13px;">
-      <div class="vbox-title" style="margin-bottom:8px;">🧰 أدوات مرتبطة</div>
-      <div style="display:grid;gap:6px;">
-        <button class="btn btn-ghost btn-full" style="padding:9px;font-size:11.5px;" onclick="openStockDetail(currentCompareSym())">🕯 شارت الأصل: شموع + حجم + MA/RSI عند تحقق الاشتراك</button>
-        <button class="btn btn-ghost btn-full" style="padding:9px;font-size:11.5px;" onclick="vGo('port')">💼 رسوم محفظتي كاملة</button>
-        <button class="btn btn-ghost btn-full" style="padding:9px;font-size:11.5px;" onclick="goNav('calculators')">🧮 حاسبة المستثمر ورسومها</button>
-        <button class="btn btn-ghost btn-full" style="padding:9px;font-size:11.5px;" onclick="vGo('alerts')">🔔 تنبيهات الأسعار</button>
-      </div>
-      <div class="va-note">مؤشرات MA(20) وRSI(14) والشموع تُقرأ من الخادم ويفرض صلاحية الاشتراك هناك؛ هذه الصفحة لا تمنح أي صلاحية.</div>
-    </div>`;
-  vaBindCharts(b);
-  vaBindScatter(b);
-  /* A first attempt can land before the EGX list arrives; retry once the list
-   * is present instead of leaving a stale "no stock" card. */
-  if(VA_COMPARE.status!=="loading"&&VA_COMPARE.status!=="ready")void vaLoadComparison();
-  /* Missing inputs are fetched once per session, never in a render loop: an
-   * unavailable provider must not turn this tab into a request storm. */
-  if(!liveStocks.length&&!vaStocksRequested&&!egxStocksFreshness?.loading){
-    vaStocksRequested=true;
-    Promise.resolve(fetchStocksData()).finally(()=>{if(vipTab==="analytics")vBuildAnalytics(b);});
-  }
-  if(!oppsData.length&&!vaOppsRequested&&U&&(U.plan==="vip"||U.plan==="admin")){
-    vaOppsRequested=true;
-    void vaLoadOpportunities().finally(()=>{if(vipTab==="analytics")vBuildAnalytics(b);});
-  }
 }
 
 /* ══════════════ TAB 9 — التقارير ══════════════ */
@@ -6666,41 +7201,6 @@ function deleteScrFilter(i){
   renderSavedFilters();
 }
 
-/* AI stock summary: descriptive only; all source-sensitive data stays in the input. */
-async function getAIStockAnalysis(){
-  const btn=document.getElementById("ai-analysis-btn");
-  if(!btn) return;
-  const resEl=document.getElementById("ai-analysis-res");
-  if(!reportsDataReady()){
-    const txtEl=document.getElementById("ai-analysis-txt");
-    if(txtEl)txtEl.textContent=reportUnavailableMessage();
-    if(resEl)resEl.style.display="block";
-    return;
-  }
-  btn.innerHTML='<div class="sp sp-au sp-sm"></div> جارٍ إعداد الملخص...';btn.disabled=true;
-  if(resEl) resEl.style.display="none";
-  try{
-    const topStocks=liveStocks.slice(0,12).map(s=>`${s.sym} (${s.name}): ${s.price.toFixed(2)} ج (${stockChangeText(s.chgPct)}) · المصدر: ${s.source||egxStocksFreshness.source||"غير متاح"}${s.pe!==undefined?" · P/E:"+s.pe.toFixed(1):""}${s.vol!==undefined?" · حجم:"+fmtVol(s.vol):""}`).join("\n");
-    const news=allArts.slice(0,6).map(a=>`${a.srcName}: ${a.title}`).join("\n")||"لا توجد عناوين مرخّصة متاحة";
-    const txt=await callAI({
-      max_tokens:1800,
-      system:"أنت محرر بيانات أسهم تعليمي بالعربية. استخدم المعلومات المرسلة فقط. ممنوع وصف سهم بأنه فرصة/واعد/رخيص/غالي، أو توصية شراء/بيع/احتفاظ، أو توقع، أو ربط سببي غير موثق بين خبر وسعر. اذكر الفرق بين الرقم الملاحظ والعنوان المنشور وما لا تعرفه.",
-      messages:[{role:"user",content:`لخّص بيانات الأسهم المصرية المتاحة بالترتيب:\n1. ما الأسعار ونسب التغيير والحجم المتاح الذي تعرضه القائمة، مع المصادر \n2. حقول التقييم المتاحة فقط دون حكم استثماري \n3. القطاعات التي تظهر في القائمة دون وصف أداء مستقبلي \n4. العناوين المنشورة مع نسبتها لمصدرها \n5. قيود التغطية/التأخر والحقول الناقصة.\n\nالأسهم:\n${topStocks}\n\nالعناوين المرخّصة:\n${news}`}]
-    });
-    const txtEl=document.getElementById("ai-analysis-txt");
-    const tsEl=document.getElementById("ai-analysis-ts");
-    if(txtEl) txtEl.textContent=txt;
-    if(tsEl) tsEl.textContent="وقت إعداد الملخص: "+new Intl.DateTimeFormat("ar-EG",{timeZone:"Africa/Cairo",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date());
-    if(resEl) resEl.style.display="block";
-  }catch(e){
-    const txtEl=document.getElementById("ai-analysis-txt");
-    if(txtEl) txtEl.textContent=aiErrMsg(e);
-    if(resEl) resEl.style.display="block";
-  }
-  btn.innerHTML="🔄 تحديث الملخص";btn.disabled=false;
-}
-
-
 /* Chat */
 /* AI replies are plain text with a little markdown (**bold**, bullets, blank
  * lines). Escape FIRST, then add the few tags we allow — the model output is
@@ -6753,28 +7253,6 @@ async function sendChat(){
   const ti=document.getElementById("chat-typing");if(ti)ti.remove();
   if(sendBtn){sendBtn.disabled=false;}
   renderChatUI();
-}
-
-async function getSignals(){
-  const btn=document.getElementById("sig-btn");
-  const res=document.getElementById("sig-res");
-  if(!btn||!res)return;
-  if(!reportsDataReady()){
-    res.textContent=reportUnavailableMessage();res.style.display="block";return;
-  }
-  btn.innerHTML='<div class="sp sp-g sp-sm"></div> جارٍ...';btn.disabled=true;
-  res.style.display="none";
-  try{
-    const hl=allArts.slice(0,6).map(a=>`${a.srcName}: ${a.title}`).join("\n")||"لا توجد عناوين مرخّصة متاحة";
-    const stks=liveStocks.slice(0,8).map(s=>`${s.sym}: ${s.price.toFixed(2)} ج (${stockChangeText(s.chgPct)}) · المصدر: ${s.source||egxStocksFreshness.source||"غير متاح"}`).join("\n");
-    const txt = await callAI({
-      max_tokens:1600,
-      system:"أنت محرر بيانات سوق تعليمي بالعربية. استخدم الوقائع والنصوص الواردة فقط. ممنوع تمامًا تقديم توصية شراء أو بيع أو احتفاظ أو زيادة، أو نقطة دخول/خروج، أو هدف سعري، أو وقف خسارة، أو توقع لعائد/اتجاه مستقبلي. لا تنسب سببًا لحركة سعر إلا إذا ورد صراحة في عنوان المصدر، وعندها صفه كصلة محتملة لا كحقيقة سببية.",
-      messages:[{role:"user",content:`أنشئ «ملاحظات السوق» ليوم ${new Date().toLocaleDateString("ar-EG")} بالترتيب:\n1. ما الذي تعرضه أرقام الأسهم أدناه حرفيًا\n2. أكبر التغيرات المسجلة فقط (إن وجدت)\n3. العناوين المتاحة ذات الصلة مع ذكر أن العنوان ليس إثبات سببية\n4. البيانات الناقصة أو قيود التأخر\n5. عناصر معلومات عامة للمتابعة، لا قرارات استثمارية\n\nبيانات أسهم موثقة:\n${stks}\n\nعناوين مرخّصة متاحة:\n${hl}`}]
-    });
-    res.textContent=txt;res.style.display="block";
-  }catch(e){res.textContent=aiErrMsg(e);res.style.display="block";}
-  btn.innerHTML="↻ تحديث الملاحظات";btn.disabled=false;
 }
 
 async function getMorning(){

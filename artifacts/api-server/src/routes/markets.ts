@@ -9,6 +9,7 @@ import {
   type StockDefinition,
   type TvSymbol,
 } from "../lib/market-data/catalog";
+import { classifyQuote, sessionForInstrument } from "../lib/market-data/freshness";
 import { getMarketHistorySnapshot, getMarketSparklines, parseHistoryRange, runMarketDailySnapshot } from "../lib/market-data/history";
 import { currentUser, isActivePrivilegedAdmin, hasVipFeature } from "../lib/userAuth";
 import { getMarketDataService, type MarketDataService, type QuoteSnapshot } from "../lib/market-data/service";
@@ -33,6 +34,11 @@ type Quote = {
   asOf?: number;
   delayedMinutes?: number;
   freshness?: "real-time" | "delayed" | "end-of-day" | "unknown";
+  /** Session-aware state: live market | closed with today's/last close | stale. */
+  state?: "live" | "closed" | "stale";
+  stateLabel?: string;
+  /** The close time the "closed" label refers to (ms epoch), for tooltips. */
+  refTime?: number;
 };
 
 type SectionFreshness = {
@@ -41,6 +47,9 @@ type SectionFreshness = {
   fetchedAt?: number;
   delayedMinutes?: number;
   freshness?: "real-time" | "delayed" | "end-of-day" | "unknown";
+  /** Worst state across the section's rows (stale > closed > live). */
+  state?: "live" | "closed" | "stale";
+  stateLabel?: string;
 };
 
 export type MarketsPayload = {
@@ -89,6 +98,10 @@ export type StockQuote = {
   source?: string;
   delayedMinutes?: number;
   freshness?: "real-time" | "delayed" | "end-of-day" | "unknown";
+  /** Session-aware state: live | closed (final close shown) | stale. */
+  state?: "live" | "closed" | "stale";
+  stateLabel?: string;
+  refTime?: number;
 };
 
 type StockSnapshot = {
@@ -99,6 +112,9 @@ type StockSnapshot = {
   unavailable: boolean;
   delayedMinutes?: number;
   freshness?: "real-time" | "delayed" | "end-of-day" | "unknown";
+  /** Worst state across the listed stocks. */
+  state?: "live" | "closed" | "stale";
+  stateLabel?: string;
   stocks: StockQuote[];
   /** Display-only TradingView widget symbols for this list. */
   tvSymbols: TvSymbol[];
@@ -215,19 +231,43 @@ function toDisplayQuote(instrument: MarketInstrument, quote: CanonicalQuote): Qu
     asOf: quote.asOf,
     delayedMinutes: quote.delayedMinutes,
     freshness: quote.freshness,
+    ...quoteState(instrument.id, quote),
   };
+}
+
+/**
+ * Session-aware freshness for one row: a closed market showing its final
+ * close is NOT stale. FX rows are end-of-day by design and get the daily
+ * label instead of "بيانات قديمة".
+ */
+function quoteState(instrumentId: string, quote: CanonicalQuote): Pick<Quote, "state" | "stateLabel" | "refTime"> {
+  const session = sessionForInstrument(instrumentId);
+  if (!session) {
+    return { state: "closed", stateLabel: "تحديث يومي", refTime: quote.asOf };
+  }
+  const { state, labelAr, refTime } = classifyQuote(
+    { asOf: quote.asOf, sourceAsOfUnknown: quote.sourceAsOfUnknown, delayedMinutes: quote.delayedMinutes },
+    session,
+    Date.now(),
+  );
+  const stateLabel = state === "closed" && quote.freshness === "end-of-day" ? "تحديث يومي" : labelAr;
+  return { state, stateLabel, refTime };
 }
 
 function sectionMeta(rows: Quote[], snapshot: QuoteSnapshot): SectionFreshness {
   const sourceNames = [...new Set(rows.map((row) => row.source).filter(Boolean))] as string[];
   const delayValues = rows.map((row) => row.delayedMinutes).filter((value): value is number => typeof value === "number");
   const qualities = [...new Set(rows.map((row) => row.freshness).filter(Boolean))];
+  const states = rows.map((row) => row.state).filter((state): state is "live" | "closed" | "stale" => state === "live" || state === "closed" || state === "stale");
+  const state = states.includes("stale") ? "stale" : states.includes("closed") ? "closed" : states.length ? "live" : undefined;
   return {
     sources: sourceNames.length ? sourceNames.join(" + ") : "غير متاح",
     unavailable: rows.length === 0,
     fetchedAt: snapshot.fetchedAt,
     delayedMinutes: delayValues.length ? Math.max(...delayValues) : undefined,
     freshness: qualities.length === 1 ? qualities[0] : qualities.length ? "unknown" : undefined,
+    state,
+    stateLabel: state === "stale" ? "⚠️ بيانات قديمة" : state === "closed" ? "إغلاق السوق" : undefined,
   };
 }
 
@@ -274,7 +314,10 @@ function toMarketsPayload(snapshot: QuoteSnapshot): MarketsPayload {
     },
     freshness: {
       fetchedAt: snapshot.fetchedAt,
-      stale: snapshot.stale,
+      /* Stale is now session-aware: it is true only when a displayed row's
+       * own source quote is genuinely old for its market's session — not
+       * merely because the market closed and a correct final close is shown. */
+      stale: snapshot.stale || [...sections.eg, ...sections.gl, ...sections.cm, ...sections.cr].some((row) => row.state === "stale"),
       cacheTtlSeconds: MARKETS_TTL_SECONDS,
       sections: freshness,
     },
@@ -449,19 +492,25 @@ function toStockSnapshot(snapshot: QuoteSnapshot, definitions: StockDefinition[]
       source: quote.sourceName,
       delayedMinutes: quote.delayedMinutes,
       freshness: quote.freshness,
+      ...quoteState(definition.id, quote),
     } satisfies StockQuote];
   });
   const source = [...new Set(stocks.map((stock) => stock.source).filter(Boolean))].join(" + ") || "غير متاح";
   const delays = stocks.map((stock) => stock.delayedMinutes).filter((value): value is number => typeof value === "number");
   const freshness = [...new Set(stocks.map((stock) => stock.freshness).filter(Boolean))];
+  const states = stocks.map((stock) => stock.state).filter((state): state is "live" | "closed" | "stale" => state === "live" || state === "closed" || state === "stale");
+  const state = states.includes("stale") ? "stale" : states.includes("closed") ? "closed" : states.length ? "live" : undefined;
   return {
     ts: snapshot.fetchedAt,
     fetchedAt: snapshot.fetchedAt,
-    stale: snapshot.stale,
+    /* Session-aware: a closed exchange showing final closes is not stale. */
+    stale: snapshot.stale || state === "stale",
     source,
     unavailable: stocks.length === 0,
     delayedMinutes: delays.length ? Math.max(...delays) : undefined,
     freshness: freshness.length === 1 ? freshness[0] : freshness.length ? "unknown" : undefined,
+    state,
+    stateLabel: state === "stale" ? "⚠️ بيانات قديمة" : state === "closed" ? "إغلاق السوق" : undefined,
     stocks,
     /* Only rows the licensed providers did not price get a TradingView widget
      * entry, so the UI never doubles a platform quote with a vendor one. */
@@ -645,6 +694,21 @@ function cronAuthorized(req: Request): boolean {
 }
 
 /**
+ * Vercel's cron scheduler issues a plain HTTP GET and cannot attach custom
+ * headers, so the GET variant is recognized by the platform's own markers:
+ * the vercel-cron user agent plus the x-vercel-cron-schedule header Vercel
+ * injects on every scheduled request. The action itself is a harmless,
+ * idempotent upsert (one row per source+instrument+day) and a no-op unless
+ * the operator enabled write mode, so the credential it carries is the
+ * platform identity, not a secret stored in vercel.json.
+ */
+function vercelCronAuthorized(req: Request): boolean {
+  const userAgent = String(req.get("user-agent") || "").toLowerCase();
+  const schedule = String(req.get("x-vercel-cron-schedule") || "").trim();
+  return userAgent.startsWith("vercel-cron") && schedule.length > 0;
+}
+
+/**
  * Intentionally unscheduled here. A Vercel/worker scheduler may call it only
  * after DB migration, backup verification, a provider contract and explicit
  * write opt-in are all complete. It rejects every request when no cron secret
@@ -660,6 +724,29 @@ router.post("/internal/daily-snapshot", async (req: Request, res: Response) => {
     res.status(result.status === "skipped" ? 409 : 200).json(result);
   } catch (error) {
     logger.error({ err: error }, "market daily snapshot job failed");
+    res.status(503).json({ status: "error", message: "تعذّر حفظ لقطة السوق اليومية" });
+  }
+});
+
+/**
+ * Vercel Cron entry point (Hobby plan: at most once/day, UTC). The platform
+ * calls this with GET; authorization uses the vercel-cron markers, see
+ * vercelCronAuthorized. The job upserts one OHLC row per
+ * source+instrument+day, so re-runs and cron imprecision are safe, and it
+ * stays a no-op until MARKET_SNAPSHOT_WRITES_ENABLED=true is set in
+ * production. The two schedules (see vercel.json) fire after the EGX close
+ * (15:30 Cairo) and after the US close so final bars are captured.
+ */
+router.get("/internal/daily-snapshot", async (req: Request, res: Response) => {
+  if (!vercelCronAuthorized(req)) {
+    res.status(404).json({ status: "error", message: "not found" });
+    return;
+  }
+  try {
+    const result = await runMarketDailySnapshot();
+    res.status(result.status === "skipped" ? 409 : 200).json(result);
+  } catch (error) {
+    logger.error({ err: error }, "market daily snapshot cron failed");
     res.status(503).json({ status: "error", message: "تعذّر حفظ لقطة السوق اليومية" });
   }
 });
