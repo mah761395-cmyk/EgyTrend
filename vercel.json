@@ -9,6 +9,16 @@
       "includeFiles": "artifacts/api-server/dist/**,artifacts/api-server/node_modules/**,node_modules/.pnpm/**,lib/db/dist/**,lib/db/node_modules/**,lib/api-zod/dist/**"
     }
   },
+  "crons": [
+    {
+      "path": "/api/markets/internal/daily-snapshot",
+      "schedule": "55 14 * * 0-4"
+    },
+    {
+      "path": "/api/markets/internal/daily-snapshot",
+      "schedule": "5 22 * * 1-5"
+    }
+  ],
   "headers": [
     {
       "source": "/((?!api/).*)",

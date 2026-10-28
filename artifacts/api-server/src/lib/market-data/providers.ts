@@ -1,3 +1,4 @@
+import { zonedTimeToEpoch } from "./freshness";
 import { ResilientHttpClient } from "./http";
 import type {
   CalendarDataProvider,
@@ -301,7 +302,103 @@ export class YahooChartProvider implements MarketDataProvider {
     }
     return { quotes, requestedCount: supported.length };
   }
+
+  /**
+   * Daily bars from the same public v8 chart endpoint the quotes use
+   * (interval=1d&range=5d). This lets the daily snapshot job write history
+   * without a licensed vendor: the unofficial-source standing is the one the
+   * operator already accepted for quote display, and the job is paced and
+   * idempotent (one upsert per source+instrument+day).
+   */
+  async getDailyOhlc(instruments: MarketInstrument[], tradingDate: string): Promise<DailyOhlc[]> {
+    const supported = instruments.filter((instrument) => this.canServe(instrument));
+    const results: DailyOhlc[] = [];
+    for (const instrument of supported) {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(YAHOO_CHART_SYMBOLS[instrument.id])}?interval=1d&range=5d`;
+      let payload: YahooChartOhlcPayload;
+      try {
+        /* The cron runs inside the platform function's 60s budget for all
+         * ~27 instruments, so one attempt with a short timeout: a slow
+         * symbol is skipped (idempotent upsert heals what the next run can)
+         * instead of stalling the whole daily job. */
+        payload = await this.http.getJson<YahooChartOhlcPayload>(url, {
+          providerId: this.id,
+          timeoutMs: 8_000,
+          attempts: 1,
+          minIntervalMs: 250,
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+          },
+        });
+      } catch {
+        /* Best effort per instrument: one flaky symbol must not fail the
+         * whole daily job; the next day's run heals any gap. */
+        continue;
+      }
+      const result = payload.chart?.result?.[0];
+      const timestamps = Array.isArray(result?.timestamp) ? result?.timestamp : [];
+      const quote = result?.indicators?.quote?.[0];
+      if (!timestamps?.length || !quote) continue;
+      /* The snapshot day is a Cairo date; take the newest bar dated on or
+       * before it so a weekday run never picks a future foreign bar. A late
+       * same-day run (after the foreign close) upserts the final close over
+       * the intraday one: the row id is value-independent. */
+      let idx = -1;
+      for (let i = timestamps.length - 1; i >= 0; i--) {
+        const t = timestamps[i];
+        if (!Number.isFinite(t)) continue;
+        if (new Date(t * 1000).toISOString().slice(0, 10) <= tradingDate) {
+          idx = i;
+          break;
+        }
+      }
+      if (idx < 0) continue;
+      /* OHLC values are strict: Yahoo returns null for missing data and the
+       * shared finite() helper maps "" to 0, which must never become a price. */
+      const price = (value: unknown): number | undefined =>
+        typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+      const open = price(quote.open?.[idx]);
+      const high = price(quote.high?.[idx]);
+      const low = price(quote.low?.[idx]);
+      const close = price(quote.close?.[idx]);
+      if ([open, high, low, close].some((value) => value === undefined)) continue;
+      const volume = quote.volume?.[idx];
+      results.push({
+        instrumentId: instrument.id,
+        tradingDate: new Date(timestamps[idx] * 1000).toISOString().slice(0, 10),
+        open: open!,
+        high: high!,
+        low: low!,
+        close: close!,
+        ...(typeof volume === "number" && Number.isFinite(volume) && volume >= 0 ? { volume } : {}),
+        currency: instrument.currency,
+        asOf: timestamps[idx] * 1000,
+        sourceId: this.id,
+        sourceName: this.name,
+        freshness: "end-of-day",
+      });
+    }
+    return results;
+  }
 }
+
+type YahooChartOhlcPayload = {
+  chart?: {
+    result?: Array<{
+      timestamp?: number[];
+      indicators?: {
+        quote?: Array<{
+          open?: Array<number | null>;
+          high?: Array<number | null>;
+          low?: Array<number | null>;
+          close?: Array<number | null>;
+          volume?: Array<number | null>;
+        }>;
+      };
+    }>;
+  };
+};
 
 /**
  * TradingView's public Egypt scanner. The pre-upgrade product relied on it
@@ -387,6 +484,9 @@ export class TradingViewScannerProvider implements MarketDataProvider {
         volume: finite(row.volume),
         currency: instrument.currency,
         asOf: Date.now(),
+        /* The scanner returns no data timestamp; asOf is the fetch time and
+         * freshness must be judged by session state, not wall-clock age. */
+        sourceAsOfUnknown: true,
         sourceId: this.id,
         sourceName: this.name,
         freshness: "unknown",
@@ -521,6 +621,9 @@ export class TradingEconomicsEgxIndexProvider implements MarketDataProvider {
         changePercent: changePercent ?? undefined,
         currency: instrument.currency,
         asOf: Date.now(),
+        /* The scraped page carries no machine-readable timestamp; asOf is the
+         * fetch time and freshness must be judged by session state. */
+        sourceAsOfUnknown: true,
         sourceId: this.id,
         sourceName: this.name,
         freshness: "unknown",
@@ -708,6 +811,146 @@ export class TradingEconomicsCalendarProvider implements CalendarDataProvider {
 }
 
 /**
+ * Free global economic calendar: the public FxPro/Faireconomy syndication
+ * feed (this week + next week), plus the official Central Bank of Egypt MPC
+ * meeting schedule for 2026 (the feed itself carries no EGP events).
+ *
+ * Standing: the feed is a public syndication endpoint with no published
+ * commercial license text. Display is headline-level (title, time, impact,
+ * forecast, previous) with attribution to the feed, and the whole source is
+ * switchable with FXPRO_CALENDAR_DISABLED=true. The CBE rows are a published
+ * meeting schedule (dates), not scraped content.
+ */
+const FXPRO_CALENDAR_URLS = [
+  "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+  "https://nfs.faireconomy.media/ff_calendar_nextweek.json",
+];
+
+const FXPRO_COUNTRY: Record<string, { ar: string; flag: string }> = {
+  USD: { ar: "الولايات المتحدة", flag: "🇺🇸" },
+  EUR: { ar: "منطقة اليورو", flag: "🇪🇺" },
+  GBP: { ar: "بريطانيا", flag: "🇬🇧" },
+  JPY: { ar: "اليابان", flag: "🇯🇵" },
+  CAD: { ar: "كندا", flag: "🇨🇦" },
+  AUD: { ar: "أستراليا", flag: "🇦🇺" },
+  CHF: { ar: "سويسرا", flag: "🇨🇭" },
+  CNY: { ar: "الصين", flag: "🇨🇳" },
+  NZD: { ar: "نيوزيلندا", flag: "🇳🇿" },
+  EGP: { ar: "مصر", flag: "🇪🇬" },
+};
+
+/**
+ * Official 2026 schedule of the Central Bank of Egypt Monetary Policy
+ * Committee meetings (eight regular meetings, all Thursdays; the decision is
+ * announced around 13:30 Cairo time). Dates as published by the CBE and
+ * carried identically by multiple independent outlets. Meeting day = the
+ * decision day; time set to 13:30 Africa/Cairo.
+ */
+const CBE_MPC_2026 = [
+  "2026-02-12",
+  "2026-04-02",
+  "2026-05-21",
+  "2026-07-09",
+  "2026-08-20",
+  "2026-09-24",
+  "2026-10-29",
+  "2026-12-17",
+];
+
+function cbeMpcEvents(fetchedAt: number): CalendarEvent[] {
+  return CBE_MPC_2026.flatMap((date) => {
+    const [y, m, d] = date.split("-").map(Number);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return [];
+    const at = zonedTimeToEpoch("Africa/Cairo", y, m, d, 13 * 60 + 30);
+    /* Meetings older than a day are history, not calendar items. */
+    if (at < fetchedAt - 86_400_000) return [];
+    return [{
+      title: "CBE MPC Meeting — Interest Rate Decision",
+      titleAr: "اجتماع لجنة السياسة النقدية — البنك المركزي المصري (قرار الفائدة)",
+      at,
+      country: "Egypt",
+      countryAr: "مصر",
+      flag: "🇪🇬",
+      impact: "high" as const,
+      sourceId: "fxpro-calendar",
+      sourceName: "FxPro Economic Calendar + جدول البنك المركزي المصري",
+      asOf: fetchedAt,
+      freshness: "unknown" as const,
+    }];
+  });
+}
+
+export class FxProCalendarProvider implements CalendarDataProvider {
+  readonly id = "fxpro-calendar";
+  readonly name = "FxPro Economic Calendar";
+  private readonly disabled: boolean;
+
+  constructor(
+    env: NodeJS.ProcessEnv = process.env,
+    private readonly http = new ResilientHttpClient(),
+  ) {
+    this.disabled = env["FXPRO_CALENDAR_DISABLED"] === "true";
+  }
+
+  descriptor(): ProviderDescriptor {
+    return {
+      id: this.id,
+      name: this.name,
+      state: this.disabled ? "not_configured" : "configured",
+      note: this.disabled
+        ? "معطّل من الإدارة (FXPRO_CALENDAR_DISABLED)."
+        : "تقويم اقتصادي عام (FxPro/Faireconomy) مضافًا إليه جدول اجتماعات البنك المركزي المصري؛ يُعرض بالإسناد ويُعطّل بمتغيّر واحد.",
+      coverage: ["calendar"],
+      externalDisplayConfirmed: !this.disabled,
+    };
+  }
+
+  async getCalendar(): Promise<ProviderCalendarResult> {
+    if (this.disabled) return { events: [] };
+    const fetchedAt = Date.now();
+    const rows: unknown[] = [];
+    for (const url of FXPRO_CALENDAR_URLS) {
+      try {
+        const payload = await this.http.getJson<unknown[]>(url, {
+          providerId: this.id,
+          timeoutMs: 10_000,
+          attempts: 2,
+          minIntervalMs: 500,
+        });
+        if (Array.isArray(payload)) rows.push(...payload);
+      } catch {
+        /* One missing week is acceptable; the other week plus the CBE
+         * schedule still serve the calendar truthfully. */
+      }
+    }
+    const events: CalendarEvent[] = rows.flatMap((raw) => {
+      const row = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+      const title = String(row["title"] ?? "").trim();
+      const at = Date.parse(String(row["date"] ?? ""));
+      if (!title || !Number.isFinite(at)) return [];
+      const country = String(row["country"] ?? "").trim();
+      const meta = FXPRO_COUNTRY[country] ?? { ar: country || "دولي", flag: "🌍" };
+      return [{
+        title,
+        at,
+        country,
+        countryAr: meta.ar,
+        flag: meta.flag,
+        impact: normalizeImpact(row["impact"]),
+        forecast: stringOrUndefined(row["forecast"]),
+        previous: stringOrUndefined(row["previous"]),
+        sourceId: this.id,
+        sourceName: "FxPro Economic Calendar",
+        asOf: fetchedAt,
+        freshness: "unknown" as const,
+      } satisfies CalendarEvent];
+    });
+    events.push(...cbeMpcEvents(fetchedAt));
+    return { events };
+  }
+}
+
+/**
  * Daily reference FX rates from ExchangeRate-API's open endpoint.
  *
  * Terms of use (exchangerate-api.com/terms) allow commercial end use on the
@@ -838,7 +1081,7 @@ function normalizeImpact(value: unknown): "high" | "medium" | "low" | "unknown" 
   const normalized = String(value ?? "").toLowerCase();
   if (/high|3/.test(normalized)) return "high";
   if (/medium|2/.test(normalized)) return "medium";
-  if (/low|1/.test(normalized)) return "low";
+  if (/low|1|holiday/.test(normalized)) return "low";
   return "unknown";
 }
 

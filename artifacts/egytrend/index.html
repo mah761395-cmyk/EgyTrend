@@ -3855,12 +3855,18 @@ function buildMarkets(){
         <div class="mc-sub">${sanitize(m.s||"")}</div>
         ${(()=>{
           const asOf=Number(m.asOf);
-          const age=cairoAgeLabel(asOf);
-          /* A source timestamp older than an hour (intraday data only —
-             end-of-day references are judged by their trading date, not the
-             wall clock) is shown as OLD, not as "متأخر" alone. */
-          const srcOld=Number.isFinite(asOf)&&asOf>0&&m.freshness!=="end-of-day"&&(Date.now()-asOf)>60*60_000;
-          return `<div style="color:var(--t5);font-size:8px;margin-top:3px;">المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")} · وقت المصدر: ${sanitize(cairoTimestampLabel(asOf))}${age?` (${sanitize(age)})`:""} · ${sanitize(marketStateLabel({...marketFreshness,delayedMinutes:secMeta.delayedMinutes,freshness:secMeta.freshness}))}${srcOld?" · <b style='color:var(--dn)'>⚠️ بيانات قديمة</b>":""}</div>`;
+          /* The server classifies every row against its own market session
+             (live / closed showing the real close / genuinely stale), so the
+             UI only displays that verdict — no wall-clock guessing here. */
+          const rowState=String(m.state||"").toLowerCase();
+          const stateBadge=unavailable
+            ? "<span style='color:var(--t5)'>غير متاح</span>"
+            : rowState==="stale"
+              ? "<b style='color:var(--dn)'>⚠️ بيانات قديمة</b>"
+              : rowState==="closed"
+                ? `<span style="color:var(--t4)">${sanitize(m.stateLabel||"إغلاق السوق")}</span>`
+                : "<span style='color:var(--up)'>مباشر</span>";
+          return `<div style="color:var(--t5);font-size:8px;margin-top:3px;">المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")} · وقت المصدر: ${sanitize(cairoTimestampLabel(asOf))} · ${stateBadge}</div>`;
         })()}
       </div>`;
     }).join("");
