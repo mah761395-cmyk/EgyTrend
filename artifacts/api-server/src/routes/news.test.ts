@@ -34,6 +34,45 @@ test("news parser limits syndicated snippets and does not fabricate publish time
   assert.equal(item.pubDate, "");
 });
 
+test("future-dated feed items are treated as undated and never appear as the newest", () => {
+  const now = Date.now();
+  const future = new Date(now + 24 * 3600 * 1000).toISOString();
+  const older = new Date(now - 2 * 3600 * 1000).toISOString();
+  const feed = `<?xml version="1.0"?><rss><channel>
+    <item><title>Future dated item</title><link>https://example.test/future</link><pubDate>${future}</pubDate></item>
+    <item><title>Older real item</title><link>https://example.test/older</link><pubDate>${older}</pubDate></item>
+  </channel></rss>`;
+  const [futureItem, olderItem] = __newsTest.parseFeed(feed);
+  assert.equal(
+    futureItem.pubDate,
+    "",
+    "a future-dated item is treated as undated: no future time is displayed",
+  );
+  assert.equal(olderItem.pubDate, older, "a valid past date is kept as-is");
+
+  /* Ranking consequence: an undated (future-bug) item carries no recency
+   * score, so a real dated item always ranks above it — the future-dated item
+   * can never surface as "the newest". */
+  assert.ok(
+    __newsTest.newsImportance(olderItem) > __newsTest.newsImportance(futureItem),
+    "a real dated item ranks above a future-dated one",
+  );
+  assert.ok(
+    __newsTest.newsImportance(futureItem) <= Date.now(),
+    "a future-dated item's recency never exceeds the current time",
+  );
+});
+
+test("dates only slightly ahead of the clock are tolerated as drift", () => {
+  const now = Date.now();
+  const slightFuture = new Date(now + 60 * 1000).toISOString();
+  const feed = `<?xml version="1.0"?><rss><channel>
+    <item><title>Slight drift item</title><link>https://example.test/drift</link><pubDate>${slightFuture}</pubDate></item>
+  </channel></rss>`;
+  const [item] = __newsTest.parseFeed(feed);
+  assert.equal(item.pubDate, slightFuture, "a <=5min-future date is kept (clock drift)");
+});
+
 test("RSS outbound guard blocks loopback, private DNS, credentials and non-public IPv6", async () => {
   for (const address of [
     "127.0.0.1",

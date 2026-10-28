@@ -3,6 +3,7 @@ import { isIP } from "node:net";
 import { Router, type IRouter } from "express";
 import { XMLParser } from "fast-xml-parser";
 import { logger } from "../lib/logger";
+import { recordDataQualityEvent } from "../lib/market-data/quality";
 import {
   listSources,
   getSource,
@@ -403,6 +404,9 @@ function pickImage(it: Record<string, unknown>, baseUrl = ""): string | undefine
  * snippet, named source and link back. We never fetch/publish article bodies. */
 const NEWS_TITLE_MAX = 300;
 const NEWS_SNIPPET_MAX = 280;
+/* A feed pubDate more than this far in the future is a publisher
+ * clock/time-zone bug (observed live), not a real publish time. */
+const NEWS_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
 
 type FeedItem = {
   title: string;
@@ -414,7 +418,7 @@ type FeedItem = {
   enclosure?: { url: string };
 };
 
-function parseFeed(xml: string, baseUrl = ""): FeedItem[] {
+function parseFeed(xml: string, baseUrl = "", sourceId = ""): FeedItem[] {
   const obj = parser.parse(xml) as Record<string, unknown>;
   let rawItems: Array<Record<string, unknown>> = [];
 
@@ -442,7 +446,8 @@ function parseFeed(xml: string, baseUrl = ""): FeedItem[] {
     }
   }
 
-  return rawItems
+  let futureDatedCount = 0;
+  const items = rawItems
     .map((it) => {
       const title = clean(pickText(it["title"])).slice(0, NEWS_TITLE_MAX);
       const description = clean(
@@ -460,8 +465,17 @@ function parseFeed(xml: string, baseUrl = ""): FeedItem[] {
         "";
       const parsed = rawDate ? new Date(rawDate) : null;
       // Do not invent a current timestamp for undated items: recency ranking
-      // must be based on publisher metadata, not fetch time.
-      const pubDate = parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : "";
+      // must be based on publisher metadata, not fetch time. A future-dated
+      // item is likewise not a real publish time — a future timestamp would
+      // sort as the maximum and the item would surface as "the newest". Treat
+      // it as undated instead: no future time is displayed and it can never
+      // rank as newest. Small skew (<=5min) is tolerated as clock drift.
+      const publishedAt = parsed ? parsed.getTime() : NaN;
+      const futureDated =
+        Number.isFinite(publishedAt) && publishedAt > Date.now() + NEWS_FUTURE_TOLERANCE_MS;
+      if (futureDated) futureDatedCount += 1;
+      const pubDate =
+        Number.isFinite(publishedAt) && !futureDated ? parsed.toISOString() : "";
       const guid = clean(pickText(it["guid"]).replace(/["'<>\\)\\]/g, "")) || link || title;
       const img = pickImage(it, baseUrl);
       return {
@@ -474,6 +488,14 @@ function parseFeed(xml: string, baseUrl = ""): FeedItem[] {
       };
     })
     .filter((it) => it.title && it.link);
+  if (futureDatedCount > 0 && sourceId) {
+    recordDataQualityEvent({
+      sourceId,
+      kind: "future_dated",
+      message: `${futureDatedCount} item(s) with a future pubDate were treated as undated`,
+    });
+  }
+  return items;
 }
 
 type CacheEntry = {
@@ -525,7 +547,7 @@ async function fetchSource(src: SourceMeta): Promise<{
       throw new Error(`upstream ${res.status} for ${src.id}`);
     }
     const xml = await readFeedText(res);
-    const items = parseFeed(xml, src.url).slice(0, 12);
+    const items = parseFeed(xml, src.url, src.id).slice(0, 12);
     const data = { status: "ok" as const, items, meta: src };
     if (items.length > 0) {
       CACHE.set(src.id, { ts: Date.now(), data });

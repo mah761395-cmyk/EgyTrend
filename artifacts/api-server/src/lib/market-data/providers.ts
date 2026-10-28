@@ -1,5 +1,6 @@
 import { zonedTimeToEpoch } from "./freshness";
 import { ResilientHttpClient } from "./http";
+import { recordDataQualityEvent } from "./quality";
 import type {
   CalendarDataProvider,
   CalendarEvent,
@@ -606,7 +607,40 @@ export class TradingEconomicsEgxIndexProvider implements MarketDataProvider {
     const priceMatch = html.match(/<td id="p">([0-9.,]+)/);
     const price = priceMatch ? finite(priceMatch[1]) : undefined;
     if (price === undefined || price <= 0) return { quotes: [], requestedCount: supported.length };
-    let changePercent = finite(/EGX 30[^<]*?([+\-]?[0-9]+\.[0-9]+)%\s*from the previous/i.exec(html)?.[1]);
+    /* The page writes the direction as a word, not as a sign on the number:
+     * "losing 1.64% from the previous session". Capturing the bare number
+     * therefore flipped every down-day into an up-day, so the primary read
+     * must bind the direction word to the number it qualifies. */
+    const sentenceMatch = /\bEGX 30\b[^<]*?\b(gaining|losing|rising|falling|up|down)\b\s*([+\-]?[0-9]+\.[0-9]+)\s*%[^<]*?from the previous/i.exec(html);
+    const signedCellMatch = /\bEGX 30\b[\s\S]{0,600}?([+\-])\s*([0-9]+\.[0-9]+)\s*%/.exec(html);
+    let sentenceValue: number | undefined;
+    if (sentenceMatch) {
+      const magnitude = Math.abs(finite(sentenceMatch[2]) ?? 0);
+      if (magnitude > 0) {
+        sentenceValue = /(losing|falling|down)/i.test(sentenceMatch[1]) ? -magnitude : magnitude;
+      }
+    }
+    /* The index table row carries the daily percent with an explicit sign. */
+    let cellValue: number | undefined;
+    if (signedCellMatch) {
+      const magnitude = finite(signedCellMatch[2]);
+      if (magnitude !== undefined) {
+        cellValue = signedCellMatch[1] === "-" ? -magnitude : magnitude;
+      }
+    }
+    /* If both readings exist but disagree on direction, the page layout has
+     * drifted again: record the anomaly and trust the direction word, which
+     * is the primary read. */
+    if (sentenceValue !== undefined && cellValue !== undefined
+      && Math.sign(sentenceValue) !== Math.sign(cellValue)) {
+      recordDataQualityEvent({
+        sourceId: this.id,
+        kind: "sign_anomaly",
+        instrumentId: "egx:EGX30",
+        message: `EGX30 direction word (${sentenceValue}%) disagrees with signed table cell (${cellValue}%)`,
+      });
+    }
+    let changePercent: number | undefined = sentenceValue ?? cellValue;
     if (changePercent === undefined) {
       const pctMatch = html.match(/(gaining|losing|rising|falling|up|down)\s*([0-9.]+)%/i);
       if (pctMatch) {
