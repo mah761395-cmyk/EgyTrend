@@ -475,7 +475,7 @@ function parseFeed(xml: string, baseUrl = "", sourceId = ""): FeedItem[] {
         Number.isFinite(publishedAt) && publishedAt > Date.now() + NEWS_FUTURE_TOLERANCE_MS;
       if (futureDated) futureDatedCount += 1;
       const pubDate =
-        Number.isFinite(publishedAt) && !futureDated ? parsed.toISOString() : "";
+        parsed && Number.isFinite(publishedAt) && !futureDated ? parsed.toISOString() : "";
       const guid = clean(pickText(it["guid"]).replace(/["'<>\\)\\]/g, "")) || link || title;
       const img = pickImage(it, baseUrl);
       return {
