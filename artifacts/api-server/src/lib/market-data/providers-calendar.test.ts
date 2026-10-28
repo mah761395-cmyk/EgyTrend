@@ -112,6 +112,15 @@ const FXPRO_ROWS = [
     impact: "Holiday",
   },
   { title: "", country: "USD", date: "not-a-date", impact: "High" }, // must be dropped
+  /* The feed also carries earlier events of the week; past rows are dropped
+   * so the calendar stays an upcoming-events surface (and the CBE rows stay
+   * inside the payload cap). */
+  {
+    title: "Yesterdays CPI",
+    country: "USD",
+    date: "2026-02-10T08:30:00-05:00",
+    impact: "High",
+  },
 ];
 
 function fxproHttp(rows: unknown[]): { getJson: (url: string) => Promise<unknown> } {
@@ -149,6 +158,7 @@ test("FxPro calendar maps feed rows and merges the CBE 2026 schedule", async () 
   assert.equal(holiday.impact, "low", "holiday impact maps to low");
 
   assert.ok(!events.some((event) => !event.title), "rows without a title are dropped");
+  assert.ok(!events.some((event) => event.title === "Yesterdays CPI"), "past feed events are dropped");
 
   // The CBE MPC 2026 schedule is merged as high-impact Egyptian events.
   const cbe = events.filter((event) => event.countryAr === "مصر");

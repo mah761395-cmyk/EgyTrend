@@ -83,15 +83,21 @@ test("the vercel-cron GET runs the job and reports the write gate honestly", asy
 });
 
 test("the calendar serves the FxPro feed merged with the CBE schedule", async () => {
-  // The syndication feed is not reachable from the test network; the CBE
-  // meetings are embedded and must appear regardless.
+  // When the syndication feed is reachable it spans two weeks (~60-90
+  // upcoming events) and the CBE rows must survive the payload cap; when it
+  // is not (isolated test network) the embedded CBE schedule stands alone.
   const { status, body } = await raw("/api/markets/calendar");
   assert.equal(status, 200);
   assert.equal(body?.status, "ok");
-  assert.ok(Array.isArray(body?.events), "events array present");
-  assert.ok(body.events.length > 0, "calendar is not empty");
+  assert.ok(Array.isArray(body?.events) && body.events.length > 0, "calendar is not empty");
   const cbe = body.events.filter((event: any) => event.countryAr === "مصر");
-  assert.ok(cbe.length >= 1, "CBE MPC meetings are present");
+  assert.ok(cbe.length >= 1, "CBE MPC meetings are present (not truncated by the cap)");
   assert.ok(cbe.every((event: any) => event.imp === "عالي"), "CBE meetings are high impact");
-  assert.ok(body.source.includes("FxPro"), "attribution names the feed");
+  const feed = body.events.filter((event: any) => event.source === "FxPro Economic Calendar");
+  if (feed.length > 0) {
+    assert.ok(body.events.length >= feed.length + cbe.length, "feed and CBE events are merged");
+  }
+  // Attribution always names the earliest event's source (feed or CBE).
+  assert.equal(body.source, body.events[0]?.source ?? "غير متاح");
+  assert.notEqual(body.source, "غير متاح");
 });

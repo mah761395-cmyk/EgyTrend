@@ -101,7 +101,10 @@ export class MarketDataService {
       return events
         .filter((event) => Number.isFinite(event.at) && Boolean(event.title))
         .sort((a, b) => a.at - b.at)
-        .slice(0, 50);
+        /* The FxPro feed spans two weeks (up to ~90 upcoming events on a
+         * Monday); the cap must stay above that so the merged CBE meetings
+         * are never truncated. The UI itself only renders the first 30. */
+        .slice(0, 120);
     });
     return {
       events: cached.value,

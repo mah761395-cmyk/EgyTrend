@@ -927,7 +927,10 @@ export class FxProCalendarProvider implements CalendarDataProvider {
       const row = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
       const title = String(row["title"] ?? "").trim();
       const at = Date.parse(String(row["date"] ?? ""));
-      if (!title || !Number.isFinite(at)) return [];
+      /* The feed also carries earlier events of the week. The calendar is an
+       * upcoming-events surface (the UI never shows past ones), and dropping
+       * them keeps the merged CBE schedule inside the payload cap. */
+      if (!title || !Number.isFinite(at) || at < fetchedAt) return [];
       const country = String(row["country"] ?? "").trim();
       const meta = FXPRO_COUNTRY[country] ?? { ar: country || "دولي", flag: "🌍" };
       return [{
