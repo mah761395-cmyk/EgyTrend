@@ -52,6 +52,7 @@ export const MIGRATION_IDS: readonly string[] = [
   "0015_user_fee_profiles",
   "0017_data_quality_events",
   "0018_user_onboarding_tour_replayed",
+  "0019_portfolio_transactions",
 ];
 
 /** Set once the boot runner has checked the database. */
