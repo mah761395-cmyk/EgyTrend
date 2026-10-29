@@ -673,6 +673,32 @@ function dedupeAndRankFeeds(feeds: NewsFeed[]): NewsFeed[] {
   return normalized.sort((a, b) => newsImportance(b.items[0]!) - newsImportance(a.items[0]!));
 }
 
+/** Honest headline count for "news in the last 24h": unique items actually
+ * published inside the window, counted across ALL feeds BEFORE the 12-per-feed
+ * presentation cap, deduplicated with the same key the ranking uses. Undated
+ * and future-dated items are excluded, matching the parser's rules. */
+export function countNewsInWindow(
+  feeds: Array<{ items?: Array<{ pubDate: string }> }>,
+  now: number,
+  windowMs = 24 * 3600 * 1000,
+): number {
+  const seen = new Set<string>();
+  let count = 0;
+  for (const feed of feeds) {
+    for (const item of feed.items ?? []) {
+      const key = newsDedupKey(item as FeedItem);
+      if (key) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      const t = Date.parse(item?.pubDate);
+      if (!Number.isFinite(t) || t <= 0 || t > now) continue;
+      if (now - t <= windowMs) count++;
+    }
+  }
+  return count;
+}
+
 function rankedItemsFromFeeds(feeds: NewsFeed[]): RankedNewsItem[] {
   return feeds.flatMap((feed) => feed.items.map((item) => ({
     ...item,
@@ -699,6 +725,9 @@ type NewsSnapshot = {
   feeds: NewsFeed[];
   /** Canonical, server-ranked presentation list for browser clients. */
   items: RankedNewsItem[];
+  /** Unique news published in the last 24h across all feeds, counted before
+   * the presentation cap — the honest number for landing/stats cards. */
+  count24h: number;
   availability: "available" | "unavailable";
   reason?: "no_approved_sources" | "upstream_unavailable";
   errors: Array<{ source: string; message: string }>;
@@ -732,6 +761,7 @@ async function buildNewsAgg(): Promise<NewsSnapshot | null> {
     const custom = customArticlesFeed();
     if (custom.items.length > 0) feeds.unshift(custom);
     if (errors.length > 0) logger.warn({ errors }, "some news sources failed");
+    const count24h = countNewsInWindow(feeds, Date.now());
     const rankedFeeds = dedupeAndRankFeeds(feeds);
     const items = rankedItemsFromFeeds(rankedFeeds);
     const availability = items.length > 0 ? "available" : "unavailable";
@@ -739,6 +769,7 @@ async function buildNewsAgg(): Promise<NewsSnapshot | null> {
       status: "ok",
       feeds: rankedFeeds,
       items,
+      count24h,
       availability,
       ...(availability === "unavailable"
         ? { reason: sources.length === 0 ? "no_approved_sources" as const : "upstream_unavailable" as const }
@@ -805,6 +836,7 @@ router.get("/news", async (req, res) => {
  * production interface. */
 export const __newsTest = {
   parseFeed,
+  countNewsInWindow,
   newsDedupKey,
   newsImportance,
   dedupeAndRankFeeds,

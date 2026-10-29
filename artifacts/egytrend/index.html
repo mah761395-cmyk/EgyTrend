@@ -1114,6 +1114,9 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .lnd-chip{display:inline-flex;align-items:center;gap:6px;font-size:9.5px;font-weight:800;color:#B9C4E6;background:rgba(12,21,51,.85);border:1px solid #24305E;border-radius:999px;padding:5px 10px;}
 .lnd-chip-live{color:#34D399;border-color:rgba(52,211,153,.42);}
 .lnd-chip-live i{width:6px;height:6px;border-radius:50%;background:#34D399;box-shadow:0 0 0 4px rgba(52,211,153,.15);display:inline-block;}
+.lnd-retry{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;color:#B9C4E6;background:transparent;border:1px dashed #3A4A7E;border-radius:999px;padding:4px 11px;cursor:pointer;}
+.lnd-retry:hover:not(:disabled){color:#fff;border-color:#5B6FB5;}
+.lnd-retry:disabled{opacity:.5;cursor:default;}
 .lnd-mock-grid{position:relative;z-index:1;display:grid;grid-template-columns:1fr;gap:10px;}
 .lnd-mock-card{background:#101A3B;border:1px solid #24305E;border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px;min-width:0;}
 .lnd-mock-card .m-id{min-width:0;flex:1 1 auto;}
@@ -2097,7 +2100,10 @@ function normalizeMarketRows(raw){
     const m=item&&typeof item==="object"?item:{};
     const n=String(m.n||"").trim().slice(0,80);
     if(!n||REMOVED_MARKETS.has(n))return [];
-    return [{instrumentId:canonicalInstrumentId(m.id),n,v:String(m.v??"").slice(0,80),c:String(m.c??"").slice(0,80),s:String(m.s??"").slice(0,120),source:String(m.source??"").slice(0,160),up:m.up===true,flat:m.flat===true,clickable:m.clickable===true,asOf:finiteNumber(m.asOf,0)}];
+    /* `state`/`stateLabel`/`freshness` travel from the server so the UI can
+     * say what a number IS (live, official close of today, daily reference)
+     * instead of labelling everything "live". Absent fields stay empty. */
+    return [{instrumentId:canonicalInstrumentId(m.id),n,v:String(m.v??"").slice(0,80),c:String(m.c??"").slice(0,80),s:String(m.s??"").slice(0,120),source:String(m.source??"" ).slice(0,160),up:m.up===true,flat:m.flat===true,clickable:m.clickable===true,asOf:finiteNumber(m.asOf,0),state:String(m.state??"").slice(0,20),stateLabel:String(m.stateLabel??"").slice(0,40),freshness:String(m.freshness??"").slice(0,20)}];
   }).slice(0,100);
 }
 function normalizeMarketFreshness(raw,topLevelStale){
@@ -2767,10 +2773,13 @@ function showGuestLanding(){
   }
   const fmtInt=n=>{try{return new Intl.NumberFormat("ar-EG").format(Math.round(Number(n)));}catch(e){return String(n);}};
 
-  /* Board row by id, from the live in-memory state (no extra network round-trips). */
+  /* Board row by canonical instrument id, from the live in-memory state (no
+   * extra network round-trips). Normalized rows carry `instrumentId` (the
+   * server's `id` field is renamed in normalizeMarketRows) — matching on
+   * `id` here would silently never find a row. */
   function rowById(id){
     for(const k of ["eg","gl","cm","cr"]){
-      const r=(liveMarkets?.[k]||[]).find(x=>x&&x.id===id);
+      const r=(liveMarkets?.[k]||[]).find(x=>x&&x.instrumentId===id);
       if(r)return r;
     }
     return null;
@@ -2779,56 +2788,125 @@ function showGuestLanding(){
   const isReal=r=>!!r&&typeof r.v==="string"&&r.v!==""&&!/غير متاح/.test(r.v);
   const deltaCls=r=>(!r||r.flat===true)?"flat":(r.up===true?"up":"down");
 
+  /* What each row IS — straight from the server's row state. "Live" is a
+   * claim only the source can make; a closed market's official close and a
+   * daily FX reference are labelled as such instead of "حي". */
+  const rowIsLive=r=>!!r&&r.state==="live";
+  const rowBadge=r=>{
+    if(!r)return "";
+    const label=(r.stateLabel&&r.stateLabel!==""&&r.stateLabel!=="غير متاح")?r.stateLabel:(r.freshness==="end-of-day"?"تحديث يومي":"");
+    return label?`<span class="lnd-chip" style="padding:2px 7px;font-size:8px;">${esc(label)}</span>`:"";
+  };
+
   function cardHtml(r,sub){
     const d=deltaCls(r);
-    const spark=r&&r.id==="egx:EGX30"?sparklineMarkup(r.id):"";
+    const spark=r&&r.instrumentId==="egx:EGX30"?sparklineMarkup(r.instrumentId):"";
     return `<div class="lnd-mock-card">
       <div class="m-id">
         <div class="m-name"><span>${esc(r.n)}</span>${r.c&&r.c!=="—"&&!/غير متاح/.test(r.c)?`<span class="m-delta ${d}" dir="ltr">${esc(r.c)}</span>`:""}</div>
         <div class="m-sub">${esc(sub)}</div>
         <div class="m-val" dir="ltr">${esc(r.v)}</div>
-        ${r.source&&r.source!=="غير متاح"?`<div class="m-src"><svg class="et-icon" aria-hidden="true"><use href="#i-source"></use></svg>${esc(r.source)}${r.freshness==="end-of-day"?`<span class="lnd-chip" style="padding:2px 7px;font-size:8px;">تحديث يومي</span>`:""}</div>`:""}
+        ${r.source&&r.source!=="غير متاح"?`<div class="m-src"><svg class="et-icon" aria-hidden="true"><use href="#i-source"></use></svg>${esc(r.source)}${rowBadge(r)}</div>`:""}
       </div>
       ${spark}
     </div>`;
   }
 
+  /* A row the source could not price: explicit and empty — never a fake
+   * number, never silently dropped. */
+  function missingCardHtml(name,sub){
+    return `<div class="lnd-mock-card">
+      <div class="m-id">
+        <div class="m-name"><span>${esc(name||"—")}</span><span class="m-delta flat" dir="ltr">—</span></div>
+        <div class="m-sub">${esc(sub)} — غير متاح حاليًا</div>
+        <div class="m-val" dir="ltr">—</div>
+      </div></div>`;
+  }
+
+  /* Real product content shown whenever price rows cannot be shown, so the
+   * panel never collapses into empty dashes. */
+  const FEATURE_CARD=`<div class="lnd-mock-card lnd-mock-summary"><span class="s-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-megaphone"></use></svg></span>
+    <div class="m-id"><b>ملخص السوق الصباحي</b><small>يجمع أهم التحركات والأخبار في رسالة واحدة — تجده بعد تسجيلك.</small></div></div>`;
+
+  /* First-load skeleton (same shape as the initial markup). */
+  const SKELETON_CARDS=
+    `<div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>`+
+    `<div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line md"></span></div>`+
+    `<div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line md"></span></div>`+
+    `<div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line"></span></div>`;
+
+  /* HH:MM Cairo, with the date appended only when the moment is not today
+   * (Cairo) — a bare time must never imply "now". */
+  function fmtCairoFull(ms){
+    if(!Number.isFinite(ms)||ms<=0)return "";
+    const time=fmtCairoTime(ms);
+    try{
+      const dayKey=d=>{
+        const p=new Intl.DateTimeFormat("en-CA",{year:"numeric",month:"2-digit",day:"2-digit",timeZone:"Africa/Cairo"}).formatToParts(d);
+        const g=t=>(p.find(x=>x.type===t)||{}).value||"";
+        return [g("year"),g("month"),g("day")].join("-");
+      };
+      if(dayKey(new Date(ms))===dayKey(new Date()))return time;
+      const dp=new Intl.DateTimeFormat("ar-EG",{day:"numeric",month:"long",timeZone:"Africa/Cairo"}).formatToParts(new Date(ms));
+      const g=t=>(dp.find(x=>x.type===t)||{}).value||"";
+      return `${g("day")} ${g("month")}، ${time}`;
+    }catch(e){return time;}
+  }
+
+  /* Manual retry with a short cooldown (a double-click must not storm the
+   * licensed endpoint); automatic recovery is bounded in start(). */
+  window.lndRetry=function(){
+    if(Date.now()-(window.__lndLastBoardRetryAt||0)<10_000)return;
+    window.__lndLastBoardRetryAt=Date.now();
+    try{fetchMarketsData(true);}catch(_){}
+  };
+
+  /* States, in priority order:
+   *   data   — at least one row the source actually priced (show exactly
+   *            those; missing rows stay explicit "غير متاح"),
+   *   failed — the board fetch failed and nothing verified is on hand
+   *            (honest message + retry button + real feature card),
+   *   loading — the normal first-load window: keep the skeleton. After 20s
+   *            with nothing, treat as failed instead of spinning forever. */
   function renderHero(){
     const grid=$("lnd-mock-grid");if(!grid)return;
     if(landingEl()?.hidden)return;
     const egx=rowById("egx:EGX30"),usd=rowById("fx:USD-EGP"),eur=rowById("fx:EUR-EGP");
-    const anyReal=[egx,usd,eur].some(isReal);
-    const fetchedAt=Number(marketFreshness?.fetchedAt)||0;
+    const defs=[[egx,"EGX30","مؤشر السوق المصري الرئيسي"],[usd,"USD/EGP","دولار أمريكي / جنيه"],[eur,"EUR/EGP","يورو / جنيه"]];
+    const reals=defs.filter(d=>isReal(d[0]));
+    const anyReal=reals.length>0;
+    const mf=marketFreshness;
 
     // Sparkline for the index: request it once from the shared licensed endpoint.
     if(egx&&isReal(egx)&&!window.__lndSparkRequested){window.__lndSparkRequested=true;try{scheduleSparklines(["egx:EGX30"]);}catch(_){}}
 
+    const status=$("lnd-mock-status");
+    const heroStart=window.__lndHeroStartAt||(window.__lndHeroStartAt=Date.now());
+    const failed=mf&&mf.unavailable===true&&!Number(mf.fetchedAt);
+    const timedOut=Date.now()-heroStart>20_000;
+
     if(!anyReal){
-      // Honest empty state — never a stale or invented price.
-      const status=$("lnd-mock-status");
-      if(status)status.innerHTML=`<span class="lnd-chip">الأسعار غير متاحة الآن — لن نعرض أرقامًا بديلة</span>`;
-      grid.innerHTML=[egx,usd,eur].map(r=>`<div class="lnd-mock-card">
-        <div class="m-id">
-          <div class="m-name"><span>${esc((r&&r.n)||"—")}</span><span class="m-delta flat" dir="ltr">—</span></div>
-          <div class="m-sub">غير متاح حاليًا</div>
-          <div class="m-val" dir="ltr">—</div>
-        </div></div>`).join("");
+      if(failed||timedOut){
+        if(status)status.innerHTML=`<span class="lnd-chip">تعذر جلب الأسعار الآن — لن نعرض أرقامًا بديلة</span>`+
+          `<button class="lnd-retry" type="button" onclick="lndRetry()"${mf&&mf.loading===true?" disabled":""}>↻ إعادة المحاولة</button>`;
+        grid.innerHTML=defs.map(d=>missingCardHtml((d[0]&&d[0].n)||d[1],d[2])).join("")+FEATURE_CARD;
+      }else{
+        if(status)status.innerHTML=`<span class="lnd-chip">جارِ جلب الأسعار الحية…</span>`;
+        grid.innerHTML=SKELETON_CARDS;
+      }
       return;
     }
 
-    const status=$("lnd-mock-status");
+    const lastReal=Number(Math.max(0,...reals.map(d=>Number(d[0].asOf)||0)))||0;
+    const anyLive=reals.some(d=>rowIsLive(d[0]));
+    const anyStale=reals.some(d=>d[0].state==="stale");
     if(status){
-      const t=fetchedAt?fmtCairoTime(fetchedAt):"";
-      status.innerHTML=`<span class="lnd-chip lnd-chip-live"><i></i>بيانات حية</span>`+
-        (t?`<span class="lnd-chip">آخر تحديث ${esc(t)}</span>`:"")+
-        (marketFreshness?.stale===true?`<span class="lnd-chip">قد تكون الأرقام متأخرة</span>`:"");
+      status.innerHTML=`<span class="lnd-chip${anyLive?" lnd-chip-live":""}">${anyLive?"<i></i>بيانات حية":"آخر أسعار موثقة"}</span>`+
+        (lastReal>0?`<span class="lnd-chip">آخر تحديث ${esc(fmtCairoFull(lastReal))}</span>`:"")+
+        (anyStale?`<span class="lnd-chip">قد تكون الأرقام متأخرة</span>`:"")+
+        (reals.length<3?`<span class="lnd-chip">بعض الأسعار غير متاحة حاليًا</span>`:"");
     }
-    grid.innerHTML=
-      cardHtml(egx,"مؤشر السوق المصري الرئيسي")+
-      cardHtml(usd,"دولار أمريكي / جنيه")+
-      cardHtml(eur,"يورو / جنيه")+
-      `<div class="lnd-mock-card lnd-mock-summary"><span class="s-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-megaphone"></use></svg></span>
-        <div class="m-id"><b>ملخص السوق الصباحي</b><small>يجمع أهم التحركات والأخبار في رسالة واحدة — تجده بعد تسجيلك.</small></div></div>`;
+    grid.innerHTML=defs.map(d=>isReal(d[0])?cardHtml(d[0],d[2]):missingCardHtml((d[0]&&d[0].n)||d[1],d[2])).join("")+FEATURE_CARD;
   }
   window.__lndRender=renderHero;
 
@@ -2858,22 +2936,33 @@ function showGuestLanding(){
       if(n>0){set("lnd-stat-sources",fmtInt(n));showWrap();}
     }catch(_){}
 
-    // 3) News in the last 24h — counted from the ranked snapshot.
+    // 3) News in the last 24h — the server's count24h is computed from the
+    //    full feeds (deduped, before the 12-per-feed presentation cap); the
+    //    client-side count over the ranked list is only a fallback for a
+    //    server that predates the field.
     try{
       const d=await fetchJsonWithTimeout("/api/news",12000);
       if(stop())return;
-      if(Array.isArray(d?.items)){
-        // FeedItem carries an RSS pubDate string; count items published in the last 24h.
+      let n=-1;
+      if(Number.isFinite(d?.count24h)&&Number(d.count24h)>=0)n=Number(d.count24h);
+      else if(Array.isArray(d?.items)){
         const now=Date.now(),day=86400000;
-        const n=d.items.filter(a=>{const t=Date.parse(a?.pubDate);return Number.isFinite(t)&&t>0&&(now-t)<day;}).length;
-        if(n>0){set("lnd-stat-news",fmtInt(n));showWrap();}
+        n=d.items.filter(a=>{const t=Date.parse(a?.pubDate);return Number.isFinite(t)&&t>0&&(now-t)<day;}).length;
       }
+      if(n>0){set("lnd-stat-news",fmtInt(n));showWrap();}
     }catch(_){}
 
-    // 4) Last price update — from the board's fetchedAt (already loaded pre-login).
+    // 4) Last price update — the newest REAL hero row's asOf (never the
+    //    fetch/build time), with the date when that moment is not today.
+    //    Hidden while the three hero rows have no verified price.
+    const heroAsOf=()=>{
+      const rows=["egx:EGX30","fx:USD-EGP","fx:EUR-EGP"].map(rowById).filter(isReal);
+      if(!rows.length)return 0;
+      return Number(Math.max(0,...rows.map(r=>Number(r.asOf)||0)))||0;
+    };
     const tick=()=>{
-      const t=Number(marketFreshness?.fetchedAt)||0;
-      if(t>0){set("lnd-stat-update",fmtCairoTime(t));showWrap();return true;}
+      const t=heroAsOf();
+      if(t>0){set("lnd-stat-update",fmtCairoFull(t));showWrap();return true;}
       return false;
     };
     if(!tick()){
@@ -3038,6 +3127,31 @@ function showGuestLanding(){
       renderHero();
       if(++n>=8)clearInterval(iv);
     },2000);
+    /* Bounded guest cadence while the landing is visible: re-evaluate state
+     * every 15s; once data is shown, refresh the board on a 60s cycle (the
+     * server-side 60s cache makes it cheap); on a failure, recover
+     * automatically at most 5 times, 30s apart, and leave the manual retry
+     * button for anything beyond that. fetchMarketsData() is single-flight,
+     * so overlapping calls are safe no-ops. Stops on login or when hidden. */
+    let autoFails=0;
+    const guestIv=setInterval(()=>{
+      if(landingEl()?.hidden||U){clearInterval(guestIv);return;}
+      renderHero();
+      const mf=marketFreshness;
+      if(!mf||mf.loading)return;
+      if(Number(mf.fetchedAt)>0){
+        autoFails=0;
+        if(Date.now()-(window.__lndLastBoardFetchAt||0)>=60_000){
+          window.__lndLastBoardFetchAt=Date.now();
+          try{fetchMarketsData();}catch(_){}
+        }
+      }else if(mf.unavailable===true){
+        if(Date.now()-(window.__lndLastBoardRetryAt||0)>=30_000&&autoFails<5){
+          autoFails++;window.__lndLastBoardRetryAt=Date.now();
+          try{fetchMarketsData(true);}catch(_){}
+        }
+      }
+    },15000);
   }
   window.__lndStart=start;
 })();

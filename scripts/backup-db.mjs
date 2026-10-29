@@ -21,6 +21,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { spawn } from "node:child_process";
 import { pipeline } from "node:stream/promises";
+import crypto from "node:crypto";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
@@ -32,14 +33,73 @@ const LOCK = path.join(BACKUP_DIR, ".backup.lock");
 const LOCK_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 const PG_DUMP_BIN = process.env.PG_DUMP_BIN || "pg_dump";
 
+/* ── Optional at-rest encryption ───────────────────────────────────────────
+ * A plain gzip backup is readable by anything that can read the file — on
+ * Windows the Unix-style 0o600 permissions are NOT enforced, so a same-user
+ * process (including malware) can open the dump directly. When a key is
+ * configured the backup is wrapped in AES-256-GCM:
+ *   format: [16-byte IV][ciphertext][16-byte GCM auth tag]
+ * The GCM tag makes any tamper or truncation detectable at --verify time.
+ *
+ *   EGYTREND_BACKUP_KEY     64 hex chars / 44 base64 chars = raw 32-byte key
+ *                           (generate: openssl rand -hex 32)
+ *                           any other value is treated as a passphrase and
+ *                           reduced to a 32-byte key with SHA-256
+ *   EGYTREND_BACKUP_KEYFILE path to a file containing the key (preferred on
+ *                           Windows: the key then never sits in the task's
+ *                           environment)
+ * Without a key the script still writes the legacy plain .sql.gz (so an
+ * existing daily task never breaks) but logs a loud warning.
+ */
+const ENC_SUFFIX = ".enc";
+
+function loadBackupKey() {
+  let material = process.env.EGYTREND_BACKUP_KEY || "";
+  const keyfile = process.env.EGYTREND_BACKUP_KEYFILE || "";
+  if (keyfile) {
+    try { material = fs.readFileSync(keyfile, "utf8"); }
+    catch { throw new Error("EGYTREND_BACKUP_KEYFILE is set but unreadable"); }
+  }
+  material = material.trim();
+  if (!material) return null;
+  if (/^[0-9a-fA-F]{64}$/.test(material)) return Buffer.from(material, "hex");
+  if (/^[A-Za-z0-9+/]{43,44}={0,2}$/.test(material)) return Buffer.from(material, "base64");
+  return crypto.createHash("sha256").update(material).digest();
+}
+
+function encryptFile(src, dst, key) {
+  const data = fs.readFileSync(src);
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const ct = Buffer.concat([cipher.update(data), cipher.final()]);
+  fs.writeFileSync(dst, Buffer.concat([iv, ct, cipher.getAuthTag()]), { mode: 0o600 });
+}
+
+function decryptFile(file, key) {
+  const raw = fs.readFileSync(file);
+  if (raw.length < 32) throw new Error("encrypted backup is truncated");
+  const iv = raw.subarray(0, 16);
+  const tag = raw.subarray(raw.length - 16);
+  const ct = raw.subarray(16, raw.length - 16);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  try {
+    return Buffer.concat([decipher.update(ct), decipher.final()]);
+  } catch {
+    throw new Error("decryption failed — wrong key or corrupted/tampered backup");
+  }
+}
+
 function usage() {
   console.log(`Usage:
   DATABASE_URL=postgresql://... node scripts/backup-db.mjs
   node scripts/backup-db.mjs --verify backups/egytrend-YYYYMMDD.sql.gz
 
 Environment:
-  DATABASE_URL  Required for a new backup; never written to logs.
-  PG_DUMP_BIN   Optional absolute path to pg_dump (default: pg_dump).
+  DATABASE_URL             Required for a new backup; never written to logs.
+  PG_DUMP_BIN              Optional absolute path to pg_dump (default: pg_dump).
+  EGYTREND_BACKUP_KEY      Optional: 32-byte key (64 hex chars) or passphrase.
+  EGYTREND_BACKUP_KEYFILE  Optional: path to a file holding the key (preferred).
 `);
 }
 
@@ -145,8 +205,20 @@ function waitForExit(child) {
   });
 }
 
+function checkDumpBuffer(gunzipped) {
+  if (gunzipped.length < 64 || !/PostgreSQL database dump/i.test(gunzipped.subarray(0, 2048).toString("utf8"))) {
+    throw new Error("gzip decompressed but does not look like a pg_dump plain-SQL backup");
+  }
+  return gunzipped.length;
+}
+
 async function verifyBackup(filePath) {
   if (!fs.existsSync(filePath)) throw new Error(`backup file does not exist: ${filePath}`);
+  if (filePath.endsWith(ENC_SUFFIX)) {
+    const key = loadBackupKey();
+    if (!key) throw new Error(`${path.basename(filePath)} is encrypted but no EGYTREND_BACKUP_KEY/EGYTREND_BACKUP_KEYFILE is configured`);
+    return checkDumpBuffer(zlib.gunzipSync(decryptFile(filePath, key)));
+  }
   let bytes = 0;
   let head = "";
   const sink = new Writable({
@@ -188,7 +260,7 @@ async function runPgDump(tempPath, databaseUrl) {
 function pruneOldBackups() {
   let deleted = 0;
   for (const file of fs.readdirSync(BACKUP_DIR)) {
-    if (!/^egytrend-\d{8}\.sql\.gz$/.test(file)) continue;
+    if (!/^egytrend-\d{8}\.sql\.gz(\.enc)?$/.test(file)) continue;
     const datePart = file.slice("egytrend-".length, "egytrend-".length + 8);
     const date = new Date(`${datePart.slice(0, 4)}-${datePart.slice(4, 6)}-${datePart.slice(6, 8)}T00:00:00.000Z`);
     if (Number.isNaN(date.getTime())) continue;
@@ -207,7 +279,9 @@ async function backup() {
 
   let tempPath = "";
   try {
-    const target = path.join(BACKUP_DIR, sqlName(new Date()));
+    const key = loadBackupKey();
+    const base = path.join(BACKUP_DIR, sqlName(new Date()));
+    const target = key ? base + ENC_SUFFIX : base;
     if (fs.existsSync(target)) {
       const bytes = await verifyBackup(target);
       log(`SKIP existing backup verified: ${path.basename(target)} (${(bytes / 1024).toFixed(1)} KB uncompressed)`);
@@ -218,9 +292,23 @@ async function backup() {
     const started = Date.now();
     await runPgDump(tempPath, databaseUrl);
     const bytes = await verifyBackup(tempPath);
-    fs.renameSync(tempPath, target);
-    fs.chmodSync(target, 0o600);
-    log(`OK ${path.basename(target)}: ${(fs.statSync(target).size / 1024).toFixed(1)} KB compressed, ${(bytes / 1024).toFixed(1)} KB uncompressed, ${Date.now() - started}ms`);
+    if (key) {
+      // Encrypt in place; the plaintext dump never survives on disk.
+      const encTemp = `${tempPath}.enc`;
+      encryptFile(tempPath, encTemp, key);
+      const roundTrip = await verifyBackup(encTemp); // decrypt + gunzip + GCM tag
+      if (roundTrip !== bytes) throw new Error("encrypted backup round-trip size mismatch");
+      fs.rmSync(tempPath, { force: true });
+      tempPath = "";
+      fs.renameSync(encTemp, target);
+      fs.chmodSync(target, 0o600);
+      log(`OK ${path.basename(target)}: ${(fs.statSync(target).size / 1024).toFixed(1)} KB encrypted, ${(bytes / 1024).toFixed(1)} KB uncompressed, ${Date.now() - started}ms`);
+    } else {
+      fs.renameSync(tempPath, target);
+      fs.chmodSync(target, 0o600);
+      log(`OK ${path.basename(target)}: ${(fs.statSync(target).size / 1024).toFixed(1)} KB compressed, ${(bytes / 1024).toFixed(1)} KB uncompressed, ${Date.now() - started}ms`);
+      log("WARN plaintext backup — set EGYTREND_BACKUP_KEY so dumps are unreadable without the key");
+    }
     pruneOldBackups();
   } finally {
     if (tempPath) fs.rmSync(tempPath, { force: true });
