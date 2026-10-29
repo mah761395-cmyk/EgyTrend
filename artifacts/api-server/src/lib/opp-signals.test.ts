@@ -49,14 +49,12 @@ function quote(price: number, state: OppLiveQuote["state"] = "live"): OppLiveQuo
 
 function input(closes: number[], price: number, extra: Partial<OppSignalInput> = {}): OppSignalInput {
   return {
-    bars: barsFromCloses(closes, (extra.bars as OppOhlcBar[]) ? {} : extra.volume ? { volume: extra.volume as number[] } : {}),
-    quote: quote(price, (extra.quote as OppLiveQuote | null)?.state ?? "live"),
+    bars: extra.bars ?? barsFromCloses(closes),
+    quote: extra.quote !== undefined ? extra.quote : quote(price),
     historySource: "Test History",
     historyAsOf: NOW - 86_400_000,
     cairoDay: isoDay(0),
     now: NOW,
-    ...(extra.bars ? { bars: extra.bars } : {}),
-    ...(extra.quote !== undefined ? { quote: extra.quote } : {}),
     ...(extra.newsHits ? { newsHits: extra.newsHits } : {}),
   };
 }
