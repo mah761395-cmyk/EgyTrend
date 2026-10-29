@@ -50,7 +50,7 @@ SQL
 ```
 
 - القاعدة تسمع على `localhost` فقط افتراضيًا — **لا تفتح المنفذ 5432 في جدار الحماية أبدًا**.
-- سلسلة الاتصال ستكون: `postgres://egytrend:كلمة_المرور@localhost:5432/egytrend`
+- سلسلة الاتصال ستكون: `postgres://YOUR_LOCAL_DB_USER:CHANGE_AFTER_REINSTALL@localhost:5432/egytrend`
 - أنشئ جدولات المشروع من مجلد الكود:
 
 ```bash
@@ -75,7 +75,7 @@ nano /home/egytrend/app/artifacts/api-server/.env
 # ── إلزامية ─────────────────────────────────────────────
 PORT=8080
 NODE_ENV=production
-DATABASE_URL=postgres://egytrend:كلمة_المرور@localhost:5432/egytrend
+DATABASE_URL=postgres://YOUR_LOCAL_DB_USER:CHANGE_AFTER_REINSTALL@localhost:5432/egytrend
 # سر الجلسات — ولّده مرة واحدة بـ: openssl rand -hex 48
 SESSION_SECRET=ضع_هنا_64_حرف_عشوائي
 # كلمة مرور لوحة المدير — بديل احتياطي فقط. الأفضل إنشاء حساب موظف
