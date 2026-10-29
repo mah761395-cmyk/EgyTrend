@@ -86,6 +86,8 @@ export type StockQuote = {
   chg?: number;
   chgPct?: number;
   vol?: number;
+  /** Traded value of the day in the market base currency (EGP for EGX). */
+  amount?: number;
   high?: number;
   low?: number;
   open?: number;
@@ -122,6 +124,10 @@ type StockSnapshot = {
   /** Worst state across the listed stocks. */
   state?: "live" | "closed" | "stale";
   stateLabel?: string;
+  /** Human note about the source's latency/data characteristics, in the UI
+   * language. Rendered verbatim so the client never invents a freshness
+   * claim for a market whose data is delayed or session-bound. */
+  sourceNote?: string;
   stocks: StockQuote[];
   /** Display-only TradingView widget symbols for this list. */
   tvSymbols: TvSymbol[];
@@ -584,11 +590,20 @@ export function egxScanToStockSnapshot(scan: { rows: TvScanRow[]; fetchedAt: num
       ...(change === undefined ? {} : { chg: change }),
       ...(pct === undefined ? {} : { chgPct: pct }),
       ...(isNonNegativeFinite(row.volume) ? { vol: row.volume } : {}),
+      /* Traded value of the day, EGP — the scanner's extended "amount". */
+      ...(isPositiveFinite(row.amount) ? { amount: row.amount } : {}),
       ...(isPositiveFinite(row.high) ? { high: row.high } : {}),
       ...(isPositiveFinite(row.low) ? { low: row.low } : {}),
       ...(isPositiveFinite(row.open) ? { open: row.open } : {}),
       // market_cap_basic arrives in EGP; the UI contract is millions.
       ...(isPositiveFinite(row.marketCap) ? { mktCapM: row.marketCap / 1_000_000 } : {}),
+      /* Extended valuation fields: present only when the source's extended
+       * column pass published them for this row. */
+      ...(isFiniteNumber(row.pe) ? { pe: row.pe } : {}),
+      ...(isFiniteNumber(row.divYield) ? { divYield: row.divYield } : {}),
+      ...(isFiniteNumber(row.eps) ? { eps: row.eps } : {}),
+      ...(isPositiveFinite(row.high52w) ? { high52w: row.high52w } : {}),
+      ...(isPositiveFinite(row.low52w) ? { low52w: row.low52w } : {}),
       ts: scan.fetchedAt,
       source: "TradingView Scanner",
       freshness: "unknown",
@@ -632,6 +647,11 @@ export function egxScanToStockSnapshot(scan: { rows: TvScanRow[]; fetchedAt: num
     pricedCount: priced.length,
     state,
     stateLabel: state === "stale" ? "⚠️ بيانات قديمة" : state === "closed" ? "إغلاق السوق" : undefined,
+    /* The Egypt scan exposes no per-row data timestamp and is not tick-live:
+     * state it plainly instead of letting the UI call it "real-time". */
+    sourceNote: priced.length
+      ? "أسعار من ماسح TradingView للبورصة المصرية؛ قد تتأخر عن سعر التداول اللحظي، وبعد إغلاق الجلسة يعرض آخر سعر موثق."
+      : undefined,
     stocks,
     /* The 17 no-data curated symbols have no vendor page, so no widget is
      * offered for them (tvSymbolForInstrument already resolves them to null). */

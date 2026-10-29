@@ -14,7 +14,14 @@ import type {
 } from "./types";
 
 function finite(value: unknown): number | undefined {
-  const number = typeof value === "number" ? value : Number(String(value ?? "").replace(/,/g, ""));
+  /* null/empty cells mean "the source did not publish this field" — they
+   * must stay undefined (the UI shows "not provided") and never become 0,
+   * which would look like a real zero (a zero volume, a zero price). */
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  const text = String(value).trim();
+  if (text === "") return undefined;
+  const number = Number(text.replace(/,/g, ""));
   return Number.isFinite(number) ? number : undefined;
 }
 
@@ -355,8 +362,9 @@ export class YahooChartProvider implements MarketDataProvider {
         }
       }
       if (idx < 0) continue;
-      /* OHLC values are strict: Yahoo returns null for missing data and the
-       * shared finite() helper maps "" to 0, which must never become a price. */
+      /* OHLC values are strict: Yahoo returns null for missing data and a
+       * missing bar value must never become a price (finite() keeps nulls
+       * undefined, and this local guard rejects zero/negative too). */
       const price = (value: unknown): number | undefined =>
         typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
       const open = price(quote.open?.[idx]);
@@ -409,9 +417,25 @@ type YahooChartOhlcPayload = {
  * already used for unpriced rows.
  */
 const TV_SCANNER_URL = "https://scanner.tradingview.com/egypt/scan";
+/** Core columns — verified supported by the Egypt market (the pre-upgrade
+ * product shipped on exactly this set). They are never requested together
+ * with the experimental extended sets below, so an unsupported extended
+ * column can never take the whole screener down with it. */
 const TV_SCANNER_COLUMNS = [
   "type", "name", "description", "close", "change", "change_abs", "open", "high", "low",
   "volume", "market_cap_basic", "sector",
+];
+/** Extended column sets, probed in separate scanner passes. Column support
+ * varies by market, so each set is optional: when the scanner rejects one
+ * (HTTP 400), the affected fields simply stay absent and the UI shows
+ * "not provided" — never an invented number.
+ *  - amount: traded value of the day in base currency (EGP for EGX rows).
+ *  - valuation: P/E, dividend yield, EPS and 52-week range when the source
+ *    publishes them for the market. */
+const TV_SCANNER_EXT_AMOUNT = ["name", "amount"];
+const TV_SCANNER_EXT_VALUATION = [
+  "name", "pe_basic", "dividend_yield_basic", "eps_basic",
+  "price_52_week_high", "price_52_week_low",
 ];
 
 /** One raw row of the public Egypt scan, mapped 1:1 from the requested
@@ -437,6 +461,19 @@ export type TvScanRow = {
   marketCap: number | undefined;
   /** Sector label exactly as the source provides it (often English). */
   sector: string;
+  /* Extended-column fields: present only when the corresponding scanner
+   * pass succeeded for the Egypt market. */
+  /** Traded value of the day (EGP) — the scanner's "amount". */
+  amount: number | undefined;
+  /** Trailing P/E (basic) when the source publishes it. */
+  pe: number | undefined;
+  /** Dividend yield in percent when the source publishes it. */
+  divYield: number | undefined;
+  /** Earnings per share (basic) when the source publishes it. */
+  eps: number | undefined;
+  /** 52-week high/low when the source publishes them. */
+  high52w: number | undefined;
+  low52w: number | undefined;
 };
 
 export class TradingViewScannerProvider implements MarketDataProvider {
@@ -467,32 +504,43 @@ export class TradingViewScannerProvider implements MarketDataProvider {
     return instrument.id.startsWith("stock:egx:") || instrument.id.startsWith("egx:");
   }
 
-  /** One scanner request, mapped to raw rows. Both the quote path and the
-   * full screener scan share it so the market is never fetched twice. */
-  private async postScan(): Promise<TvScanRow[]> {
+  /** One scanner request for an explicit column set, mapped positionally.
+   * Both the core screener scan and the optional extended passes share it,
+   * and the quote path uses the core set so the market is never fetched
+   * twice for quotes. */
+  private async postScanColumns(columns: readonly string[]): Promise<Array<{ sym: string; entry: Record<string, unknown> }>> {
     const payload = await this.http.postJson<{ data?: Array<{ s: string; d: unknown[] }> }>(
       TV_SCANNER_URL,
       {
         filter: [{ left: "type", operation: "in_range", right: ["stock", "index"] }],
         markets: ["egypt"],
         symbols: { query: { types: [] }, tickers: [] },
-        columns: TV_SCANNER_COLUMNS,
+        columns: [...columns],
         sort: { sortBy: "market_cap_basic", sortOrder: "desc" },
         range: [0, 500],
       },
       { providerId: this.id, timeoutMs: 12_000, attempts: 2, minIntervalMs: 1_000 },
     );
 
-    const rows: TvScanRow[] = [];
+    const rows: Array<{ sym: string; entry: Record<string, unknown> }> = [];
     for (const item of payload.data ?? []) {
       if (!Array.isArray(item?.d)) continue;
       const entry: Record<string, unknown> = {};
-      TV_SCANNER_COLUMNS.forEach((column, index) => { entry[column] = item.d[index]; });
+      columns.forEach((column, index) => { entry[column] = item.d[index]; });
       const symbol = String(entry.name ?? "").trim().replace(/^EGX:/, "");
       if (!symbol) continue;
+      rows.push({ sym: symbol, entry });
+    }
+    return rows;
+  }
+
+  /** One scanner request, mapped to raw rows (core columns). */
+  private async postScan(): Promise<TvScanRow[]> {
+    const rows: TvScanRow[] = [];
+    for (const { sym, entry } of await this.postScanColumns(TV_SCANNER_COLUMNS)) {
       rows.push({
         type: String(entry.type ?? "stock"),
-        sym: symbol,
+        sym,
         description: String(entry.description ?? "").trim(),
         close: finite(entry.close),
         change: finite(entry.change),
@@ -503,6 +551,12 @@ export class TradingViewScannerProvider implements MarketDataProvider {
         volume: finite(entry.volume),
         marketCap: finite(entry.market_cap_basic),
         sector: String(entry.sector ?? "").trim(),
+        amount: undefined,
+        pe: undefined,
+        divYield: undefined,
+        eps: undefined,
+        high52w: undefined,
+        low52w: undefined,
       });
     }
     return rows;
@@ -510,10 +564,38 @@ export class TradingViewScannerProvider implements MarketDataProvider {
 
   /** The scanner's full Egypt equity list (index rows included, filtered by
    * the caller). Every listed stock the source knows about is returned, not
-   * just a curated subset — the screener must reflect the real market. */
+   * just a curated subset — the screener must reflect the real market.
+   *
+   * After the core scan, two OPTIONAL column passes enrich the same rows:
+   * "amount" (traded value) and a valuation set (P/E, dividend yield, EPS,
+   * 52-week range). Extended columns are market-specific, so a rejected
+   * pass is a normal outcome — it only leaves those fields absent, it never
+   * fails the screener. */
   async getEgxFullScan(): Promise<TvScanRow[]> {
     if (this.disabled) return [];
-    return this.postScan();
+    const rows = await this.postScan();
+    const bySymbol = new Map(rows.map((row) => [row.sym, row]));
+    const enrich = async (columns: readonly string[], assign: (row: TvScanRow, entry: Record<string, unknown>) => void): Promise<void> => {
+      try {
+        for (const { sym, entry } of await this.postScanColumns(columns)) {
+          const target = bySymbol.get(sym);
+          if (target) assign(target, entry);
+        }
+      } catch {
+        /* Optional columns unsupported for this market (or transient
+         * failure): the fields stay undefined and the UI shows the honest
+         * "not provided" state. The core rows are untouched. */
+      }
+    };
+    await enrich(TV_SCANNER_EXT_AMOUNT, (row, entry) => { row.amount = finite(entry.amount); });
+    await enrich(TV_SCANNER_EXT_VALUATION, (row, entry) => {
+      row.pe = finite(entry.pe_basic);
+      row.divYield = finite(entry.dividend_yield_basic);
+      row.eps = finite(entry.eps_basic);
+      row.high52w = finite(entry.price_52_week_high);
+      row.low52w = finite(entry.price_52_week_low);
+    });
+    return rows;
   }
 
   async getQuotes(instruments: MarketInstrument[]): Promise<ProviderQuoteResult> {

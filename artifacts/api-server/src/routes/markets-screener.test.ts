@@ -31,6 +31,12 @@ function row(partial: Partial<TvScanRow> & { sym: string }): TvScanRow {
     volume: 1_000_000,
     marketCap: 2_500_000_000,
     sector: "Financials",
+    amount: undefined,
+    pe: undefined,
+    divYield: undefined,
+    eps: undefined,
+    high52w: undefined,
+    low52w: undefined,
     ...partial,
   };
 }
@@ -199,6 +205,154 @@ test("change fields are derived transparently or omitted, never faked as zero", 
   assert.equal(bySym.get("NEITHER")!.chg, undefined);
   assert.equal(bySym.get("NEITHER")!.chgPct, undefined);
   assert.equal(bySym.get("NEITHER")!.prevClose, undefined);
+});
+
+/* ── Extended columns: present when the source publishes them, absent (never
+ * zero) when it does not ── */
+
+test("extended scanner columns flow into the screener row by row", () => {
+  const scan = {
+    fetchedAt: NOW,
+    stale: false,
+    rows: [
+      row({
+        sym: "COMI",
+        close: 12.5,
+        change: -1.57,
+        changeAbs: -0.2,
+        amount: 12_500_000,
+        pe: 18.4,
+        divYield: 2.1,
+        eps: 0.68,
+        high52w: 15.2,
+        low52w: 9.9,
+      }),
+      // Same market, extended pass published nothing for this row.
+      row({ sym: "ABUK" }),
+    ],
+  };
+
+  const snapshot = egxScanToStockSnapshot(scan);
+  const bySym = new Map(snapshot.stocks.map((stock) => [stock.sym, stock]));
+
+  const comi = bySym.get("COMI")!;
+  assert.equal(comi.amount, 12_500_000);
+  assert.equal(comi.pe, 18.4);
+  assert.equal(comi.divYield, 2.1);
+  assert.equal(comi.eps, 0.68);
+  assert.equal(comi.high52w, 15.2);
+  assert.equal(comi.low52w, 9.9);
+
+  const abuk = bySym.get("ABUK")!;
+  assert.equal(abuk.amount, undefined, "absent extended fields are not faked as zero");
+  assert.equal(abuk.pe, undefined);
+  assert.equal(abuk.divYield, undefined);
+  assert.equal(abuk.eps, undefined);
+  assert.equal(abuk.high52w, undefined);
+  assert.equal(abuk.low52w, undefined);
+});
+
+test("duplicate scanner symbols collapse to a single screener row", () => {
+  const scan = {
+    fetchedAt: NOW,
+    stale: false,
+    rows: [
+      row({ sym: "COMI", close: 12.5, marketCap: 9_000_000_000 }),
+      row({ sym: "COMI", close: 12.6, marketCap: 9_000_000_000 }),
+      row({ sym: "ETEL", close: 40 }),
+    ],
+  };
+
+  const snapshot = egxScanToStockSnapshot(scan);
+  const comiRows = snapshot.stocks.filter((stock) => stock.sym === "COMI");
+  assert.equal(comiRows.length, 1, "no duplicate rows for the same symbol");
+  assert.equal(comiRows[0].price, 12.5, "the first (highest-cap) row wins");
+  assert.ok(snapshot.stocks.some((stock) => stock.sym === "ETEL"));
+});
+
+test("every screener row is an EGX instrument, no foreign market rows", () => {
+  const scan = {
+    fetchedAt: NOW,
+    stale: false,
+    rows: [
+      row({ sym: "COMI" }),
+      row({ sym: "TMGH" }),
+      row({ sym: "EGX30", type: "index" }),
+    ],
+  };
+
+  const snapshot = egxScanToStockSnapshot(scan);
+  assert.ok(snapshot.stocks.length > 0);
+  for (const stock of snapshot.stocks) {
+    assert.ok(
+      stock.instrumentId.startsWith("stock:egx:") || stock.instrumentId.startsWith("egx:"),
+      `${stock.sym} must be an EGX instrument, got ${stock.instrumentId}`,
+    );
+  }
+  assert.ok(!snapshot.stocks.some((stock) => stock.sym === "EGX30"), "index rows stay out of the equity screener");
+});
+
+test("the five reference stocks carry their source fields end-to-end", () => {
+  const fixtures: Array<[string, number, number, number, number]> = [
+    // sym, close, change_abs, volume, amount (traded value EGP)
+    ["COMI", 12.5, -0.2, 1_000_000, 12_500_000],
+    ["ETEL", 39.8, 0.4, 800_000, 31_900_000],
+    ["TMGH", 152.4, -2.1, 250_000, 38_400_000],
+    ["FWRY", 8.75, 0.1, 2_000_000, 17_700_000],
+    ["EFIH", 21.3, 0, 300_000, 6_400_000],
+  ];
+
+  const scan = {
+    fetchedAt: NOW,
+    stale: false,
+    rows: fixtures.map(([sym, close, changeAbs, volume, amount], index) =>
+      row({
+        sym,
+        description: `EGX:${sym}`,
+        close,
+        changeAbs,
+        change: changeAbs === 0 ? 0 : (changeAbs / (close - changeAbs)) * 100,
+        volume,
+        amount,
+        high: close + 0.5,
+        low: close - 0.5,
+        open: close,
+        marketCap: (10 - index) * 1_000_000_000,
+      }),
+    ),
+  };
+
+  const snapshot = egxScanToStockSnapshot(scan);
+  const bySym = new Map(snapshot.stocks.map((stock) => [stock.sym, stock]));
+
+  for (const [sym, close, changeAbs, volume, amount] of fixtures) {
+    const stock = bySym.get(sym);
+    assert.ok(stock, `${sym} must be in the screener`);
+    assert.equal(stock.price, close, `${sym} price`);
+    assert.equal(stock.chg, changeAbs, `${sym} absolute change`);
+    assert.ok(stock.chgPct !== undefined, `${sym} percent change is published when the source computes it`);
+    assert.equal(stock.vol, volume, `${sym} volume`);
+    assert.equal(stock.amount, amount, `${sym} traded value`);
+    assert.equal(stock.prevClose, close - changeAbs, `${sym} previous close`);
+    /* The scanner carries no data timestamp, so the state must be derived
+     * from the session itself (live during it, closed with the last close
+     * outside it) — never "stale" for an ordinary pause. */
+    assert.ok(
+      stock.state === "live" || stock.state === "closed",
+      `${sym} state must be session-derived (got ${String(stock.state)})`,
+    );
+  }
+  assert.equal(snapshot.pricedCount, 5, "all five priced rows count toward the market");
+});
+
+test("the source note states the latency caveat and disappears with an empty scan", () => {
+  const priced = egxScanToStockSnapshot({ fetchedAt: NOW, stale: false, rows: [row({ sym: "COMI" })] });
+  assert.ok(priced.sourceNote, "a priced EGX snapshot carries the source note");
+  assert.match(priced.sourceNote!, /قد تتأخر/, "the note must not present the data as tick-live");
+  assert.match(priced.sourceNote!, /TradingView/, "the note names the source");
+
+  const empty = egxScanToStockSnapshot({ fetchedAt: NOW, stale: false, rows: [] });
+  assert.equal(empty.sourceNote, undefined, "an unavailable snapshot has no source note");
 });
 
 /* ── Service level: the scan honors the quotes' freshness contract ── */
