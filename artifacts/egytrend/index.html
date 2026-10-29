@@ -2128,8 +2128,12 @@ function normalizeMarketRows(raw){
     if(!n||REMOVED_MARKETS.has(n))return [];
     /* `state`/`stateLabel`/`freshness` travel from the server so the UI can
      * say what a number IS (live, official close of today, daily reference)
-     * instead of labelling everything "live". Absent fields stay empty. */
-    return [{instrumentId:canonicalInstrumentId(m.id),n,v:String(m.v??"").slice(0,80),c:String(m.c??"").slice(0,80),s:String(m.s??"").slice(0,120),source:String(m.source??"" ).slice(0,160),up:m.up===true,flat:m.flat===true,clickable:m.clickable===true,asOf:finiteNumber(m.asOf,0),state:String(m.state??"").slice(0,20),stateLabel:String(m.stateLabel??"").slice(0,40),freshness:String(m.freshness??"").slice(0,20)}];
+     * instead of labelling everything "live". `timeBasis` tells whether
+     * `asOf` is the source's publish time or the server's fetch time — the
+     * UI must label them differently, never present a fetch time as the
+     * source's. `refTime` is the session close the value refers to. Absent
+     * fields stay empty. */
+    return [{instrumentId:canonicalInstrumentId(m.id),n,v:String(m.v??"").slice(0,80),c:String(m.c??"").slice(0,80),s:String(m.s??"").slice(0,120),source:String(m.source??"" ).slice(0,160),up:m.up===true,flat:m.flat===true,clickable:m.clickable===true,asOf:finiteNumber(m.asOf,0),refTime:finiteNumber(m.refTime,0),timeBasis:String(m.timeBasis??"").slice(0,10),state:String(m.state??"").slice(0,20),stateLabel:String(m.stateLabel??"").slice(0,40),freshness:String(m.freshness??"").slice(0,20)}];
   }).slice(0,100);
 }
 function normalizeMarketFreshness(raw,topLevelStale){
@@ -2931,7 +2935,12 @@ function showGuestLanding(){
       return;
     }
 
-    const lastReal=Number(Math.max(0,...reals.map(d=>Number(d[0].asOf)||0)))||0;
+    /* The "last update" chip is the newest REAL data reference time: the
+     * session close the value refers to (refTime) when the server classifies
+     * the row against its market, otherwise the source's asOf. A server
+     * fetch time (EGX30 scrape) must never be presented as the update time
+     * of Thursday's close. */
+    const lastReal=Number(Math.max(0,...reals.map(d=>Number(d[0].refTime)||Number(d[0].asOf)||0)))||0;
     const anyLive=reals.some(d=>rowIsLive(d[0]));
     const anyStale=reals.some(d=>d[0].state==="stale");
     if(status){
@@ -5076,7 +5085,11 @@ function buildMarkets(){
               : rowState==="closed"
                 ? `<span style="color:var(--t4)">${sanitize(m.stateLabel||"إغلاق السوق")}</span>`
                 : "<span style='color:var(--up)'>مباشر</span>";
-          return `<div style="color:var(--t5);font-size:8px;margin-top:3px;">المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")} · وقت المصدر: ${sanitize(cairoTimestampLabel(asOf))} · ${stateBadge}</div>`;
+          /* The server marks whether asOf is the source's publish time or the
+             server's fetch time; a fetch time must never wear the label of a
+             source publish time. */
+          const timeWord=m.timeBasis==="fetch"?"وقت الجلب":"وقت المصدر";
+          return `<div style="color:var(--t5);font-size:8px;margin-top:3px;">المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")} · ${timeWord}: ${sanitize(cairoTimestampLabel(asOf))} · ${stateBadge}</div>`;
         })()}
       </div>`;
     }).join("");
@@ -5426,10 +5439,13 @@ function openMarketDetail(sec,idx){
   const secMeta=marketFreshness.sections?.[sec]||{sources:"غير متاح",unavailable:true};
   const unavailable=secMeta.unavailable===true||m.source==="غير متاح"||m.v==="غير متاح حاليًا";
   const color=SEC_COL[sec]||"var(--g)";
+  /* Same timeBasis rule as the board rows: a server fetch time is labelled
+     "وقت الجلب", a source publish time "وقت المصدر". */
+  const timeWord=m.timeBasis==="fetch"?"وقت الجلب":"وقت المصدر";
   openAssetDetail({
     instrumentId:m.instrumentId,tvSymbol:MKT_TV_SYMS[m.n],title:m.n,subtitle:ctx.en,icon:ctx.icon,category:ctx.cat,color,watchName:m.n,up:m.up,flat:m.flat,
     price:unavailable?"غير متاح حاليًا":m.v,change:unavailable||m.flat?"—":`${m.up?"▲":"▼"} ${m.c||"—"}`,
-    source:m.source||secMeta.sources||"غير متاح",freshness:`وقت المصدر: ${cairoTimestampLabel(m.asOf)} · ${marketAgeLabel(marketFreshness)} · ${marketStateLabel(unavailable?{...marketFreshness,unavailable:true}:marketFreshness)}`,
+    source:m.source||secMeta.sources||"غير متاح",freshness:`${timeWord}: ${cairoTimestampLabel(m.asOf)} · ${marketAgeLabel(marketFreshness)} · ${marketStateLabel(unavailable?{...marketFreshness,unavailable:true}:marketFreshness)}`,
     description:ctx.desc,
     stats:[
       {label:"آخر سعر",value:unavailable?"غير متاح":m.v,style:`color:${color};font-family:var(--mono);font-size:13px;`},
