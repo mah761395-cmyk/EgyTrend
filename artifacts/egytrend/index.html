@@ -1024,6 +1024,16 @@ html{background:var(--ink);}
 body{background:var(--ink);letter-spacing:0;}
 body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(850px 440px at 80% -5%,rgba(16,185,129,.07),transparent 65%),radial-gradient(620px 430px at -5% 42%,rgba(96,165,250,.035),transparent 70%);}
 #app{isolation:isolate;background:transparent;}
+/* Guest mode (landing visible): the landing is a full-viewport page by
+   design. The app frame above still centers #app in a max-width box with a
+   240px right padding (room for the fixed sidebar that only exists once
+   logged in) and side borders; with the frame transparent, those bands
+   expose the near-black body background around the navy landing — the
+   "black strip" seen at laptop widths. While the landing is on screen the
+   frame gives way completely: no cap, no padding, no borders. The rule is
+   scoped to the landing state, so the logged-in layout is untouched, and it
+   uses no clipping or page-wide overflow tricks. */
+#app:has(#landing:not([hidden])){max-width:none;padding-right:0;border-left:none;border-right:none;}
 #hdr,#bnav,.det-hdr,.egx-hdr{background:rgba(7,11,20,.84);border-color:var(--b1);}
 #hdr,.det-hdr,.egx-hdr,#bnav{backdrop-filter:blur(18px) saturate(125%);-webkit-backdrop-filter:blur(18px) saturate(125%);}
 .logo-mark,.auth-brand-mark,.landing-brand-mark{background:linear-gradient(145deg,rgba(16,185,129,.17),rgba(16,185,129,.025));border-color:rgba(16,185,129,.38);color:var(--g);}
@@ -2148,15 +2158,19 @@ function normalizeStockList(raw){
     const s=item&&typeof item==="object"?item:{};
     const sym=String(s.sym||"").trim().toUpperCase();
     const price=finiteNumber(s.price,NaN);
-    if(!/^[A-Z0-9.^_-]{1,16}$/.test(sym)||!Number.isFinite(price)||price<=0)return [];
+    /* noData rows are server-verified curated symbols the source cannot
+       price: they must stay in the list (shown as "no data") so the counter
+       reflects the real market instead of silently under-reporting it. */
+    const noData=s.noData===true;
+    if(!/^[A-Z0-9.^_-]{1,16}$/.test(sym)||(!noData&&(!Number.isFinite(price)||price<=0)))return [];
     const optional=key=>{const value=finiteNumber(s[key],NaN);return Number.isFinite(value)?value:undefined;};
     const nonNegative=key=>{const value=optional(key);return value!==undefined&&value>=0?value:undefined;};
     const positive=key=>{const value=optional(key);return value!==undefined&&value>0?value:undefined;};
     return [{
-      instrumentId:canonicalInstrumentId(s.instrumentId),sym,name:String(s.name||sym).slice(0,160),sector:String(s.sector||"").slice(0,100),price,
-      prevClose:positive("prevClose"),chg:optional("chg"),chgPct:optional("chgPct"),
-      vol:nonNegative("vol"),high:positive("high"),low:positive("low"),open:positive("open"),
-      mktCapM:optional("mktCapM"),pe:optional("pe"),forwardPE:optional("forwardPE"),divYield:optional("divYield"),eps:optional("eps"),bookValue:optional("bookValue"),priceToBook:optional("priceToBook"),sharesM:optional("sharesM"),high52w:optional("high52w"),low52w:optional("low52w"),ts:finiteNumber(s.ts,0),source:String(s.source??"").slice(0,160),delayedMinutes:finiteNumber(s.delayedMinutes,NaN),freshness:String(s.freshness??"").slice(0,20),
+      instrumentId:canonicalInstrumentId(s.instrumentId),sym,name:String(s.name||sym).slice(0,160),sector:String(s.sector||"").slice(0,100),price:noData?undefined:price,noData,
+      prevClose:noData?undefined:positive("prevClose"),chg:noData?undefined:optional("chg"),chgPct:noData?undefined:optional("chgPct"),
+      vol:noData?undefined:nonNegative("vol"),high:noData?undefined:positive("high"),low:noData?undefined:positive("low"),open:noData?undefined:positive("open"),
+      mktCapM:noData?undefined:optional("mktCapM"),pe:noData?undefined:optional("pe"),forwardPE:noData?undefined:optional("forwardPE"),divYield:noData?undefined:optional("divYield"),eps:noData?undefined:optional("eps"),bookValue:noData?undefined:optional("bookValue"),priceToBook:noData?undefined:optional("priceToBook"),sharesM:noData?undefined:optional("sharesM"),high52w:noData?undefined:optional("high52w"),low52w:noData?undefined:optional("low52w"),ts:finiteNumber(s.ts,0),source:String(s.source??"").slice(0,160),delayedMinutes:finiteNumber(s.delayedMinutes,NaN),freshness:String(s.freshness??"").slice(0,20),
     }];
   }).slice(0,600);
 }
@@ -2806,12 +2820,15 @@ function showGuestLanding(){
     const set=(id,val)=>{const el=$(id);if(!el)return;const b=el.querySelector("b");if(b)b.textContent=val;el.hidden=false;};
     const showWrap=()=>{if([...wrap.children].some(c=>!c.hidden))wrap.hidden=false;};
 
-    // 1) Covered stocks — from the licensed EGX snapshot.
+    // 1) Covered stocks — from the licensed EGX snapshot. Count the stocks
+    //    the source actually prices: explicit no-data rows (curated symbols
+    //    with no listing on the vendor) are part of the market but are not
+    //    "tracked" quotes, so the headline stays honest either way.
     try{
       const d=await fetchJsonWithTimeout("/api/markets/stocks",12000);
       if(stop())return;
-      const n=Array.isArray(d?.stocks)?d.stocks.length:0;
-      if(n>0){set("lnd-stat-stocks",fmtInt(n));showWrap();}
+      const priced=Number.isFinite(d?.pricedCount)?d.pricedCount:(Array.isArray(d?.stocks)?d.stocks.filter(s=>!s.noData).length:0);
+      if(priced>0){set("lnd-stat-stocks",fmtInt(priced));showWrap();}
     }catch(_){}
 
     // 2) News sources — approved feeds only.
@@ -5290,22 +5307,24 @@ function renderStocks(){
   +curStocks.map(s=>{
     const up=stockChangeUp(s.chgPct);
     const change=stockChangeText(s.chgPct);
-    return`<div class="stock-row" onclick='openStockDetail(${safeJsArg(s.sym)})'>
+    const noData=s.noData===true;
+    return`<div class="stock-row" ${noData?"style=\"opacity:.75\"":""} onclick='openStockDetail(${safeJsArg(s.sym)})'>
       <div>
-        <div class="st-sym">${sanitize(s.sym)} ${wl.includes(s.sym)?"⭐":""}</div>
+        <div class="st-sym">${sanitize(s.sym)} ${wl.includes(s.sym)?"⭐":""}${noData?` <span style="font-size:8px;color:var(--au);border:1px solid rgba(245,158,11,.4);border-radius:5px;padding:1px 5px;font-family:var(--sans);">لا بيانات من المصدر</span>`:""}</div>
         <div class="st-name">${sanitize(s.name)}</div>
-        <div style="color:var(--t5);font-size:9px;font-family:var(--mono);">${sanitize(s.sector)} · حجم: ${fmtVol(s.vol)}</div>
+        <div style="color:var(--t5);font-size:9px;font-family:var(--mono);">${sanitize(s.sector)}${noData?"":` · حجم: ${fmtVol(s.vol)}`}</div>
       </div>
       <div>
-        ${sparklineMarkup(s.instrumentId,"stock-spark")}
-        <div class="st-price">${s.price.toFixed(2)} ج</div>
+        ${noData?"":sparklineMarkup(s.instrumentId,"stock-spark")}
+        <div class="st-price" ${noData?'style="color:var(--t5)"':""}>${noData?"—":s.price.toFixed(2)+" ج"}</div>
         <div class="st-chg" style="color:${up===null?"var(--t5)":up?"var(--up)":"var(--dn)"};">${change}</div>
-        <div style="color:var(--t5);font-size:9px;font-family:var(--mono);">${stockDayRangeText(s.high,s.low)}</div>
+        ${noData?"":`<div style="color:var(--t5);font-size:9px;font-family:var(--mono);">${stockDayRangeText(s.high,s.low)}</div>`}
       </div>
     </div>`;
   }).join("");
   // This view is user-opened, so one batched history request is appropriate.
-  scheduleSparklines(curStocks.map(stock=>stock.instrumentId));
+  // No-data rows have no priced history; asking for it would 404 the batch.
+  scheduleSparklines(curStocks.filter(stock=>!stock.noData).map(stock=>stock.instrumentId));
 }
 
 function openStockDetail(sym){
@@ -7085,8 +7104,15 @@ function renderScrResults(){
   const isCurrency=scrMarket==="us";
 
   const stocks=scrComputeFiltered(stocks_src);
+  const noDataCount=stocks.filter(s=>s.noData===true).length;
 
-  if(countEl) countEl.textContent=`${stocks.length} سهم`;
+  /* The counter is the real post-filter count — including rows the source
+     cannot price, so it never under-reports the market. The footer states
+     exactly which rows lack data and which columns the source does not
+     provide, instead of leaving silent "—" cells unexplained. */
+  if(footer)footer.textContent=`📡 ${marketAgeLabel(meta)} · ${marketStateLabel(meta)} · المصدر: ${meta.source||"غير متاح"}${noDataCount?` · ${noDataCount} بدون بيانات من المصدر`:""} · P/E والعائد التوزيعي و52 أسبوع غير متاحة من المصدر الحالي`;
+
+  if(countEl) countEl.textContent=`${stocks.length} سهم${noDataCount?` (${noDataCount} بدون بيانات)`:""}`;
   if(!stocks.length){
     tb.innerHTML=`<tr><td colspan="10" class="scr-empty">🔍 لا توجد أسهم مطابقة</td></tr>`;
     return;
@@ -7097,13 +7123,14 @@ function renderScrResults(){
     const up=stockChangeUp(s.chgPct);
     const change=stockChangeText(s.chgPct);
     const inWL=wl.includes(s.sym);
+    const noData=s.noData===true;
     const chgClr=up===null?"var(--t5)":up?"var(--up)":"var(--dn)";
-    return`<tr class="scr-tr" onclick='openStockDetail(${safeJsArg(s.sym)})'>
+    return`<tr class="scr-tr" ${noData?'style="opacity:.75"':""} onclick='openStockDetail(${safeJsArg(s.sym)})'>
       <td class="scr-td">
-        <div class="scr-sym">${sanitize(s.sym)}</div>
+        <div class="scr-sym">${sanitize(s.sym)}${noData?` <span style="font-size:8px;color:var(--au);border:1px solid rgba(245,158,11,.4);border-radius:5px;padding:1px 5px;font-family:var(--sans);">لا بيانات</span>`:""}</div>
         <div class="scr-sname">${sanitize(s.name.slice(0,18))}</div>
       </td>
-      <td class="scr-td" style="text-align:left;font-family:var(--mono);color:var(--t2);">${s.price.toFixed(2)} <span style="color:var(--t5);font-size:9px;">${cur}</span></td>
+      <td class="scr-td" style="text-align:left;font-family:var(--mono);${noData?"color:var(--t5);":"color:var(--t2);"}">${noData?"—":s.price.toFixed(2)+" <span style=\"color:var(--t5);font-size:9px;\">"+cur+"</span>"}</td>
       <td class="scr-td" style="text-align:left;font-family:var(--mono);font-weight:700;color:${chgClr};">${change!=="—"?ltrChange(change):change}</td>
       <td class="scr-td" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${fmtVol(s.vol)}</td>
       <td class="scr-td" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${s.mktCapM?fmtMktCap(s.mktCapM)+"<span style='color:var(--t5);font-size:9px;'> "+cur+"</span>":"—"}</td>
@@ -7148,7 +7175,7 @@ function exportScrCSV(){
   if(!rows.length){showToast("⚠️ لا توجد نتائج مطابقة للفلاتر الحالية");return;}
   const cur=scrMarket==="us"?"USD":"EGP";
   const header=[["Symbol","Name","Price ("+cur+")","Change%","Volume","MktCap (M)","P/E","Div Yield%","52w High","52w Low","EPS","Sector"]];
-  const csv=header.concat(rows.map(s=>[s.sym,s.name,s.price.toFixed(2),knownStockNumber(s.chgPct)===null?"":s.chgPct.toFixed(2),knownStockNumber(s.vol)===null?"":s.vol,knownStockNumber(s.mktCapM)===null?"":s.mktCapM.toFixed(0),(s.pe||"").toString(),(s.divYield||"").toString(),(s.high52w||"").toString(),(s.low52w||"").toString(),(s.eps||"").toString(),s.sector||""]))
+  const csv=header.concat(rows.map(s=>[s.sym,s.name,(s.noData===true||!(typeof s.price==="number"&&Number.isFinite(s.price)))?"":s.price.toFixed(2),knownStockNumber(s.chgPct)===null?"":s.chgPct.toFixed(2),knownStockNumber(s.vol)===null?"":s.vol,knownStockNumber(s.mktCapM)===null?"":s.mktCapM.toFixed(0),(s.pe||"").toString(),(s.divYield||"").toString(),(s.high52w||"").toString(),(s.low52w||"").toString(),(s.eps||"").toString(),s.sector||""]))
     .map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}));

@@ -414,6 +414,31 @@ const TV_SCANNER_COLUMNS = [
   "volume", "market_cap_basic", "sector",
 ];
 
+/** One raw row of the public Egypt scan, mapped 1:1 from the requested
+ * columns. Fields the scanner omits stay undefined — callers must render
+ * "not provided" rather than invent a value. */
+export type TvScanRow = {
+  /** "stock" | "index" as reported by the scanner; callers filter. */
+  type: string;
+  /** Listing symbol with the market prefix stripped ("COMI", not "EGX:COMI"). */
+  sym: string;
+  /** The company name exactly as the source labels it. */
+  description: string;
+  close: number | undefined;
+  /** Signed daily change percent (e.g. -2.36). */
+  change: number | undefined;
+  /** Signed daily change in price units. */
+  changeAbs: number | undefined;
+  open: number | undefined;
+  high: number | undefined;
+  low: number | undefined;
+  volume: number | undefined;
+  /** Basic-currency market cap (EGP for EGX rows) when the source provides it. */
+  marketCap: number | undefined;
+  /** Sector label exactly as the source provides it (often English). */
+  sector: string;
+};
+
 export class TradingViewScannerProvider implements MarketDataProvider {
   readonly id = "tradingview-scanner";
   readonly name = "TradingView Scanner";
@@ -442,10 +467,9 @@ export class TradingViewScannerProvider implements MarketDataProvider {
     return instrument.id.startsWith("stock:egx:") || instrument.id.startsWith("egx:");
   }
 
-  async getQuotes(instruments: MarketInstrument[]): Promise<ProviderQuoteResult> {
-    const supported = instruments.filter((instrument) => this.canServe(instrument));
-    if (!supported.length) return { quotes: [], requestedCount: 0 };
-
+  /** One scanner request, mapped to raw rows. Both the quote path and the
+   * full screener scan share it so the market is never fetched twice. */
+  private async postScan(): Promise<TvScanRow[]> {
     const payload = await this.http.postJson<{ data?: Array<{ s: string; d: unknown[] }> }>(
       TV_SCANNER_URL,
       {
@@ -459,30 +483,61 @@ export class TradingViewScannerProvider implements MarketDataProvider {
       { providerId: this.id, timeoutMs: 12_000, attempts: 2, minIntervalMs: 1_000 },
     );
 
-    const bySymbol = new Map<string, Record<string, unknown>>();
-    for (const row of payload.data ?? []) {
-      if (!Array.isArray(row?.d)) continue;
+    const rows: TvScanRow[] = [];
+    for (const item of payload.data ?? []) {
+      if (!Array.isArray(item?.d)) continue;
       const entry: Record<string, unknown> = {};
-      TV_SCANNER_COLUMNS.forEach((column, index) => { entry[column] = row.d[index]; });
+      TV_SCANNER_COLUMNS.forEach((column, index) => { entry[column] = item.d[index]; });
       const symbol = String(entry.name ?? "").trim().replace(/^EGX:/, "");
-      if (symbol) bySymbol.set(symbol, entry);
+      if (!symbol) continue;
+      rows.push({
+        type: String(entry.type ?? "stock"),
+        sym: symbol,
+        description: String(entry.description ?? "").trim(),
+        close: finite(entry.close),
+        change: finite(entry.change),
+        changeAbs: finite(entry.change_abs),
+        open: finite(entry.open),
+        high: finite(entry.high),
+        low: finite(entry.low),
+        volume: finite(entry.volume),
+        marketCap: finite(entry.market_cap_basic),
+        sector: String(entry.sector ?? "").trim(),
+      });
     }
+    return rows;
+  }
+
+  /** The scanner's full Egypt equity list (index rows included, filtered by
+   * the caller). Every listed stock the source knows about is returned, not
+   * just a curated subset — the screener must reflect the real market. */
+  async getEgxFullScan(): Promise<TvScanRow[]> {
+    if (this.disabled) return [];
+    return this.postScan();
+  }
+
+  async getQuotes(instruments: MarketInstrument[]): Promise<ProviderQuoteResult> {
+    const supported = instruments.filter((instrument) => this.canServe(instrument));
+    if (!supported.length) return { quotes: [], requestedCount: 0 };
+
+    const bySymbol = new Map<string, TvScanRow>();
+    for (const row of await this.postScan()) bySymbol.set(row.sym, row);
 
     const quotes = supported.flatMap((instrument) => {
       const row = bySymbol.get(instrument.symbol);
-      const price = finite(row?.close);
+      const price = row?.close;
       if (!row || price === undefined || price <= 0) return [];
-      const changeAbs = finite(row.change_abs);
+      const changeAbs = row.changeAbs;
       return [{
         instrumentId: instrument.id,
         price,
         previousClose: changeAbs !== undefined ? price - changeAbs : undefined,
         change: changeAbs,
-        changePercent: finite(row.change) ?? undefined,
-        open: finite(row.open),
-        high: finite(row.high),
-        low: finite(row.low),
-        volume: finite(row.volume),
+        changePercent: row.change,
+        open: row.open,
+        high: row.high,
+        low: row.low,
+        volume: row.volume,
         currency: instrument.currency,
         asOf: Date.now(),
         /* The scanner returns no data timestamp; asOf is the fetch time and

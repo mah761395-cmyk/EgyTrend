@@ -10,6 +10,7 @@ import {
   type TvSymbol,
 } from "../lib/market-data/catalog";
 import { classifyQuote, sessionForInstrument } from "../lib/market-data/freshness";
+import type { TvScanRow } from "../lib/market-data/providers";
 import { getMarketHistorySnapshot, getMarketSparklines, parseHistoryRange, runMarketDailySnapshot } from "../lib/market-data/history";
 import { currentUser, isActivePrivilegedAdmin, hasVipFeature } from "../lib/userAuth";
 import { getMarketDataService, type MarketDataService, type QuoteSnapshot } from "../lib/market-data/service";
@@ -75,7 +76,11 @@ export type StockQuote = {
   sym: string;
   name: string;
   sector: string;
-  price: number;
+  /** Omitted (noData=true) when the source has no row for this symbol —
+   * the row stays visible so counters never under-report the market. */
+  price?: number;
+  /** True for curated rows the source cannot price (e.g. no listing row). */
+  noData?: boolean;
   /** Omitted when the licensed provider did not supply the field. */
   prevClose?: number;
   chg?: number;
@@ -110,6 +115,8 @@ type StockSnapshot = {
   stale: boolean;
   source: string;
   unavailable: boolean;
+  /** Rows carrying a real source price (excludes explicit no-data rows). */
+  pricedCount?: number;
   delayedMinutes?: number;
   freshness?: "real-time" | "delayed" | "end-of-day" | "unknown";
   /** Worst state across the listed stocks. */
@@ -361,6 +368,18 @@ const HISTORY_INSTRUMENT_IDS = new Set([
   ...US_STOCKS.map((stock) => stock.id),
 ]);
 
+/** The screener lists every stock the source prices, not just the curated
+ * catalog, so history lookups accept the whole canonical `stock:<mkt>:<sym>`
+ * namespace. The repository still returns only rows that exist — unknown
+ * symbols fail closed with no data. */
+function isKnownHistoryInstrumentId(instrumentId: string): boolean {
+  return (
+    HISTORY_INSTRUMENT_IDS.has(instrumentId) ||
+    instrumentId.startsWith("stock:egx:") ||
+    instrumentId.startsWith("stock:us:")
+  );
+}
+
 /**
  * Read-only history endpoint. It never calls a provider or starts a snapshot;
  * if the opt-in daily store is unavailable it fails closed for the UI instead
@@ -368,7 +387,7 @@ const HISTORY_INSTRUMENT_IDS = new Set([
  */
 router.get("/history/:instrumentId", async (req: Request, res: Response) => {
   const instrumentId = String(req.params["instrumentId"] || "").trim();
-  if (!HISTORY_INSTRUMENT_IDS.has(instrumentId)) {
+  if (!isKnownHistoryInstrumentId(instrumentId)) {
     res.status(404).json({ status: "error", message: "الأداة المطلوبة غير معروفة" });
     return;
   }
@@ -414,7 +433,7 @@ router.get("/sparklines", async (req: Request, res: Response) => {
     .map((id) => id.trim())
     .filter((id, index, list) => id && list.indexOf(id) === index)
     .slice(0, 64);
-  const ids = requested.filter((id) => HISTORY_INSTRUMENT_IDS.has(id));
+  const ids = requested.filter((id) => isKnownHistoryInstrumentId(id));
   if (!ids.length) {
     res.status(400).json({ status: "error", message: "لم يتم طلب أدوات سوق معروفة" });
     return;
@@ -522,12 +541,117 @@ function toStockSnapshot(snapshot: QuoteSnapshot, definitions: StockDefinition[]
   };
 }
 
+/** Map the scanner's full Egypt list to the screener snapshot.
+ *
+ * The pre-fix build only priced the curated 54-symbol catalog and silently
+ * dropped every curated symbol the source had no row for — the UI then
+ * showed "37 stocks" with no explanation. Now:
+ *  - every listed stock the source prices is a row (index rows excluded),
+ *  - curated symbols keep their Arabic name/sector, the rest use the
+ *    source's own labels,
+ *  - curated symbols with no source row stay in the list explicitly
+ *    unpriced (noData) instead of vanishing,
+ *  - fields the source does not provide (P/E, dividend yield, 52-week)
+ *    stay absent so the UI can show "not provided" instead of inventing.
+ */
+export function egxScanToStockSnapshot(scan: { rows: TvScanRow[]; fetchedAt: number; stale: boolean }): StockSnapshot {
+  const catalogBySym = new Map(EGX_STOCKS.map((definition) => [definition.sym, definition]));
+  const seen = new Set<string>();
+  const stocks: StockQuote[] = [];
+  for (const row of scan.rows) {
+    /* Index rows (EGX30/EGX70/EGX100) are board data, not screener rows —
+     * a screener row must never mix an index price with equity prices. */
+    if (row.type !== "stock") continue;
+    const price = isPositiveFinite(row.close) ? row.close : undefined;
+    if (!price || seen.has(row.sym)) continue;
+    const definition = catalogBySym.get(row.sym);
+    seen.add(row.sym);
+    const instrumentId = `stock:egx:${row.sym}`;
+    const previous = row.changeAbs !== undefined ? price - row.changeAbs : undefined;
+    // A change derived from a supplied previous close is transparent and
+    // exact; without that input we omit it instead of publishing a fictitious zero.
+    const change = isFiniteNumber(row.changeAbs) ? row.changeAbs : previous === undefined ? undefined : price - previous;
+    const pct = isFiniteNumber(row.change)
+      ? row.change
+      : previous === undefined || change === undefined || previous <= 0 ? undefined : (change / previous) * 100;
+    stocks.push({
+      instrumentId,
+      sym: row.sym,
+      name: definition?.name || row.description || row.sym,
+      sector: definition?.sector || row.sector || "",
+      price,
+      ...(previous === undefined ? {} : { prevClose: previous }),
+      ...(change === undefined ? {} : { chg: change }),
+      ...(pct === undefined ? {} : { chgPct: pct }),
+      ...(isNonNegativeFinite(row.volume) ? { vol: row.volume } : {}),
+      ...(isPositiveFinite(row.high) ? { high: row.high } : {}),
+      ...(isPositiveFinite(row.low) ? { low: row.low } : {}),
+      ...(isPositiveFinite(row.open) ? { open: row.open } : {}),
+      // market_cap_basic arrives in EGP; the UI contract is millions.
+      ...(isPositiveFinite(row.marketCap) ? { mktCapM: row.marketCap / 1_000_000 } : {}),
+      ts: scan.fetchedAt,
+      source: "TradingView Scanner",
+      freshness: "unknown",
+      ...quoteState(instrumentId, {
+        instrumentId,
+        price,
+        asOf: scan.fetchedAt,
+        sourceAsOfUnknown: true,
+        sourceId: "tradingview-scanner",
+        sourceName: "TradingView Scanner",
+        freshness: "unknown",
+      } satisfies CanonicalQuote),
+    });
+  }
+  /* Curated symbols the source has no row for (no listing page on the
+   * vendor, verified 404) remain in the list, explicitly unpriced. */
+  for (const definition of EGX_STOCKS) {
+    if (seen.has(definition.sym)) continue;
+    stocks.push({
+      instrumentId: definition.id,
+      sym: definition.sym,
+      name: definition.name,
+      sector: definition.sector,
+      noData: true,
+      ts: scan.fetchedAt,
+      source: "غير متاح",
+      freshness: "unknown",
+    });
+  }
+  const priced = stocks.filter((stock) => !stock.noData);
+  const states = priced
+    .map((stock) => stock.state)
+    .filter((state): state is "live" | "closed" | "stale" => state === "live" || state === "closed" || state === "stale");
+  const state = states.includes("stale") ? "stale" : states.includes("closed") ? "closed" : states.length ? "live" : undefined;
+  return {
+    ts: scan.fetchedAt,
+    fetchedAt: scan.fetchedAt,
+    stale: scan.stale || state === "stale",
+    source: priced.length ? "TradingView Scanner" : "غير متاح",
+    unavailable: priced.length === 0,
+    pricedCount: priced.length,
+    state,
+    stateLabel: state === "stale" ? "⚠️ بيانات قديمة" : state === "closed" ? "إغلاق السوق" : undefined,
+    stocks,
+    /* The 17 no-data curated symbols have no vendor page, so no widget is
+     * offered for them (tvSymbolForInstrument already resolves them to null). */
+    tvSymbols: [],
+  };
+}
+
 async function buildStockSnapshot(market: "egx" | "us"): Promise<StockSnapshot> {
-  const definitions = market === "egx" ? EGX_STOCKS : US_STOCKS;
+  if (market === "egx") {
+    // The screener is the source's full Egypt equity list, not the curated
+    // subset: see egxScanToStockSnapshot. The scan shares the quotes'
+    // freshness contract (3m TTL, stale up to 2h, fail-closed).
+    const data = egxScanToStockSnapshot(await marketService().getEgxStockScan());
+    stocksCache = data;
+    return data;
+  }
+  const definitions = US_STOCKS;
   const snapshot = await marketService().getStocks(market, definitions);
   const data = toStockSnapshot(snapshot, definitions, market);
-  if (market === "egx") stocksCache = data;
-  else usStocksCache = data;
+  usStocksCache = data;
   return data;
 }
 
@@ -677,7 +801,7 @@ router.get("/health", async (_req: Request, res: Response) => {
     providers: health.providers,
     data: {
       markets: marketsCache ? { fetchedAt: marketsCache.ts, stale: marketsCache.freshness.stale } : null,
-      egxStocks: stocksCache ? { fetchedAt: stocksCache.fetchedAt, stale: stocksCache.stale, count: stocksCache.stocks.length } : null,
+      egxStocks: stocksCache ? { fetchedAt: stocksCache.fetchedAt, stale: stocksCache.stale, count: stocksCache.stocks.length, pricedCount: stocksCache.pricedCount ?? null } : null,
       usStocks: usStocksCache ? { fetchedAt: usStocksCache.fetchedAt, stale: usStocksCache.stale, count: usStocksCache.stocks.length } : null,
       calendar: calCache ? { fetchedAt: calCache.fetchedAt, stale: calCache.stale, count: calCache.events.length } : null,
     },

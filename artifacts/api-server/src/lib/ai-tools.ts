@@ -325,8 +325,8 @@ export async function getScreenerResults(args: ScreenerArgs = {}): Promise<ToolR
       const f = map[args.perf];
       if (f) { out = out.filter(f); applied.push(`perf=${args.perf}`); }
     }
-    if (typeof args.priceMin === "number") { out = out.filter((s) => s.price >= args.priceMin!); applied.push(`price>=${args.priceMin}`); }
-    if (typeof args.priceMax === "number") { out = out.filter((s) => s.price <= args.priceMax!); applied.push(`price<=${args.priceMax}`); }
+    if (typeof args.priceMin === "number") { out = out.filter((s) => typeof s.price === "number" && s.price >= args.priceMin!); applied.push(`price>=${args.priceMin}`); }
+    if (typeof args.priceMax === "number") { out = out.filter((s) => typeof s.price === "number" && s.price <= args.priceMax!); applied.push(`price<=${args.priceMax}`); }
     if (typeof args.volMin === "number") { out = out.filter((s) => typeof s.vol === "number" && s.vol >= args.volMin!); applied.push(`vol>=${args.volMin}`); }
     if (typeof args.peMin === "number") { out = out.filter((s) => s.pe && s.pe > 0 && s.pe >= args.peMin!); applied.push(`pe>=${args.peMin}`); }
     if (typeof args.peMax === "number") { out = out.filter((s) => s.pe && s.pe > 0 && s.pe <= args.peMax!); applied.push(`pe<=${args.peMax}`); }
@@ -343,10 +343,10 @@ export async function getScreenerResults(args: ScreenerArgs = {}): Promise<ToolR
       const f = bands[args.mktCap];
       if (f) { out = out.filter((s) => typeof s.mktCapM === "number" && f(s.mktCapM!)); applied.push(`mktCap=${args.mktCap}`); }
     }
-    if (args.abovePrevClose) { out = out.filter((s) => typeof s.prevClose === "number" && s.price > s.prevClose); applied.push("price>prevClose (فوق إغلاق أمس)"); }
+    if (args.abovePrevClose) { out = out.filter((s) => typeof s.prevClose === "number" && typeof s.price === "number" && s.price > s.prevClose); applied.push("price>prevClose (فوق إغلاق أمس)"); }
     if (typeof args.near52wHighPct === "number" && args.near52wHighPct > 0) {
       const pct = args.near52wHighPct;
-      out = out.filter((s) => s.high52w && s.price >= s.high52w * (1 - pct / 100));
+      out = out.filter((s) => s.high52w && typeof s.price === "number" && s.price >= s.high52w * (1 - pct / 100));
       applied.push(`price within ${pct}% of 52w high`);
     }
 
@@ -405,7 +405,7 @@ export async function getPortfolio(args: { items?: PortItem[] }): Promise<ToolRe
       const live = stocks?.find((s) => s.sym === p.sym || s.sym === p.sym + ".CA") || null;
       const qty = Number(p.qty) || 0;
       const cost = (Number(p.price) || 0) * qty;
-      const value = live ? live.price * qty : null;
+      const value = live && typeof live.price === "number" ? live.price * qty : null;
       return {
         sym: p.sym,
         qty,

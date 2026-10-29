@@ -13,6 +13,7 @@ import {
   TradingViewScannerProvider,
   TwelveDataProvider,
   YahooChartProvider,
+  type TvScanRow,
 } from "./providers";
 import type {
   CalendarDataProvider,
@@ -78,6 +79,25 @@ export class MarketDataService {
       currency: market === "egx" ? "EGP" : "USD",
     }));
     return this.getQuoteSnapshot(`stocks:${market}`, instruments, market === "egx" ? 180_000 : 300_000, 2 * 60 * 60_000);
+  }
+
+  /** The scanner's full Egypt equity list for the screener. Same freshness
+   * contract as the stock quotes: 3-minute TTL, last good scan served stale
+   * for up to 2h, fail-closed (no rows) when there is nothing verified. */
+  async getEgxStockScan(): Promise<{ rows: TvScanRow[]; fetchedAt: number; stale: boolean }> {
+    const provider = this.providers.find((item) => item.id === "tradingview-scanner");
+    if (!provider) throw new Error("egx stock scan provider not configured");
+    const descriptor = provider.descriptor();
+    if (descriptor.state !== "configured") throw new Error("egx stock scan provider not configured");
+    const key = "egytrend:market:egx-scan:v1";
+    const cached = await loadCached(this.cache, key, 180_000, 2 * 60 * 60_000, async () => {
+      const rows = await (provider as TradingViewScannerProvider).getEgxFullScan();
+      if (!rows.length) throw new Error("egx stock scan returned no rows");
+      await this.health.recordSuccess(provider.id);
+      return rows;
+    });
+    if (cached.stale) await this.health.recordFailure(descriptor, new Error("serving stale egx stock scan"));
+    return { rows: cached.value, fetchedAt: cached.cachedAt, stale: cached.stale };
   }
 
   async getCalendar(): Promise<CalendarSnapshot> {
