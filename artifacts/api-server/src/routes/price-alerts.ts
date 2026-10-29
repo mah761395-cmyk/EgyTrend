@@ -6,14 +6,33 @@ import { appUsersTable, userNotificationsTable, userPriceAlertsTable } from "@wo
 import { EGX_STOCKS } from "../lib/market-data/catalog";
 import { currentAppOwner, requireVipFeature } from "../lib/userAuth";
 import { escapeHtml, isSmtpConfigured, sendMail } from "../lib/mailer";
+import { attachMarketValue, computePortfolio } from "../lib/portfolio-accounting";
 import { logger } from "../lib/logger";
 import { getStocksSnapshot, type StockQuote } from "./markets";
+import { loadUserLedger } from "./portfolio";
 
 const router = Router();
 const SYMBOL_RX = /^[A-Z0-9._-]{1,16}$/;
 const ID_RX = /^[a-z0-9-]{20,80}$/i;
-const CONDITIONS = new Set(["price_above", "price_below", "change_percent_above", "change_percent_below"] as const);
-type AlertCondition = "price_above" | "price_below" | "change_percent_above" | "change_percent_below";
+const CONDITIONS = new Set([
+  "price_above", "price_below", "change_percent_above", "change_percent_below",
+  /* Portfolio-level alerts reuse this same system (same table, evaluation
+   * job, notifications and e-mail path) with reserved pseudo-symbols. */
+  "portfolio_value_above", "portfolio_value_below", "concentration_above",
+] as const);
+type AlertCondition =
+  | "price_above" | "price_below" | "change_percent_above" | "change_percent_below"
+  | "portfolio_value_above" | "portfolio_value_below" | "concentration_above";
+
+/** Reserved pseudo-symbols for portfolio-level alert conditions. */
+export const PORTFOLIO_ALERT_SYMBOL = "PORTFOLIO";
+export const CONCENTRATION_ALERT_SYMBOL = "CONCENTRATION";
+export const PORTFOLIO_CONDITIONS: readonly AlertCondition[] = [
+  "portfolio_value_above", "portfolio_value_below", "concentration_above",
+];
+export function isPortfolioCondition(condition: AlertCondition): boolean {
+  return condition === "portfolio_value_above" || condition === "portfolio_value_below" || condition === "concentration_above";
+}
 
 type AlertInput = { symbol: string; condition: AlertCondition; targetValue: number; emailEnabled: boolean };
 
@@ -24,10 +43,24 @@ function canonicalInstrument(symbol: string) {
 function parseAlertInput(raw: unknown): AlertInput | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const body = raw as Record<string, unknown>;
-  const symbol = String(body.symbol || "").trim().toUpperCase();
   const condition = String(body.condition || "") as AlertCondition;
   const targetValue = Number(body.targetValue);
-  if (!SYMBOL_RX.test(symbol) || !CONDITIONS.has(condition) || !Number.isFinite(targetValue)) return null;
+  if (!CONDITIONS.has(condition) || !Number.isFinite(targetValue)) return null;
+
+  if (isPortfolioCondition(condition)) {
+    /* The server owns the pseudo-symbol; the client's symbol field is
+     * deliberately ignored for these conditions. */
+    const symbol = condition === "concentration_above" ? CONCENTRATION_ALERT_SYMBOL : PORTFOLIO_ALERT_SYMBOL;
+    if (condition === "concentration_above") {
+      if (targetValue <= 0 || targetValue > 100) return null;
+    } else {
+      if (targetValue <= 0 || targetValue > 1_000_000_000) return null;
+    }
+    return { symbol, condition, targetValue, emailEnabled: body.emailEnabled === true };
+  }
+
+  const symbol = String(body.symbol || "").trim().toUpperCase();
+  if (!SYMBOL_RX.test(symbol)) return null;
   const isPrice = condition === "price_above" || condition === "price_below";
   if ((isPrice && (targetValue <= 0 || targetValue > 1_000_000_000))
     || (!isPrice && (targetValue === 0 || targetValue < -1_000 || targetValue > 1_000))) return null;
@@ -101,11 +134,15 @@ router.post("/price-alerts", requireVipFeature("price_alerts"), async (req: Requ
     res.status(400).json({ status: "error", message: "بيانات التنبيه غير صحيحة" });
     return;
   }
-  const definition = canonicalInstrument(input.symbol);
-  if (!definition) {
+  const portfolioAlert = isPortfolioCondition(input.condition);
+  const definition = portfolioAlert ? null : canonicalInstrument(input.symbol);
+  if (!portfolioAlert && !definition) {
     res.status(400).json({ status: "error", message: "رمز السهم غير مدعوم في تنبيهات EGX حاليًا" });
     return;
   }
+  const instrumentId = portfolioAlert
+    ? (input.condition === "concentration_above" ? "portfolio:concentration" : "portfolio:value")
+    : definition!.id;
   try {
     if (input.emailEnabled) {
       const [account] = await db.select({ email: appUsersTable.email }).from(appUsersTable)
@@ -121,7 +158,7 @@ router.post("/price-alerts", requireVipFeature("price_alerts"), async (req: Requ
       res.status(429).json({ status: "error", message: "وصلت للحد الأقصى: 50 تنبيهًا فعالًا" });
       return;
     }
-    const duplicate = rows.find((row) => row.symbol === definition.sym
+    const duplicate = rows.find((row) => row.symbol === input.symbol
       && row.condition === input.condition && Number(row.targetValue) === input.targetValue);
     const now = new Date();
     if (duplicate?.status === "active") {
@@ -130,7 +167,7 @@ router.post("/price-alerts", requireVipFeature("price_alerts"), async (req: Requ
     }
     if (duplicate) {
       await db.update(userPriceAlertsTable).set({
-        instrumentId: definition.id,
+        instrumentId,
         emailEnabled: input.emailEnabled,
         status: "active",
         lastEvaluatedAt: null,
@@ -150,8 +187,8 @@ router.post("/price-alerts", requireVipFeature("price_alerts"), async (req: Requ
     await db.insert(userPriceAlertsTable).values({
       id,
       userId: user.sub,
-      instrumentId: definition.id,
-      symbol: definition.sym,
+      instrumentId,
+      symbol: input.symbol,
       condition: input.condition,
       targetValue: String(input.targetValue),
       emailEnabled: input.emailEnabled,
@@ -217,20 +254,27 @@ function conditionLabel(condition: AlertCondition): string {
     price_below: "السعر وصل إلى أو هبط دون",
     change_percent_above: "نسبة التغير اليومية وصلت إلى أو تجاوزت",
     change_percent_below: "نسبة التغير اليومية وصلت إلى أو هبطت دون",
+    portfolio_value_above: "قيمة المحفظة وصلت إلى أو تجاوزت",
+    portfolio_value_below: "قيمة المحفظة وصلت إلى أو هبطت دون",
+    concentration_above: "حصة أكبر سهم وصلت إلى أو تجاوزت",
   } as Record<AlertCondition, string>)[condition];
 }
 
 function isPercentCondition(condition: AlertCondition): boolean {
-  return condition === "change_percent_above" || condition === "change_percent_below";
+  return condition === "change_percent_above" || condition === "change_percent_below" || condition === "concentration_above";
 }
 
-function alertEmailHtml(input: { name: string; symbol: string; condition: AlertCondition; target: number; actual: number; source: string; asOf: Date }) {
+function alertEmailHtml(input: { name: string; symbol: string; condition: AlertCondition; target: number; actual: number; source: string; asOf: Date; portfolio?: boolean }) {
   const unit = isPercentCondition(input.condition) ? "%" : " ج";
+  const heading = input.portfolio ? "🔔 تنبيه المحفظة — EgyTrend" : "🔔 تنبيه سعر — EgyTrend";
+  const subject = input.portfolio
+    ? "حقق شرط تنبيه المحفظة الذي اخترته."
+    : `حقق شرط تنبيهك لسهم <b>${escapeHtml(input.symbol)}</b>.`;
   return `<!doctype html><html dir="rtl" lang="ar"><body style="font-family:Tahoma,Arial,sans-serif;background:#f4f6f5;padding:20px;color:#111827;">
     <div style="max-width:520px;margin:auto;background:#fff;border-radius:14px;padding:22px;border:1px solid #e5e7eb;">
-      <h2 style="margin:0;color:#047857">🔔 تنبيه سعر — EgyTrend</h2>
-      <p>مرحبًا ${escapeHtml(input.name)}، تحقق شرط تنبيهك لسهم <b>${escapeHtml(input.symbol)}</b>.</p>
-      <p><b>${escapeHtml(conditionLabel(input.condition))}</b> ${input.target}${unit}. القيمة التي أرسلها المصدر: <b>${input.actual}${unit}</b>.</p>
+      <h2 style="margin:0;color:#047857">${heading}</h2>
+      <p>مرحبًا ${escapeHtml(input.name)}، ${subject}</p>
+      <p><b>${escapeHtml(conditionLabel(input.condition))}</b> ${input.target}${unit}. القيمة عند التحقق: <b>${input.actual}${unit}</b>.</p>
       <p style="font-size:13px;color:#4b5563">المصدر: ${escapeHtml(input.source)}<br/>وقت المصدر: ${escapeHtml(input.asOf.toLocaleString("ar-EG", { timeZone: "Africa/Cairo" }))}</p>
       <p style="font-size:12px;color:#6b7280">هذا تنبيه وصفي لشرط اخترته أنت، وليس توصية شراء أو بيع أو توقعًا.</p>
     </div></body></html>`;
@@ -259,11 +303,37 @@ export async function runPriceAlertEvaluation(): Promise<{ evaluated: number; tr
   const quotes = await getStocksSnapshot();
   const quoteBySymbol = new Map((quotes || []).filter((quote) => quoteEligibleForAlert(quote)).map((quote) => [quote.sym.toUpperCase(), quote]));
   const now = new Date();
-  const jobs: Array<{ candidate: TriggerCandidate; quote: StockQuote; actual: number }> = [];
+  const jobs: Array<{ candidate: TriggerCandidate; actual: number; source: string; asOf: Date; portfolio: boolean }> = [];
+  const userIdToValuation = new Map<number, UserValuation | null>();
+
   for (const candidate of candidates) {
-    const quote = quoteBySymbol.get(candidate.symbol.toUpperCase());
     const target = Number(candidate.targetValue);
-    if (!quote || !Number.isFinite(target)) continue;
+    if (!Number.isFinite(target)) continue;
+
+    if (isPortfolioCondition(candidate.condition)) {
+      /* Portfolio-level alert: the "quote" is the user's own ledger valued
+       * with the same fresh licensed quotes. No price ⇒ not evaluable, and
+       * the alert simply waits for the next run with real data. */
+      const actual = await portfolioActualValue(candidate, userIdToValuation, quoteBySymbol);
+      if (actual === null) {
+        await db.update(userPriceAlertsTable).set({ lastEvaluatedAt: now, updatedAt: now })
+          .where(and(eq(userPriceAlertsTable.id, candidate.id), eq(userPriceAlertsTable.status, "active")));
+        continue;
+      }
+      if (!evaluatePortfolioCondition(candidate.condition, target, actual)) {
+        await db.update(userPriceAlertsTable).set({ lastEvaluatedAt: now, updatedAt: now })
+          .where(and(eq(userPriceAlertsTable.id, candidate.id), eq(userPriceAlertsTable.status, "active")));
+        continue;
+      }
+      const transitioned = await triggerAlert(candidate, actual, "المحفظة + أسعار مرخّصة", now);
+      if (!transitioned) continue;
+      await insertAlertNotification(candidate, target, actual, now);
+      jobs.push({ candidate, actual, source: "المحفظة + أسعار مرخّصة", asOf: now, portfolio: true });
+      continue;
+    }
+
+    const quote = quoteBySymbol.get(candidate.symbol.toUpperCase());
+    if (!quote) continue;
     const actualValue = isPercentCondition(candidate.condition) ? quote.chgPct : quote.price;
     if (!Number.isFinite(actualValue)) continue;
     const actual = Number(actualValue);
@@ -272,33 +342,15 @@ export async function runPriceAlertEvaluation(): Promise<{ evaluated: number; tr
         .where(and(eq(userPriceAlertsTable.id, candidate.id), eq(userPriceAlertsTable.status, "active")));
       continue;
     }
-    /* Conditional state transition is the idempotency boundary: concurrent
-     * scheduler invocations cannot notify or email the same alert twice. */
-    const transitioned = await db.update(userPriceAlertsTable).set({
-      status: "triggered",
-      lastEvaluatedAt: now,
-      triggeredAt: now,
-      triggerValue: String(actual),
-      triggerSource: quote.source || null,
-      triggerAsOf: new Date(quote.ts),
-      emailStatus: candidate.emailEnabled ? "pending" : "not_requested",
-      updatedAt: now,
-    }).where(and(eq(userPriceAlertsTable.id, candidate.id), eq(userPriceAlertsTable.status, "active")))
-      .returning({ id: userPriceAlertsTable.id });
-    if (!transitioned.length) continue;
-    await db.insert(userNotificationsTable).values({
-      id: `price-${candidate.id}-${now.getTime()}`,
-      phone: candidate.phone,
-      kind: "price_alert",
-      title: `🔔 تنبيه ${candidate.symbol}`,
-      body: `${conditionLabel(candidate.condition)} ${target}${isPercentCondition(candidate.condition) ? "%" : " ج"}. القيمة من المصدر: ${actual}${isPercentCondition(candidate.condition) ? "%" : " ج"}.`,
-    });
-    jobs.push({ candidate, quote, actual });
+    const transitioned = await triggerAlert(candidate, actual, quote.source || null, new Date(quote.ts));
+    if (!transitioned) continue;
+    await insertAlertNotification(candidate, target, actual, now);
+    jobs.push({ candidate, actual, source: quote.source || "غير متاح", asOf: new Date(quote.ts), portfolio: false });
   }
 
   let emailDelivered = 0;
   for (const job of jobs) {
-    const { candidate, quote, actual } = job;
+    const { candidate, actual, source, asOf, portfolio } = job;
     if (!candidate.emailEnabled) continue;
     if (!validEmail(candidate.email) || !isSmtpConfigured()) {
       await db.update(userPriceAlertsTable).set({ emailStatus: "unavailable", updatedAt: new Date() })
@@ -307,14 +359,15 @@ export async function runPriceAlertEvaluation(): Promise<{ evaluated: number; tr
     }
     /* Development and production both send only to this alert owner's account;
      * there is no operator copy/catch-all recipient. */
-    const delivery = await sendMail(candidate.email, `EgyTrend — تنبيه ${candidate.symbol}`, alertEmailHtml({
+    const delivery = await sendMail(candidate.email, portfolio ? "EgyTrend — تنبيه المحفظة" : `EgyTrend — تنبيه ${candidate.symbol}`, alertEmailHtml({
       name: candidate.name,
       symbol: candidate.symbol,
       condition: candidate.condition,
       target: Number(candidate.targetValue),
       actual,
-      source: quote.source || "غير متاح",
-      asOf: new Date(quote.ts),
+      source,
+      asOf,
+      portfolio,
     }));
     await db.update(userPriceAlertsTable).set({
       emailStatus: delivery.delivered ? "sent" : delivery.error === "smtp_not_configured" || delivery.error === "nodemailer_missing" ? "unavailable" : "failed",
@@ -324,6 +377,93 @@ export async function runPriceAlertEvaluation(): Promise<{ evaluated: number; tr
     if (delivery.delivered) emailDelivered += 1;
   }
   return { evaluated: candidates.length, triggered: jobs.length, emailDelivered };
+}
+
+/**
+ * Pure portfolio valuation used by the alert job. Exported for unit tests —
+ * the same math the /api/portfolio endpoint shows the user, derived from the
+ * ledger plus verified quotes only (no stale or invented prices).
+ */
+export function computePortfolioValuation(
+  transactions: ReadonlyArray<{ id: string; symbol: string; side: "buy" | "sell"; quantity: number; price: number; fees: number; tradeDate: string; createdAtMs: number }>,
+  legacy: ReadonlyArray<{ symbol: string; quantity: number; averageCost: string | number }>,
+  startingCash: number,
+  quotes: ReadonlyMap<string, { price?: number; source?: string } | null | undefined>,
+): { totalValue: number | null; topConcentrationPct: number | null } {
+  const computation = computePortfolio(transactions, startingCash);
+  const extraHeld = new Map(legacy.map((row) => [row.symbol.toUpperCase(), { quantity: row.quantity, averageCost: Number(row.averageCost) }]));
+  const market = attachMarketValue(computation, quotes, extraHeld);
+  return { totalValue: market.totalValue, topConcentrationPct: market.topConcentrationPct };
+}
+
+/**
+ * Memoized per-user portfolio valuation for one evaluation run. A user's
+ * ledger is read at most once even with several portfolio alerts.
+ */
+type UserValuation = { totalValue: number | null; topConcentrationPct: number | null };
+async function portfolioActualValue(
+  candidate: TriggerCandidate,
+  cache: Map<number, UserValuation | null>,
+  quoteBySymbol: Map<string, StockQuote>,
+): Promise<number | null> {
+  if (!cache.has(candidate.userId)) {
+    try {
+      const { transactions, legacyRows, startingCash } = await loadUserLedger(candidate.userId);
+      const valuation = computePortfolioValuation(
+        transactions,
+        legacyRows.map((row) => ({ symbol: row.symbol, quantity: row.quantity, averageCost: row.averageCost })),
+        startingCash,
+        quoteBySymbol,
+      );
+      cache.set(candidate.userId, valuation);
+    } catch (error) {
+      logger.warn({ err: (error as Error).message, userId: candidate.userId }, "portfolio alert valuation failed");
+      cache.set(candidate.userId, null);
+    }
+  }
+  const valuation = cache.get(candidate.userId);
+  if (!valuation) return null;
+  const actual = candidate.condition === "concentration_above" ? valuation.topConcentrationPct : valuation.totalValue;
+  return actual === null || !Number.isFinite(actual) ? null : actual;
+}
+
+export function evaluatePortfolioCondition(condition: AlertCondition, targetValue: number, actual: number): boolean {
+  if (condition === "portfolio_value_above") return actual >= targetValue;
+  if (condition === "portfolio_value_below") return actual <= targetValue;
+  if (condition === "concentration_above") return actual >= targetValue;
+  return false;
+}
+
+/**
+ * The conditional active→triggered transition is the idempotency boundary:
+ * concurrent scheduler invocations cannot notify or email the same alert twice.
+ */
+async function triggerAlert(candidate: TriggerCandidate, actual: number, source: string | null, asOf: Date): Promise<boolean> {
+  const now = new Date();
+  const transitioned = await db.update(userPriceAlertsTable).set({
+    status: "triggered",
+    lastEvaluatedAt: now,
+    triggeredAt: now,
+    triggerValue: String(actual),
+    triggerSource: source,
+    triggerAsOf: asOf,
+    emailStatus: candidate.emailEnabled ? "pending" : "not_requested",
+    updatedAt: now,
+  }).where(and(eq(userPriceAlertsTable.id, candidate.id), eq(userPriceAlertsTable.status, "active")))
+    .returning({ id: userPriceAlertsTable.id });
+  return transitioned.length > 0;
+}
+
+async function insertAlertNotification(candidate: TriggerCandidate, target: number, actual: number, now: Date): Promise<void> {
+  const unit = isPercentCondition(candidate.condition) ? "%" : " ج";
+  const title = isPortfolioCondition(candidate.condition) ? "🔔 تنبيه المحفظة" : `🔔 تنبيه ${candidate.symbol}`;
+  await db.insert(userNotificationsTable).values({
+    id: `price-${candidate.id}-${now.getTime()}`,
+    phone: candidate.phone,
+    kind: "price_alert",
+    title,
+    body: `${conditionLabel(candidate.condition)} ${target}${unit}. القيمة عند التحقق: ${actual}${unit}.`,
+  });
 }
 
 function cronAuthorized(req: Request): boolean {

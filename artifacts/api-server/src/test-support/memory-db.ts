@@ -216,6 +216,33 @@ export async function createMemoryDatabase(): Promise<{
       UNIQUE(user_id, symbol)
     );
     CREATE INDEX portfolio_positions_user_status_idx ON portfolio_positions(user_id, status);
+    CREATE TABLE portfolio_transactions (
+      id text PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES app_users(id),
+      instrument_id text NOT NULL,
+      symbol text NOT NULL,
+      side text NOT NULL,
+      quantity integer NOT NULL,
+      price numeric(18, 6) NOT NULL,
+      fees numeric(18, 6) NOT NULL DEFAULT 0,
+      currency text NOT NULL DEFAULT 'EGP',
+      trade_date date NOT NULL,
+      note text,
+      archived_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CHECK (side IN ('buy','sell')),
+      CHECK (quantity > 0),
+      CHECK (price > 0),
+      CHECK (fees >= 0)
+    );
+    CREATE INDEX portfolio_transactions_user_date_idx ON portfolio_transactions(user_id, trade_date);
+    CREATE TABLE portfolio_settings (
+      user_id integer PRIMARY KEY REFERENCES app_users(id),
+      starting_cash numeric(18, 6) NOT NULL DEFAULT 0,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CHECK (starting_cash >= 0)
+    );
     CREATE TABLE user_price_alerts (
       id text PRIMARY KEY,
       user_id integer NOT NULL REFERENCES app_users(id),
