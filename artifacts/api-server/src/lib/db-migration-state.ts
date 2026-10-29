@@ -56,6 +56,7 @@ export const MIGRATION_IDS: readonly string[] = [
   "0020_app_users_last_login",
   "0021_ai_usage_metering",
   "0022_db_backups",
+  "0023_opportunity_signals",
 ];
 
 /** Set once the boot runner has checked the database. */

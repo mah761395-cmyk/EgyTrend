@@ -745,7 +745,35 @@ export async function createMemoryDatabase(): Promise<{
       featured boolean NOT NULL DEFAULT false,
       vip_only boolean NOT NULL DEFAULT false,
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      instrument_id text,
+      signal jsonb,
+      first_price double precision,
+      result text,
+      realized_at timestamp
+    );
+  `);
+
+  /* TASK M: verified daily OHLC store (migration 0001). Some tests insert
+   * synthetic bars and exercise the read repository end to end. */
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS market_daily_ohlc (
+      id text PRIMARY KEY,
+      instrument_id text NOT NULL,
+      source_id text NOT NULL,
+      source_name text NOT NULL,
+      trading_date date NOT NULL,
+      open double precision NOT NULL,
+      high double precision NOT NULL,
+      low double precision NOT NULL,
+      close double precision NOT NULL,
+      volume double precision,
+      currency text,
+      delayed_minutes integer,
+      as_of timestamp with time zone NOT NULL,
+      created_at timestamp with time zone NOT NULL DEFAULT now(),
+      updated_at timestamp with time zone NOT NULL DEFAULT now(),
+      CONSTRAINT market_daily_ohlc_source_instrument_day_uq UNIQUE (source_id, instrument_id, trading_date)
     );
   `);
 
