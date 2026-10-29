@@ -2,6 +2,7 @@ import { createMarketCache, loadCached, type JsonCache } from "./cache";
 import { MARKET_INSTRUMENTS, type StockDefinition } from "./catalog";
 import { classifyQuote, sessionForInstrument } from "./freshness";
 import { ProviderHealthMonitor } from "./health";
+import { ResilientHttpClient } from "./http";
 import {
   CoinGeckoFreeProvider,
   CoinGeckoProvider,
@@ -43,6 +44,11 @@ export type CalendarSnapshot = {
 
 export class MarketDataService {
   private readonly health: ProviderHealthMonitor;
+  /** Shared upstream client for the secondary fundamentals endpoints
+   * (dividends / EGX valuation page) — same pacing and retry policy as the
+   * board providers, but a separate instance so their traffic is paced
+   * independently of the licensed quote feeds. */
+  private readonly fundamentalsHttp = new ResilientHttpClient();
 
   constructor(
     private readonly providers: MarketDataProvider[],
@@ -51,6 +57,11 @@ export class MarketDataService {
     health?: ProviderHealthMonitor,
   ) {
     this.health = health ?? new ProviderHealthMonitor(cache);
+  }
+
+  /** Read-only dependencies for the secondary fundamentals endpoints. */
+  fundamentalsDeps(): { http: ResilientHttpClient; cache: JsonCache } {
+    return { http: this.fundamentalsHttp, cache: this.cache };
   }
 
   /** Providers that can actually supply a daily series. Display approval alone

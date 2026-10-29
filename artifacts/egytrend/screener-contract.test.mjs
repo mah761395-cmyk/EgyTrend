@@ -52,16 +52,14 @@ test("normalizeStockList keeps server-flagged no-data rows", () => {
 });
 
 test("no stock UI surface calls toFixed on a possibly-absent price", () => {
-  // Every render/export path that can see no-data rows must branch on noData
-  // (or a knownStockNumber guard) before formatting a price.
-  for (const fn of ["renderScrResults", "exportScrCSV"]) {
-    const body = functionBody(fn);
-    assert.match(body, /noData/, `${fn} must branch on noData`);
-  }
+  // Every render/export path must guard a price before formatting it.
+  const priced = functionBody("scrPricedStocks");
+  assert.match(priced, /s\.noData!==true&&typeof s\.price==="number"&&Number\.isFinite\(s\.price\)&&s\.price>0/, "the priced-row helper is the single noData/price guard");
   const screenerRow = functionBody("renderScrResults");
   assert.match(screenerRow, /noData\?"—":s\.price\.toFixed\(2\)/, "screener price cell shows — for no-data rows");
   const csv = functionBody("exportScrCSV");
-  assert.match(csv, /\(s\.noData===true\|\|!\(typeof s\.price==="number"&&Number\.isFinite\(s\.price\)\)\)\?"":s\.price\.toFixed\(2\)/, "CSV export leaves the price blank for no-data rows");
+  assert.match(csv, /\(typeof s\.price==="number"&&Number\.isFinite\(s\.price\)\)\?s\.price\.toFixed\(2\):""/, "CSV export never formats a missing price");
+  assert.match(csv, /const stocks_src=scrPricedStocks\(\)/, "CSV export mirrors the on-screen priced-only row set");
   const egxPage = functionBody("renderStocks");
   assert.match(egxPage, /noData\?"—":s\.price\.toFixed\(2\)/, "EGX page price cell shows — for no-data rows");
 });
@@ -73,7 +71,7 @@ test("the EGX page skips sparklines for no-data rows", () => {
 
 test("the screener footer explains no-data rows and unavailable columns", () => {
   const body = functionBody("renderScrResults");
-  assert.match(body, /بدون بيانات من المصدر/, "footer states how many rows lack source data");
+  assert.match(body, /تم استبعاد \$\{excludedNoData\} سهم بدون بيانات من المصدر/, "footer discloses exactly how many no-data rows were excluded");
   assert.match(body, /غير متاحة من المصدر/, "footer states the columns the source does not provide");
   const counter = body.match(/countEl\.textContent=`\$\{stocks\.length\} سهم/);
   assert.ok(counter, "counter still reflects the real post-filter count");
@@ -115,7 +113,8 @@ test("the screener is EGX-only: no NYSE/foreign market option anywhere in it", (
   assert.ok(build.includes("البورصة المصرية"), "the screener header names the Egyptian exchange");
   // The data path: results and CSV read the EGX list, not a market switch.
   const results = functionBody("renderScrResults");
-  assert.match(results, /const stocks_src=liveStocks;/, "results render from the EGX list only");
+  assert.match(results, /const all=liveStocks;/, "the EGX list is the only data source");
+  assert.match(results, /const stocks_src=scrPricedStocks\(\);/, "results render the priced-only subset of the EGX list");
   assert.ok(!/usStocks/.test(results), "the results table never reads the US list");
   const csv = functionBody("exportScrCSV");
   assert.match(csv, /EgyTrend_EGX_/, "CSV export is labeled EGX");
@@ -142,7 +141,8 @@ test("the screener table shows every field the source provides, with null guards
 
 test("sector pills are built from the loaded data, never a hard-coded list", () => {
   const body = functionBody("renderScrSectorPills");
-  assert.match(body, /for\(const s of liveStocks\)/, "sector pills count the sectors present in the loaded EGX rows");
+  assert.match(body, /for\(const s of priced\)/, "sector pills count the sectors present in the loaded EGX rows");
+  assert.match(body, /const priced=scrPricedStocks\(\);/, "pills count the priced-only rows the screener shows");
   assert.ok(!body.includes("usSectors"), "no foreign sector list remains");
   // The stale hard-coded Arabic sector list must be gone.
   assert.ok(!/عقارات:🏢 عقارات/.test(body), "the hard-coded sector list was replaced by data-driven pills");
@@ -156,4 +156,76 @@ test("the screener footer states session state, the source note and the exact mi
   const missing = functionBody("scrMissingColumns");
   assert.match(missing, /قيمة التداول/, "traded value is reported when absent");
   assert.match(missing, /52 أسبوع/, "52-week range is reported when absent");
+});
+
+/* ─── TASK G: no-data exclusion + secondary fundamentals layer ─── */
+
+test("the secondary fundamentals endpoints are pinned", () => {
+  assert.match(html, /const DIVIDENDS_API\s*=\s*"\/api\/markets\/dividends"/, "dividends endpoint constant");
+  assert.match(html, /const VALUATIONS_API\s*=\s*"\/api\/markets\/valuations"/, "valuations endpoint constant");
+});
+
+test("fetchScreenerExtras runs fire-and-forget after the price scan", () => {
+  const fetch = functionBody("fetchStocksData");
+  assert.match(fetch, /fetchScreenerExtras\(\);/, "the price scan triggers the extras fetch");
+  assert.ok(!/await\s+fetchScreenerExtras\(\)/.test(fetch), "the extras fetch must NOT be awaited — it cannot delay the price table");
+});
+
+test("fetchScreenerExtras is bounded, cached per response, and fail-soft", () => {
+  const body = functionBody("fetchScreenerExtras");
+  assert.match(body, /\.slice\(0,40\)/, "dividends are requested for at most 40 tickers (server cap)");
+  assert.match(body, /sort\(\(a,b\)=>\(b\.mktCapM\|\|0\)-\(a\.mktCapM\|\|0\)\)/, "dividend picks are the largest priced names by market cap");
+  assert.match(body, /\.slice\(0,300\)/, "valuations are requested for at most 300 tickers (server cap)");
+  assert.match(body, /Promise\.allSettled/, "the two vendors are fetched in parallel and none can reject the batch");
+  assert.match(body, /scrExtrasInFlight/, "re-entrancy guard prevents duplicate in-flight batches");
+  assert.ok(!/s\.amount/.test(body), "the secondary layer must never write traded value (no free source exists)");
+  assert.ok(!/\.pe\s*=/.test(body) || /nf\.valuations\.set/.test(body), "values land in the egxFundamentals map, never silently in the price rows");
+});
+
+test("merged accessors prefer the price scan and fall back to the secondary layer", () => {
+  const pe = functionBody("scrPe");
+  assert.match(pe, /knownStockNumber\(s\.pe\)/, "P/E: the price-scan value wins when present");
+  assert.match(pe, /egxFundamentals\.valuations\.get\(s\.sym\)/, "P/E: falls back to the EGX official layer");
+  const dy = functionBody("scrDy");
+  assert.match(dy, /knownStockNumber\(s\.divYield\)/, "DY: the price-scan value wins when present");
+  assert.match(dy, /egxFundamentals\.valuations\.get\(s\.sym\)/, "DY: falls back to the EGX official layer");
+  const div = functionBody("scrDivTtm");
+  assert.match(div, /d\.status==="ok"/, "TTM dividends are shown only for rows the source confirmed");
+});
+
+test("the screener table and CSV use the merged P/E + dividend yield", () => {
+  const results = functionBody("renderScrResults");
+  assert.match(results, /scrPe\(s\)!==null\?scrPe\(s\)\.toFixed\(1\):"—"/, "table P/E cell uses the merged value with an honest —");
+  assert.match(results, /scrDy\(s\)!==null\?scrDy\(s\)\.toFixed\(2\)\+"%":"—"/, "table DY cell uses the merged value with an honest —");
+  const csv = functionBody("exportScrCSV");
+  assert.match(csv, /scrPe\(s\)!==null\?scrPe\(s\)\.toFixed\(2\):""/, "CSV P/E column uses the merged value");
+  assert.match(csv, /scrDy\(s\)!==null\?scrDy\(s\)\.toFixed\(2\):""/, "CSV Div Yield column uses the merged value");
+});
+
+test("the P/E and dividend filters operate on the merged values", () => {
+  const filtered = functionBody("scrComputeFiltered");
+  assert.match(filtered, /scrPe\(s\)/, "P/E filter uses the merged value");
+  assert.match(filtered, /scrDy\(s\)/, "dividend filter uses the merged value");
+});
+
+test("the detail modal discloses TTM dividends, P/E and coupon yield for EGX", () => {
+  const detail = functionBody("openStockDetail");
+  assert.match(detail, /توزيعات آخر 12 شهرًا/, "detail modal shows trailing-12-month dividends");
+  assert.match(detail, /scrDivTtmText\(s\)/, "TTM dividend text comes from the merged accessor");
+  assert.match(detail, /scrPeText\(s\)/, "detail modal shows P/E via the honest text accessor");
+  assert.match(detail, /scrDy\(s\)!==null\?scrDy\(s\)\.toFixed\(2\)\+"%":"غير متاح"/, "detail modal shows coupon yield or an explicit غير متاح");
+  const peText = functionBody("scrPeText");
+  assert.match(peText, /غير متاح/, "a missing P/E says غير متاح");
+  assert.match(peText, /غير موجب/, "P/E = 0 (no positive earnings on the EGX page) is not printed as a bare 0.00");
+});
+
+test("the screener excludes no-data rows and discloses the exclusion", () => {
+  const results = functionBody("renderScrResults");
+  assert.match(results, /const excludedNoData=all\.length-stocks_src\.length;/, "the excluded count is derived, never hard-coded");
+  assert.match(results, /countEl\.textContent=`\$\{stocks\.length\} سهم`;/, "the counter shows only the rows actually shown");
+  assert.ok(!/\(noDataCount\)/.test(results), "no stale noDataCount plumbing remains in the counter");
+  // normalizeStockList still keeps the no-data rows — the exclusion is a
+  // view decision, so the market page and detail view keep working.
+  const norm = functionBody("normalizeStockList");
+  assert.match(norm, /const noData=s\.noData===true;/, "normalization still preserves no-data rows");
 });

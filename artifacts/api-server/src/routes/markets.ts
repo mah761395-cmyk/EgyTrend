@@ -13,6 +13,7 @@ import { classifyQuote, sessionForInstrument } from "../lib/market-data/freshnes
 import type { TvScanRow } from "../lib/market-data/providers";
 import { getMarketHistorySnapshot, getMarketSparklines, parseHistoryRange, runMarketDailySnapshot } from "../lib/market-data/history";
 import { currentUser, isActivePrivilegedAdmin, hasVipFeature } from "../lib/userAuth";
+import { buildDividendsResponse, buildValuationsResponse, sanitizeEgxSymbol } from "../lib/market-data/fundamentals";
 import { getMarketDataService, type MarketDataService, type QuoteSnapshot } from "../lib/market-data/service";
 import type { CalendarEvent, CanonicalQuote, MarketInstrument, MarketSection } from "../lib/market-data/types";
 
@@ -702,6 +703,51 @@ router.get("/us-stocks", async (_req: Request, res: Response) => {
     logger.error({ err: error }, "US licensed stock data failed");
     if (usStocksCache) res.json({ status: "ok", ...usStocksCache, stale: true });
     else res.status(503).json({ status: "error", message: "بيانات الأسهم العالمية غير متاحة حاليًا" });
+  }
+});
+
+/* ── Secondary fundamentals (fail-soft, decoupled from the price scan) ──
+ * These enrich the EGX screener with fields the scanner does not publish for
+ * this market. They are independent read-only endpoints: a failure here never
+ * affects /stocks, and a missing value is reported as unavailable, never 0. */
+
+/** Trailing-12-month cash dividends per share from the Yahoo public chart
+ * endpoint (same family as the board's global indices, crumb-less). */
+router.get("/dividends", async (req: Request, res: Response) => {
+  const symbols = String(req.query["symbols"] ?? "")
+    .split(",")
+    .map((item) => sanitizeEgxSymbol(item))
+    .filter((item): item is string => item !== null)
+    .slice(0, 40);
+  if (!symbols.length) {
+    res.status(400).json({ status: "error", message: "حدد رموز EGX صالحة عبر ?symbols=" });
+    return;
+  }
+  try {
+    const { http, cache } = marketService().fundamentalsDeps();
+    const data = await buildDividendsResponse(symbols, { http, cache });
+    res.json(data);
+  } catch (error) {
+    logger.error({ err: error }, "EGX dividends lookup failed");
+    res.status(503).json({ status: "error", message: "بيانات التوزيعات غير متاحة حاليًا" });
+  }
+});
+
+/** P/E + coupon yield from the official EGX page (partial coverage — the
+ * response states exactly which subset the page covers). */
+router.get("/valuations", async (req: Request, res: Response) => {
+  const symbols = String(req.query["symbols"] ?? "")
+    .split(",")
+    .map((item) => sanitizeEgxSymbol(item))
+    .filter((item): item is string => item !== null)
+    .slice(0, 300);
+  try {
+    const { http, cache } = marketService().fundamentalsDeps();
+    const data = await buildValuationsResponse(symbols, { http, cache });
+    res.json(data);
+  } catch (error) {
+    logger.error({ err: error }, "EGX valuation page lookup failed");
+    res.status(503).json({ status: "error", message: "بيانات مضاعف الربحية غير متاحة حاليًا" });
   }
 });
 
