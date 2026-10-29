@@ -180,3 +180,39 @@ test("news deduplication and server ranking keep one copy and prioritize urgent 
   assert.equal(ranked[0]?.title, "عاجل: قرار جديد للأسواق");
   assert.equal(ranked[0]?.source.id, "licensed-test-two");
 });
+
+test("countNewsInWindow counts unique in-window items across feeds, before caps", () => {
+  const now = Date.parse("2026-10-29T12:00:00Z");
+  const day = 24 * 3600 * 1000;
+  const at = (hAgo: number) => new Date(now - hAgo * 3600 * 1000).toISOString();
+  // helper shape: { pubDate } plus title/link for the dedup key
+  const item = (hAgo: number, title: string) => ({
+    title,
+    link: `https://example.test/${title}`,
+    description: "",
+    pubDate: at(hAgo),
+    guid: `g-${title}`,
+  });
+  const feeds = [
+    {
+      items: [
+        item(1, "عاجل: خبر اليوم"), // in window
+        item(2, "خبر ثانٍ"), // in window
+        item(30, "خبر قديم خارج النافذة"), // out (30h)
+        item(-5, "خبر مستقبلي"), // out (future)
+      ],
+    },
+    {
+      items: [
+        item(3, "عاجل: خبر اليوم"), // duplicate of feed-1 item 1 (dedup key on title)
+        item(4, "خبر ثالث"), // in window
+      ],
+    },
+  ];
+  // unique + in window + not future = item(1h), item(2h), item(4h) = 3
+  assert.equal(__newsTest.countNewsInWindow(feeds, now, day), 3);
+  // an empty window / nothing matches
+  assert.equal(__newsTest.countNewsInWindow([{ items: [item(100, "قديم")] }], now, day), 0);
+  // no feeds
+  assert.equal(__newsTest.countNewsInWindow([], now, day), 0);
+});
