@@ -1,4 +1,4 @@
-import { createMarketCache, loadCached, type JsonCache } from "./cache";
+import { cacheEntry, createMarketCache, loadCached, type JsonCache } from "./cache";
 import { MARKET_INSTRUMENTS, type StockDefinition } from "./catalog";
 import { classifyQuote, sessionForInstrument } from "./freshness";
 import { ProviderHealthMonitor } from "./health";
@@ -34,6 +34,29 @@ import type {
 
 const BOARD_CACHE_KEY = "egytrend:market:quotes:v2:board";
 const PROBE_TIMEOUT_MS = 10_000;
+
+/**
+ * Last verified daily FX reference per pair (ExchangeRate-API). The feed is a
+ * once-a-day table and publishes no previous-day rate, so the daily change is
+ * derived against the platform's own previously verified reading of the same
+ * provider — never against an unrelated third-party number.
+ */
+const FX_REFERENCE_CACHE_KEY = "egytrend:market:fx-daily-reference:v1";
+const FX_REFERENCE_TTL_MS = 30 * 86_400_000;
+
+type FxDailyReference = { price: number; asOf: number };
+
+/** Cairo calendar day (YYYY-MM-DD) of an epoch-ms timestamp. */
+function cairoDayOf(timestamp: number): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Cairo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(timestamp);
+  const get = (type: string): string => parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -468,6 +491,53 @@ export class MarketDataService {
     return { cache: this.cache.status(), providers: await this.health.status(this.descriptors()) };
   }
 
+  /**
+   * Derives the daily change for FX reference rows. The upstream feed
+   * (ExchangeRate-API) is a once-a-day table with no previous-day rate, so the
+   * only honest source for "yesterday" is the platform's own previously
+   * verified reading of the same provider. The derived value is only published
+   * when the provider's reference day actually advanced (same-day re-fetches
+   * are never reported as 0.00%). The reference record is best-effort cache
+   * state: a cold start simply withholds the change instead of inventing it.
+   */
+  private async enrichFxDailyChange(quotes: CanonicalQuote[]): Promise<CanonicalQuote[]> {
+    const fxQuotes = quotes.filter((quote) => quote.instrumentId.startsWith("fx:"));
+    if (!fxQuotes.length) return quotes;
+
+    let stored: Record<string, FxDailyReference> = {};
+    try {
+      const entry = await this.cache.get<Record<string, FxDailyReference>>(FX_REFERENCE_CACHE_KEY);
+      stored = entry && typeof entry.value === "object" ? entry.value : {};
+    } catch {
+      stored = {};
+    }
+
+    for (const quote of fxQuotes) {
+      const previous = stored[quote.instrumentId];
+      if (
+        previous
+        && Number.isFinite(previous.price) && previous.price > 0
+        && previous.asOf < quote.asOf
+        && cairoDayOf(previous.asOf) !== cairoDayOf(quote.asOf)
+      ) {
+        const percent = ((quote.price - previous.price) / previous.price) * 100;
+        if (Number.isFinite(percent)) {
+          quote.change = Math.round((quote.price - previous.price) * 10_000) / 10_000;
+          quote.changePercent = Math.round(percent * 1_000) / 1_000;
+        }
+      }
+      stored[quote.instrumentId] = { price: quote.price, asOf: quote.asOf };
+    }
+
+    try {
+      await this.cache.set(FX_REFERENCE_CACHE_KEY, cacheEntry(stored, FX_REFERENCE_TTL_MS, FX_REFERENCE_TTL_MS));
+    } catch {
+      /* The reference store is best-effort; losing it only withholds the
+       * derived change on the next fetch. It never affects the price itself. */
+    }
+    return quotes;
+  }
+
   private async getQuoteSnapshot(
     keyPart: string,
     instruments: MarketInstrument[],
@@ -475,7 +545,10 @@ export class MarketDataService {
     staleMs: number,
   ): Promise<QuoteSnapshot> {
     const key = keyPart === "board" ? BOARD_CACHE_KEY : `egytrend:market:quotes:v2:${keyPart}`;
-    const cached = await loadCached(this.cache, key, ttlMs, staleMs, async () => this.resolveQuotes(instruments));
+    const cached = await loadCached(this.cache, key, ttlMs, staleMs, async () => {
+      const resolved = await this.resolveQuotes(instruments);
+      return this.enrichFxDailyChange(resolved);
+    });
     // A successful HTTP fetch is not enough to call a quote current: the
     // provider's own timestamp may already be beyond this snapshot's maximum
     // cache age. Keep serving it transparently, but expose it as stale rather

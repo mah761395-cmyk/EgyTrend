@@ -36,12 +36,43 @@ type Quote = {
   asOf?: number;
   delayedMinutes?: number;
   freshness?: "real-time" | "delayed" | "end-of-day" | "unknown";
+  /**
+   * What `asOf` actually IS, so the UI never presents a server fetch time as
+   * the source's publish time:
+   *   "source" — the provider published this timestamp (market time, daily
+   *              reference update time, last_updated_at),
+   *   "fetch"  — the source gives no machine-readable timestamp, so `asOf` is
+   *              the server's fetch time and must be labelled as such.
+   */
+  timeBasis?: "source" | "fetch";
   /** Session-aware state: live market | closed with today's/last close | stale. */
   state?: "live" | "closed" | "stale";
   stateLabel?: string;
   /** The close time the "closed" label refers to (ms epoch), for tooltips. */
   refTime?: number;
 };
+
+/**
+ * The day's change percent for a board quote. Providers publish either an
+ * explicit `changePercent` or the previous session's close; the second form is
+ * derived with the exact same arithmetic the stock lists use. When neither
+ * input exists the change stays absent (rendered "—") — a missing value is
+ * never invented as 0.
+ */
+export function deriveChangePercent(quote: {
+  price: number;
+  changePercent?: number;
+  previousClose?: number;
+}): number | null {
+  if (typeof quote.changePercent === "number" && Number.isFinite(quote.changePercent)) {
+    return quote.changePercent;
+  }
+  const prev = quote.previousClose;
+  if (typeof prev === "number" && Number.isFinite(prev) && prev > 0) {
+    return ((quote.price - prev) / prev) * 100;
+  }
+  return null;
+}
 
 type SectionFreshness = {
   sources: string;
@@ -224,10 +255,10 @@ function formatPrice(instrument: MarketInstrument, quote: CanonicalQuote): strin
   return `${prefix}${formatNumber(quote.price, priceDigits(instrument, quote.price))}${suffix}`;
 }
 
-function formatChange(quote: CanonicalQuote): { text: string; up: boolean } {
-  if (!Number.isFinite(quote.changePercent)) return { text: "—", up: true };
-  const change = quote.changePercent!;
-  return { text: `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`, up: change >= 0 };
+function formatChange(quote: CanonicalQuote): { text: string; up: boolean; flat: boolean } {
+  const change = deriveChangePercent(quote);
+  if (change === null) return { text: "—", up: true, flat: true };
+  return { text: `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`, up: change >= 0, flat: false };
 }
 
 function toDisplayQuote(instrument: MarketInstrument, quote: CanonicalQuote): Quote {
@@ -238,13 +269,14 @@ function toDisplayQuote(instrument: MarketInstrument, quote: CanonicalQuote): Qu
     v: formatPrice(instrument, quote),
     c: change.text,
     up: change.up,
-    flat: !Number.isFinite(quote.changePercent),
+    flat: change.flat,
     s: instrument.subtitle,
     source: quote.sourceName,
     clickable: instrument.id === "egx:EGX30",
     asOf: quote.asOf,
     delayedMinutes: quote.delayedMinutes,
     freshness: quote.freshness,
+    timeBasis: quote.sourceAsOfUnknown ? "fetch" : "source",
     ...quoteState(instrument.id, quote),
   };
 }

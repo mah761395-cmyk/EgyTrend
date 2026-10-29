@@ -1196,6 +1196,61 @@ export class ExchangeRateApiProvider implements MarketDataProvider {
     });
     return { quotes, requestedCount: supported.length };
   }
+
+  /**
+   * Daily reference bar for the persisted daily-history store. The reference
+   * is a single value, so open/high/low/close all carry it — no intraday
+   * shape is invented. The bar is dated on the day the PROVIDER published the
+   * table (Cairo calendar day of `time_last_update_unix`), not on the cron's
+   * run date: that keeps the idempotent (source, instrument, day) upsert
+   * honest when the feed updates late or the job re-runs, and it makes the
+   * stored series the true record of verified daily references.
+   */
+  async getDailyOhlc(instruments: MarketInstrument[], _tradingDate: string): Promise<DailyOhlc[]> {
+    const supported = instruments.filter((instrument) => this.canServe(instrument));
+    if (!supported.length) return [];
+    const payload = await this.http.getJson<Record<string, unknown>>(
+      "https://open.er-api.com/v6/latest/USD",
+      { providerId: this.id, timeoutMs: 8_000, attempts: 1, minIntervalMs: 250 },
+    );
+    const rates = payload["rates"] as Record<string, unknown> | undefined;
+    const asOf = epoch(payload["time_last_update_unix"]);
+    const egpPerUsd = finite(rates?.["EGP"]);
+    if (!rates || asOf === undefined || egpPerUsd === undefined || egpPerUsd <= 0) return [];
+
+    const dayParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Africa/Cairo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(asOf);
+    const dayPart = (type: string): string => dayParts.find((part) => part.type === type)?.value ?? "";
+    const tradingDate = `${dayPart("year")}-${dayPart("month")}-${dayPart("day")}`;
+
+    return supported.flatMap((instrument) => {
+      const code = FX_REFERENCE_PAIRS[instrument.id]!;
+      let price = egpPerUsd;
+      if (code !== "USD") {
+        const perUsd = finite(rates[code]);
+        if (perUsd === undefined || perUsd <= 0) return [];
+        price = egpPerUsd / perUsd;
+      }
+      const value = Math.round(price * 10_000) / 10_000;
+      return [{
+        instrumentId: instrument.id,
+        tradingDate,
+        open: value,
+        high: value,
+        low: value,
+        close: value,
+        currency: "EGP",
+        asOf,
+        sourceId: this.id,
+        sourceName: this.name,
+        freshness: "end-of-day" as const,
+      } satisfies DailyOhlc];
+    });
+  }
 }
 
 const FX_REFERENCE_PAIRS: Record<string, string> = {
