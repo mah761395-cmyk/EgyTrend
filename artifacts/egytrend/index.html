@@ -2263,6 +2263,8 @@ const CALENDAR_MAX_ATTEMPTS=4;
 /* ─── EGX Stocks — loaded live from /api/markets/stocks ─── */
 const STOCKS_API    = "/api/markets/stocks";
 const US_STOCKS_API = "/api/markets/us-stocks";
+const DIVIDENDS_API  = "/api/markets/dividends";   /* Yahoo trailing-12-month dividends (EGP) */
+const VALUATIONS_API = "/api/markets/valuations";  /* EGX official P/E + coupon yield (partial coverage) */
 
 /* ─── Secure FAQ (admin question removed) ─── */
 const FAQ = [
@@ -2377,6 +2379,13 @@ let liveStocks = []; // EGX stocks — populated from /api/markets/stocks
 let egxStocksFreshness = {fetchedAt:0,stale:true,source:"غير متاح",unavailable:false,loading:true};
 let usStocks   = []; // US stocks  — populated from /api/markets/us-stocks
 let usStocksFreshness = {fetchedAt:0,stale:true,source:"غير متاح",unavailable:false,loading:true};
+/* Secondary fundamentals layer, fetched fire-and-forget AFTER the price scan:
+ *  - valuations: EGX official page P/E + coupon yield (partial coverage),
+ *  - dividends:  Yahoo trailing-12-month dividends in EGP (top by market cap).
+ * The price table renders first and stays fully usable if this layer fails —
+ * cells simply remain "—" and the footer still names what the source lacks. */
+let egxFundamentals = {valuations:new Map(),dividends:new Map(),loaded:false,stale:false,loading:false,fetchedAt:0};
+let scrExtrasInFlight = false;
 let scrMarket  = "egx"; // screener market constant — the screener is EGX-only (no foreign markets)
 let scrSearch  = "";
 let scrFilters = {sector:"all",perf:"all",priceMin:"",priceMax:"",volMin:"",peFilter:"all",divFilter:"all",epsFilter:"all",sortBy:"chgPct",sortDir:-1};
@@ -3886,6 +3895,93 @@ async function fetchStocksData(){
   const ep=document.getElementById("egx-page");
   if(ep&&ep.classList.contains("open"))renderStocks();
   if(scrMarket==="egx")renderScrResults();
+  /* Secondary layer, in the background and fail-soft: it re-renders the
+     screener once (P/E, coupon yield, dividends columns fill in) but can
+     never break or delay the price table. */
+  fetchScreenerExtras();
+}
+
+/* Priced, source-backed rows for the EGX screener. noData rows (curated
+ * symbols the scanner cannot price) are EXCLUDED from the screener view;
+ * they remain in liveStocks for the market page and the detail view. */
+function scrPricedStocks(){
+  return liveStocks.filter(s=>s.noData!==true&&typeof s.price==="number"&&Number.isFinite(s.price)&&s.price>0);
+}
+
+/* Fetch the secondary fundamentals (P/E, coupon yield, TTM dividends).
+ * Bounded: dividends for the top 40 priced tickers by market cap (server
+ * cap), valuations for up to 300 (server cap — the whole priced list). */
+async function fetchScreenerExtras(){
+  if(scrExtrasInFlight) return;
+  const priced=scrPricedStocks();
+  if(!priced.length) return;
+  scrExtrasInFlight=true;
+  egxFundamentals={...egxFundamentals,loading:true};
+  try{
+    const divSyms=[...priced].sort((a,b)=>(b.mktCapM||0)-(a.mktCapM||0)).slice(0,40).map(s=>s.sym);
+    const valSyms=[...new Set(priced.map(s=>s.sym))].slice(0,300);
+    const [divJ,valJ]=await Promise.allSettled([
+      divSyms.length?fetchJsonWithTimeout(`${DIVIDENDS_API}?symbols=${encodeURIComponent(divSyms.join(","))}`,30000):Promise.resolve(null),
+      valSyms.length?fetchJsonWithTimeout(`${VALUATIONS_API}?symbols=${encodeURIComponent(valSyms.join(","))}`,30000):Promise.resolve(null),
+    ]);
+    const nf={...egxFundamentals,loading:false,loaded:true,fetchedAt:Date.now(),stale:false,valuations:new Map(),dividends:new Map()};
+    if(valJ.status==="fulfilled"&&valJ.value?.status==="ok"&&Array.isArray(valJ.value.rows)){
+      nf.stale=valJ.value.stale===true;
+      for(const r of valJ.value.rows){
+        if(r&&r.sym&&Number.isFinite(r.pe)&&Number.isFinite(r.dy))nf.valuations.set(r.sym,{pe:r.pe,dy:r.dy,egxName:r.egxName||"",match:r.match});
+      }
+    }
+    if(divJ.status==="fulfilled"&&divJ.value?.status==="ok"&&Array.isArray(divJ.value.dividends)){
+      for(const d of divJ.value.dividends){
+        if(d&&d.sym&&d.status==="ok")nf.dividends.set(d.sym,d);
+      }
+    }
+    egxFundamentals=nf;
+  }catch{
+    /* fail-soft: keep whatever was there (possibly nothing) */
+    egxFundamentals={...egxFundamentals,loading:false};
+  }finally{
+    scrExtrasInFlight=false;
+    if(scrMarket==="egx")renderScrResults();
+  }
+}
+
+/* Merged fundamentals: prefer the price-scan value, fall back to the
+ * secondary EGX/Yahoo layer. A null keeps the honest "—" on screen. */
+function scrPe(s){
+  const v=knownStockNumber(s.pe);
+  if(v!==null&&v>0)return v;
+  const f=egxFundamentals.valuations.get(s.sym);
+  return f&&Number.isFinite(f.pe)?f.pe:null;
+}
+function scrDy(s){
+  const v=knownStockNumber(s.divYield);
+  if(v!==null&&v>0)return v;
+  const f=egxFundamentals.valuations.get(s.sym);
+  return f&&Number.isFinite(f.dy)?f.dy:null;
+}
+function scrDivTtm(s){
+  const d=egxFundamentals.dividends.get(s.sym);
+  if(d&&d.status==="ok")return d;
+  return null;
+}
+function scrDivTtmText(s){
+  const d=scrDivTtm(s);
+  if(!d)return"غير متاح";
+  if(d.ttm===0)return"لا توجد خلال آخر 12 شهرًا";
+  let t=`${d.ttm.toFixed(2)} ج للسهم`;
+  if(d.lastDate){
+    try{t+=` · آخر دفعة ${new Date(d.lastDate).toLocaleDateString("ar-EG")}`;}catch{}
+  }
+  return t;
+}
+/* The EGX page reports P/E = 0 for companies with no positive earnings —
+ * say that instead of printing a bare 0.00. */
+function scrPeText(s){
+  const p=scrPe(s);
+  if(p===null)return"غير متاح";
+  if(p<=0)return"غير موجب (لا أرباح مطبقة)";
+  return p.toFixed(2);
 }
 
 /* ─── US stocks: same explicit state model; no static fallback. */
@@ -3929,15 +4025,17 @@ function fmtAmountEgp(v){
   if(n>=1e3) return (n/1e3).toFixed(0)+" ألف";
   return String(n);
 }
-/* Which of the requested columns the source did not publish for ANY priced
- * row — the footer lists them honestly instead of leaving silent "—" cells. */
+/* Which of the requested columns the sources did not publish for ANY priced
+ * row — the footer lists them honestly instead of leaving silent "—" cells.
+ * P/E + coupon yield count as provided once EITHER the price scan or the
+ * EGX official layer supplies them for at least one row. */
 function scrMissingColumns(stocks){
   const priced=stocks.filter(s=>!s.noData&&typeof s.price==="number"&&Number.isFinite(s.price));
   const has=f=>priced.some(s=>typeof s[f]==="number"&&Number.isFinite(s[f]));
   const missing=[];
   if(!has("amount"))missing.push("قيمة التداول");
-  if(!has("pe"))missing.push("P/E");
-  if(!has("divYield"))missing.push("العائد التوزيعي");
+  if(!priced.some(s=>scrPe(s)!==null))missing.push("P/E");
+  if(!priced.some(s=>scrDy(s)!==null))missing.push("العائد التوزيعي");
   if(!(has("high52w")&&has("low52w")))missing.push("52 أسبوع");
   return missing;
 }
@@ -5382,6 +5480,9 @@ function openStockDetail(sym){
       {label:"الافتتاح",value:number(s.open),style:"font-family:var(--mono);"},
       {label:"الحجم",value:knownStockNumber(s.vol)!==null?fmtVol(s.vol):"غير متاح",style:"font-family:var(--mono);"},
       ...(isEgx&&knownStockNumber(s.amount)!==null?[{label:"قيمة التداول",value:fmtAmountEgp(s.amount)+" ج",style:"font-family:var(--mono);"}]:[]),
+      ...(isEgx?[{label:"مضاعف الربحية (P/E)",value:scrPeText(s),style:`font-family:var(--mono);${scrPe(s)!==null?"":"color:var(--t5);"}`}]:[]),
+      ...(isEgx?[{label:"العائد على الكوبون",value:scrDy(s)!==null?scrDy(s).toFixed(2)+"%":"غير متاح",style:`font-family:var(--mono);${scrDy(s)!==null?"":"color:var(--t5);"}`}]:[]),
+      ...(isEgx?[{label:"توزيعات آخر 12 شهرًا",value:scrDivTtmText(s),style:`font-family:var(--mono);${scrDivTtm(s)?"":"color:var(--t5);"}`}]:[]),
     ],
     refresh:async()=>{if(isEgx)await fetchStocksData();else await fetchUsStocksData();openStockDetail(sym);},
   });
@@ -7392,8 +7493,10 @@ function setScrMarket(){ renderScrSectorPills(); renderScrResults(); }
 function renderScrSectorPills(){
   const row=document.getElementById("scr-sector-row");
   if(!row) return;
+  /* Priced rows only — the pills must count what the screener shows. */
+  const priced=scrPricedStocks();
   const counts=new Map();
-  for(const s of liveStocks){
+  for(const s of priced){
     const sec=String(s.sector||"").trim();
     if(!sec) continue;
     counts.set(sec,(counts.get(sec)||0)+1);
@@ -7402,7 +7505,7 @@ function renderScrSectorPills(){
   /* Keep the active pill if it still exists, otherwise fall back to "all". */
   const active=scrFilters.sector!=="all"&&counts.has(scrFilters.sector)?scrFilters.sector:"all";
   if(active==="all") scrFilters.sector="all";
-  const items=[["all",`الكل (${liveStocks.length})`],...sectors.map(([name,count])=>[name,`${name} (${count})`])];
+  const items=[["all",`الكل (${priced.length})`],...sectors.map(([name,count])=>[name,`${name} (${count})`])];
   /* JSON for the JS string literal, HTML-escaped for the attribute. */
   const attr=v=>JSON.stringify(v).replace(/"/g,"&quot;");
   row.innerHTML=items.map(([v,l])=>`<button class="scr-f${v===active?" active":""}" onclick="setScrFilter('sector',${attr(v)},this)">${l}</button>`).join("");
@@ -7468,20 +7571,20 @@ function scrComputeFiltered(stocks_src){
   if(prMax<Infinity) stocks=stocks.filter(s=>s.price<=prMax);
   // Volume
   if(volMin>0) stocks=stocks.filter(s=>(s.vol||0)>=volMin);
-  // P/E
+  // P/E (merged: price scan, else EGX official layer)
   const peFilter=document.getElementById("scr-pe")?.value||"all";
-  if(peFilter==="0-10")  stocks=stocks.filter(s=>s.pe&&s.pe>0&&s.pe<=10);
-  else if(peFilter==="0-15")  stocks=stocks.filter(s=>s.pe&&s.pe>0&&s.pe<=15);
-  else if(peFilter==="15-30") stocks=stocks.filter(s=>s.pe&&s.pe>15&&s.pe<=30);
-  else if(peFilter==="30-50") stocks=stocks.filter(s=>s.pe&&s.pe>30&&s.pe<=50);
-  else if(peFilter==="50+")   stocks=stocks.filter(s=>s.pe&&s.pe>50);
-  else if(peFilter==="neg")   stocks=stocks.filter(s=>!s.pe||s.pe<=0);
-  // Dividend
+  if(peFilter==="0-10")  stocks=stocks.filter(s=>{const p=scrPe(s);return p&&p>0&&p<=10;});
+  else if(peFilter==="0-15")  stocks=stocks.filter(s=>{const p=scrPe(s);return p&&p>0&&p<=15;});
+  else if(peFilter==="15-30") stocks=stocks.filter(s=>{const p=scrPe(s);return p&&p>15&&p<=30;});
+  else if(peFilter==="30-50") stocks=stocks.filter(s=>{const p=scrPe(s);return p&&p>30&&p<=50;});
+  else if(peFilter==="50+")   stocks=stocks.filter(s=>{const p=scrPe(s);return p&&p>50;});
+  else if(peFilter==="neg")   stocks=stocks.filter(s=>{const p=scrPe(s);return p===null||p<=0;});
+  // Dividend (merged: price scan, else EGX official coupon yield)
   const divFilter=document.getElementById("scr-div")?.value||"all";
-  if(divFilter==="any")  stocks=stocks.filter(s=>s.divYield&&s.divYield>0);
-  else if(divFilter==="2+") stocks=stocks.filter(s=>s.divYield&&s.divYield>=2);
-  else if(divFilter==="4+") stocks=stocks.filter(s=>s.divYield&&s.divYield>=4);
-  else if(divFilter==="6+") stocks=stocks.filter(s=>s.divYield&&s.divYield>=6);
+  if(divFilter==="any")  stocks=stocks.filter(s=>{const d=scrDy(s);return d&&d>0;});
+  else if(divFilter==="2+") stocks=stocks.filter(s=>{const d=scrDy(s);return d&&d>=2;});
+  else if(divFilter==="4+") stocks=stocks.filter(s=>{const d=scrDy(s);return d&&d>=4;});
+  else if(divFilter==="6+") stocks=stocks.filter(s=>{const d=scrDy(s);return d&&d>=6;});
   // EPS
   const epsFilter=document.getElementById("scr-eps")?.value||"all";
   if(epsFilter==="pos") stocks=stocks.filter(s=>s.eps&&s.eps>0);
@@ -7510,16 +7613,25 @@ function renderScrResults(){
   /* EGX-only screener: one market, one source, one state object. */
   const meta=egxStocksFreshness;
   const footer=document.getElementById("scr-footer");
-  const stocks_src=liveStocks;
-  if(!stocks_src.length){
+  const all=liveStocks;
+  /* The screener only shows what the source priced — noData rows are
+     excluded up front and disclosed in the footer, never padded with "—". */
+  const stocks_src=scrPricedStocks();
+  const excludedNoData=all.length-stocks_src.length;
+  if(!all.length){
     tb.innerHTML=`<tr><td colspan="14" class="scr-empty">${meta.unavailable?`📡 بيانات أسهم EGX غير متاحة من المصدر حاليًا<br/><button onclick="fetchStocksData()" style="margin-top:7px;background:none;border:1px solid var(--b2);border-radius:6px;color:var(--t3);font:inherit;cursor:pointer;padding:3px 8px;">↻ إعادة المحاولة</button>`:"⏳ جارٍ تحميل بيانات أسهم EGX..."}</td></tr>`;
     if(countEl) countEl.textContent=meta.unavailable?"غير متاح":"جارٍ...";
     if(footer)footer.textContent=`📡 ${marketAgeLabel(meta)} · ${marketStateLabel(meta)} · المصدر: ${meta.source||"غير متاح"}`;
     return;
   }
+  if(!stocks_src.length){
+    tb.innerHTML=`<tr><td colspan="14" class="scr-empty">⚠️ المصدر لم يقدّم أسعارًا لأي سهم حاليًا<br/><button onclick="fetchStocksData()" style="margin-top:7px;background:none;border:1px solid var(--b2);border-radius:6px;color:var(--t3);font:inherit;cursor:pointer;padding:3px 8px;">↻ إعادة المحاولة</button></td></tr>`;
+    if(countEl) countEl.textContent="0 سهم";
+    if(footer)footer.textContent=`📡 ${marketAgeLabel(meta)} · ${marketStateLabel(meta)} · المصدر: ${meta.source||"غير متاح"}`;
+    return;
+  }
 
   const stocks=scrComputeFiltered(stocks_src);
-  const noDataCount=stocks.filter(s=>s.noData===true).length;
   const missingCols=scrMissingColumns(stocks_src);
 
   /* The footer is the single source of truth for data state: when the data
@@ -7531,12 +7643,12 @@ function renderScrResults(){
     if(meta.stateLabel) text+=` · ${meta.stateLabel}`;
     text+=` · المصدر: ${meta.source||"غير متاح"}`;
     if(meta.sourceNote) text+=` · ${meta.sourceNote}`;
-    if(noDataCount) text+=` · ${noDataCount} بدون بيانات من المصدر`;
+    if(excludedNoData) text+=` · تم استبعاد ${excludedNoData} سهم بدون بيانات من المصدر`;
     if(missingCols.length) text+=` · غير متاحة من المصدر: ${missingCols.join("، ")}`;
     footer.textContent=text;
   }
 
-  if(countEl) countEl.textContent=`${stocks.length} سهم${noDataCount?` (${noDataCount} بدون بيانات)`:""}`;
+  if(countEl) countEl.textContent=`${stocks.length} سهم`;
   if(!stocks.length){
     tb.innerHTML=`<tr><td colspan="14" class="scr-empty">🔍 لا توجد أسهم مطابقة</td></tr>`;
     return;
@@ -7565,8 +7677,8 @@ function renderScrResults(){
       <td class="${cell}" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${noData?"—":fmtVol(s.vol)}</td>
       <td class="${cell}" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${noData?"—":(knownStockNumber(s.amount)===null?"—":fmtAmountEgp(s.amount)+" <span style='color:var(--t5);font-size:9px;'>ج</span>")}</td>
       <td class="${cell}" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${noData?"—":(s.mktCapM?fmtMktCap(s.mktCapM)+"<span style='color:var(--t5);font-size:9px;'> ج</span>":"—")}</td>
-      <td class="${cell}" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${noData?"—":(s.pe&&s.pe>0?s.pe.toFixed(1):"—")}</td>
-      <td class="${cell}" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${noData?"—":(s.divYield&&s.divYield>0?s.divYield.toFixed(2)+"%":"—")}</td>
+      <td class="${cell}" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${noData?"—":(scrPe(s)!==null?scrPe(s).toFixed(1):"—")}</td>
+      <td class="${cell}" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${noData?"—":(scrDy(s)!==null?scrDy(s).toFixed(2)+"%":"—")}</td>
       <td class="${cell}" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${noData?"—":num(s.high52w,2)}</td>
       <td class="${cell}" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${noData?"—":num(s.low52w,2)}</td>
       <td class="${cell}" style="text-align:center;"><button onclick='event.stopPropagation();toggleWL(${safeJsArg(s.sym)})'  style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;opacity:${inWL?1:.35};">${inWL?"⭐":"☆"}</button></td>
@@ -7601,14 +7713,15 @@ function resetScrFilters(){
 /* ─── CSV Export ─── */
 function exportScrCSV(){
   /* EGX-only screener: one export shape, EGP currency, matching the
-     on-screen columns exactly (search/filters/sort applied). */
-  const stocks_src=liveStocks;
+     on-screen columns exactly (search/filters/sort applied). Priced rows
+     only — the export mirrors what the screener shows on screen. */
+  const stocks_src=scrPricedStocks();
   if(!stocks_src.length){showToast("⚠️ لا توجد بيانات للتصدير");return;}
   const rows=scrComputeFiltered(stocks_src);
   if(!rows.length){showToast("⚠️ لا توجد نتائج مطابقة للفلاتر الحالية");return;}
   const cur="EGP";
   const header=[["Symbol","Name","Price ("+cur+")","Change ("+cur+")","Change%","Day High","Day Low","Volume","Traded Value ("+cur+")","MktCap (M "+cur+")","P/E","Div Yield%","EPS","52w High","52w Low","Sector"]];
-  const csv=header.concat(rows.map(s=>[s.sym,s.name,(s.noData===true||!(typeof s.price==="number"&&Number.isFinite(s.price)))?"":s.price.toFixed(2),knownStockNumber(s.chg)===null?"":s.chg,knownStockNumber(s.chgPct)===null?"":s.chgPct.toFixed(2),knownStockNumber(s.high)===null?"":s.high,knownStockNumber(s.low)===null?"":s.low,knownStockNumber(s.vol)===null?"":s.vol,knownStockNumber(s.amount)===null?"":s.amount,knownStockNumber(s.mktCapM)===null?"":s.mktCapM.toFixed(0),(s.pe||"").toString(),(s.divYield||"").toString(),(s.eps||"").toString(),(s.high52w||"").toString(),(s.low52w||"").toString(),s.sector||""]))
+  const csv=header.concat(rows.map(s=>[s.sym,s.name,(typeof s.price==="number"&&Number.isFinite(s.price))?s.price.toFixed(2):"",knownStockNumber(s.chg)===null?"":s.chg,knownStockNumber(s.chgPct)===null?"":s.chgPct.toFixed(2),knownStockNumber(s.high)===null?"":s.high,knownStockNumber(s.low)===null?"":s.low,knownStockNumber(s.vol)===null?"":s.vol,knownStockNumber(s.amount)===null?"":s.amount,knownStockNumber(s.mktCapM)===null?"":s.mktCapM.toFixed(0),scrPe(s)!==null?scrPe(s).toFixed(2):"",scrDy(s)!==null?scrDy(s).toFixed(2):"",knownStockNumber(s.eps)===null?"":s.eps,knownStockNumber(s.high52w)===null?"":s.high52w,knownStockNumber(s.low52w)===null?"":s.low52w,s.sector||""]))
     .map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}));
