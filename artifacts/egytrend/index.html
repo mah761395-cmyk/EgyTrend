@@ -2119,7 +2119,7 @@ function normalizeStockFreshness(raw){
   const ts=finiteNumber(raw?.fetchedAt??raw?.ts,0);
   const source=String(raw?.source||"غير متاح").slice(0,160);
   const delay=finiteNumber(raw?.delayedMinutes,NaN);
-  return {fetchedAt:ts>0?ts:0,stale:raw?.stale===true,source,unavailable:raw?.unavailable===true||source==="غير متاح",loading:false,delayedMinutes:Number.isFinite(delay)&&delay>0?delay:undefined};
+  return {fetchedAt:ts>0?ts:0,stale:raw?.stale===true,source,unavailable:raw?.unavailable===true||source==="غير متاح",loading:false,delayedMinutes:Number.isFinite(delay)&&delay>0?delay:undefined,state:raw?.state,stateLabel:raw?.stateLabel,sourceNote:raw?.sourceNote};
 }
 function marketAgeLabel(meta){
   const ts=finiteNumber(meta?.fetchedAt,0);
@@ -2169,7 +2169,7 @@ function normalizeStockList(raw){
     return [{
       instrumentId:canonicalInstrumentId(s.instrumentId),sym,name:String(s.name||sym).slice(0,160),sector:String(s.sector||"").slice(0,100),price:noData?undefined:price,noData,
       prevClose:noData?undefined:positive("prevClose"),chg:noData?undefined:optional("chg"),chgPct:noData?undefined:optional("chgPct"),
-      vol:noData?undefined:nonNegative("vol"),high:noData?undefined:positive("high"),low:noData?undefined:positive("low"),open:noData?undefined:positive("open"),
+      vol:noData?undefined:nonNegative("vol"),amount:noData?undefined:nonNegative("amount"),high:noData?undefined:positive("high"),low:noData?undefined:positive("low"),open:noData?undefined:positive("open"),
       mktCapM:noData?undefined:optional("mktCapM"),pe:noData?undefined:optional("pe"),forwardPE:noData?undefined:optional("forwardPE"),divYield:noData?undefined:optional("divYield"),eps:noData?undefined:optional("eps"),bookValue:noData?undefined:optional("bookValue"),priceToBook:noData?undefined:optional("priceToBook"),sharesM:noData?undefined:optional("sharesM"),high52w:noData?undefined:optional("high52w"),low52w:noData?undefined:optional("low52w"),ts:finiteNumber(s.ts,0),source:String(s.source??"").slice(0,160),delayedMinutes:finiteNumber(s.delayedMinutes,NaN),freshness:String(s.freshness??"").slice(0,20),
     }];
   }).slice(0,600);
@@ -2377,7 +2377,7 @@ let liveStocks = []; // EGX stocks — populated from /api/markets/stocks
 let egxStocksFreshness = {fetchedAt:0,stale:true,source:"غير متاح",unavailable:false,loading:true};
 let usStocks   = []; // US stocks  — populated from /api/markets/us-stocks
 let usStocksFreshness = {fetchedAt:0,stale:true,source:"غير متاح",unavailable:false,loading:true};
-let scrMarket  = "egx"; // active screener market: "egx" | "us"
+let scrMarket  = "egx"; // screener market constant — the screener is EGX-only (no foreign markets)
 let scrSearch  = "";
 let scrFilters = {sector:"all",perf:"all",priceMin:"",priceMax:"",volMin:"",peFilter:"all",divFilter:"all",epsFilter:"all",sortBy:"chgPct",sortDir:-1};
 let scrMktCap="all";
@@ -3877,6 +3877,7 @@ async function fetchStocksData(){
     egxStocksFreshness={...normalizeStockFreshness(j),unavailable:j.unavailable===true||stocks.length===0};
     liveStocks=stocks;
     egxTvSymbols=Array.isArray(j.tvSymbols)?j.tvSymbols:[];
+    renderScrSectorPills();
 
   }catch{
     if(egxStocksFreshness.fetchedAt)egxStocksFreshness={...egxStocksFreshness,stale:true,loading:false};
@@ -3918,6 +3919,27 @@ function fmtMktCap(m){
   if(!m) return "—";
   if(m>=1000) return (m/1000).toFixed(1)+"B";
   return m+"M";
+}
+/* Traded value in plain EGP (the scanner's "amount"), compact Arabic units. */
+function fmtAmountEgp(v){
+  const n=knownStockNumber(v);
+  if(n===null) return "—";
+  if(n>=1e9) return (n/1e9).toFixed(2)+" مليار";
+  if(n>=1e6) return (n/1e6).toFixed(1)+" مليون";
+  if(n>=1e3) return (n/1e3).toFixed(0)+" ألف";
+  return String(n);
+}
+/* Which of the requested columns the source did not publish for ANY priced
+ * row — the footer lists them honestly instead of leaving silent "—" cells. */
+function scrMissingColumns(stocks){
+  const priced=stocks.filter(s=>!s.noData&&typeof s.price==="number"&&Number.isFinite(s.price));
+  const has=f=>priced.some(s=>typeof s[f]==="number"&&Number.isFinite(s[f]));
+  const missing=[];
+  if(!has("amount"))missing.push("قيمة التداول");
+  if(!has("pe"))missing.push("P/E");
+  if(!has("divYield"))missing.push("العائد التوزيعي");
+  if(!(has("high52w")&&has("low52w")))missing.push("52 أسبوع");
+  return missing;
 }
 
 /* ═══════════════════ AUTH ═══════════════════ */
@@ -5359,6 +5381,7 @@ function openStockDetail(sym){
       {label:"أقل اليوم",value:number(s.low),style:"font-family:var(--mono);"},
       {label:"الافتتاح",value:number(s.open),style:"font-family:var(--mono);"},
       {label:"الحجم",value:knownStockNumber(s.vol)!==null?fmtVol(s.vol):"غير متاح",style:"font-family:var(--mono);"},
+      ...(isEgx&&knownStockNumber(s.amount)!==null?[{label:"قيمة التداول",value:fmtAmountEgp(s.amount)+" ج",style:"font-family:var(--mono);"}]:[]),
     ],
     refresh:async()=>{if(isEgx)await fetchStocksData();else await fetchUsStocksData();openStockDetail(sym);},
   });
@@ -5394,7 +5417,7 @@ function renderVIP(){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px;">
         ${[
           ["🤖","مساعد البيانات","اسأل عن سهم أو قطاع — يصف البيانات والمصادر المتاحة دون توصيات"],
-          ["🔍","Stock Screener","فلتر 20 سهم مصري بعشرات المعايير: P/E، الحجم، القطاع — مثل Investing.com تماماً"],
+          ["🔍","Stock Screener","فلتر أسهم البورصة المصرية بعشرات المعايير: السعر، التغير، الحجم، القطاع، P/E — بحسب ما يوفره المصدر"],
           ["💼","متابع المحفظة","أدخل أسهمك وأسعار شرائها — ملخص وصفي للأداء الظاهر ومصادره دون توصيات"],
           ["🌅","موجزات يومية","موجز صباح وإغلاق وصفي من البيانات المتاحة، مع توضيح النقص والتأخر"],
           ["📊","شفافية البيانات","يظهر مصدر كل بيانات السوق ووقت جمعها وحالة التأخر عند توفرها"]
@@ -5928,9 +5951,8 @@ function vBuildScr(b){
           <span id="scr-count" style="color:var(--t5);font-size:10px;font-family:var(--mono);">...</span>
         </div>
       </div>
-      <div class="scr-mkt-tabs">
-        <button class="scr-mkt-tab active" id="scr-tab-egx" onclick="setScrMarket('egx',this)">🇪🇬 EGX — البورصة المصرية</button>
-        <button class="scr-mkt-tab" id="scr-tab-us" onclick="setScrMarket('us',this)">🇺🇸 US — بورصة نيويورك</button>
+      <div class="scr-mkt-tabs" style="justify-content:center;">
+        <span class="scr-mkt-tab active" style="cursor:default;" title="الماسح متخصص في البورصة المصرية EGX فقط">🇪🇬 EGX — البورصة المصرية</span>
       </div>
       <div class="scr-search-row">
         <input type="text" id="scr-search" placeholder="ابحث بالرمز أو الاسم…" oninput="scrSearch=this.value.trim();renderScrResults()"/>
@@ -5948,7 +5970,7 @@ function vBuildScr(b){
       </div>
       <div id="scr-adv" style="display:none;border-top:1px solid var(--b1);padding-top:10px;margin-bottom:8px;">
         <div class="scr-adv-grid">
-          <div><div style="color:var(--t5);font-size:9px;margin-bottom:3px;" id="scr-pr-label">السعر من</div><input id="scr-pr-min" type="number" min="0" placeholder="0" class="mini-in" oninput="renderScrResults()" style="margin-bottom:0;"/></div>
+          <div><div style="color:var(--t5);font-size:9px;margin-bottom:3px;" id="scr-pr-label">السعر من (ج)</div><input id="scr-pr-min" type="number" min="0" placeholder="0" class="mini-in" oninput="renderScrResults()" style="margin-bottom:0;"/></div>
           <div><div style="color:var(--t5);font-size:9px;margin-bottom:3px;">السعر إلى</div><input id="scr-pr-max" type="number" min="0" placeholder="∞" class="mini-in" oninput="renderScrResults()" style="margin-bottom:0;"/></div>
         </div>
         <div class="scr-adv-grid" style="margin-top:6px;">
@@ -5995,9 +6017,13 @@ function vBuildScr(b){
         <table class="scr-tbl">
           <thead><tr id="scr-thead-row">
             <th class="scr-th" onclick="scrSortBy('name')">السهم</th>
-            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('price')">السعر</th>
-            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('chgPct')">تغيير%</th>
-            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('vol')">حجم</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('price')">آخر سعر (ج)</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('chg')">تغيّر (ج)</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('chgPct')">تغيّر %</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('high')">الأعلى</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('low')">الأدنى</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('vol')">الحجم</th>
+            <th class="scr-th" style="text-align:left;" onclick="scrSortBy('amount')">قيمة التداول</th>
             <th class="scr-th" style="text-align:left;" onclick="scrSortBy('mktCapM')">رأس المال</th>
             <th class="scr-th" style="text-align:left;" onclick="scrSortBy('pe')">P/E</th>
             <th class="scr-th" style="text-align:left;" onclick="scrSortBy('divYield')">توزيعات%</th>
@@ -7354,36 +7380,32 @@ function toggleScrAdv(){
   if(btn) btn.style.borderColor=scrAdvOpen?"rgba(59,130,246,.4)":"var(--b1)";
 }
 
-function setScrMarket(mkt,btn){
-  scrMarket=mkt;
-  document.querySelectorAll(".scr-mkt-tab").forEach(b=>b.classList.remove("active"));
-  btn.classList.add("active");
-  // Update price label currency
-  const lbl=document.getElementById("scr-pr-label");
-  if(lbl) lbl.textContent=mkt==="egx"?"السعر من (ج)":"السعر من ($)";
-  // Fetch US data on first switch
-  if(mkt==="us" && !usStocks.length){
-    const tb=document.getElementById("scr-results");
-    if(tb) tb.innerHTML=`<tr><td colspan="10" class="scr-empty">⏳ جارٍ تحميل أسهم US...</td></tr>`;
-    fetchUsStocksData();
-  } else {
-    renderScrSectorPills();
-    renderScrResults();
-  }
-}
+/* The screener is EGX-only: there is no market switch to make. (Kept as a
+ * no-op so any stale inline reference is a harmless no-op, not an error.) */
+function setScrMarket(){ renderScrSectorPills(); renderScrResults(); }
 
 /* ─── Dynamic Sector Pills ─── */
+/* Pills are built from the sectors the source actually returned for the
+ * loaded rows (never a hard-coded list), so a filter can never hide the
+ * whole market by not matching a label the data doesn't carry. Curated
+ * Arabic names win; the source's own labels fill the rest. */
 function renderScrSectorPills(){
   const row=document.getElementById("scr-sector-row");
   if(!row) return;
-  const egxSectors=["all:الكل","بنوك:🏦 بنوك","عقارات:🏢 عقارات","صناعة:🏭 صناعة","تقنية:💻 تقنية","اتصالات:📡 اتصالات","مالية:💹 مالية","صحة:🏥 صحة","أدوية:💊 أدوية","غذائية:🌾 غذائية","مواد بناء:🧱 مواد بناء","طاقة:⚡ طاقة"];
-  const usSectors=["all:All","Technology:💻 Tech","Finance:🏦 Finance","Healthcare:🏥 Healthcare","Consumer:🛒 Consumer","Energy:⚡ Energy","Industrials:🏭 Industrials","Telecom:📡 Telecom"];
-  const list=scrMarket==="egx"?egxSectors:usSectors;
-  row.innerHTML=list.map((x,i)=>{
-    const[v,l]=x.split(":");
-    return`<button class="scr-f${i===0?" active":""}" onclick="setScrFilter('sector','${v}',this)">${l}</button>`;
-  }).join("");
-  scrFilters.sector="all";
+  const counts=new Map();
+  for(const s of liveStocks){
+    const sec=String(s.sector||"").trim();
+    if(!sec) continue;
+    counts.set(sec,(counts.get(sec)||0)+1);
+  }
+  const sectors=[...counts.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ar"));
+  /* Keep the active pill if it still exists, otherwise fall back to "all". */
+  const active=scrFilters.sector!=="all"&&counts.has(scrFilters.sector)?scrFilters.sector:"all";
+  if(active==="all") scrFilters.sector="all";
+  const items=[["all",`الكل (${liveStocks.length})`],...sectors.map(([name,count])=>[name,`${name} (${count})`])];
+  /* JSON for the JS string literal, HTML-escaped for the attribute. */
+  const attr=v=>JSON.stringify(v).replace(/"/g,"&quot;");
+  row.innerHTML=items.map(([v,l])=>`<button class="scr-f${v===active?" active":""}" onclick="setScrFilter('sector',${attr(v)},this)">${l}</button>`).join("");
 }
 
 /* ─── Column Sort ─── */
@@ -7468,7 +7490,7 @@ function scrComputeFiltered(stocks_src){
   if(scrMktCap==="mega")  stocks=stocks.filter(s=>s.mktCapM&&s.mktCapM>=100000);
   else if(scrMktCap==="large") stocks=stocks.filter(s=>s.mktCapM&&s.mktCapM>=10000&&s.mktCapM<100000);
   else if(scrMktCap==="mid")   stocks=stocks.filter(s=>s.mktCapM&&s.mktCapM>=1000&&s.mktCapM<10000);
-  else if(scrMktCap==="small") stocks=stocks.filter(s=>!s.mktCapM||s.mktCapM<1000);
+  else if(scrMktCap==="small") stocks=stocks.filter(s=>Number.isFinite(s.mktCapM)&&s.mktCapM<1000);
   // Sort
   stocks.sort((a,b)=>{
     let av=a[scrFilters.sortBy],bv=b[scrFilters.sortBy];
@@ -7485,64 +7507,77 @@ function renderScrResults(){
   const tb=document.getElementById("scr-results");
   if(!tb) return;
   const countEl=document.getElementById("scr-count");
-  const meta=scrMarket==="egx"?egxStocksFreshness:usStocksFreshness;
+  /* EGX-only screener: one market, one source, one state object. */
+  const meta=egxStocksFreshness;
   const footer=document.getElementById("scr-footer");
-  if(footer)footer.textContent=`📡 ${marketAgeLabel(meta)} · ${marketStateLabel(meta)} · المصدر: ${meta.source||"غير متاح"}`;
-
-  const stocks_src=scrMarket==="egx"?liveStocks:usStocks;
+  const stocks_src=liveStocks;
   if(!stocks_src.length){
-    const retry=scrMarket==="egx"?"fetchStocksData()":"fetchUsStocksData()";
-    tb.innerHTML=`<tr><td colspan="10" class="scr-empty">${meta.unavailable?`📡 بيانات الأسهم غير متاحة حاليًا<br/><button onclick="${retry}" style="margin-top:7px;background:none;border:1px solid var(--b2);border-radius:6px;color:var(--t3);font:inherit;cursor:pointer;padding:3px 8px;">↻ إعادة المحاولة</button>`:"⏳ جارٍ تحميل بيانات الأسهم..."}</td></tr>`;
+    tb.innerHTML=`<tr><td colspan="14" class="scr-empty">${meta.unavailable?`📡 بيانات أسهم EGX غير متاحة من المصدر حاليًا<br/><button onclick="fetchStocksData()" style="margin-top:7px;background:none;border:1px solid var(--b2);border-radius:6px;color:var(--t3);font:inherit;cursor:pointer;padding:3px 8px;">↻ إعادة المحاولة</button>`:"⏳ جارٍ تحميل بيانات أسهم EGX..."}</td></tr>`;
     if(countEl) countEl.textContent=meta.unavailable?"غير متاح":"جارٍ...";
+    if(footer)footer.textContent=`📡 ${marketAgeLabel(meta)} · ${marketStateLabel(meta)} · المصدر: ${meta.source||"غير متاح"}`;
     return;
   }
-
-  const isCurrency=scrMarket==="us";
 
   const stocks=scrComputeFiltered(stocks_src);
   const noDataCount=stocks.filter(s=>s.noData===true).length;
+  const missingCols=scrMissingColumns(stocks_src);
 
-  /* The counter is the real post-filter count — including rows the source
-     cannot price, so it never under-reports the market. The footer states
-     exactly which rows lack data and which columns the source does not
-     provide, instead of leaving silent "—" cells unexplained. */
-  if(footer)footer.textContent=`📡 ${marketAgeLabel(meta)} · ${marketStateLabel(meta)} · المصدر: ${meta.source||"غير متاح"}${noDataCount?` · ${noDataCount} بدون بيانات من المصدر`:""} · P/E والعائد التوزيعي و52 أسبوع غير متاحة من المصدر الحالي`;
+  /* The footer is the single source of truth for data state: when the data
+     was fetched, whether the session is open, the source, the source's own
+     latency caveat, how many rows the source cannot price, and exactly which
+     columns the source does not provide — no silent "—" cells unexplained. */
+  if(footer){
+    let text=`📡 ${marketAgeLabel(meta)} · ${marketStateLabel(meta)}`;
+    if(meta.stateLabel) text+=` · ${meta.stateLabel}`;
+    text+=` · المصدر: ${meta.source||"غير متاح"}`;
+    if(meta.sourceNote) text+=` · ${meta.sourceNote}`;
+    if(noDataCount) text+=` · ${noDataCount} بدون بيانات من المصدر`;
+    if(missingCols.length) text+=` · غير متاحة من المصدر: ${missingCols.join("، ")}`;
+    footer.textContent=text;
+  }
 
   if(countEl) countEl.textContent=`${stocks.length} سهم${noDataCount?` (${noDataCount} بدون بيانات)`:""}`;
   if(!stocks.length){
-    tb.innerHTML=`<tr><td colspan="10" class="scr-empty">🔍 لا توجد أسهم مطابقة</td></tr>`;
+    tb.innerHTML=`<tr><td colspan="14" class="scr-empty">🔍 لا توجد أسهم مطابقة</td></tr>`;
     return;
   }
 
-  const cur=isCurrency?"$":"ج";
+  const cell="scr-td";
+  const num=(v,d)=>{const n=knownStockNumber(v);return n===null?"—":n.toFixed(d);};
   tb.innerHTML=stocks.map(s=>{
     const up=stockChangeUp(s.chgPct);
     const change=stockChangeText(s.chgPct);
     const inWL=wl.includes(s.sym);
     const noData=s.noData===true;
     const chgClr=up===null?"var(--t5)":up?"var(--up)":"var(--dn)";
+    const chgAbs=knownStockNumber(s.chg);
+    const chgAbsTxt=chgAbs===null?"—":`${chgAbs>=0?"+":""}${chgAbs.toFixed(2)}`;
     return`<tr class="scr-tr" ${noData?'style="opacity:.75"':""} onclick='openStockDetail(${safeJsArg(s.sym)})'>
-      <td class="scr-td">
+      <td class="${cell}">
         <div class="scr-sym">${sanitize(s.sym)}${noData?` <span style="font-size:8px;color:var(--au);border:1px solid rgba(245,158,11,.4);border-radius:5px;padding:1px 5px;font-family:var(--sans);">لا بيانات</span>`:""}</div>
         <div class="scr-sname">${sanitize(s.name.slice(0,18))}</div>
       </td>
-      <td class="scr-td" style="text-align:left;font-family:var(--mono);${noData?"color:var(--t5);":"color:var(--t2);"}">${noData?"—":s.price.toFixed(2)+" <span style=\"color:var(--t5);font-size:9px;\">"+cur+"</span>"}</td>
-      <td class="scr-td" style="text-align:left;font-family:var(--mono);font-weight:700;color:${chgClr};">${change!=="—"?ltrChange(change):change}</td>
-      <td class="scr-td" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${fmtVol(s.vol)}</td>
-      <td class="scr-td" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${s.mktCapM?fmtMktCap(s.mktCapM)+"<span style='color:var(--t5);font-size:9px;'> "+cur+"</span>":"—"}</td>
-      <td class="scr-td" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${s.pe&&s.pe>0?s.pe.toFixed(1):"—"}</td>
-      <td class="scr-td" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${s.divYield&&s.divYield>0?s.divYield.toFixed(2)+"%":"—"}</td>
-      <td class="scr-td" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${s.high52w?s.high52w.toFixed(2):"—"}</td>
-      <td class="scr-td" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${s.low52w?s.low52w.toFixed(2):"—"}</td>
-      <td class="scr-td" style="text-align:center;"><button onclick='event.stopPropagation();toggleWL(${safeJsArg(s.sym)})'  style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;opacity:${inWL?1:.35};">${inWL?"⭐":"☆"}</button></td>
+      <td class="${cell}" style="text-align:left;font-family:var(--mono);${noData?"color:var(--t5);":"color:var(--t2);"}">${noData?"—":s.price.toFixed(2)+" <span style=\"color:var(--t5);font-size:9px;\">ج</span>"}</td>
+      <td class="${cell}" style="text-align:left;font-family:var(--mono);font-size:10px;color:${chgClr};">${noData?"—":ltrChange(chgAbsTxt)}</td>
+      <td class="${cell}" style="text-align:left;font-family:var(--mono);font-weight:700;color:${chgClr};">${noData?"—":(change!=="—"?ltrChange(change):change)}</td>
+      <td class="${cell}" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${noData?"—":num(s.high,2)}</td>
+      <td class="${cell}" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${noData?"—":num(s.low,2)}</td>
+      <td class="${cell}" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${noData?"—":fmtVol(s.vol)}</td>
+      <td class="${cell}" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${noData?"—":(knownStockNumber(s.amount)===null?"—":fmtAmountEgp(s.amount)+" <span style='color:var(--t5);font-size:9px;'>ج</span>")}</td>
+      <td class="${cell}" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${noData?"—":(s.mktCapM?fmtMktCap(s.mktCapM)+"<span style='color:var(--t5);font-size:9px;'> ج</span>":"—")}</td>
+      <td class="${cell}" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${noData?"—":(s.pe&&s.pe>0?s.pe.toFixed(1):"—")}</td>
+      <td class="${cell}" style="text-align:left;color:var(--t3);font-family:var(--mono);font-size:10px;">${noData?"—":(s.divYield&&s.divYield>0?s.divYield.toFixed(2)+"%":"—")}</td>
+      <td class="${cell}" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${noData?"—":num(s.high52w,2)}</td>
+      <td class="${cell}" style="text-align:left;color:var(--t4);font-family:var(--mono);font-size:10px;">${noData?"—":num(s.low52w,2)}</td>
+      <td class="${cell}" style="text-align:center;"><button onclick='event.stopPropagation();toggleWL(${safeJsArg(s.sym)})'  style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;opacity:${inWL?1:.35};">${inWL?"⭐":"☆"}</button></td>
     </tr>`;
   }).join("");
 }
 
 /* ─── Refresh ─── */
 function refreshScreener(){
-  if(scrMarket==="egx") fetchStocksData();
-  else fetchUsStocksData();
+  /* EGX-only screener: the only data path is the EGX stocks endpoint. */
+  fetchStocksData();
 }
 
 /* ─── Reset ─── */
@@ -7565,17 +7600,19 @@ function resetScrFilters(){
 
 /* ─── CSV Export ─── */
 function exportScrCSV(){
-  const stocks_src=scrMarket==="egx"?liveStocks:usStocks;
+  /* EGX-only screener: one export shape, EGP currency, matching the
+     on-screen columns exactly (search/filters/sort applied). */
+  const stocks_src=liveStocks;
   if(!stocks_src.length){showToast("⚠️ لا توجد بيانات للتصدير");return;}
   const rows=scrComputeFiltered(stocks_src);
   if(!rows.length){showToast("⚠️ لا توجد نتائج مطابقة للفلاتر الحالية");return;}
-  const cur=scrMarket==="us"?"USD":"EGP";
-  const header=[["Symbol","Name","Price ("+cur+")","Change%","Volume","MktCap (M)","P/E","Div Yield%","52w High","52w Low","EPS","Sector"]];
-  const csv=header.concat(rows.map(s=>[s.sym,s.name,(s.noData===true||!(typeof s.price==="number"&&Number.isFinite(s.price)))?"":s.price.toFixed(2),knownStockNumber(s.chgPct)===null?"":s.chgPct.toFixed(2),knownStockNumber(s.vol)===null?"":s.vol,knownStockNumber(s.mktCapM)===null?"":s.mktCapM.toFixed(0),(s.pe||"").toString(),(s.divYield||"").toString(),(s.high52w||"").toString(),(s.low52w||"").toString(),(s.eps||"").toString(),s.sector||""]))
+  const cur="EGP";
+  const header=[["Symbol","Name","Price ("+cur+")","Change ("+cur+")","Change%","Day High","Day Low","Volume","Traded Value ("+cur+")","MktCap (M "+cur+")","P/E","Div Yield%","EPS","52w High","52w Low","Sector"]];
+  const csv=header.concat(rows.map(s=>[s.sym,s.name,(s.noData===true||!(typeof s.price==="number"&&Number.isFinite(s.price)))?"":s.price.toFixed(2),knownStockNumber(s.chg)===null?"":s.chg,knownStockNumber(s.chgPct)===null?"":s.chgPct.toFixed(2),knownStockNumber(s.high)===null?"":s.high,knownStockNumber(s.low)===null?"":s.low,knownStockNumber(s.vol)===null?"":s.vol,knownStockNumber(s.amount)===null?"":s.amount,knownStockNumber(s.mktCapM)===null?"":s.mktCapM.toFixed(0),(s.pe||"").toString(),(s.divYield||"").toString(),(s.eps||"").toString(),(s.high52w||"").toString(),(s.low52w||"").toString(),s.sector||""]))
     .map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}));
-  a.download=`EgyTrend_${scrMarket.toUpperCase()}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.download=`EgyTrend_EGX_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
   showToast("✅ تم تصدير "+rows.length+" سهم (حسب الفلاتر الحالية)");
 }
@@ -7609,10 +7646,7 @@ function loadScrFilter(i){
   if(!saved[i]) return;
   Object.assign(scrFilters,saved[i].filters);
   scrMktCap=saved[i].mktCap||"all";
-  if(saved[i].market && saved[i].market!==scrMarket){
-    const tab=document.getElementById("scr-tab-"+saved[i].market);
-    if(tab) setScrMarket(saved[i].market,tab);
-  }
+  renderScrSectorPills();
   renderScrResults();
   showToast("✅ تم تحميل الفلتر: "+saved[i].name);
 }

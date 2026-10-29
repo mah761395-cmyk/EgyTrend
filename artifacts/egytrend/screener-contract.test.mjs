@@ -105,3 +105,55 @@ test("the no-data state is visible, never silent", () => {
   assert.ok(html.includes("لا بيانات من المصدر"), "EGX page tags no-data rows explicitly");
   assert.ok(html.includes("لا بيانات"), "screener table tags no-data rows explicitly");
 });
+
+test("the screener is EGX-only: no NYSE/foreign market option anywhere in it", () => {
+  // The UI: no US tab element and no market-switch call with "us".
+  assert.ok(!html.includes("scr-tab-us"), "no US market tab element in the DOM template");
+  assert.ok(!/setScrMarket\(\s*["']us["']/.test(html), "no code path switches the screener to a foreign market");
+  const build = functionBody("vBuildScr");
+  assert.ok(!build.includes("نيويورك") && !build.includes("NYSE"), "the screener header names no foreign exchange");
+  assert.ok(build.includes("البورصة المصرية"), "the screener header names the Egyptian exchange");
+  // The data path: results and CSV read the EGX list, not a market switch.
+  const results = functionBody("renderScrResults");
+  assert.match(results, /const stocks_src=liveStocks;/, "results render from the EGX list only");
+  assert.ok(!/usStocks/.test(results), "the results table never reads the US list");
+  const csv = functionBody("exportScrCSV");
+  assert.match(csv, /EgyTrend_EGX_/, "CSV export is labeled EGX");
+  assert.ok(!/usStocks/.test(csv), "CSV export never reads the US list");
+});
+
+test("the screener table shows every field the source provides, with null guards", () => {
+  const results = functionBody("renderScrResults");
+  // Required visible fields: last price, absolute change, change %, session
+  // high/low, volume, traded value — each guarded against absent data.
+  assert.match(results, /knownStockNumber\(s\.chg\)/, "absolute change cell is null-guarded");
+  assert.match(results, /s\.chgPct/, "percent change cell present");
+  assert.match(results, /num\(s\.high,2\)/, "session high cell present");
+  assert.match(results, /num\(s\.low,2\)/, "session low cell present");
+  assert.match(results, /fmtVol\(s\.vol\)/, "volume cell present");
+  assert.match(results, /s\.amount/, "traded-value cell present");
+  assert.match(results, /fmtAmountEgp/, "traded value is formatted in EGP, not invented units");
+  // The table header carries the same columns (sortable).
+  const build = functionBody("vBuildScr");
+  for (const col of ["آخر سعر (ج)", "تغيّر (ج)", "تغيّر %", "الأعلى", "الأدنى", "الحجم", "قيمة التداول"]) {
+    assert.ok(build.includes(col), `screener header must include the "${col}" column`);
+  }
+});
+
+test("sector pills are built from the loaded data, never a hard-coded list", () => {
+  const body = functionBody("renderScrSectorPills");
+  assert.match(body, /for\(const s of liveStocks\)/, "sector pills count the sectors present in the loaded EGX rows");
+  assert.ok(!body.includes("usSectors"), "no foreign sector list remains");
+  // The stale hard-coded Arabic sector list must be gone.
+  assert.ok(!/عقارات:🏢 عقارات/.test(body), "the hard-coded sector list was replaced by data-driven pills");
+});
+
+test("the screener footer states session state, the source note and the exact missing columns", () => {
+  const results = functionBody("renderScrResults");
+  assert.match(results, /meta\.stateLabel/, "footer shows the session state (live/closed) when the server publishes it");
+  assert.match(results, /meta\.sourceNote/, "footer renders the server's own latency note verbatim");
+  assert.match(results, /scrMissingColumns\(/, "footer lists exactly the columns the source did not provide");
+  const missing = functionBody("scrMissingColumns");
+  assert.match(missing, /قيمة التداول/, "traded value is reported when absent");
+  assert.match(missing, /52 أسبوع/, "52-week range is reported when absent");
+});
