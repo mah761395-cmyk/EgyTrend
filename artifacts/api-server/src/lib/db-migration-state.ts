@@ -53,6 +53,9 @@ export const MIGRATION_IDS: readonly string[] = [
   "0017_data_quality_events",
   "0018_user_onboarding_tour_replayed",
   "0019_portfolio_transactions",
+  "0020_app_users_last_login",
+  "0021_ai_usage_metering",
+  "0022_db_backups",
 ];
 
 /** Set once the boot runner has checked the database. */

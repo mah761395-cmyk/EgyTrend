@@ -232,7 +232,19 @@ router.post("/login", async (req: Request, res: Response) => {
     plan: normalized.plan,
     ...(normalized.vipExpiresAt ? { vipExpiresAt: normalized.vipExpiresAt } : {}),
   });
-  await db.update(appUsersTable).set({ updatedAt: new Date() }).where(eq(appUsersTable.id, user.id));
+  /* Stamp the successful login for admin visibility. A failure here must
+   * never block a valid login (e.g. a database that has not applied 0020
+   * yet falls back to the old updatedAt-only write). */
+  const loginAt = new Date();
+  try {
+    await db.update(appUsersTable).set({ updatedAt: loginAt, lastLoginAt: loginAt }).where(eq(appUsersTable.id, user.id));
+  } catch {
+    try {
+      await db.update(appUsersTable).set({ updatedAt: loginAt }).where(eq(appUsersTable.id, user.id));
+    } catch {
+      logger.warn("last-login stamp skipped; login unaffected");
+    }
+  }
   res.cookie(USER_SESSION_COOKIE, token, sessionCookieOptions(7 * 24 * 60 * 60 * 1000));
   res.json({ status: "ok", user: normalized, subscription: publicSubscription(entitlement), trial });
 });

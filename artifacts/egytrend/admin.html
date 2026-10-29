@@ -353,6 +353,8 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .broadcast-modal.type-greeting{border-color:rgba(139,92,246,.38);background:linear-gradient(155deg,#130d21,#08131f);}
 .broadcast-modal.type-new_feature{border-color:rgba(59,130,246,.38);}
 .broadcast-modal.type-maintenance{border-color:rgba(100,116,139,.45);background:linear-gradient(155deg,#0f1724,#08131f);}
+.admt{display:inline-block;background:var(--s2);border:1px solid var(--b1);border-radius:7px;padding:2px 7px;font-size:9.5px;color:var(--t3);font-family:var(--sans);line-height:1.5;}
+.admt-note{background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:8px 11px;color:var(--t4);font-size:10px;line-height:1.6;margin-bottom:10px;}
 .broadcast-modal.type-important{border-color:rgba(239,68,68,.45);background:linear-gradient(155deg,#200b10,#120c19);}
 .broadcast-kicker{display:flex;align-items:center;gap:8px;color:var(--t4);font-size:10px;font-weight:800;margin-bottom:8px;}
 .broadcast-icon{width:32px;height:32px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;background:var(--bld);font-size:16px;}
@@ -1351,6 +1353,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
     <button class="adm-tab" data-tab="reqs" onclick="admTab('reqs')">💰 الدفعات</button>
     <button class="adm-tab" type="button" data-tab="articles" onclick="admTab('articles')"><svg class="et-icon"><use href="#i-source"></use></svg> الأخبار</button>
     <button class="adm-tab" type="button" data-tab="sources" onclick="admTab('sources')"><svg class="et-icon"><use href="#i-source"></use></svg> المصادر</button>
+    <button class="adm-tab" type="button" data-tab="market" onclick="admTab('market')"><svg class="et-icon"><use href="#i-chart"></use></svg> بيانات السوق</button>
     <button class="adm-tab" type="button" data-tab="plans" onclick="admTab('plans')"><svg class="et-icon"><use href="#i-star"></use></svg> الاشتراكات</button>
     <button class="adm-tab" type="button" data-tab="lifecycle" onclick="admTab('lifecycle')"><svg class="et-icon"><use href="#i-calendar"></use></svg> التجديدات</button>
     <button class="adm-tab" type="button" data-tab="broadcasts" onclick="admTab('broadcasts')"><svg class="et-icon"><use href="#i-megaphone"></use></svg> الرسائل العامة</button>
@@ -5837,7 +5840,14 @@ function renderHdrVip(){
    ADMIN DASHBOARD — FULL PRODUCTION SYSTEM
 ══════════════════════════════════════════════════════════════ */
 
-function openAdm(){document.getElementById("adm").classList.add("open");renderAdmStats();admTab("dash");}
+function openAdm(){document.getElementById("adm").classList.add("open");renderAdmStats();admTab("dash");void admAuditGateTabs();}
+async function admAuditGateTabs(){
+  try{
+    const role=await admSessionRole();
+    const ok=["super_admin","admin"].includes(role);
+    document.querySelector('.adm-tab[data-tab="audit"]')?.style.setProperty("display",ok?"":"none");
+  }catch{}
+}
 function closeAdm(){window.location.assign("/");}
 
 async function renderAdmStats(){
@@ -5857,7 +5867,7 @@ function admTab(tab){
   const el=document.getElementById("adm-body");
   el.innerHTML=`<div class="empty"><div style="font-size:22px;margin-bottom:8px;">⏳</div><div>جارٍ التحميل...</div></div>`;
   const fns={dash:renderAdmDash,users:renderAdmUsers,reqs:renderAdmReqs,articles:renderAdmArticles,
-    sources:renderAdmSources,plans:renderAdmPlans,lifecycle:renderAdmLifecycle,broadcasts:renderAdmBroadcasts,trials:renderAdmTrials,referrals:renderAdmReferrals,coupons:renderAdmCoupons,
+    sources:renderAdmSources,market:renderAdmMarket,plans:renderAdmPlans,lifecycle:renderAdmLifecycle,broadcasts:renderAdmBroadcasts,trials:renderAdmTrials,referrals:renderAdmReferrals,coupons:renderAdmCoupons,
     employees:renderAdmEmployees,aiconfig:renderAdmAIConfig,audit:renderAdmAudit,opps:renderAdmOpps,
     dq:renderAdmDataQuality};
   if(fns[tab]) fns[tab](el);
@@ -5917,18 +5927,16 @@ async function renderAdmDataQuality(el){
     ${aSection(`آخر الأحداث (${events.length})`,evRows)}`;
 }
 
-async function loadAdminUsers(){
-  const r=await admFetch("/api/admin/users");
-  const d=await r.json();
-  if(!r.ok||d.status!=="ok")throw new Error(d.message||"failed");
-  return d.users||[];
-}
-
 /* ─── Dashboard ─── */
 async function renderAdmDash(el){
-  let users=[],reqs=[];
-  try{users=await loadAdminUsers();const r=await admFetch("/api/admin/requests");const d=await r.json();reqs=d.requests||[];}catch{}
-  const vipCount=users.filter(u=>u.plan==="vip").length;
+  let userTotal=0,vipTotal=0,reqs=[];
+  try{
+    const r=await admFetch("/api/admin/users?pageSize=1");const d=await r.json();
+    if(r.ok&&d.status==="ok")userTotal=d.total||0;
+    const rv=await admFetch("/api/admin/users?plan=vip&pageSize=1");const dv=await rv.json();
+    if(rv.ok&&dv.status==="ok")vipTotal=dv.total||0;
+    const rr=await admFetch("/api/admin/requests");const d2=await rr.json();reqs=d2.requests||[];
+  }catch{}
   const pendingCount=reqs.filter(r=>r.status==="pending").length;
   let serverStats={employees:0,plans:0,coupons:0,auditLogs:0,aiUsage30d:0};
   let recentAudit=[];
@@ -5940,8 +5948,8 @@ async function renderAdmDash(el){
 
   el.innerHTML=`
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
-    ${aCard("المستخدمون الكل",users.length,"#3b82f6")}
-    ${aCard("VIP نشط",vipCount,"#f59e0b")}
+    ${aCard("المستخدمون الكل",userTotal,"#3b82f6")}
+    ${aCard("VIP نشط",vipTotal,"#f59e0b")}
     ${aCard("طلبات معلّقة",pendingCount,"#ef4444")}
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
@@ -5959,47 +5967,201 @@ async function renderAdmDash(el){
   `;
 }
 
-/* ─── Users ─── */
-async function renderAdmUsers(el){
-  let users=[];
+/* ─── Users (professional table: server-side search/filter/sort/pagination) ─── */
+const admUsersState={page:1,pageSize:25,q:"",plan:"",status:"",sort:"createdAt",dir:"desc",total:0,totalPages:1,users:[],loading:false,role:null,_t:0};
+const ADM_USERS_COLS=[
+  {key:"name",label:"المستخدم",sortable:true},
+  {key:"email",label:"البريد",sortable:false},
+  {key:"createdAt",label:"التسجيل",sortable:true},
+  {key:"status",label:"الحالة",sortable:true},
+  {key:"plan",label:"الباقة",sortable:true},
+  {key:"lastLoginAt",label:"آخر دخول",sortable:true},
+  {key:"actions",label:"إجراءات",sortable:false},
+];
+
+async function admSessionRole(){
+  if(admUsersState.role!==null)return admUsersState.role;
   try{
-    const r=await admFetch("/api/admin/users");
+    const r=await admFetch("/api/admin/session");
+    const d=await r.json();
+    admUsersState.role=d?.employee?.role||"";
+  }catch{admUsersState.role="";}
+  return admUsersState.role;
+}
+
+function admUsersToggleSort(key){
+  const s=admUsersState;
+  if(s.sort===key)s.dir=s.dir==="asc"?"desc":"asc";
+  else{s.sort=key;s.dir=(key==="createdAt"||key==="lastLoginAt")?"desc":"asc";}
+  s.page=1;renderAdmUsersHead();admUsersLoad();
+}
+
+function admUsersPage(delta){
+  const s=admUsersState;
+  s.page=Math.min(s.totalPages,Math.max(1,s.page+delta));
+  admUsersLoad();
+}
+
+function renderAdmUsersHead(){
+  const s=admUsersState;
+  const head=document.getElementById("adm-users-head");
+  if(!head)return;
+  head.innerHTML=ADM_USERS_COLS.map(c=>{
+    const thStyle="padding:10px 12px;text-align:start;font-size:11px;font-weight:800;white-space:nowrap;border-bottom:1px solid var(--b1);user-select:none;background:var(--s1);";
+    if(!c.sortable)return `<th style="${thStyle}color:var(--t3);">${c.label}</th>`;
+    const active=s.sort===c.key;
+    const arrow=active?(s.dir==="asc"?" ▲":" ▼"):"";
+    return `<th style="${thStyle}color:${active?"var(--g)":"var(--t3)"};cursor:pointer;" onclick="admUsersToggleSort(${JSON.stringify(c.key)})">${c.label}${arrow}</th>`;
+  }).join("");
+}
+
+async function renderAdmUsers(el){
+  const s=admUsersState;
+  el.innerHTML=`
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center;">
+      <input id="adm-users-q" class="a-in" placeholder="🔍 بحث بالاسم أو البريد أو الهاتف..." style="flex:1;min-width:210px;box-sizing:border-box;" value="${sanitize(s.q)}">
+      ${aSel("adm-users-plan",[{v:"",l:"الكل: الباقة"},{v:"vip",l:"⭐ VIP"},{v:"free",l:"مجاني"}],"onchange=\"admUsersState.plan=this.value;admUsersState.page=1;admUsersLoad()\"")}
+      ${aSel("adm-users-status",[{v:"",l:"الكل: الحالة"},{v:"active",l:"✓ نشط"},{v:"banned",l:"🚫 محظور"}],"onchange=\"admUsersState.status=this.value;admUsersState.page=1;admUsersLoad()\"")}
+    </div>
+    <div id="adm-users-info" style="color:var(--t4);font-size:11px;margin-bottom:8px;">جارٍ التحميل...</div>
+    <div style="overflow-x:auto;border:1px solid var(--b1);border-radius:12px;">
+      <table style="width:100%;border-collapse:collapse;min-width:780px;">
+        <thead><tr id="adm-users-head"></tr></thead>
+        <tbody id="adm-users-tbody"></tbody>
+      </table>
+    </div>
+    <div id="adm-users-pager" style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap;"></div>`;
+  document.getElementById("adm-users-q").addEventListener("input",e=>{
+    s.q=e.target.value;
+    clearTimeout(s._t);
+    s._t=setTimeout(()=>{s.page=1;admUsersLoad();},300);
+  });
+  renderAdmUsersHead();
+  /* The row actions depend on the session role: resolve it BEFORE rendering
+   * rows so the delete action (super_admin only) is present on first paint. */
+  await admSessionRole();
+  await admUsersLoad();
+  renderAdmUsersHead();
+}
+
+async function admUsersLoad(){
+  const s=admUsersState;
+  if(s.loading)return;
+  s.loading=true;
+  try{
+    const p=new URLSearchParams();
+    p.set("page",String(s.page));p.set("pageSize",String(s.pageSize));
+    p.set("sort",s.sort);p.set("dir",s.dir);
+    if(s.q)p.set("q",s.q);
+    if(s.plan)p.set("plan",s.plan);
+    if(s.status)p.set("status",s.status);
+    const r=await admFetch("/api/admin/users?"+p.toString());
     const d=await r.json();
     if(!r.ok||d.status!=="ok")throw new Error(d.message||"failed");
-    users=d.users||[];
+    s.users=d.users||[];s.total=d.total||0;s.totalPages=d.totalPages||1;
+    if(s.page>s.totalPages&&s.totalPages>=1){s.page=s.totalPages;s.loading=false;return admUsersLoad();}
   }catch(e){
-    el.innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ تعذر تحميل المستخدمين</div>`;
+    s.loading=false;
+    const info=document.getElementById("adm-users-info");
+    const tbody=document.getElementById("adm-users-tbody");
+    if(info)info.innerHTML=`⚠️ تعذر تحميل المستخدمين`;
+    if(tbody)tbody.innerHTML=`<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--dn);font-size:12px;line-height:1.8;">تعذر التحميل حاليًا.<br><a href="javascript:void 0" onclick="admUsersLoad()" style="color:var(--g);font-weight:700;">إعادة المحاولة</a></td></tr>`;
     return;
   }
-  let userSearch="";
-  const render=()=>{
-    const filtered=userSearch?users.filter(u=>(u.name||"").includes(userSearch)||(u.phone||"").includes(userSearch)):users;
-    document.getElementById("adm-users-list").innerHTML=filtered.length?filtered.map(u=>`
-      <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:11px 13px;margin-bottom:7px;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-          <div style="flex:1;">
-            <div style="color:var(--t2);font-weight:700;font-size:13px;">${sanitize(u.name||"")}</div>
-            <div style="color:var(--t4);font-size:10.5px;font-family:var(--mono);margin-top:2px;">${sanitize(u.phone||"")}</div>
-            <div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap;">
-              ${u.plan==="vip"?aBadge("⭐ VIP","var(--aud)","var(--au)"):aBadge("مجاني","var(--s2)","var(--t4)")}
-               ${u.status==="banned"?aBadge("🚫 محظور","var(--dnd)","var(--dn)"):""}
-               ${u.vipExpiresAt?aBadge("حتى "+new Date(u.vipExpiresAt).toLocaleDateString("ar-EG"),"var(--bld)","#93c5fd"):""}
-            </div>
+  s.loading=false;
+  const info=document.getElementById("adm-users-info");
+  const from=s.total?((s.page-1)*s.pageSize+1):0;
+  const to=Math.min(s.page*s.pageSize,s.total);
+  if(info)info.innerHTML=`${s.total} مستخدم مسجّل — عرض ${from}–${to}`;
+  const tbody=document.getElementById("adm-users-tbody");
+  if(!tbody)return;
+  if(!s.users.length){
+    tbody.innerHTML=`<tr><td colspan="7" style="padding:28px;text-align:center;color:var(--t4);font-size:12px;">لا يوجد مستخدمون مطابقون</td></tr>`;
+  }else{
+    const isSuper=admUsersState.role==="super_admin";
+    tbody.innerHTML=s.users.map(u=>`
+      <tr style="border-bottom:1px solid var(--b1);">
+        <td style="padding:9px 12px;"><div style="color:var(--t2);font-weight:700;font-size:12.5px;">${sanitize(u.name||"")}</div><div style="color:var(--t4);font-size:10px;font-family:var(--mono);margin-top:1px;">${sanitize(u.phone||"")}</div></td>
+        <td style="padding:9px 12px;color:var(--t3);font-size:11px;font-family:var(--mono);">${u.email?sanitize(u.email):`<span style="color:var(--t5)">—</span>`}</td>
+        <td style="padding:9px 12px;color:var(--t3);font-size:11px;white-space:nowrap;">${u.createdAt?new Date(u.createdAt).toLocaleDateString("ar-EG"):"—"}</td>
+        <td style="padding:9px 12px;white-space:nowrap;">${u.status==="banned"?aBadge("🚫 محظور","var(--dnd)","var(--dn)"):aBadge("✓ نشط","var(--gd)","var(--g)")}</td>
+        <td style="padding:9px 12px;white-space:nowrap;">${u.plan==="vip"?`${aBadge("⭐ VIP","var(--aud)","var(--au)")}${u.vipExpiresAt?` <span style="color:var(--t4);font-size:9.5px;">حتى ${new Date(u.vipExpiresAt).toLocaleDateString("ar-EG")}</span>`:""}`:`<span class="bdg" style="background:var(--s2);color:var(--t4);">مجاني</span>`}</td>
+        <td style="padding:9px 12px;color:var(--t3);font-size:11px;white-space:nowrap;">${u.lastLoginAt?new Date(u.lastLoginAt).toLocaleString("ar-EG",{dateStyle:"short",timeStyle:"short"}):`<span style="color:var(--t5)">لم يسجل بعد</span>`}</td>
+        <td style="padding:9px 12px;white-space:nowrap;">
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+            ${u.status==="banned"
+              ?`<button class="r-btn app" style="font-size:10px;" onclick='admUserAction("unban_user",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})'>✓ فك الحظر</button>`
+              :`<button class="r-btn rej" style="font-size:10px;" onclick='admUserAction("ban_user",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})'>🚫 حظر</button>`}
+            ${u.plan==="vip"?`<button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick='admUserAction("downgrade_vip",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})'>↓ إيقاف VIP</button>`:""}
+            ${isSuper?`<button class="r-btn" style="font-size:10px;background:rgba(239,68,68,.12);color:var(--dn);border:1px solid rgba(239,68,68,.35);" onclick='admUserDeleteOpen(${Number(u.id)},${safeJsArg(u.name||"")},${safeJsArg(u.phone||"")})'>🗑 حذف نهائي</button>`:""}
           </div>
-          <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
-            ${u.plan==="vip"?`<button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick='admUserAction("downgrade_vip",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})' >↓ إيقاف VIP</button>`:`<span style="color:var(--t5);font-size:9px;max-width:120px;text-align:end;">التفعيل عبر اعتماد طلب دفع فقط</span>`}
-             ${u.status==="banned"?`<button class="r-btn app" style="font-size:10px;" onclick='admUserAction("unban_user",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})' >✓ فك الحظر</button>`:`<button class="r-btn rej" style="font-size:10px;" onclick='admUserAction("ban_user",${safeJsArg(u.phone)},${safeJsArg(u.name||"")})' >🚫 حظر</button>`}
-          </div>
-        </div>
-      </div>`).join(""):
-      `<div class="empty"><div style="font-size:26px;margin-bottom:7px;">👥</div><div>لا يوجد مستخدمون</div></div>`;
-  };
-  el.innerHTML=`
-    <input id="adm-user-search" placeholder="🔍 البحث بالاسم أو الهاتف..." class="a-in" style="width:100%;box-sizing:border-box;margin-bottom:12px;" oninput="userSearch=this.value;render()">
-    <div style="color:var(--t4);font-size:11px;margin-bottom:10px;">${users.length} مستخدم مسجّل</div>
-    <div id="adm-users-list"></div>`;
-  document.getElementById("adm-user-search").addEventListener("input",e=>{userSearch=e.target.value;render();});
-  render();
+        </td>
+      </tr>`).join("");
+  }
+  const pager=document.getElementById("adm-users-pager");
+  if(pager){
+    pager.innerHTML=`
+      <div style="color:var(--t4);font-size:11px;">صفحة ${s.page} من ${s.totalPages}</div>
+      <div style="display:flex;gap:6px;">
+        <button class="r-btn" style="font-size:11px;background:var(--s1);color:var(--t3);border:1px solid var(--b1);" ${s.page<=1?"disabled":""} onclick="admUsersPage(-1)">→ السابق</button>
+        <button class="r-btn" style="font-size:11px;background:var(--s1);color:var(--t3);border:1px solid var(--b1);" ${s.page>=s.totalPages?"disabled":""} onclick="admUsersPage(1)">التالي ←</button>
+      </div>`;
+  }
+}
+
+/* Final-delete modal: names the account, states what is kept and what is
+ * destroyed, and requires typing the account's own phone number (the server
+ * enforces the same confirmation — the UI is a convenience, not the gate). */
+function admUserDeleteOpen(id,name,phone){
+  const existing=document.getElementById("adm-delete-overlay");
+  if(existing)existing.remove();
+  const overlay=document.createElement("div");
+  overlay.id="adm-delete-overlay";
+  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.68);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;";
+  overlay.innerHTML=`
+  <div style="background:var(--s1);border:1px solid rgba(239,68,68,.45);border-radius:16px;max-width:440px;width:100%;padding:18px;box-sizing:border-box;">
+    <div style="color:var(--dn);font-weight:900;font-size:14.5px;margin-bottom:9px;">🗑 حذف نهائي للحساب</div>
+    <div style="color:var(--t2);font-size:12.5px;line-height:1.85;">
+      سيتم حذف حساب <b>${sanitize(name)}</b>
+      <span dir="ltr" style="font-family:var(--mono);color:var(--t3);">(${sanitize(phone)})</span>
+      وكل بياناته الشخصية المرتبطة به (المحفظة، التنبيهات، الحسابات المحفوظة، حالات الرسائل والإشعارات).
+    </div>
+    <div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.28);border-radius:10px;padding:9px 11px;margin:11px 0;color:var(--t3);font-size:11px;line-height:1.9;">
+      🛡 يُحفظ دائمًا ولا يُحذف: السجلات المالية (طلبات الدفع) وسجلات التدقيق.<br>
+      🔑 تُلغى كل جلسات المستخدم المفتوحة فورًا.<br>
+      ⚠️ الحساب الذي لديه اشتراك ساري أو سجلات إحالة/مكافآت يرفضه النظام حتى تنتهي.
+    </div>
+    <div style="color:var(--t4);font-size:10.5px;margin-bottom:6px;">للتأكيد أدخل رقم هاتف الحساب نفسه:</div>
+    <input id="adm-delete-confirm" class="a-in" dir="ltr" style="width:100%;box-sizing:border-box;text-align:center;font-family:var(--mono);" placeholder="${sanitize(phone)}">
+    <div style="display:flex;gap:8px;margin-top:13px;">
+      <button class="r-btn" style="flex:1;font-size:12px;background:var(--s2);color:var(--t3);border:1px solid var(--b1);" onclick="document.getElementById('adm-delete-overlay')?.remove()">إلغاء</button>
+      <button id="adm-delete-go" class="r-btn" style="flex:1;font-size:12px;background:var(--dn);color:#fff;border:none;" disabled onclick="admUserDeleteGo(${Number(id)})">حذف نهائي</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const inp=document.getElementById("adm-delete-confirm");
+  const go=document.getElementById("adm-delete-go");
+  if(inp&&go)inp.addEventListener("input",()=>{go.disabled=inp.value.trim()!==phone;});
+  overlay.addEventListener("click",e=>{if(e.target===overlay)overlay.remove();});
+  if(inp)inp.focus();
+}
+
+async function admUserDeleteGo(id){
+  const inp=document.getElementById("adm-delete-confirm");
+  const go=document.getElementById("adm-delete-go");
+  const phone=(inp?.value||"").trim();
+  if(!inp||!phone)return;
+  if(go){go.disabled=true;go.textContent="جارٍ الحذف...";}
+  const resetBtn=()=>{if(go){go.disabled=false;go.textContent="حذف نهائي";}};
+  try{
+    const r=await admFetch(`/api/admin/users/${Number(id)}/delete`,{method:"POST",body:JSON.stringify({confirm:phone})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||d.status!=="ok"){showToast("❌ "+(d.message||"تعذر الحذف"));resetBtn();return;}
+  }catch(e){showToast("❌ "+String(e.message||e));resetBtn();return;}
+  document.getElementById("adm-delete-overlay")?.remove();
+  showToast("✅ تم حذف الحساب نهائيًا وحُفظت السجلات المالية والتدقيق");
+  admUsersState.page=1;
+  admUsersLoad();
 }
 
 async function admUserAction(action,phone,name){
@@ -6146,74 +6308,378 @@ async function delAdmArticle(id){
 }
 
 /* ─── Sources ─── */
+/* ─── News Sources (server-side health + operations) ───
+ * Status here comes from the server (health written after real fetches) —
+ * the client never invents a "working" state. A source without health is
+ * shown as untested, and one with failures is flagged with the reason. */
+let ADM_SRC_LIST=[];
+const admSrcState={editingId:null};
+
+function admSrcToggleForm(){
+  const f=document.getElementById("asrc-form");
+  if(!f)return;
+  const show=f.style.display==="none";
+  f.style.display=show?"block":"none";
+  if(show)return;
+  admSrcState.editingId=null;
+  const title=document.getElementById("asrc-form-title");
+  if(title)title.textContent="➕ إضافة مصدر RSS";
+  ["asrc-id","asrc-name","asrc-url"].forEach(id=>{const e=document.getElementById(id);if(e)e.value="";});
+}
+
+function admSrcEdit(id){
+  const s=ADM_SRC_LIST.find(x=>x.id===id);
+  if(!s||s.archivedAt)return;
+  admSrcState.editingId=id;
+  const f=document.getElementById("asrc-form");
+  if(f)f.style.display="block";
+  const title=document.getElementById("asrc-form-title");
+  if(title)title.textContent=`✎ تعديل مصدر: ${s.id}`;
+  const set=(k,v)=>{const e=document.getElementById(k);if(e)e.value=v||"";};
+  set("asrc-id",s.id);set("asrc-name",s.name);set("asrc-icon",s.icon);set("asrc-color",s.color);set("asrc-url",s.url);
+  const lang=document.getElementById("asrc-lang");if(lang)lang.value=s.lang||"ar";
+  const cat=document.getElementById("asrc-cat");if(cat)cat.value=s.cat||"egypt";
+  f?.scrollIntoView({behavior:"smooth",block:"center"});
+}
+
+async function saveAdmSource(){
+  const editing=admSrcState.editingId;
+  const body={id:vG("asrc-id"),name:vG("asrc-name"),icon:vG("asrc-icon")||"📰",color:vG("asrc-color"),lang:vG("asrc-lang"),cat:vG("asrc-cat"),url:vG("asrc-url")};
+  const url=editing?`/api/admin/sources/${encodeURIComponent(editing)}`:"/api/admin/sources";
+  const method=editing?"PUT":"POST";
+  try{
+    const r=await admFetch(url,{method,body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحفظ"));return;}
+    showToast(editing?"✅ تم تعديل المصدر":"✅ تم حفظ المصدر (معطل وبانتظار موافقة إعادة النشر)");
+    await syncSources();
+    admTab("sources");
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+async function delAdmSource(id){
+  const s=ADM_SRC_LIST.find(x=>x.id===id);
+  const name=s?.name||id;
+  /* Honest consent: fetched third-party headlines live only in a short cache
+   * (5 min / up to 2 h stale) — no stored articles are destroyed. Archiving
+   * keeps the entry visible in this admin list for review. */
+  if(!confirm(`أرشفة المصدر «${name}»؟\n\nسيلتف من واجهة المستخدم فورًا، وتبقى مدخلاته في قائمة الإدارة للمراجعة. العناوين المجلوبة لا تُخزَّن أصلاً (كاش مؤقت فقط) — لا مقالات مخزنة ستُحذف.`)) return;
+  try{
+    const r=await admFetch(`/api/admin/sources/${encodeURIComponent(id)}`,{method:"DELETE"});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحذف"));return;}
+    showToast("✅ تمت أرشفة المصدر");
+    await syncSources();
+    admTab("sources");
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+async function admSrcToggleDisabled(id,disabled){
+  try{
+    const r=await admFetch(`/api/admin/sources/${encodeURIComponent(id)}/set-disabled`,{method:"POST",body:JSON.stringify({disabled})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
+    showToast(disabled?"⏸ تم إيقاف المصدر":"✓ تم تفعيل المصدر");
+    await syncSources();
+    admTab("sources");
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
+/* Real connection + data-validity probe. The inline result always carries
+ * its own timestamp: "connectable now" is not a live-feed claim. */
+async function admSrcTest(id){
+  const cell=document.getElementById("asrc-test-"+id);
+  if(!cell)return;
+  cell.innerHTML=`<button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" disabled>⏳ جارٍ الفحص...</button>`;
+  try{
+    const r=await admFetch(`/api/admin/sources/${encodeURIComponent(id)}/test`,{method:"POST",body:"{}"});
+    const j=await r.json().catch(()=>({}));
+    const res=j.result||{};
+    const t=res.testedAt?new Date(res.testedAt).toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit",second:"2-digit"}):"";
+    cell.innerHTML=res.ok
+      ?`<span class="bdg" style="background:var(--gd);color:var(--g);">✓ ${res.itemCount} عنصر · ${t}</span> <button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick='admSrcTest(${safeJsArg(id)})'>↻</button>`
+      :`<span class="bdg" style="background:var(--dnd);color:var(--dn);" title="${sanitize(res.error||"فشل الفحص")}">✕ ${sanitize(String(res.error||"فشل الفحص").slice(0,42))}</span> <button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick='admSrcTest(${safeJsArg(id)})'>↻</button>`;
+  }catch(e){
+    cell.innerHTML=`<span class="bdg" style="background:var(--dnd);color:var(--dn);">✕ ${sanitize(String(e.message||e).slice(0,42))}</span>`;
+  }
+}
+
 async function renderAdmSources(el){
-  const ok=Object.values(srcStatus).filter(s=>s==="ok").length;
-  const err=Object.values(srcStatus).filter(s=>s==="error").length;
   el.innerHTML=`
-    <div style="display:flex;gap:6px;margin-bottom:13px;flex-wrap:wrap;">
-      <span class="bdg" style="background:var(--gd);color:var(--g);">✓ ${ok} نشط</span>
-      ${err?`<span class="bdg" style="background:var(--dnd);color:var(--dn);">✕ ${err} خطأ</span>`:""}
-      <span class="bdg" style="background:var(--bld);color:#93c5fd;font-family:var(--mono);">${allArts.length} خبر</span>
+    <div id="asrc-summary" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;"></div>
+    <div id="asrc-list"><div class="empty"><div style="font-size:24px;">⏳</div><div>جارٍ التحميل...</div></div></div>`;
+  let sources=[];
+  try{
+    const r=await admFetch("/api/admin/sources");
+    const j=await r.json();
+    if(!r.ok||j.status!=="ok") throw new Error(j.message||"failed");
+    sources=j.sources||[];
+  }catch(e){
+    document.getElementById("asrc-list").innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ تعذر تحميل المصادر — ${sanitize(String(e.message||e))}</div>`;
+    return;
+  }
+  ADM_SRC_LIST=sources;
+  const isAdmRole=["super_admin","admin"].includes(await admSessionRole());
+  const now=Date.now();
+  const live=sources.filter(s=>!s.archivedAt);
+  const active=live.filter(s=>!s.disabled&&s.commercialRedisplay?.status==="approved");
+  const stopped=live.filter(s=>s.disabled);
+  const pending=live.filter(s=>s.commercialRedisplay?.status!=="approved"&&!s.disabled);
+  const arch=sources.filter(s=>s.archivedAt);
+  const failing=active.filter(s=>(s.health?.consecutiveFailures||0)>0);
+  document.getElementById("asrc-summary").innerHTML=[
+    aBadge(`المصادر: ${sources.length}`,"var(--s2)","var(--t4)"),
+    aBadge(`✓ فعّالة: ${active.length}`,"var(--gd)","var(--g)"),
+    failing.length?aBadge(`✕ تفشل: ${failing.length}`,"var(--dnd)","var(--dn)"):"",
+    stopped.length?aBadge(`⏸ متوقفة: ${stopped.length}`,"var(--bld)","#93c5fd"):"",
+    pending.length?aBadge(`⏳ بانتظار الموافقة: ${pending.length}`,"var(--aud)","var(--au)"):"",
+    arch.length?aBadge(`🗃 مؤرشفة: ${arch.length}`,"var(--s2)","var(--t5)"):"",
+  ].join("");
+  const thStyle="padding:9px 11px;text-align:start;font-size:10.5px;font-weight:800;color:var(--t3);white-space:nowrap;border-bottom:1px solid var(--b1);background:var(--s1);";
+  const tdStyle="padding:8px 11px;font-size:11px;vertical-align:middle;";
+  const rows=sources.map(s=>{
+    const h=s.health||{};
+    const failN=h.consecutiveFailures||0;
+    const isArch=!!s.archivedAt;
+    const legal=s.commercialRedisplay?.status||"pending";
+    const operational=(!isArch&&!s.disabled&&legal==="approved");
+    const staleOk=h.lastSuccessAt&&((now-Date.parse(h.lastSuccessAt))>2*3600*1000);
+    const legalBadge=isArch?aBadge("🗃 مؤرشف","var(--s2)","var(--t5)")
+      :legal==="approved"?aBadge("✓ معتمد","var(--gd)","var(--g)")
+      :aBadge("⏳ قيد المراجعة","var(--aud)","var(--au)");
+    const opBadge=isArch?""
+      :s.disabled?aBadge("⏸ متوقف","var(--bld)","#93c5fd")
+      :operational?aBadge("✓ يعمل","var(--gd)","var(--g)"):aBadge("⏳ لا يُجلب","var(--s2)","var(--t4)");
+    const flagBadges=[
+      failN>0?aBadge(`✕ فشل ×${failN}`,"var(--dnd)","var(--dn)"):"",
+      operational&&staleOk?aBadge("⌛ قديم","var(--aud)","var(--au)"):"",
+      operational&&!h.lastSuccessAt&&!h.lastAttemptAt?aBadge("لم يُختبر","var(--s2)","var(--t5)"):"",
+    ].join("");
+    const dt=v=>v?new Date(v).toLocaleString("ar-EG",{dateStyle:"short",timeStyle:"short"}):`<span style="color:var(--t5)">—</span>`;
+    return `<tr style="border-bottom:1px solid var(--b1);">
+      <td style="${tdStyle}"><div style="display:flex;gap:6px;align-items:center;min-width:150px;"><span>${sanitize(s.icon||"📰")}</span><div><div style="color:var(--t2);font-weight:700;font-size:12px;">${sanitize(s.name)}</div><div style="color:var(--t5);font-size:9px;font-family:var(--mono);">${sanitize(s.id)}</div></div></div></td>
+      <td style="${tdStyle}"><span class="bdg" style="background:var(--s2);color:var(--t4);">RSS</span></td>
+      <td style="${tdStyle}"><div dir="ltr" style="font-family:var(--mono);font-size:9.5px;color:var(--t4);overflow-wrap:break-word;max-width:230px;">${sanitize(s.url)}</div></td>
+      <td style="${tdStyle}white-space:nowrap;">${legalBadge}</td>
+      <td style="${tdStyle}white-space:nowrap;">${opBadge}${flagBadges}</td>
+      <td style="${tdStyle}white-space:nowrap;color:var(--t3);">${dt(h.lastAttemptAt)}</td>
+      <td style="${tdStyle}white-space:nowrap;color:var(--t3);">${dt(h.lastSuccessAt)}</td>
+      <td style="${tdStyle}white-space:nowrap;color:var(--t3);font-family:var(--mono);">${h.itemsFetched!=null?h.itemsFetched:`<span style="color:var(--t5)">—</span>`}</td>
+      <td style="${tdStyle}">${h.lastError?`<div title="${sanitize(h.lastError)}" style="color:var(--dn);font-size:9.5px;max-width:160px;overflow-wrap:break-word;">⚠ ${sanitize(String(h.lastError).slice(0,60))}</div>`:`<span style="color:var(--t5)">—</span>`}</td>
+      <td style="${tdStyle}"><div id="asrc-test-${sanitize(s.id)}"><button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" ${isArch?"disabled":""} onclick='admSrcTest(${safeJsArg(s.id)})'>⚡ فحص</button></div></td>
+      <td style="${tdStyle}">
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          ${isArch
+            ?`<span style="color:var(--t5);font-size:9px;">لاستعادة: تحرير الملف</span>`
+            :`${isAdmRole
+              ?(s.disabled
+                ?`<button class="r-btn app" style="font-size:10px;" onclick='admSrcToggleDisabled(${safeJsArg(s.id)},false)'>✓ تفعيل</button>`
+                :`<button class="r-btn" style="font-size:10px;background:var(--bld);color:#93c5fd;border:1px solid rgba(147,197,253,.3);" onclick='admSrcToggleDisabled(${safeJsArg(s.id)},true)'>⏸ إيقاف</button>`)
+              :""}
+              <button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick='admSrcEdit(${safeJsArg(s.id)})'>✎ تعديل</button>
+              <button class="r-btn rej" style="font-size:10px;" onclick='delAdmSource(${safeJsArg(s.id)})'>🗑 أرشفة</button>`}
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+  document.getElementById("asrc-list").innerHTML=`
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:9px;flex-wrap:wrap;">
+      <button class="r-btn" style="font-size:11px;background:var(--gd);color:#000;font-weight:700;" onclick="admSrcToggleForm()">➕ إضافة مصدر</button>
+      <span style="color:var(--t5);font-size:10px;line-height:1.6;">مصدر جديد يبدأ <b>معطلًا وبانتظار موافقة إعادة النشر</b> — لن يُجلب حتى يُلغي المسؤول الإيقاف وتُوثَّق الموافقة.</span>
     </div>
-    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px;margin-bottom:14px;">
-      <div style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:9px;">➕ إضافة مصدر RSS</div>
-      ${aFormRow(aIn("asrc-id","معرّف فريد (a-z)","maxlength='40'"),aIn("asrc-name","الاسم الظاهر","maxlength='60'"))}
+    <div id="asrc-form" style="display:none;background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:12px;margin-bottom:12px;">
+      <div id="asrc-form-title" style="color:var(--g);font-weight:800;font-size:12.5px;margin-bottom:9px;">➕ إضافة مصدر RSS</div>
+      ${aFormRow(aIn("asrc-id","معرّف فريد (a-z0-9-_)","maxlength='40'"),aIn("asrc-name","الاسم الظاهر","maxlength='60'"))}
       ${aFormRow(aIn("asrc-icon","📰 إيموجي","maxlength='6' value='📰'"),aIn("asrc-color","#10b981","maxlength='7' value='#10b981'"))}
       ${aFormRow(
         aSel("asrc-lang",[{v:"ar",l:"عربي"},{v:"en",l:"English"}]),
         aSel("asrc-cat",[{v:"egypt",l:"مصر"},{v:"global",l:"عالمي"},{v:"stocks",l:"بورصة"},{v:"crypto",l:"كريبتو"}])
       )}
       ${aFormRow(aIn("asrc-url","https://example.com/feed.xml","style='width:100%'"))}
-      ${aBtn("حفظ المصدر ✓","saveAdmSource()")}
+      <div style="display:flex;gap:7px;">
+        <button class="btn btn-sm" style="background:var(--g);color:#000;font-weight:700;border:none;padding:8px 14px;border-radius:9px;cursor:pointer;font-family:var(--sans);" onclick="saveAdmSource()">💾 حفظ</button>
+        <button class="btn btn-sm" style="background:var(--s2);color:var(--t4);border:1px solid var(--b1);padding:8px 14px;border-radius:9px;cursor:pointer;font-family:var(--sans);" onclick="admSrcToggleForm()">إلغاء</button>
+      </div>
     </div>
-    <div id="asrc-list"><div class="empty"><div style="font-size:24px;">⏳</div><div>جارٍ التحميل...</div></div></div>`;
+    <div style="overflow-x:auto;border:1px solid var(--b1);border-radius:12px;">
+      <table style="width:100%;border-collapse:collapse;min-width:1080px;">
+        <thead><tr>
+          <th style="${thStyle}">المصدر</th><th style="${thStyle}">النوع</th><th style="${thStyle}">رابط الـ RSS</th><th style="${thStyle}">الموافقة</th><th style="${thStyle}">التشغيل</th><th style="${thStyle}">آخر محاولة</th><th style="${thStyle}">آخر نجاح</th><th style="${thStyle}">العناصر</th><th style="${thStyle}">آخر خطأ</th><th style="${thStyle}">فحص الاتصال</th><th style="${thStyle}">إجراءات</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="color:var(--t5);font-size:9.5px;margin-top:7px;line-height:1.7;">
+      «تحرير المنصة» (مقالات الإدارة) تُدار من تبويب الأخبار. فاشل مصدر واحد لا يوقف غيره: التجميع خادمي ومعزول لكل مصدر، والكاش القديم يُقدَّم حتى ساعتين عند تعطل طرف ثالث.
+    </div>`;
+}
+
+/* ─── Market data providers (settings-gated, honest state) ───
+ * The panel shows what the server can PROVE: configured state comes from
+ * environment presence (never the key itself), health from real fetches,
+ * and the last price as-of from the last cached snapshot. No fabricated
+ * prices, no "live" claim beyond what the data says. */
+const ADM_MKT_KIND_AR={index:"مؤشرات",equity:"أسهم",fx:"عملات",commodity:"سلع",crypto:"كريبتو",calendar:"تقويم اقتصادي"};
+const ADM_MKT_FRESH_AR={"real-time":"فوري","delayed":"متأخر","end-of-day":"نهاية اليوم","unknown":"غير محدد"};
+
+function admMktToggleFormless(id,disabled){
+  const p=ADM_MKT_LIST.find(x=>x.id===id);
+  const name=p?.name||id;
+  const doToggle=async()=>{
+    try{
+      const r=await admFetch(`/api/admin/settings/market-providers/${encodeURIComponent(id)}/set-disabled`,{method:"POST",body:JSON.stringify({disabled})});
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
+      showToast(disabled?"⏸ تم إيقاف المزوّد":"✓ تم تفعيل المزوّد");
+      admTab("market");
+    }catch(e){showToast("❌ "+String(e.message||e));}
+  };
+  if(!disabled){ if(confirm(`تفعيل المزوّد «${name}»؟`)) doToggle(); return; }
+  /* Disable: fetch the impact so the dialog names the affected instruments
+   * and, critically, when no other source would remain for them. */
+  admFetch(`/api/admin/settings/market-providers/${encodeURIComponent(id)}/impact`)
+    .then(r=>r.json().catch(()=>({})))
+    .then(j=>{
+      const impact=j.impact||{};
+      const symbols=Array.isArray(impact.instrumentSymbols)?impact.instrumentSymbols:[];
+      const others=Array.isArray(impact.otherConfiguredProviders)?impact.otherConfiguredProviders:[];
+      const symTxt=symbols.length>15?`${symbols.slice(0,15).join("، ")} … و${symbols.length-15} أخرى`:(symbols.join("، ")||"لا شيء");
+      const othersTxt=others.length?others.map(o=>o.name).join("، "):
+        "⚠️ لا يوجد مزوّد آخر مهيّأ ومفعل — ستفقد هذه الأدوات أي مصدر موثّق ولن تُعرض أسعارها (رسالة عدم توفر صريحة، لا سعر مختلق).";
+      if(confirm(`إيقاف المزوّد «${name}»؟\n\nالأدوات التي يخدمها: ${symTxt}\n\nمزوّدون آخرون قادرون على خدمتها:\n${othersTxt}`)) doToggle();
+    })
+    .catch(()=>{ if(confirm(`إيقاف المزوّد «${name}»؟\n\n(تعذر جلب تفاصيل الأثر — سيُحسم الأثر من الخادم)`)) doToggle(); });
+}
+
+async function admMktTest(id){
+  const cell=document.getElementById("amkt-test-"+id);
+  if(!cell)return;
+  cell.innerHTML=`<button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" disabled>⏳ جارٍ الفحص...</button>`;
   try{
-    const r=await admFetch("/api/admin/sources");
-    const j=await r.json();
-    if(!r.ok||j.status!=="ok") throw new Error(j.message||"failed");
-    document.getElementById("asrc-list").innerHTML=j.sources.map(s=>{
-      const st=srcStatus[s.id];
-      const bg=st==="ok"?"var(--gd)":st==="error"?"var(--dnd)":"var(--s1)";
-      const fg=st==="ok"?"var(--g)":st==="error"?"var(--dn)":"var(--t4)";
-      return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:10px 12px;margin-bottom:6px;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:6px;">${sanitize(s.icon)}<div>
-              <div style="color:var(--t2);font-size:12.5px;font-weight:700;">${sanitize(s.name)}</div>
-              <div style="color:var(--t4);font-size:9px;font-family:var(--mono);">${sanitize(s.id)} · ${s.lang==="ar"?"عربي":"English"} · ${sanitize(s.cat)}</div>
-              <div style="color:var(--t5);font-size:8.5px;font-family:var(--mono);overflow-wrap:break-word;margin-top:2px;">${sanitize(s.url)}</div>
-            </div></div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
-            <span class="bdg" style="background:${bg};color:${fg};">${st==="ok"?"✓ نشط":st==="error"?"✕ خطأ":"⏳"}</span>
-            <button class="r-btn rej" onclick='delAdmSource(${safeJsArg(s.id)})' >حذف</button>
-          </div>
-        </div>
-      </div>`;}).join("");
+    const r=await admFetch(`/api/admin/settings/market-providers/${encodeURIComponent(id)}/test`,{method:"POST",body:"{}"});
+    const j=await r.json().catch(()=>({}));
+    const res=j.result||{};
+    const t=res.testedAt?new Date(res.testedAt).toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit",second:"2-digit"}):"";
+    const detail=res.ok
+      ?(res.kind==="calendar"
+        ?`✓ ${res.eventCount} حدث · ${t}`
+        :`✓ ${res.symbol} ${Number(res.price).toLocaleString()} ${res.currency||""} · ${ADM_MKT_FRESH_AR[res.freshness]||res.freshness||""} · ${t}`)
+      :`✕ ${sanitize(String(res.error||"فشل الفحص")).slice(0,60)}`;
+    const bg=res.ok?"var(--gd)":"var(--dnd)";
+    const fg=res.ok?"var(--g)":"var(--dn)";
+    cell.innerHTML=`<span class="bdg" style="background:${bg};color:${fg};">${detail}</span> <button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick='admMktTest(${safeJsArg(id)})'>↻</button>`;
   }catch(e){
-    document.getElementById("asrc-list").innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ ${sanitize(String(e.message||e))}</div>`;
+    cell.innerHTML=`<span class="bdg" style="background:var(--dnd);color:var(--dn);">✕ ${sanitize(String(e.message||e).slice(0,60))}</span>`;
   }
 }
 
-async function saveAdmSource(){
-  const body={id:vG("asrc-id"),name:vG("asrc-name"),icon:vG("asrc-icon")||"📰",color:vG("asrc-color"),lang:vG("asrc-lang"),cat:vG("asrc-cat"),url:vG("asrc-url")};
+async function renderAdmMarket(el){
+  el.innerHTML=`<div class="empty"><div style="font-size:22px;margin-bottom:8px;">⏳</div><div>جارٍ التحميل...</div></div>`;
+  let o=null;
   try{
-    const r=await admFetch("/api/admin/sources",{method:"POST",body:JSON.stringify(body)});
+    const r=await admFetch("/api/admin/settings/market-providers");
     const j=await r.json();
-    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحفظ"));return;}
-    showToast("✅ تم حفظ المصدر");await syncSources();admTab("sources");
-  }catch(e){showToast("❌ "+String(e.message||e));}
+    if(!r.ok||j.status!=="ok") throw new Error(j.message||"failed");
+    o=j.overview;
+  }catch(e){
+    el.innerHTML=`<div class="empty" style="color:var(--dn);">⚠️ تعذر تحميل حالة مزودي البيانات السوقية — ${sanitize(String(e.message||e))}</div>`;
+    return;
+  }
+  ADM_MKT_LIST=o.providers||[];
+  const isAdmRole=["super_admin","admin"].includes(await admSessionRole());
+  const providers=ADM_MKT_LIST;
+  const configured=providers.filter(p=>p.state==="configured");
+  const disabledAdmin=providers.filter(p=>p.adminDisabled);
+  const notConfigured=providers.filter(p=>p.state==="not_configured");
+  const requiresContract=providers.filter(p=>p.state==="requires_contract");
+  const degraded=providers.filter(p=>p.health?.degraded);
+  const dt=v=>v?new Date(v).toLocaleString("ar-EG",{dateStyle:"short",timeStyle:"short"}):`<span style="color:var(--t5)">—</span>`;
+  el.innerHTML=`
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+      ${aBadge(`المزوّدون: ${providers.length}`,"var(--s2)","var(--t4)")}
+      ${aBadge(`✓ مهيّأ: ${configured.length}`,"var(--gd)","var(--g)")}
+      ${disabledAdmin.length?aBadge(`⏸ معطّل إداريًا: ${disabledAdmin.length}`,"var(--bld)","#93c5fd"):""}
+      ${notConfigured.length?aBadge(`بلا مفاتيح: ${notConfigured.length}`,"var(--s2)","var(--t5)"):""}
+      ${requiresContract.length?aBadge(`يتطلب عقدًا: ${requiresContract.length}`,"var(--aud)","var(--au)"):""}
+      ${degraded.length?aBadge(`⚠ متدهور: ${degraded.length}`,"var(--dnd)","var(--dn)"):""}
+    </div>
+    ${o.board?`
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:11px;color:var(--t3);line-height:1.7;">
+      آخر لقطة أسعار: <b style="color:var(--t2);">${dt(o.board.fetchedAt)}</b>
+      · ${o.board.quoteCount} سعر موثّق
+      ${o.board.stale?`· <span style="color:var(--au);">⌛ تُقدَّم من الكاش (اللقطة الأصلية قديمة)</span>`:""}
+      ${o.board.expired?`· <span style="color:var(--dn);">⚠ انتهت صلاحية الكاش القديم — لا لقطة موثّقة حالية</span>`:""}
+    </div>`:`
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:11px;color:var(--t5);">
+      لا توجد لقطة أسعار موثّقة حاليًا في هذه العملية (ستُنشأ عند أول جلب ناجح).
+    </div>`}
+    <div style="overflow-x:auto;border:1px solid var(--b1);border-radius:12px;margin-bottom:14px;">
+      <table style="width:100%;border-collapse:collapse;min-width:1150px;">
+        <thead><tr>${["المزوّد","النوع","الغطاء","التهيئة","الحالة","الأدوات","آخر نجاح","آخر فشل","فشل متتالٍ","آخر سعر (مرجع)","فحص","إجراءات"].map(h=>`<th style="padding:9px 11px;text-align:start;font-size:10.5px;font-weight:800;color:var(--t3);white-space:nowrap;border-bottom:1px solid var(--b1);background:var(--s1);">${h}</th>`).join("")}</tr></thead>
+        <tbody>
+        ${providers.map(p=>{
+          const cov=(p.coverage||[]).map(k=>ADM_MKT_KIND_AR[k]||k).join(" · ")||"—";
+          const stateBadge=p.state==="configured"?aBadge("✓ مفاتيح موجودة","var(--gd)","var(--g)")
+            :p.state==="requires_contract"?aBadge("يتطلب عقدًا","var(--aud)","var(--au)")
+            :aBadge("بلا تهيئة","var(--s2)","var(--t5)");
+          const statusBadge=p.adminDisabled?aBadge("⏸ معطّل إداريًا","var(--bld)","#93c5fd")
+            :p.state==="configured"?aBadge("✓ يعمل","var(--gd)","var(--g)")
+            :aBadge("غير نشط","var(--s2)","var(--t5)");
+          const failN=p.health?.consecutiveFailures||0;
+          const healthFlag=failN>0?aBadge(`✕ ×${failN}`,"var(--dnd)","var(--dn)"):(p.health?.degraded?aBadge("⚠ متدهور","var(--aud)","var(--au)"):"");
+          return `<tr style="border-bottom:1px solid var(--b1);">
+            <td style="padding:8px 11px;font-size:12px;"><div style="color:var(--t2);font-weight:700;">${sanitize(p.name)}</div><div style="color:var(--t5);font-size:9px;font-family:var(--mono);">${sanitize(p.id)}</div></td>
+            <td style="padding:8px 11px;font-size:10.5px;color:var(--t3);white-space:nowrap;">${p.kind==="calendar"?"📅 تقويم":"📈 أسعار"}</td>
+            <td style="padding:8px 11px;font-size:10.5px;color:var(--t4);white-space:nowrap;">${sanitize(cov)}</td>
+            <td style="padding:8px 11px;white-space:nowrap;">${stateBadge}</td>
+            <td style="padding:8px 11px;white-space:nowrap;">${statusBadge}${healthFlag}</td>
+            <td style="padding:8px 11px;font-size:11px;color:var(--t3);font-family:var(--mono);text-align:center;">${p.kind==="calendar"?"—":p.servesInstrumentCount}</td>
+            <td style="padding:8px 11px;font-size:11px;color:var(--t3);white-space:nowrap;">${dt(p.health?.lastSuccessAt)}</td>
+            <td style="padding:8px 11px;font-size:11px;color:var(--t3);white-space:nowrap;">${dt(p.health?.lastFailureAt)}</td>
+            <td style="padding:8px 11px;font-size:11px;color:var(--t3);font-family:var(--mono);text-align:center;">${failN}</td>
+            <td style="padding:8px 11px;font-size:10.5px;color:var(--t3);white-space:nowrap;">${p.lastQuoteAsOf?`${dt(p.lastQuoteAsOf)}<div style="color:var(--t5);font-size:9px;">${ADM_MKT_FRESH_AR[p.lastQuoteFreshness]||p.lastQuoteFreshness||""}</div>`:`<span style="color:var(--t5)">—</span>`}</td>
+            <td style="padding:8px 11px;"><div id="amkt-test-${sanitize(p.id)}"><button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" ${p.state!=="configured"?"disabled":""} onclick='admMktTest(${safeJsArg(p.id)})'>⚡ فحص</button></div></td>
+            <td style="padding:8px 11px;">
+              <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                ${isAdmRole&&p.state==="configured"
+                  ?(p.adminDisabled
+                    ?`<button class="r-btn app" style="font-size:10px;" onclick='admMktToggleFormless(${safeJsArg(p.id)},false)'>✓ تفعيل</button>`
+                    :`<button class="r-btn" style="font-size:10px;background:var(--bld);color:#93c5fd;border:1px solid rgba(147,197,253,.3);" onclick='admMktToggleFormless(${safeJsArg(p.id)},true)'>⏸ إيقاف</button>`)
+                  :""}
+              </div>
+            </td>
+          </tr>`;
+        }).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div style="color:var(--t2);font-weight:800;font-size:13px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--b1);;">أدوات تحتاج انتباهًا</div>
+    <div style="overflow-x:auto;border:1px solid var(--b1);border-radius:12px;margin-bottom:14px;">
+      <table style="width:100%;border-collapse:collapse;min-width:600px;">
+        <thead><tr>${["الأداة","الرمز","الحالة","آخر تحديث"].map(h=>`<th style="padding:9px 11px;text-align:start;font-size:10.5px;font-weight:800;color:var(--t3);white-space:nowrap;border-bottom:1px solid var(--b1);background:var(--s1);">${h}</th>`).join("")}</tr></thead>
+        <tbody>
+        ${(o.instruments||[]).filter(i=>i.state!=="fresh").map(i=>{
+          const b=i.state==="no-verified-quote"?aBadge("لا يوجد سعر موثّق","var(--dnd)","var(--dn)")
+            :i.state==="stale"?aBadge("⌛ بيانات قديمة","var(--aud)","var(--au)")
+            :aBadge("مرجع نهاية اليوم","var(--bld)","#93c5fd");
+          return `<tr style="border-bottom:1px solid var(--b1);">
+            <td style="padding:8px 11px;font-size:11.5px;color:var(--t2);">${sanitize(i.name)}</td>
+            <td style="padding:8px 11px;font-size:10.5px;color:var(--t4);font-family:var(--mono);">${sanitize(i.symbol)}</td>
+            <td style="padding:8px 11px;white-space:nowrap;">${b}</td>
+            <td style="padding:8px 11px;font-size:11px;color:var(--t3);white-space:nowrap;">${i.asOf?dt(i.asOf):`<span style="color:var(--t5)">—</span>`}</td>
+          </tr>`;
+        }).join("")||`<tr><td colspan="4" style="padding:14px;text-align:center;color:var(--t5);font-size:11px;">كل الأدوات لها أسعار موثّقة حديثة. ✓</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+    <div style="color:var(--t5);font-size:9.5px;line-height:1.7;">
+      مفاتيح المزودين تعيش في متغيرات البيئة فقط ولا تظهر هنا إطلاقًا — تظهر حالة «مهيّأ/غير مهيّأ».
+      نجاح الاتصال لا يعني بالضرورة سعرًا حديثًا: عمود «آخر سعر (مرجع)» يعرض ختم المصدر نفسه.
+      الإيقاف يُطبَّق فورًا، والأدوات التي يفقد مصدرها الوحيد تعرض «لا يوجد سعر موثّق» بدل أي سعر افتراضي.
+    </div>`;
 }
 
-async function delAdmSource(id){
-  if(!confirm(`حذف المصدر "${id}"؟`)) return;
-  try{
-    const r=await admFetch(`/api/admin/sources/${encodeURIComponent(id)}`,{method:"DELETE"});
-    const j=await r.json();
-    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر الحذف"));return;}
-    showToast("✅ تم الحذف");await syncSources();admTab("sources");
-  }catch(e){showToast("❌ "+String(e.message||e));}
-}
+let ADM_MKT_LIST=[];
 
 /* ─── Subscription Plans + server-evaluated pricing ─── */
 let ADM_PLANS_CACHE=[];
@@ -6837,26 +7303,126 @@ async function delAdmEmployee(id,name){
 }
 
 /* ─── AI Config ─── */
+
+/* ─── AI providers (presence-only keys, settings-gated chain) ───
+ * Honest state: key PRESENCE (never the value), fixed order
+ * (Gemini primary → Claude fallback → local safety net), and the
+ * effective engine as the server computes it. */
+const ADM_AI_ERR_AR={no_api_key:"لا توجد مفاتيح في البيئة — أضِفها من إعدادات النشر",timeout:"انتهى الوقت (10ث) — الموفر لا يستجيب حاليًا",unavailable:"تعذر الوصول للموفر",rate_limit:"الموفر يحدّ المعدل (429)",empty_response:"استجابة فارغة"};
+
+async function admAiProbe(id){
+  const cell=document.getElementById("aai-test-"+id);
+  if(!cell)return;
+  cell.innerHTML=`<button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" disabled>⏳ جارٍ الفحص...</button>`;
+  try{
+    const r=await admFetch(`/api/admin/ai-providers/${encodeURIComponent(id)}/test`,{method:"POST",body:"{}"});
+    const j=await r.json().catch(()=>({}));
+    const res=j.result||{};
+    const t=res.testedAt?new Date(res.testedAt).toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit",second:"2-digit"}):"";
+    const detail=res.ok
+      ?`✓ ${res.model||""} ${res.latencyMs!=null?res.latencyMs+"ms":""} · ${t}`
+      :`✕ ${ADM_AI_ERR_AR[res.error]||sanitize(String(res.error||"فشل الفحص"))} · ${t}`;
+    const bg=res.ok?"var(--gd)":"var(--dnd)";
+    const fg=res.ok?"var(--g)":"var(--dn)";
+    cell.innerHTML=`<span class="bdg" style="background:${bg};color:${fg};">${detail}</span> <button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick='admAiProbe(${safeJsArg(id)})'>↻</button>`;
+  }catch(e){
+    cell.innerHTML=`<span class="bdg" style="background:var(--dnd);color:var(--dn);">✕ ${sanitize(String(e.message||e).slice(0,40))}</span>`;
+  }
+}
+
+async function admAiToggle(id,disabled){
+  const msg=disabled
+    ?`إيقاف موفر «${id}» من سلسلة المحرك؟
+
+السلسلة: Gemini (أساسي) ← Claude (احتياطي) ← المحرك المحلي (شبكة أمان لا تُطفأ).
+عند الإيقاف ينتقل المساعد للمحرك التالي الفعّال — الموقع لا يتوقف، والمحرك المحلي يعمل دائمًا بلا مفاتيح.`
+    :`تفعيل موفر «${id}» في سلسلة المحرك؟`;
+  if(!confirm(msg))return;
+  try{
+    const r=await admFetch(`/api/admin/ai-providers/${encodeURIComponent(id)}/set-disabled`,{method:"POST",body:JSON.stringify({disabled})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.status!=="ok"){showToast("❌ "+(j.message||"تعذر التحديث"));return;}
+    showToast(disabled?"⏸ تم إيقاف الموفر":"✓ تم تفعيل الموفر");
+    admTab("aiconfig");
+  }catch(e){showToast("❌ "+String(e.message||e));}
+}
+
 async function renderAdmAIConfig(el){
   el.innerHTML=`<div class="empty"><div style="font-size:22px;">⏳</div></div>`;
   let cfg={analyzerEnabled:true,summaryEnabled:true,rewriterEnabled:true,dailyRequestLimit:1000};
   let usage={totalRequests:0,byType:[],topUsers:[]};
+  let aiInfo=null,aiLast={};
   try{
-    const [r1,r2]=await Promise.all([admFetch("/api/admin/ai-config"),admFetch("/api/admin/ai-usage?days=30")]);
-    const j1=await r1.json();const j2=await r2.json();
+    const [r1,r2,r3]=await Promise.all([admFetch("/api/admin/ai-config"),admFetch("/api/admin/ai-usage?days=30"),admFetch("/api/admin/ai-providers")]);
+    const j1=await r1.json();const j2=await r2.json();const j3=await r3.json().catch(()=>({}));
     if(j1.status==="ok"&&j1.config)cfg={...cfg,...j1.config};
     if(j2.status==="ok")usage=j2;
+    if(j3.status==="ok"){aiInfo=j3.info;aiLast=j3.lastTests||{};}
   }catch{}
+  const isAdmRole=["super_admin","admin"].includes(await admSessionRole());
+  const dtAI=v=>v?new Date(v).toLocaleString("ar-EG",{dateStyle:"short",timeStyle:"short"}):"—";
+  const aiProvidersHtml=(aiInfo&&Array.isArray(aiInfo.providers))?aiInfo.providers.map(p=>{
+    const roleAr=p.role==="primary"?"أساسي":p.role==="fallback"?"احتياطي":"شبكة أمان";
+    const keyBadge=p.keyPresent?aBadge("✓ مفاتيح موجودة","var(--gd)","var(--g)"):aBadge("بلا مفاتيح","var(--s2)","var(--t5)");
+    const stBadge=p.active?aBadge("✓ النشط حاليًا","var(--gd)","var(--g)")
+      :p.adminDisabled?aBadge("⏸ معطّل إداريًا","var(--bld)","#93c5fd")
+      :p.keyPresent?aBadge("جاهز (احتياطي)","var(--s2)","var(--t4)")
+      :aBadge("غير مُهيّأ","var(--s2)","var(--t5)");
+    const lt=aiLast[p.id];
+    const lastTest=lt
+      ?(lt.ok
+        ?`<span style="color:var(--g);font-size:10px;">✓ نجح · ${dtAI(lt.at)}${lt.latencyMs!=null?" · "+lt.latencyMs+"ms":""}</span>`
+        :`<span style="color:var(--dn);font-size:10px;">✕ ${ADM_AI_ERR_AR[lt.error]||sanitize(String(lt.error||"فشل"))} · ${dtAI(lt.at)}</span>`)
+      :`<span style="color:var(--t5);font-size:10px;">لم يُختبر بعد</span>`;
+    const nameAr=p.id==="gemini"?"Google Gemini":p.id==="anthropic"?"Anthropic Claude":"محرك EgyTrend المحلي";
+    return `<tr style="border-bottom:1px solid var(--b1);">
+      <td style="padding:8px 11px;"><div style="color:var(--t2);font-weight:700;font-size:12px;">${nameAr}</div><div style="color:var(--t5);font-size:9px;font-family:var(--mono);">${sanitize(p.id)}</div></td>
+      <td style="padding:8px 11px;font-size:10.5px;color:var(--t3);white-space:nowrap;">${p.order} · ${roleAr}</td>
+      <td style="padding:8px 11px;white-space:nowrap;">${keyBadge}</td>
+      <td style="padding:8px 11px;"><div dir="ltr" style="font-family:var(--mono);font-size:9.5px;color:var(--t4);">${sanitize(p.model)}</div><div style="color:var(--t5);font-size:8.5px;">يُضبط من متغيرات البيئة</div></td>
+      <td style="padding:8px 11px;white-space:nowrap;">${stBadge}</td>
+      <td style="padding:8px 11px;white-space:nowrap;">${lastTest}</td>
+      <td style="padding:8px 11px;"><div id="aai-test-${sanitize(p.id)}"><button class="r-btn" style="font-size:10px;background:var(--s2);color:var(--t4);border:1px solid var(--b1);" onclick='admAiProbe(${safeJsArg(p.id)})'>⚡ فحص</button></div></td>
+      <td style="padding:8px 11px;">${isAdmRole&&p.id!=="local"
+        ?(p.adminDisabled
+          ?`<button class="r-btn app" style="font-size:10px;" onclick='admAiToggle(${safeJsArg(p.id)},false)'>✓ تفعيل</button>`
+          :`<button class="r-btn" style="font-size:10px;background:var(--bld);color:#93c5fd;border:1px solid rgba(147,197,253,.3);" onclick='admAiToggle(${safeJsArg(p.id)},true)'>⏸ إيقاف</button>`)
+        :`<span style="color:var(--t5);font-size:9px;">${p.id==="local"?"لا يُطفأ":"—"} </span>`}
+      </td>
+    </tr>`;
+  }).join(""):"";
+  const activeEngine=aiInfo?aiInfo.engine:"—";
+  const chainNote=activeEngine==="gemini"?"المساعد يعمل الآن عبر Gemini، ومع تعطله ينزلق تلقائيًا إلى المحرك المحلي (Claude غير مُهيّأ)."
+    :activeEngine==="anthropic"?"المساعد يعمل الآن عبر Claude."
+    :activeEngine==="local"?"المساعد يعمل الآن عبر المحرك المحلي (بلا مفاتيح خارجية) — إجابة بيانات حقيقية بلا تكلفة."
+    :"جارٍ التحديد...";
 
   el.innerHTML=`
+    ${aSection("🤖 مزودو الذكاء الاصطناعي",`
+      <div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:11px;color:var(--t3);line-height:1.7;">
+        المحرك الفعّال الآن: <b style="color:var(--t2);font-family:var(--mono);">${sanitize(activeEngine)}</b><br>
+        <span style="color:var(--t5);">${chainNote}</span>
+      </div>
+      <div style="overflow-x:auto;border:1px solid var(--b1);border-radius:12px;">
+        <table style="width:100%;border-collapse:collapse;min-width:900px;">
+          <thead><tr>${["المزوّد","الدور","المفاتيح","النموذج","الحالة","آخر فحص","فحص الآن","إجراءات"].map(h=>`<th style="padding:9px 11px;text-align:start;font-size:10.5px;font-weight:800;color:var(--t3);white-space:nowrap;border-bottom:1px solid var(--b1);background:var(--s1);">${h}</th>`).join("")}</tr></thead>
+          <tbody>${aiProvidersHtml}</tbody>
+        </table>
+      </div>
+      <div style="color:var(--t5);font-size:9.5px;line-height:1.7;margin-top:7px;">
+        مفاتيح المزودين في متغيرات البيئة فقط — تظهر هنا <b>حالة وجودها</b> وليس قيمتها. السلسلة ثابتة: Gemini أساس ← Claude احتياطي ← المحرك المحلي (شبكة أمان لا تُطفأ؛ تعطيل كل شيء يُنزل المساعد للمحلي لا يُطفئ الموقع).
+        كل مزايا AI الفعلية (المساعد الذكي، تحليل الأخبار، تقرير الصباح) تمر عبر المحرك الفعّال الواحد وبوابة «محلل الأخبار» أدناه — تحليل الفرص في الموقع يعمل بقواعد محلية وليس بالذكاء الاصطناعي.
+      </div>
+    `)}
     ${aSection("🔧 إعدادات المساعد الذكي",`
       <div style="display:flex;flex-direction:column;gap:10px;">
-        ${["analyzerEnabled:🤖 محلل الأخبار","summaryEnabled:📄 تلخيص الأخبار","rewriterEnabled:✍️ إعادة صياغة"].map(s=>{
+        ${["analyzerEnabled:🤖 محلل الأخبار (بوابة كل مزايا AI)","summaryEnabled:📄 تلخيص الأخبار *","rewriterEnabled:✍️ إعادة صياغة *"].map(s=>{
           const[k,l]=s.split(":");
           return `<label style="display:flex;justify-content:space-between;align-items:center;background:var(--s2);border-radius:10px;padding:10px 13px;cursor:pointer;">
             <span style="color:var(--t2);font-size:13px;">${l}</span>
             <input type="checkbox" id="aicfg-${k}" ${cfg[k]?"checked":""} style="width:18px;height:18px;accent-color:var(--g);cursor:pointer;" onchange="saveAICfgToggle('${k}',this.checked)"/>
           </label>`;}).join("")}
+        <div style="color:var(--t5);font-size:9px;line-height:1.6;">* إعدادات مخزّنة في قاعدة البيانات لكنها حاليًا غير مرتبطة بوظيفة حية على الخادم (تُحفظ وتُعرض فقط) — «محلل الأخبار» هو البوابة الفعلية لكل مزايا AI.</div>
         <div style="display:flex;align-items:center;gap:10px;background:var(--s2);border-radius:10px;padding:10px 13px;">
           <span style="color:var(--t2);font-size:13px;flex:1;">📊 حد الطلبات اليومي</span>
           <input type="number" id="aicfg-limit" value="${cfg.dailyRequestLimit||1000}" min="0" max="100000" class="a-in" style="width:90px;text-align:center;" />
@@ -6922,25 +7488,56 @@ async function genAdmReport(){
 
 /* ─── Audit Logs ─── */
 let auditPage=0;
+/* ─── Audit log (admin+ only — enforced server-side) ───
+ * The action filter is populated from the server (meta.actions) so new
+ * audit actions become filterable without a client redeploy. `detail`
+ * (jsonb) is shown as compact result/reason chips. */
+let auditActions=[];
+const ADM_AUDIT_ACTION_AR={
+  "login":"تسجيل دخول","logout":"تسجيل خروج",
+  "create_employee":"إضافة موظف","update_employee":"تعديل موظف","delete_employee":"حذف موظف","archive_employee":"أرشفة موظف",
+  "create_plan":"إضافة خطة","update_plan":"تعديل خطة","delete_plan":"حذف خطة","archive_plan":"أرشفة خطة","update_plan_pricing":"تعديل أسعار الخطط","revert_plan_pricing":"تراجع عن أسعار الخطط",
+  "create_coupon":"إنشاء كوبون","update_coupon":"تعديل كوبون","delete_coupon":"حذف كوبون","archive_coupon":"أرشفة كوبون",
+  "upsert_article":"نشر/تعديل خبر","delete_article":"حذف خبر","archive_article":"أرشفة خبر",
+  "upsert_source":"إضافة/تعديل مصدر","update_source":"تعديل مصدر","archive_source":"أرشفة مصدر","delete_source":"حذف مصدر","test_source":"اختبار مصدر",
+  "upgrade_vip":"ترقية VIP","downgrade_vip":"تخفيض VIP","ban_user":"حظر مستخدم","unban_user":"رفع الحظر","delete_user":"حذف مستخدم","extend_free_trial":"تمديد تجربة","end_free_trial_now":"إنهاء تجربة فورًا","grant_free_trial":"منح تجربة","manual_subscription_reminder":"تذكير يدوي","dry_run_subscription_lifecycle":"محاكاة دورة الاشتراك","update_subscription_lifecycle_settings":"إعدادات دورة الاشتراك",
+  "update_ai_config":"تعديل إعدادات AI","ai_provider_disable":"تعطيل مزود AI","ai_provider_enable":"تفعيل مزود AI","ai_provider_test":"اختبار مزود AI",
+  "market_provider_active":"تغيير محرك السوق الفعّال","market_provider_disable":"تعطيل مزود بيانات","market_provider_enable":"تفعيل مزود بيانات","market_provider_test":"اختبار مزود بيانات",
+  "create_broadcast":"إنشاء رسالة عامة","update_broadcast":"تعديل رسالة عامة","archive_broadcast":"أرشفة رسالة عامة","pause_broadcast":"إيقاف رسالة عامة","duplicate_broadcast":"تكرار رسالة عامة","test_broadcast_preview":"معاينة رسالة عامة","create_broadcast_media":"رفع صورة رسالة",
+  "create_free_trial_message":"رسالة تجربة جديدة","update_free_trial_message":"تعديل رسالة تجربة","archive_free_trial_message":"أرشفة رسالة تجربة","preview_free_trial_message":"معاينة رسالة تجربة","test_send_free_trial_message":"إرسال تجريبي (بريد موظف)","update_free_trial_settings":"إعدادات التجربة المجانية",
+  "create_referral_campaign":"حملة إحالة جديدة","update_referral_campaign":"تعديل حملة إحالة","archive_referral_campaign":"أرشفة حملة إحالة","create_referral_tier":"مستوى إحالة جديد","update_referral_tier":"تعديل مستوى إحالة","archive_referral_tier":"أرشفة مستوى إحالة","update_referral_settings":"إعدادات الإحالة","update_referral_template":"قالب رسالة إحالة","create_referral_special_code":"كود إحالة خاص","archive_referral_special_code":"أرشفة كود خاص","manual_referral_reward":"مكافأة إحالة يدوية","withdraw_referral_reward":"سحب مكافأة إحالة",
+  "update_payment_settings":"إعدادات الدفع","update_payment_price_lock":"قفل أسعار الدفع","expire_payment_price_lock":"إنهاء قفل أسعار الدفع",
+  "manual_payment_refund":"استرجاع يدوي"
+};
+function auditActionLabel(a){return ADM_AUDIT_ACTION_AR[a]||a;}
+function auditDetailChips(detail){
+  if(!detail||typeof detail!=="object"||Array.isArray(detail))return"";
+  const K={result:"النتيجة",reason:"السبب",ok:"النتيجة",error:"السبب",status:"الحالة",category:"التصنيف",model:"النموذج",latencyMs:"زمن الاستجابة",testedAt:"وقت الاختبار",effectiveEngine:"المحرك الفعّال",provider:"المزود",active:"الفعّال",disabled:"معطّل",updatedBy:"بواسطة",phone:"الهاتف",name:"الاسم",retained:"بيانات محفوظة",delivery:"الإرسال",timing:"التوقيت",channels:"القنوات",emailState:"البريد",days:"الأيام",endsAt:"تنتهي",instrumentSymbols:"الأدوات المتأثرة",otherConfiguredProviders:"مزوّدون مهيّأون آخرون",discountType:"نوع الخصم",discountValue:"القيمة"};
+  const parts=[];
+  for(const[k,v]of Object.entries(detail)){
+    if(v===null||v===undefined||v==="")continue;
+    let s=Array.isArray(v)?v.join("، "):typeof v==="object"?JSON.stringify(v):String(v);
+    if(s.length>60)s=s.slice(0,60)+"…";
+    parts.push(`<span class="admt">${sanitize(K[k]||k)}: ${sanitize(s)}</span>`);
+    if(parts.length>=4)break;
+  }
+  return parts.length?`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;">${parts.join("")}</div>`:"";
+}
 async function renderAdmAudit(el){
-  auditPage=0;
+  auditPage=0;auditActions=[];
+  try{
+    const role=await admSessionRole();
+    if(!["super_admin","admin"].includes(role)){
+      el.innerHTML=`<div class="empty" style="padding:26px;"><div style="font-size:26px;">🔒</div><div style="margin-top:6px;">هذا القسم للمدير فقط (admin / super_admin)</div></div>`;
+      return;
+    }
+  }catch{}
   el.innerHTML=`
+    <div class="admt-note">📋 سجل من فعل ماذا ومتى وعلى ماذا — بحث بالاسم أو الهدف، وفلترة حسب العملية. لا يمكن تعديل السجل أو حذفه من أي واجهة.</div>
     <div style="display:flex;gap:7px;margin-bottom:12px;">
-      <input id="aadit-search" placeholder="🔍 بحث بالمنفذ أو الهدف..." class="a-in" style="flex:1;" oninput="auditPage=0;loadAdmAudit()" />
+      <input id="aadit-search" placeholder="🔍 بحث بالمنفّذ أو الهدف..." class="a-in" style="flex:1;" oninput="auditPage=0;loadAdmAudit()" />
       <select id="aadit-action" class="a-in" style="flex:1;" onchange="auditPage=0;loadAdmAudit()">
         <option value="">كل العمليات</option>
-        <option value="login">تسجيل دخول</option>
-        <option value="create_employee">إضافة موظف</option>
-        <option value="delete_employee">حذف موظف</option>
-        <option value="update_employee">تعديل موظف</option>
-        <option value="create_plan">إضافة خطة</option>
-        <option value="delete_plan">حذف خطة</option>
-        <option value="create_coupon">إنشاء كوبون</option>
-        <option value="upsert_article">نشر خبر</option>
-        <option value="delete_article">حذف خبر</option>
-        <option value="upgrade_vip">ترقية VIP</option>
-        <option value="ban_user">حظر مستخدم</option>
-        <option value="update_ai_config">تعديل AI</option>
       </select>
     </div>
     <div id="aadit-list"><div class="empty"><div style="font-size:22px;">⏳</div></div></div>
@@ -6960,7 +7557,15 @@ async function loadAdmAudit(){
     const j=await r.json();
     if(!r.ok||j.status!=="ok") throw new Error(j.message||"failed");
 
-    const ACTION_ICONS={"login":"🔑","create_employee":"👤+","delete_employee":"👤-","update_employee":"👤✎","create_plan":"💎+","delete_plan":"💎-","update_plan":"💎✎","create_coupon":"🎟️+","delete_coupon":"🎟️-","upsert_article":"📰+","delete_article":"📰-","upgrade_vip":"⭐","downgrade_vip":"⭐-","ban_user":"🚫","unban_user":"✓","upsert_source":"🔗+","delete_source":"🔗-","update_ai_config":"🤖","update_coupon":"🎟️✎"};
+    if(Array.isArray(j.actions)&&j.actions.length){
+      auditActions=j.actions;
+      const sel=document.getElementById("aadit-action");
+      if(sel&&sel.options.length<=1){
+        sel.innerHTML='<option value="">كل العمليات</option>'+j.actions.map(a=>`<option value="${sanitize(String(a.action))}">${sanitize(auditActionLabel(String(a.action)))} (${a.count})</option>`).join("");
+      }
+    }
+
+    const ACTION_ICONS={"login":"🔑","delete_user":"👤-","ban_user":"🚫","unban_user":"✓","upgrade_vip":"⭐","downgrade_vip":"⭐-","update_ai_config":"🤖","ai_provider_disable":"🤖⏸","ai_provider_enable":"🤖✓","ai_provider_test":"🤖⚡","market_provider_test":"⚡","market_provider_disable":"📉⏸","market_provider_enable":"📉✓","upsert_source":"🔗+","update_source":"🔗✎","archive_source":"🔗▸","test_source":"🔗⚡","create_broadcast":"📣+","update_broadcast":"📣✎","delete_article":"📰-","upsert_article":"📰+"};
 
     el.innerHTML=j.logs.length?j.logs.map(l=>`
       <div style="background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:10px 12px;margin-bottom:6px;">
@@ -6969,7 +7574,7 @@ async function loadAdmAudit(){
             <div style="display:flex;align-items:center;gap:6px;">
               <span style="font-size:14px;">${ACTION_ICONS[l.action]||"⚙️"}</span>
               <div>
-                <span style="color:var(--t2);font-size:12px;font-weight:700;">${sanitize(String(l.action||""))}</span>
+                <span style="color:var(--t2);font-size:12px;font-weight:700;">${sanitize(auditActionLabel(String(l.action||"")))}</span>
                 ${l.target?`<span style="color:var(--t4);font-size:11px;"> → ${sanitize(String(l.target))}</span>`:""}
               </div>
             </div>
@@ -6978,6 +7583,7 @@ async function loadAdmAudit(){
               ${l.actorRole?` · <span style="color:var(--t5);">${sanitize(ROLE_LABELS[l.actorRole]||String(l.actorRole))}</span>`:""}
               ${l.ip?` · <span style="font-family:var(--mono);color:var(--t5);">${sanitize(String(l.ip))}</span>`:""}
             </div>
+            ${auditDetailChips(l.detail)}
           </div>
           <div style="color:var(--t5);font-size:9px;font-family:var(--mono);white-space:nowrap;">${l.createdAt?new Date(l.createdAt).toLocaleString("ar-EG"):""}</div>
         </div>

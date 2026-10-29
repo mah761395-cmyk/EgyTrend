@@ -13,6 +13,7 @@ import calculatorsRouter from "./calculators";
 import subscriptionLifecycleRouter from "./subscription-lifecycle";
 import broadcastsRouter from "./broadcasts";
 import referralsRouter from "./referrals";
+import backupsCronRouter from "./backups-cron";
 
 const router: IRouter = Router();
 
@@ -28,6 +29,7 @@ router.use(priceAlertsRouter);
 router.use(subscriptionLifecycleRouter);
 router.use("/broadcasts", broadcastsRouter);
 router.use("/referrals", referralsRouter);
+router.use("/backups", backupsCronRouter);
 router.use(calculatorsRouter);
 router.use(opportunitiesRouter);
 

@@ -2,6 +2,8 @@ import { createMarketCache, loadCached, type JsonCache } from "./cache";
 import { MARKET_INSTRUMENTS, type StockDefinition } from "./catalog";
 import { classifyQuote, sessionForInstrument } from "./freshness";
 import { ProviderHealthMonitor } from "./health";
+import { safeUpstreamErrorSummary } from "./http";
+import { readMarketProviderSettings } from "../market-provider-settings";
 import { ResilientHttpClient } from "./http";
 import {
   CoinGeckoFreeProvider,
@@ -21,11 +23,99 @@ import type {
   CalendarEvent,
   CanonicalQuote,
   DailyOhlc,
+  DataFreshness,
+  InstrumentKind,
   MarketDataProvider,
   MarketInstrument,
   ProviderDescriptor,
   ProviderHealth,
+  ProviderState,
 } from "./types";
+
+const BOARD_CACHE_KEY = "egytrend:market:quotes:v2:board";
+const PROBE_TIMEOUT_MS = 10_000;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("operation timed out")), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** Admin dashboard row: proven state only — health store, last cached
+ * snapshot, and the descriptor. No credential material, ever. */
+export type AdminProviderInfo = {
+  id: string;
+  name: string;
+  kind: "quotes" | "calendar";
+  state: ProviderState;
+  adminDisabled: boolean;
+  note: string;
+  coverage: string[];
+  externalDisplayConfirmed: boolean;
+  servesInstrumentCount: number;
+  health: {
+    lastSuccessAt?: number;
+    lastFailureAt?: number;
+    consecutiveFailures: number;
+    degraded: boolean;
+  };
+  lastQuoteAsOf?: number;
+  lastQuoteFreshness?: DataFreshness;
+};
+
+export type AdminInstrumentAttention = {
+  instrumentId: string;
+  symbol: string;
+  name: string;
+  kind: InstrumentKind;
+  state: "fresh" | "stale" | "end-of-day" | "no-verified-quote";
+  asOf?: number;
+  freshness?: DataFreshness;
+};
+
+export type AdminMarketOverview = {
+  generatedAt: number;
+  cache: ReturnType<JsonCache["status"]>;
+  board: {
+    fetchedAt: number;
+    stale: boolean;
+    fromCache: boolean;
+    quoteCount: number;
+    /** true when even the stale-serving window has expired (nothing verified) */
+    expired: boolean;
+  } | null;
+  providers: AdminProviderInfo[];
+  instruments: AdminInstrumentAttention[];
+};
+
+export type MarketProbeResult = {
+  ok: boolean;
+  testedAt: number;
+  kind: "quotes" | "calendar";
+  instrumentId?: string;
+  symbol?: string;
+  price?: number;
+  currency?: string;
+  asOf?: number;
+  freshness?: DataFreshness;
+  delayedMinutes?: number;
+  eventCount?: number;
+  firstEventTitle?: string;
+  error?: string;
+};
+
+export type ProviderImpact = {
+  instrumentSymbols: string[];
+  otherConfiguredProviders: Array<{ id: string; name: string }>;
+};
 
 export type QuoteSnapshot = {
   quotes: CanonicalQuote[];
@@ -79,6 +169,19 @@ export class MarketDataService {
     return this.getQuoteSnapshot("board", MARKET_INSTRUMENTS, 60_000, 15 * 60_000);
   }
 
+  /**
+   * Admin-disabled provider ids (app_settings). Fail-open: a settings or DB
+   * outage changes nothing about live provider selection.
+   */
+  private async disabledProviderIds(): Promise<Set<string>> {
+    try {
+      const settings = await readMarketProviderSettings();
+      return settings.disabled;
+    } catch {
+      return new Set();
+    }
+  }
+
   async getStocks(market: "egx" | "us", definitions: StockDefinition[]): Promise<QuoteSnapshot> {
     const instruments: MarketInstrument[] = definitions.map((stock) => ({
       id: stock.id,
@@ -100,6 +203,9 @@ export class MarketDataService {
     if (!provider) throw new Error("egx stock scan provider not configured");
     const descriptor = provider.descriptor();
     if (descriptor.state !== "configured") throw new Error("egx stock scan provider not configured");
+    if ((await this.disabledProviderIds()).has(provider.id)) {
+      throw new Error("egx stock scan provider is disabled by admin");
+    }
     const key = "egytrend:market:egx-scan:v1";
     const cached = await loadCached(this.cache, key, 180_000, 2 * 60 * 60_000, async () => {
       const rows = await (provider as TradingViewScannerProvider).getEgxFullScan();
@@ -114,8 +220,10 @@ export class MarketDataService {
   async getCalendar(): Promise<CalendarSnapshot> {
     const key = "egytrend:market:calendar:v2";
     const cached = await loadCached(this.cache, key, 30 * 60_000, 2 * 60 * 60_000, async () => {
+      const disabled = await this.disabledProviderIds();
       const events: CalendarEvent[] = [];
       for (const provider of this.calendarProviders) {
+        if (disabled.has(provider.id)) continue;
         const descriptor = provider.descriptor();
         if (descriptor.state !== "configured") continue;
         try {
@@ -148,8 +256,10 @@ export class MarketDataService {
   async getDailyOhlc(instruments: MarketInstrument[], tradingDate: string): Promise<DailyOhlc[]> {
     const remaining = new Map(instruments.map((instrument) => [instrument.id, instrument]));
     const accepted: DailyOhlc[] = [];
+    const disabled = await this.disabledProviderIds();
     for (const provider of this.providers) {
       if (!provider.getDailyOhlc) continue;
+      if (disabled.has(provider.id)) continue;
       const candidates = [...remaining.values()].filter((instrument) => provider.canServe(instrument));
       if (!candidates.length) continue;
       const descriptor = provider.descriptor();
@@ -175,6 +285,182 @@ export class MarketDataService {
     ];
   }
 
+  /**
+   * Admin dashboard payload. Read-only by construction: no provider call,
+   * no cache write, no credential. "Working" claims are limited to what the
+   * health store and the last cached snapshot actually prove; anything
+   * unknown is reported as unknown, never invented.
+   */
+  async adminOverview(): Promise<AdminMarketOverview> {
+    const now = Date.now();
+    const disabled = await this.disabledProviderIds();
+    const healthList = await this.health.status(this.descriptors());
+    const healthMap = new Map(healthList.map((item) => [item.providerId, item]));
+    const boardEntry = await this.cache.get<QuoteSnapshot>(BOARD_CACHE_KEY);
+    const board = boardEntry ? boardEntry.value : null;
+
+    const lastBySource = new Map<string, CanonicalQuote>();
+    for (const quote of board?.quotes ?? []) {
+      const prev = lastBySource.get(quote.sourceId);
+      if (!prev || quote.asOf > prev.asOf) lastBySource.set(quote.sourceId, quote);
+    }
+
+    const rows: AdminProviderInfo[] = [];
+    const pushRow = (provider: { id: string; descriptor(): ProviderDescriptor }, kind: "quotes" | "calendar", canServe?: (instrument: MarketInstrument) => boolean): void => {
+      const d = provider.descriptor();
+      const health = healthMap.get(d.id);
+      const last = kind === "quotes" ? lastBySource.get(d.id) : undefined;
+      rows.push({
+        id: d.id,
+        name: d.name,
+        kind,
+        state: d.state,
+        adminDisabled: disabled.has(d.id),
+        note: d.note,
+        coverage: [...d.coverage],
+        externalDisplayConfirmed: d.externalDisplayConfirmed,
+        servesInstrumentCount: kind === "quotes" && canServe ? MARKET_INSTRUMENTS.filter((i) => canServe(i)).length : 0,
+        health: {
+          lastSuccessAt: health?.lastSuccessAt,
+          lastFailureAt: health?.lastFailureAt,
+          consecutiveFailures: health?.consecutiveFailures ?? 0,
+          degraded: health?.degraded ?? false,
+        },
+        lastQuoteAsOf: last?.asOf,
+        lastQuoteFreshness: last?.freshness,
+      });
+    };
+    for (const provider of this.providers) pushRow(provider, "quotes", (instrument) => provider.canServe(instrument));
+    for (const provider of this.calendarProviders) pushRow(provider, "calendar");
+
+    const instruments: AdminInstrumentAttention[] = MARKET_INSTRUMENTS.map((instrument) => {
+      const quote = (board?.quotes ?? []).find((q) => q.instrumentId === instrument.id);
+      if (!quote) {
+        return { instrumentId: instrument.id, symbol: instrument.symbol, name: instrument.name, kind: instrument.kind, state: "no-verified-quote" as const };
+      }
+      if (quote.freshness === "end-of-day") {
+        return { instrumentId: instrument.id, symbol: instrument.symbol, name: instrument.name, kind: instrument.kind, state: "end-of-day" as const, asOf: quote.asOf, freshness: quote.freshness };
+      }
+      const session = sessionForInstrument(instrument.id);
+      if (!session) {
+        return { instrumentId: instrument.id, symbol: instrument.symbol, name: instrument.name, kind: instrument.kind, state: "fresh" as const, asOf: quote.asOf, freshness: quote.freshness };
+      }
+      const classification = classifyQuote(
+        { asOf: quote.asOf, sourceAsOfUnknown: quote.sourceAsOfUnknown, delayedMinutes: quote.delayedMinutes },
+        session,
+        now,
+      );
+      return {
+        instrumentId: instrument.id,
+        symbol: instrument.symbol,
+        name: instrument.name,
+        kind: instrument.kind,
+        state: classification.state === "stale" ? ("stale" as const) : ("fresh" as const),
+        asOf: quote.asOf,
+        freshness: quote.freshness,
+      };
+    });
+
+    return {
+      generatedAt: now,
+      cache: this.cache.status(),
+      board: board
+        ? { fetchedAt: board.fetchedAt, stale: board.stale, fromCache: board.fromCache, quoteCount: board.quotes.length, expired: boardEntry ? boardEntry.staleUntil <= now : false }
+        : null,
+      providers: rows,
+      instruments,
+    };
+  }
+
+  /**
+   * Limited data-fetch probe for the admin panel: exactly one real call
+   * (one instrument, or one calendar fetch), a 10 s guard, and zero side
+   * effects — no health record, no cache write, no state mutation. A
+   * disabled provider can still be probed (to verify before re-enabling);
+   * an unconfigured one is answered honestly without any upstream call.
+   */
+  async probeProvider(id: string): Promise<MarketProbeResult> {
+    const quoteProvider = this.providers.find((p) => p.id === id) ?? null;
+    const calendarProvider = this.calendarProviders.find((p) => p.id === id) ?? null;
+    if (!quoteProvider && !calendarProvider) {
+      return { ok: false, testedAt: Date.now(), kind: "quotes", error: "unknown provider" };
+    }
+    const kind: "quotes" | "calendar" = calendarProvider ? "calendar" : "quotes";
+    const provider = calendarProvider ?? (quoteProvider as MarketDataProvider);
+    const descriptor = provider.descriptor();
+    if (descriptor.state !== "configured") {
+      return {
+        ok: false,
+        testedAt: Date.now(),
+        kind,
+        error: descriptor.state === "requires_contract"
+          ? "provider requires a documented contract"
+          : "provider is not configured",
+      };
+    }
+    try {
+      if (calendarProvider) {
+        const result = await withTimeout(calendarProvider.getCalendar(), PROBE_TIMEOUT_MS);
+        if (!result.events.length) {
+          return { ok: false, testedAt: Date.now(), kind: "calendar", eventCount: 0, error: "calendar returned no events" };
+        }
+        return {
+          ok: true,
+          testedAt: Date.now(),
+          kind: "calendar",
+          eventCount: result.events.length,
+          firstEventTitle: result.events[0]?.title,
+        };
+      }
+      const instrument = MARKET_INSTRUMENTS.find((i) => (provider as MarketDataProvider).canServe(i));
+      if (!instrument) {
+        return { ok: false, testedAt: Date.now(), kind: "quotes", error: "provider serves no board instruments" };
+      }
+      const result = await withTimeout((provider as MarketDataProvider).getQuotes([instrument]), PROBE_TIMEOUT_MS);
+      const quote = result.quotes.find((q) => q.instrumentId === instrument.id && isValidQuote(q));
+      if (!quote) {
+        return { ok: false, testedAt: Date.now(), kind: "quotes", instrumentId: instrument.id, symbol: instrument.symbol, error: "no valid quote returned" };
+      }
+      return {
+        ok: true,
+        testedAt: Date.now(),
+        kind: "quotes",
+        instrumentId: quote.instrumentId,
+        symbol: instrument.symbol,
+        price: quote.price,
+        currency: quote.currency,
+        asOf: quote.asOf,
+        freshness: quote.freshness,
+        delayedMinutes: quote.delayedMinutes,
+      };
+    } catch (error) {
+      return { ok: false, testedAt: Date.now(), kind, error: safeUpstreamErrorSummary(error) || "probe failed" };
+    }
+  }
+
+  /**
+   * What disabling a provider would change: the board instruments it serves
+   * and which other configured + enabled providers could still serve them.
+   * An instrument with no remaining source is called out explicitly instead
+   * of letting the failure surface later as a silent gap.
+   */
+  async providerImpact(id: string): Promise<ProviderImpact> {
+    const provider = this.providers.find((p) => p.id === id);
+    if (!provider) return { instrumentSymbols: [], otherConfiguredProviders: [] };
+    const disabled = await this.disabledProviderIds();
+    const instruments = MARKET_INSTRUMENTS.filter((i) => provider.canServe(i));
+    const others = new Map<string, { id: string; name: string }>();
+    for (const other of this.providers) {
+      if (other.id === id || disabled.has(other.id)) continue;
+      if (other.descriptor().state !== "configured") continue;
+      if (instruments.some((i) => other.canServe(i))) others.set(other.id, { id: other.id, name: other.name });
+    }
+    return {
+      instrumentSymbols: instruments.map((i) => i.symbol),
+      otherConfiguredProviders: [...others.values()],
+    };
+  }
+
   async healthStatus(): Promise<{
     cache: ReturnType<JsonCache["status"]>;
     providers: ProviderHealth[];
@@ -188,7 +474,7 @@ export class MarketDataService {
     ttlMs: number,
     staleMs: number,
   ): Promise<QuoteSnapshot> {
-    const key = `egytrend:market:quotes:v2:${keyPart}`;
+    const key = keyPart === "board" ? BOARD_CACHE_KEY : `egytrend:market:quotes:v2:${keyPart}`;
     const cached = await loadCached(this.cache, key, ttlMs, staleMs, async () => this.resolveQuotes(instruments));
     // A successful HTTP fetch is not enough to call a quote current: the
     // provider's own timestamp may already be beyond this snapshot's maximum
@@ -224,8 +510,13 @@ export class MarketDataService {
     const pending = new Map(instruments.map((instrument) => [instrument.id, instrument]));
     const accepted: CanonicalQuote[] = [];
     let failedProviderCalls = 0;
+    const disabled = await this.disabledProviderIds();
 
     for (const provider of this.providers) {
+      /* Admin-disabled providers are skipped entirely (no call, no health
+       * record). Remaining configured providers keep their original order —
+       * the panel never reorders or auto-promotes a fallback. */
+      if (disabled.has(provider.id)) continue;
       const candidates = [...pending.values()].filter((instrument) => provider.canServe(instrument));
       if (!candidates.length) continue;
       const descriptor = provider.descriptor();
@@ -288,4 +579,10 @@ export function getMarketDataService(): MarketDataService {
 /** Test-only reset; it is not exported from an HTTP route. */
 export function resetMarketDataServiceForTest(): void {
   singleton = null;
+}
+
+/** Test-only injection: swap the runtime singleton (fake providers, fake
+ * clock). Never reachable from an HTTP route. */
+export function setMarketDataServiceForTest(service: MarketDataService): void {
+  singleton = service;
 }

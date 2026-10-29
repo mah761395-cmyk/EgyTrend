@@ -58,6 +58,10 @@ export type SymbolLedger = {
   totalBuyValue: number;
   /** Σ qty·price of sells (fees excluded). */
   totalSellValue: number;
+  /** Fees paid on this symbol's BUY trades only (part of totalFees). */
+  buyFees: number;
+  /** Σ soldQty·avgCostAtTime over this symbol's sells (fees excluded). */
+  costBasisSold: number;
   firstTradeAtMs: number;
   lastTradeAtMs: number;
 };
@@ -96,6 +100,14 @@ export type PortfolioComputation = {
   cash: number;
   /** Σ cost basis of currently held shares. */
   investedCost: number;
+  /**
+   * Total cash spent on acquiring shares, all time: Σ buys qty·price + fees
+   * paid on buys. This is the "capital deployed" denominator of the return
+   * on cost: returnPct = (realizedPnl + unrealizedPnl) / totalBuyOutlay.
+   */
+  totalBuyOutlay: number;
+  /** Σ cost basis of the sold portion of every trade (fees excluded). */
+  costBasisSold: number;
   realizedPnl: number;
   totalFees: number;
   buyCount: number;
@@ -127,6 +139,8 @@ export function computePortfolio(
   let cash = Number.isFinite(startingCash) ? startingCash : 0;
   let realizedPnl = 0;
   let totalFees = 0;
+  let totalBuyFees = 0;
+  let costBasisSold = 0;
   let buyCount = 0;
   let sellCount = 0;
 
@@ -149,6 +163,8 @@ export function computePortfolio(
         sellCount: 0,
         totalBuyValue: 0,
         totalSellValue: 0,
+        buyFees: 0,
+        costBasisSold: 0,
         firstTradeAtMs: tx.createdAtMs,
         lastTradeAtMs: tx.createdAtMs,
       };
@@ -169,6 +185,8 @@ export function computePortfolio(
       buyCount += 1;
       ledger.buyCount += 1;
       ledger.totalBuyValue = round6(ledger.totalBuyValue + quantity * price);
+      ledger.buyFees = round6(ledger.buyFees + fees);
+      totalBuyFees = round6(totalBuyFees + fees);
     } else {
       const sold = Math.min(quantity, ledger.quantity);
       clamped = sold < quantity;
@@ -191,6 +209,8 @@ export function computePortfolio(
       sellCount += 1;
       ledger.sellCount += 1;
       ledger.totalSellValue = round6(ledger.totalSellValue + sold * price);
+      ledger.costBasisSold = round6(ledger.costBasisSold + costBasis);
+      costBasisSold = round6(costBasisSold + costBasis);
       cash = round6(cash + proceeds);
     }
 
@@ -217,11 +237,27 @@ export function computePortfolio(
   }
 
   let investedCost = 0;
+  let totalBuyValue = 0;
   for (const ledger of bySymbol.values()) {
     investedCost = round6(investedCost + ledger.costBasis);
+    totalBuyValue = round6(totalBuyValue + ledger.totalBuyValue);
   }
+  const totalBuyOutlay = round6(totalBuyValue + totalBuyFees);
 
-  return { bySymbol, symbolOrder, cash, investedCost, realizedPnl, totalFees, buyCount, sellCount, events, errors };
+  return {
+    bySymbol,
+    symbolOrder,
+    cash,
+    investedCost,
+    totalBuyOutlay,
+    costBasisSold,
+    realizedPnl,
+    totalFees,
+    buyCount,
+    sellCount,
+    events,
+    errors,
+  };
 }
 
 export type SymbolMarketEntry = {

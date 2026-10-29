@@ -417,6 +417,29 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .va-bar-v{font-family:var(--mono);font-size:9px;text-align:left;direction:ltr;white-space:nowrap;}
 .va-bar-total{background:rgba(96,165,250,.07);border:1px solid rgba(96,165,250,.16);border-radius:8px;padding:5px 6px 4px;margin-top:2px;}
 .va-bar-total .va-bar-row{grid-template-columns:46px minmax(0,1fr) 66px;}
+/* portfolio: 8 KPI cards — 2×4 on phones, 4×2 from tablet up */
+.port-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+@media (min-width:700px){.port-kpis{grid-template-columns:repeat(4,minmax(0,1fr));}}
+/* portfolio: cost-vs-market paired bars (cost on top, market below) */
+.pf-cmp-row{display:grid;grid-template-columns:46px minmax(0,1fr) 118px;align-items:center;gap:6px;padding:3px 0;}
+.pf-cmp-track{position:relative;height:22px;background:var(--ink2);border-radius:5px;overflow:hidden;}
+.pf-cmp-fill{position:absolute;left:0;height:8px;border-radius:2px;min-width:1px;}
+.pf-cmp-cost{top:2.5px;background:rgba(96,165,250,.8);}
+.pf-cmp-mv{bottom:2.5px;}
+.pf-cmp-v{font-family:var(--mono);font-size:8.3px;line-height:1.55;text-align:left;direction:ltr;white-space:nowrap;overflow:hidden;}
+/* portfolio: position detail stat grid — 2×4 phones, 4×2 wider */
+.port-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;}
+@media (min-width:700px){.port-detail-grid{grid-template-columns:repeat(4,minmax(0,1fr));}}
+/* portfolio: stock search dropdown for the transactions form */
+.pf-suggest-wrap{position:relative;flex:1.6;min-width:150px;}
+.pf-suggest{position:absolute;top:calc(100% + 3px);right:0;left:0;z-index:9;background:rgba(13,20,35,.98);border:1px solid var(--b2);border-radius:9px;box-shadow:0 10px 24px rgba(0,0,0,.5);display:none;max-height:188px;overflow:auto;}
+.pf-suggest.open{display:block;}
+.pf-sg{display:flex;align-items:center;gap:7px;padding:6px 9px;cursor:pointer;border-bottom:1px solid var(--s2);font-size:10.5px;}
+.pf-sg:last-child{border-bottom:none;}
+.pf-sg:hover,.pf-sg.active{background:var(--s2);}
+.pf-sg .sym{font-family:var(--mono);color:var(--t1);font-weight:800;font-size:10.5px;flex-shrink:0;}
+.pf-sg .nm{color:var(--t5);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9.3px;}
+.pf-sg .px{color:var(--t4);font-family:var(--mono);font-size:8.8px;flex-shrink:0;}
 /* Roomier plots where the viewport allows it; two columns on desktop so the
  * charts keep a readable aspect ratio instead of stretching full width. */
 @media (min-width:700px){
@@ -562,7 +585,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 
 /* ─── BOTTOM NAV ─── */
 #bnav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:rgba(3,7,18,.98);backdrop-filter:blur(22px);border-top:1px solid var(--b1);padding:7px 0 15px;z-index:200;}
-.bnav-grid{display:grid;grid-template-columns:repeat(5,1fr);}
+.bnav-grid{display:grid;grid-template-columns:repeat(6,1fr);}
 .n-btn{background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;color:var(--t5);transition:color .18s;font-family:var(--sans);}
 .n-btn.active{color:var(--g);}
 .n-icon{font-size:17px;}
@@ -1826,6 +1849,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       <button class="n-btn" type="button" onclick="goNav('markets')" id="nb-markets"><span class="n-icon"><svg class="et-icon"><use href="#i-chart"></use></svg></span><span class="n-label">الأسواق</span></button>
       <button class="n-btn" type="button" onclick="goNav('vip')" id="nb-vip"><span class="n-icon nav-vip-icon"><svg class="et-icon"><use href="#i-star"></use></svg></span><span class="n-label">VIP</span></button>
       <button class="n-btn" type="button" onclick="goNav('opps')" id="nb-opps"><span class="n-icon" style="position:relative;"><svg class="et-icon"><use href="#i-bulb"></use></svg><span id="nb-opps-badge" class="nb-badge" style="display:none;">0</span></span><span class="n-label">فرص</span></button>
+      <button class="n-btn" type="button" onclick="goNav('calculators')" id="nb-calculators"><span class="n-icon"><svg class="et-icon"><use href="#i-calculator"></use></svg></span><span class="n-label">الحاسبات</span></button>
       <button class="n-btn" type="button" onclick="goNav('profile')" id="nb-profile"><span class="n-icon"><svg class="et-icon"><use href="#i-user"></use></svg></span><span class="n-label">حسابي</span></button>
     </div>
   </div>
@@ -1929,7 +1953,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
 /* AI is proxied via /api/ai/chat (no client-side key). The backend
  * picks the canonical model. Frontend just sends system + messages. */
 
-async function callAI({system, messages, max_tokens=2000, context=null, memory=false}){
+async function callAI({system, messages, max_tokens=2000, context=null, memory=false, feature=null}){
   const ctrl = new AbortController();
   const tid = setTimeout(()=>ctrl.abort(), 85000);
   try{
@@ -1939,6 +1963,8 @@ async function callAI({system, messages, max_tokens=2000, context=null, memory=f
      * caller opts in; the backend reads nothing else from the body. */
     if(context)Object.assign(body, context);
     if(memory)body.memory=true;
+    /* Metering label only (the server allowlists it); never an auth input. */
+    if(feature)body.feature=feature;
     const r = await fetch("/api/ai/chat",{
       method:"POST",
       headers,
@@ -2373,6 +2399,14 @@ let portReport={status:"idle",data:null,from:"",to:"",range:"month"};
 let portGlossaryOpen=false;
 let portWhatIfPct=5;
 let portCashEdit=null;
+/* Positions table state (search / filter / sort / open detail) — view state
+ * only; every figure still comes from the server-rendered portfolio. */
+let portPosSearch="";
+let portPosFilter="held";
+let portPosSort={key:"value",dir:-1};
+let portPosDetail=null;
+let portAllocMode="sector";
+let portAddAssetPrefill=null;
 let priceAlertsState={loaded:false,loading:false,error:"",items:[]};
 let chatHist=[];
 let subStep=1, selPlan="monthly", selPay="vodafone";
@@ -2485,7 +2519,7 @@ function firstUseRenderChecklist(){
 /* Platform tour: every step points at a real, existing UI element. */
 function platformTourSteps(){
   const steps=[
-    {id:"home",nav:"home",target:"#bnav",icon:"home",title:"الرئيسية والتنقل",copy:"هذه صفحتك الرئيسية: شريط الأسواق العلوي، شريط الحالة، وآخر الأخبار. من الشريط السفلي تتنقل بين الرئيسية والأسواق وVIP والفرص وحسابك، ومن جرس الإشعارات في الأعلى تفتح آخر التنبيهات."},
+    {id:"home",nav:"home",target:"#bnav",icon:"home",title:"الرئيسية والتنقل",copy:"هذه صفحتك الرئيسية: شريط الأسواق العلوي، شريط الحالة، وآخر الأخبار. من الشريط السفلي تتنقل بين الرئيسية والأسواق وVIP والفرص والحاسبات وحسابك، ومن جرس الإشعارات في الأعلى تفتح آخر التنبيهات."},
     {id:"news",nav:"home",target:"#feed",icon:"source",title:"الأخبار",copy:"افتح أي خبر للاطلاع على مصدره ووقت نشره والتحليلات المتاحة له. الأخبار للاطلاع ولا تمثل توصية استثمارية."},
     {id:"markets",nav:"markets",target:"#markets-tour-anchor",icon:"chart",title:"الأسواق",copy:"تابع الأسواق المصرية والعالمية والسلع والكريبتو مع حالة المصدر ووقت التحديث — وعند تعذّر المصدر تظهر «غير متاح حاليًا» بدل رقم بديل. افتح أي أصل لشارته، ثم اختر النجمة ⭐ لإضافته إلى قائمة متابعتك."},
     {id:"opps",nav:"opps",target:"#opps-tour-anchor",icon:"bulb",title:"الفرص وعناصر متابعة السوق",copy:"صفحة الفرص تلخّص عناصر السوق بحسب النوع والسوق، وكل عنصر يبيّن مصدره ووقت تحديثه عند توافره — دون توصيات أو عوائد معدّة."},
@@ -4896,6 +4930,7 @@ async function aiAnalyze(){
   try{
     const txt = await callAI({
       max_tokens:2200,
+      feature:"article_analysis",
       system:"أنت محرر شرح خبر اقتصادي بالعربية. استخدم العنوان والخلاصة والمصدر المرسلة فقط؛ لا تضف معرفة خارجية، ولا تستنتج حركة سعر أو اتجاهًا أو أثرًا مستقبليًا، ولا تقدّم توصية تداول. عند الغموض أو النقص اذكره صراحة.",
       messages:[{role:"user",content:`اشرح هذا الخبر الوارد فقط:\nالمصدر: ${artSnap.srcName}\nالعنوان: ${artSnap.title}\nالخلاصة: ${artSnap.summary}\n\nالمطلوب بعناوين واضحة:\n1. **ملخص الخبر** — سطران كحد أقصى.\n2. **الوقائع والأطراف المذكورة صراحة** — لا تضف شركات أو أصولًا غير مذكورة.\n3. **مصطلحات أو سياق عام يمكن شرحه من النص** — تعريف تعليمي فقط.\n4. **ما الذي لا يثبته الخبر** — ومنها سبب حركة الأسعار أو أثر استثماري أو توقع.\n5. **المصدر وحدود الملخص**.\n\nإن كان العنوان/الخلاصة مبهمين فاشرح الغموض بدل افتراض معنى.`}]
     });
@@ -6333,7 +6368,7 @@ function vaCard(opts){
     <div class="va-head"><div style="min-width:0;">
       <div class="va-title">${sanitize(opts.icon||"")} ${sanitize(opts.title||"")}</div>
       ${opts.sub?`<div class="va-sub">${sanitize(opts.sub)}</div>`:""}
-    </div>${opts.badge?`<span class="vchip" style="flex-shrink:0;">${sanitize(opts.badge)}</span>`:""}</div>
+    </div>${opts.badgeHtml?`<span style="flex-shrink:0;">${opts.badgeHtml}</span>`:opts.badge?`<span class="vchip" style="flex-shrink:0;">${sanitize(opts.badge)}</span>`:""}</div>
     ${opts.body||""}
     ${vaSourceFoot(opts.foot||"")}
   </section>`;
@@ -6728,13 +6763,15 @@ function pfMarketFoot(rows){
   const asOf=Math.max(0,...priced.map(row=>Number(row.p.market.asOf)||0));
   return `<b>المصدر:</b> ${sanitize(sources.join(" + ")||"غير متاح")} · <b>آخر تحديث للسعر:</b> ${sanitize(cairoTimestampLabel(asOf))} · ${priced.length} من ${(rows||[]).length} مركز بسعر موثّق`;
 }
-function pfAllocation(stats){
+/* byAsset: group by symbol (كل أصل بذاته). Otherwise by the server catalog
+ * sector — a grouping label only, never a valuation input. */
+function pfAllocation(stats,byAsset=false){
   const rows=stats?.rows||[];
   const priced=rows.filter(row=>row.pr!==null);
   const skipped=rows.filter(row=>row.pr===null);
   const groups=new Map();
   priced.forEach(row=>{
-    const key=row.p.sector||"غير مصنّف";
+    const key=byAsset?row.p.sym:(row.p.sector||"غير مصنّف");
     groups.set(key,(groups.get(key)||0)+row.pr*row.p.qty);
   });
   const slices=[...groups.entries()].sort((a,b)=>b[1]-a[1]).map(([label,value],index)=>({label,value,color:VA_PALETTE[index%VA_PALETTE.length]}));
@@ -6854,13 +6891,29 @@ function portSigned(v,digits=0){return v===null?"—":ltrChange((v>=0?"+":"")+va
 function portPct(v,digits=1){return v===null?"—":ltrChange((v>=0?"+":"")+v.toFixed(digits)+"%");}
 function portPlColor(v){return v===null?"var(--t5)":v>=0?"var(--g)":"var(--dn)";}
 
+/* Return on deployed capital — the documented return-% formula:
+ * (realized P/L + unrealized P/L) ÷ total cash spent on buying shares
+ * (qty·price + buy fees, all time, from the server's totalBuyOutlay).
+ * Realized is fee-net; unrealized is a mark-to-market of what is still held.
+ * Null whenever any input is missing — a fabricated % is never shown. */
+function portReturnPct(){
+  const s=portfolioData.summary;
+  if(!s)return null;
+  const outlay=Number(s.totalBuyOutlay);
+  if(!Number.isFinite(outlay)||!(outlay>0))return null;
+  if(s.unrealizedPnl===null||s.unrealizedPnl===undefined||!Number.isFinite(s.realizedPnl))return null;
+  return (s.realizedPnl+s.unrealizedPnl)/outlay*100;
+}
 function portKpis(st){
   const s=portfolioData.summary;
   if(!s)return"";
   const missing=s.missingPriceSymbols||[];
   const total=s.totalValue;
+  const retPct=portReturnPct();
   const cards=[
-    {label:"قيمة المحفظة الإجمالية",value:portMoney(total),hint:total===null?"يلزم سعر موثّق لكل مركز قائم":"النقدية + قيمة المراكز بسعر السوق",color:total===null?"var(--t4)":"var(--t1)"},
+    {label:"قيمة المحفظة الإجمالية",value:portMoney(total),hint:total===null?"يلزم سعر موثّق لكل مركز قائم":"النقدية + قيمة المراكز بسعر السوق",color:total===null?"var(--t4)":"var(--t1)",big:true},
+    {label:"تكلفة المراكز القائمة",value:portMoney(s.investedCost),hint:"الكمية × متوسط التكلفة لكل مركز قائم (قبل أي ربح/خسارة سوقية)",color:"var(--t1)"},
+    {label:"العائد على التكلفة المنصرفة",value:portPct(retPct),hint:"(المحقّق + غير المحقّق) ÷ إجمالي ما صرفته على الشراء شامل عمولاته",color:portPlColor(retPct)},
     {label:"السيولة النقدية",value:portMoney(s.cash),hint:s.cash<0?"أقل من صفر: عمليات شراء تتجاوز الرصيد النقدي المعلَن":"رصيد بداية + مبيعات − مشتريات (شامل العمولات)",color:"var(--t1)"},
     {label:"المستثمر في الأسهم",value:portMoney(s.pricedMarketValue),hint:"قيمة المراكز القائمة بالأسعار الموثّقة",color:"var(--t1)"},
     {label:"الربح/الخسارة غير المحقّق",value:portSigned(s.unrealizedPnl),hint:s.unrealizedPnl===null?"سعر ناقص لمركز قائم":"فرق السعر الحالي عن متوسط التكلفة للمراكز القائمة",color:portPlColor(s.unrealizedPnl)},
@@ -6868,10 +6921,10 @@ function portKpis(st){
     {label:"إجمالي العمولات",value:portMoney(s.totalFees),hint:`من ${s.buyCount??0} عملية شراء و${s.sellCount??0} عملية بيع`,color:"var(--t1)"},
   ];
   return `<div class="vbox bl" style="background:linear-gradient(135deg,rgba(59,130,246,.07),rgba(16,185,129,.03));padding:11px 10px;">
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+    <div class="port-kpis">
       ${cards.map(c=>`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:8px 9px;">
         <div style="color:var(--t5);font-size:8.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${sanitize(c.hint)}">${c.label}</div>
-        <div style="color:${c.color};font-weight:900;font-size:${c.label.includes("الإجمالية")?"15px":"12.5px"};font-family:var(--mono);margin-top:3px;">${c.value}</div>
+        <div style="color:${c.color};font-weight:900;font-size:${c.big?"15px":"12.5px"};font-family:var(--mono);margin-top:3px;">${c.value}</div>
         <div style="color:var(--t5);font-size:7.8px;margin-top:2px;line-height:1.45;">${sanitize(c.hint)}</div>
       </div>`).join("")}
     </div>
@@ -6989,51 +7042,191 @@ function portWhatIfChanged(v){
   void st;
 }
 
+/* ══ Asset table (TASK I item 4): search / sort / filter, row → detail ══
+ * Columns: asset | qty | avg cost | last price | remaining cost | current
+ * value | P/L (EGP + %) | last updated.
+ *  - "last price" comes only from a verified server quote (finite price +
+ *    named source); otherwise the cell shows — (never stale/invented).
+ *  - sold quantity never counts as held: closed rows show 0 and their
+ *    realized result, with cost/value —.
+ *  - a row click opens the detail: per-symbol trade history + any available
+ *    licensed daily performance (VA_SERIES_CACHE), never an estimate. */
+function portPosRows(){
+  const all=portfolio;
+  const qRaw=portPosSearch.trim();
+  const q=qRaw.toUpperCase();
+  let list=all;
+  if(qRaw)list=list.filter(p=>p.sym.toUpperCase().includes(q)||(p.name||"").includes(qRaw)||(p.sector||"").includes(qRaw));
+  if(portPosFilter==="held")list=list.filter(p=>p.qty>0);
+  else if(portPosFilter==="closed")list=list.filter(p=>p.qty<=0);
+  const num=p=>{
+    const pr=p.market&&Number.isFinite(p.market.price)?p.market.price:null;
+    switch(portPosSort.key){
+      case "sym":return null;
+      case "qty":return p.qty;
+      case "avg":return p.qty>0?p.price:null;
+      case "price":return pr;
+      case "cost":return p.qty>0?p.price*p.qty:null;
+      case "value":return pr!==null&&p.qty>0?pr*p.qty:null;
+      case "pnl":return p.qty>0?(p.unrealizedPnl!==null?p.unrealizedPnl:(pr!==null?(pr-p.price)*p.qty:null)):(p.realizedPnl?null:null);
+      case "updated":return p.market?Number(p.market.asOf)||0:null;
+      default:return null;
+    }
+  };
+  const isStr=portPosSort.key==="sym";
+  return list.slice().sort((a,b)=>{
+    if(isStr)return a.sym.localeCompare(b.sym)*(portPosSort.dir>=0?1:-1);
+    const va=num(a),vb=num(b);
+    const missA=va===null||!Number.isFinite(va)?1:0;
+    const missB=vb===null||!Number.isFinite(vb)?1:0;
+    if(missA!==missB)return missA-missB; /* unknowns always last */
+    if(missA)return 0;
+    return (va-vb)*(portPosSort.dir>=0?1:-1);
+  });
+}
+function portPosSortToggle(key){
+  if(portPosSort.key===key)portPosSort={key,dir:-(portPosSort.dir||-1)};
+  else portPosSort={key,dir:key==="sym"?1:-1};
+  portRenderPositionsTable();
+}
+function portPosTableBody(){
+  const list=portPosRows();
+  const th=(key,label)=>`<th class="scr-th${portPosSort.key===key?(portPosSort.dir>0?" sort-asc":" sort-desc"):""}" onclick="portPosSortToggle('${key}')">${label}</th>`;
+  const rows=list.map(p=>{
+    const pr=p.market&&Number.isFinite(p.market.price)?p.market.price:null;
+    const mv=(pr!==null&&p.qty>0)?pr*p.qty:null;
+    const upnl=p.unrealizedPnl!==null?p.unrealizedPnl:(pr!==null&&p.qty>0?(pr-p.price)*p.qty:null);
+    const upct=p.unrealizedPnlPct!==null?p.unrealizedPnlPct:(pr!==null&&p.price>0?((pr-p.price)/p.price*100):null);
+    const cost=p.qty>0?p.price*p.qty:0;
+    const isDetail=portPosDetail===p.sym;
+    return `<tr class="scr-tr" onclick="portOpenDetail(${safeJsArg(p.sym)})" style="${isDetail?"background:var(--s1);":""}">
+      <td class="scr-td">
+        <div class="scr-sym">${sanitize(p.sym)}${p.legacy?` <span class="vchip" style="font-size:7.5px;">قديم</span>`:""}${p.closed?` <span class="vchip" style="font-size:7.5px;">مغلق</span>`:""}</div>
+        <div class="scr-sname">${sanitize(p.name||p.sector||"")}</div>
+      </td>
+      <td class="scr-td" style="text-align:left;font-family:var(--mono);">${p.qty>0?p.qty.toLocaleString("en"):"0"}</td>
+      <td class="scr-td" style="text-align:left;font-family:var(--mono);">${p.qty>0?p.price.toFixed(2):"—"}</td>
+      <td class="scr-td" style="text-align:left;font-family:var(--mono);color:${pr!==null?"var(--t1)":"var(--t5)"};">${pr!==null?pr.toFixed(2):"—"}</td>
+      <td class="scr-td" style="text-align:left;font-family:var(--mono);">${p.qty>0?vaFmt(cost,0):"0"}</td>
+      <td class="scr-td" style="text-align:left;font-family:var(--mono);color:${mv!==null?"var(--t1)":"var(--t5)"};">${mv!==null?vaFmt(mv,0):"—"}</td>
+      <td class="scr-td" style="text-align:left;font-family:var(--mono);color:${portPlColor(p.qty>0?upnl:null)};">${p.qty>0?(upnl===null?"—":`${portSigned(upnl)}${upct!==null?` <span style="font-size:8.5px;">(${portPct(upct)})</span>`:""}`):(p.realizedPnl?`${portSigned(p.realizedPnl)} محقّق`:"—")}</td>
+      <td class="scr-td" style="text-align:left;color:var(--t5);font-size:9px;">${p.market?cairoTimestampLabel(p.market.asOf):"—"}</td>
+    </tr>`;
+  }).join("");
+  return `<table class="scr-tbl" style="min-width:640px;">
+    <thead><tr>${th("sym","الأصل")}${th("qty","الكمية")}${th("avg","متوسط التكلفة")}${th("price","آخر سعر")}${th("cost","التكلفة المتبقية")}${th("value","القيمة الحالية")}${th("pnl","ربح/خسارة")}${th("updated","التحديث")}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  ${list.length?"":`<div class="va-note" style="margin-top:8px;">لا نتائج مطابقة للبحث/الفلتر الحالي.</div>`}
+  ${portPosDetailPanel()}
+  <div style="color:var(--t5);font-size:8.5px;margin-top:9px;line-height:1.6;">اضغط على أي صف لعرض تفاصيل الأصل: سجل عملياته وأداؤه المتاح. «آخر سعر» يظهر فقط إذا كان موثّقًا من الخادم (سعر + مصدر + وقت)، وإلا يظهر «—» — لا سعر قديم ولا سعر مخترع.</div>`;
+}
+function portPosDetailPanel(){
+  if(!portPosDetail)return"";
+  const p=portfolio.find(x=>x.sym===portPosDetail);
+  if(!p)return"";
+  const pr=p.market&&Number.isFinite(p.market.price)?p.market.price:null;
+  const mv=(pr!==null&&p.qty>0)?pr*p.qty:null;
+  const upnl=p.unrealizedPnl!==null?p.unrealizedPnl:(pr!==null&&p.qty>0?(pr-p.price)*p.qty:null);
+  const upct=p.unrealizedPnlPct!==null?p.unrealizedPnlPct:(pr!==null&&p.price>0?((pr-p.price)/p.price*100):null);
+  const txs=(portfolioData.transactions||[]).filter(t=>String(t.symbol||"").toUpperCase()===p.sym);
+  const series=canonicalInstrumentId(p.instrumentId)?VA_SERIES_CACHE.get(p.instrumentId):null;
+  let perf;
+  if(series&&series.available){
+    const pts=series.points.map(pt=>({t:pt.t,y:pt.close}));
+    const change=pts.length>=2&&pts[0].y>0?((pts[pts.length-1].y-pts[0].y)/pts[0].y)*100:null;
+    perf=vaLineChart({series:[{label:"الإغلاق اليومي",color:VA_C.bl,points:pts}],yFmt:value=>vaCompact(value),ariaLabel:`الإغلاق اليومي لـ${p.sym}`})
+      +`<div class="va-note">إغلاق يومي مرخّص (${series.points.length} يوم)${change!==null?` · التغير الكلي ${vaPct(change,2)}`:""} · المصدر: ${sanitize(series.source||"غير متاح")}</div>`;
+  }else{
+    perf=`<div class="va-note">لا يتوفر سجل إغلاق يومي مرخّص لهذا الأصل الآن — لن نرسم أداءً تقديريًا.</div>`;
+    if(canonicalInstrumentId(p.instrumentId)&&portHistory.status==="idle")void ensurePortfolioHistory();
+  }
+  const stat=(label,value,color="var(--t1)")=>`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:6px 8px;min-width:0;"><div style="color:var(--t5);font-size:8px;">${label}</div><div style="color:${color};font-weight:800;font-size:11px;font-family:var(--mono);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${sanitize(String(value))}">${value}</div></div>`;
+  const txRows=txs.length?txs.map(t=>{
+    const isSell=t.side==="sell";
+    return `<div class="row" style="gap:6px;padding:5px 0;border-bottom:1px solid var(--s2);align-items:center;flex-wrap:wrap;">
+      <span style="background:${isSell?"var(--dnd)":"var(--gd)"};border-radius:6px;padding:1px 7px;color:${isSell?"var(--dn)":"var(--g)"};font-weight:800;font-size:9px;">${isSell?"بيع":"شراء"}</span>
+      <span style="color:var(--t2);font-size:10.5px;font-family:var(--mono);">${t.quantity} × ${Number(t.price).toFixed(2)} ج</span>
+      ${Number(t.fees)>0?`<span style="color:var(--t5);font-size:8.5px;">عمولة ${Number(t.fees).toFixed(2)} ج</span>`:""}
+      <span style="color:var(--t5);font-size:9px;">${sanitize(String(t.tradeDate))}</span>
+      ${t.realizedPnl!==null&&t.realizedPnl!==undefined?`<span style="color:${portPlColor(Number(t.realizedPnl))};font-family:var(--mono);font-size:9.5px;">${portSigned(Number(t.realizedPnl))} محقّق</span>`:""}
+      <span class="row" style="gap:3px;margin-left:auto;">
+        <button onclick="event.stopPropagation();portEditTx(${safeJsArg(t.id)})" title="تعديل العملية" style="background:var(--s2);border:1px solid var(--b1);border-radius:6px;padding:2px 7px;color:var(--t3);font-size:9.5px;cursor:pointer;">✎</button>
+        <button onclick="event.stopPropagation();portDelTx(${safeJsArg(t.id)})" title="حذف العملية" style="background:var(--dnd);border:none;border-radius:6px;padding:2px 7px;color:var(--dn);font-size:9.5px;cursor:pointer;">✕</button>
+      </span>
+    </div>`;
+  }).join(""):`<div style="color:var(--t5);font-size:10px;padding:8px 0;">${p.legacy?"هذا مركز قديم (نموذج كمية + متوسط تكلفة) — بلا سجل عمليات، ويُدار بالأرشفة فقط.":"لا عمليات مسجّلة لهذا الرمز."}</div>`;
+  return `<div class="vbox bl" id="port-pos-detail" style="border-color:rgba(59,130,246,.35);margin-top:10px;">
+    <div class="row between" style="margin-bottom:9px;align-items:center;flex-wrap:wrap;gap:7px;">
+      <div class="row" style="gap:7px;align-items:center;flex-wrap:wrap;">
+        <span style="background:var(--bld);border:1px solid rgba(59,130,246,.22);border-radius:7px;padding:3px 10px;color:#93c5fd;font-weight:800;font-size:12px;font-family:var(--mono);">${sanitize(p.sym)}</span>
+        ${p.name?`<span style="color:var(--t3);font-size:11px;">${sanitize(p.name)}</span>`:""}
+        ${p.sector?`<span class="vchip" style="font-size:8.5px;">${sanitize(p.sector)}</span>`:""}
+        ${p.closed?`<span class="vchip" style="font-size:8.5px;">مغلق</span>`:""}
+      </div>
+      <button class="btn btn-ghost" style="padding:5px 10px;font-size:10px;" onclick="portCloseDetail()">✕ إغلاق</button>
+    </div>
+    <div class="port-detail-grid">
+      ${stat("الكمية",p.qty>0?String(p.qty):"0 (مغلق)")}
+      ${stat("متوسط التكلفة",p.qty>0?`${p.price.toFixed(2)} ج`:"—")}
+      ${stat("التكلفة المتبقية",p.qty>0?`${vaFmt(p.price*p.qty,0)} ج`:"0")}
+      ${stat("القيمة الحالية",mv!==null?`${vaFmt(mv,0)} ج`:"—",mv===null?"var(--t5)":"var(--t1)")}
+      ${stat("غير المحقّق",upnl===null?"—":`${portSigned(upnl)}${upct!==null?` (${portPct(upct)})`:""}`,portPlColor(upnl))}
+      ${stat("المحقّق",p.realizedPnl?portSigned(p.realizedPnl):"0")}
+      ${stat("العمولات",`${vaFmt(p.totalFees||0,0)} ج`)}
+      ${stat("العمليات",`${p.buyCount||0} شراء / ${p.sellCount||0} بيع`)}
+    </div>
+    <div style="margin-top:9px;color:var(--t4);font-size:10px;line-height:1.7;">
+      ${pr!==null?`آخر سعر موثّق: <b style="color:var(--t1);font-family:var(--mono);">${pr.toFixed(2)} ج</b> · ${sanitize(p.market.source)} · ${cairoTimestampLabel(p.market.asOf)}`:"بلا سعر موثّق الآن — لم يُستخدم أي سعر قديم أو مخترع في الأرقام أعلاه."}
+    </div>
+    <div style="margin-top:11px;">
+      <div class="row between" style="margin-bottom:4px;align-items:center;">
+        <span style="color:var(--t4);font-size:10px;font-weight:800;">سجل عمليات هذا الأصل (${txs.length})</span>
+        ${!p.legacy?`<button class="btn btn-ghost" style="padding:3px 9px;font-size:9.5px;" onclick="portTxFormInit(${safeJsArg(p.sym)})">＋ عملية جديدة</button>`:""}
+      </div>
+      ${txRows}
+    </div>
+    <div style="margin-top:11px;">
+      <div style="color:var(--t4);font-size:10px;font-weight:800;margin-bottom:3px;">الأداء المتاح (إغلاق يومي مرخّص)</div>
+      ${perf}
+    </div>
+    ${p.legacy?`<div style="margin-top:10px;"><button class="btn btn-ghost" style="padding:5px 11px;font-size:10px;color:var(--dn);border-color:var(--dnd);" onclick="delPort(${safeJsArg(p.id)})">أرشفة هذا المركز</button></div>`:""}
+  </div>`;
+}
+function portOpenDetail(sym){
+  portPosDetail=portPosDetail===sym?null:String(sym).toUpperCase();
+  portRenderPositionsTable();
+}
+function portCloseDetail(){
+  portPosDetail=null;
+  portRenderPositionsTable();
+}
 function portPositionsTable(){
   const held=portfolio.filter(p=>p.qty>0);
   const closed=portfolio.filter(p=>p.qty<=0);
   if(!held.length&&!closed.length)return"";
-  const row=(p,i)=>{
-    const pr=p.market&&Number.isFinite(p.market.price)?p.market.price:null;
-    const mv=p.marketValue!==null?p.marketValue:(pr!==null?pr*p.qty:null);
-    const upnl=p.unrealizedPnl!==null?p.unrealizedPnl:(pr!==null?(pr-p.price)*p.qty:null);
-    const upct=p.unrealizedPnlPct!==null?p.unrealizedPnlPct:(pr!==null&&p.price>0?((pr-p.price)/p.price*100):null);
-    const nws=portNews(p.sym);
-    return `<div class="p-row" style="${i===0&&closed.length?"":"border:none"}">
-      <div style="flex:1;min-width:0;">
-        <div class="row" style="gap:7px;flex-wrap:wrap;">
-          <span style="background:var(--bld);border:1px solid rgba(59,130,246,.22);border-radius:7px;padding:2px 8px;color:#93c5fd;font-weight:700;font-size:11px;font-family:var(--mono);">${sanitize(p.sym)}</span>
-          ${p.name?`<span style="color:var(--t3);font-size:10px;">${sanitize(p.name)}</span>`:""}
-          ${p.sector?`<span class="vchip" style="font-size:8.5px;">${sanitize(p.sector)}</span>`:""}
-          ${p.legacy?`<span class="vchip" style="font-size:8.5px;border-color:var(--b1);">مركز قديم</span>`:""}
-          ${p.closed?`<span class="vchip" style="font-size:8.5px;border-color:var(--b1);">مغلق</span>`:""}
-        </div>
-        <div style="color:var(--t5);font-size:9px;margin-top:3px;line-height:1.6;">
-          ${p.qty>0?`متوسط التكلفة: ${p.price.toFixed(2)} ج × ${p.qty} سهم${p.totalFees?` · عمولات: ${vaMoney(p.totalFees,0)}`:""}${p.realizedPnl?` · محقّق سابق: ${portSigned(p.realizedPnl)}`:""} · ${p.buyCount||0} شراء / ${p.sellCount||0} بيع`:
-          `تم بيع كل الكمية · متوسط التكلفة كان ${p.price.toFixed(2)} ج · محقّق: ${portSigned(p.realizedPnl)}${p.totalFees?` بعد عمولات ${vaMoney(p.totalFees,0)}`:""}`}
-          ${pr!==null?` · الآن: ${pr.toFixed(2)} ج${p.market?` · ${sanitize(p.market.source)} · ${cairoTimestampLabel(p.market.asOf)}`:""}`:""}
-        </div>
-        ${nws.length?`<div class="row" style="gap:4px;margin-top:4px;flex-wrap:wrap;">${nws.map(n=>`<span class="vchip" style="cursor:pointer;" onclick='openArt(${safeJsArg(n.id)})'>📰 ${sanitize(n.title).slice(0,38)}…</span>`).join("")}</div>`:""}
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;">
-        <span style="color:${portPlColor(upnl)};font-weight:800;font-size:11.5px;font-family:var(--mono);">${upnl===null?"—":portSigned(upnl)}${upct!==null?` <span style="font-size:9px;">(${portPct(upct)})</span>`:""}</span>
-        ${p.weightPct!==null?`<span style="color:var(--t5);font-size:8.5px;font-family:var(--mono);">الحصة ${p.weightPct.toFixed(1)}%</span>`:""}
-        <div class="row" style="gap:5px;">
-          ${p.qty>0?`<button onclick='portTxFormInit(${safeJsArg(p.sym)})' style="background:var(--bld);border:1px solid rgba(59,130,246,.3);border-radius:7px;padding:3px 9px;color:#93c5fd;font-size:10px;cursor:pointer;">＋ عملية</button>`:""}
-          ${p.legacy?`<button onclick='delPort(${safeJsArg(p.id)})' style="background:var(--dnd);border:none;border-radius:7px;padding:3px 9px;color:var(--dn);font-size:10px;cursor:pointer;">أرشفة</button>`:""}
-          ${p.qty>0?`<button onclick='portOpenSymbolAlert(${safeJsArg(p.sym)})' title="تنبيه سعر لهذا السهم" style="background:var(--aud);border:none;border-radius:7px;padding:3px 9px;color:var(--au);font-size:10px;cursor:pointer;">🔔</button>`:""}
-        </div>
-      </div>
-    </div>`;};
-  const all=[...held.sort((a,b)=>(b.weightPct??-1)-(a.weightPct??-1)),...closed];
   return `<div class="vbox bl">
-    <div class="row between" style="margin-bottom:8px;">
-      <div class="vbox-title" style="color:#93c5fd;margin:0;">💼 المراكز (${held.length} قائم${closed.length?` · ${closed.length} مغلق`:""})</div>
-      <button class="btn btn-ghost" style="padding:4px 10px;font-size:10.5px;" onclick="loadServerPortfolio(true)">↻ تحديث</button>
+    <div class="row between" style="margin-bottom:9px;align-items:center;flex-wrap:wrap;gap:7px;">
+      <div class="vbox-title" style="color:#93c5fd;margin:0;">💼 أصول المحفظة (${held.length} قائم${closed.length?` · ${closed.length} مغلق`:""})</div>
+      <div class="row" style="gap:7px;">
+        <button class="btn btn-au" style="padding:5px 11px;font-size:10.5px;" onclick="portAddAssetFocus()">＋ إضافة أصل</button>
+        <button class="btn btn-ghost" style="padding:4px 10px;font-size:10.5px;" onclick="loadServerPortfolio(true)">↻ تحديث</button>
+      </div>
     </div>
-    ${all.map((p,i)=>row(p,i)).join("")}
-    ${all.length?`<div style="color:var(--t5);font-size:8.5px;margin-top:8px;line-height:1.6;">المساحة السوقية والحصص تُحتسب من أسعار الخادم الموثّقة وقت الطلب فقط؛ «مركز قديم» تم إدخاله بالنموذج السابق (كمية + متوسط تكلفة) ويُدار بالأرشفة فقط.</div>`:""}
+    <div class="row" style="gap:7px;margin-bottom:9px;flex-wrap:wrap;">
+      <input class="mini-in" id="port-pos-search" placeholder="بحث: رمز / اسم / قطاع" value="${sanitize(portPosSearch)}" oninput="portPosSearch=this.value;portRenderPositionsTable()" style="flex:1.4;min-width:140px;"/>
+      <select class="mini-in" onchange="portPosFilter=this.value;portRenderPositionsTable()" style="flex:1;min-width:90px;" aria-label="فلتر المراكز">
+        <option value="held" ${portPosFilter==="held"?"selected":""}>قائم</option>
+        <option value="closed" ${portPosFilter==="closed"?"selected":""}>مغلق</option>
+        <option value="all" ${portPosFilter==="all"?"selected":""}>الكل</option>
+      </select>
+    </div>
+    <div class="scr-tbl-wrap"><div id="port-pos-table">${portPosTableBody()}</div></div>
   </div>`;
+}
+function portRenderPositionsTable(){
+  const host=document.getElementById("port-pos-table");
+  if(host){host.innerHTML=portPosTableBody();vaBindCharts(host);}
 }
 
 function portFilteredTx(){
@@ -7063,12 +7256,16 @@ function portTransactionsSection(){
     </div>`:`
     <div class="p-inputs" style="flex-wrap:wrap;">
       <select class="mini-in" id="ptx-side" style="flex:1;min-width:80px;"><option value="buy">شراء</option><option value="sell">بيع</option></select>
-      <input class="mini-in" id="ptx-sym" placeholder="الرمز — مثل COMI" style="flex:1.1;min-width:70px;" oninput="this.value=this.value.toUpperCase().slice(0,16)"/>
+      <div class="pf-suggest-wrap">
+        <input class="mini-in" id="ptx-sym" placeholder="ابحث عن سهم (الرمز أو الاسم)" style="width:100%;box-sizing:border-box;" value="${sanitize(String(portAddAssetPrefill||""))}" oninput="this.value=this.value.toUpperCase().slice(0,16);portStockSuggest(this.value);portStockHint(this.value)" onfocus="portStockSuggest(this.value)" onblur="setTimeout(function(){var b=document.getElementById('ptx-suggest');if(b)b.classList.remove('open');},180)" onkeydown="portSuggestKey(event)"/>
+        <div class="pf-suggest" id="ptx-suggest"></div>
+      </div>
       <input class="mini-in" id="ptx-qty" type="number" min="1" step="1" placeholder="الكمية" style="flex:1;min-width:70px;"/>
-      <input class="mini-in" id="ptx-price" type="number" min="0.01" step="0.01" placeholder="سعر السهم" style="flex:1;min-width:80px;"/>
+      <input class="mini-in" id="ptx-price" type="number" min="0.01" step="0.01" placeholder="سعر السهم (سعر شرائك/بيعك الفعلي)" style="flex:1;min-width:80px;"/>
       <input class="mini-in" id="ptx-fees" type="number" min="0" step="0.01" placeholder="العمولة (0)" style="flex:1;min-width:70px;"/>
       <input class="mini-in" id="ptx-date" type="date" style="flex:1.4;min-width:120px;"/>
     </div>
+    <div id="ptx-stock-hint" style="color:var(--t5);font-size:9px;margin-top:6px;line-height:1.6;min-height:0;"></div>
     <button class="btn btn-au btn-full" style="margin-top:7px;padding:8px;font-size:12px;border-radius:9px;" onclick="portAddTx()">＋ تسجيل العملية</button>`;
   const txs=portFilteredTx();
   const heldBySym={};
@@ -7196,6 +7393,8 @@ function portGlossarySection(){
     ["السيولة النقدية","النقد المتبقي: رصيد البداية + عائدات البيع − إنفاق الشراء. سالبها يعني أن المشتريات تجاوزت الرصيد المعلَن."],
     ["الحصة / التركيز","نسبة قيمة سهم أو قطاع من إجمالي المحفظة. تركيز مرتفع يعني أن حركة ورقة واحدة تؤثر كثيرًا على إجمالك."],
     ["التكلفة المستثمرة","قيمة مراكزك القائمة حسب متوسط التكلفة (قبل أي ربح أو خسارة سوقية)."],
+    ["التكلفة المتبقية","الكمية المتبقية × متوسط التكلفة — القيمة التي لا تزال مثبتة في أسهمك دون أي ربح أو خسارة سوقية."],
+    ["العائد على التكلفة المنصرفة","نسبة إجمالي الربح (المحقّق + غير المحقّق) إلى إجمالي ما صرفته على شراء الأسهم (الكمية × السعر + عمولات الشراء) طوال الفترة. يتغير مع الأسعار، ويُخفى (—) عند نقص أي من أرقامه — لا نسبًا مقدَّرة."],
   ];
   return `<div class="vbox bl">
     <button class="btn btn-ghost btn-full" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;font-size:12px;" onclick="portGlossaryToggle()">
@@ -7208,18 +7407,70 @@ function portGlossarySection(){
 
 function portAnalyticsBody(){
   const stats=portStats();
-  const allocation=pfAllocation(stats);
+  const byAsset=portAllocMode==="asset";
+  const allocation=pfAllocation(stats,byAsset);
   const priced=stats.rows.filter(row=>row.pr!==null);
   const allocationCard=vaCard({
-    icon:"🧭",title:"توزيع المحفظة حسب القطاع",
+    icon:"🧭",title:byAsset?"توزيع المحفظة حسب الأصول":"توزيع المحفظة حسب القطاع",
     sub:"قيمة المركز بالجنيه = الكمية × آخر سعر سوق موثّق",
+    badgeHtml:`<span class="row" style="gap:0;border:1px solid var(--b1);border-radius:8px;overflow:hidden;">
+        <button onclick="portAllocToggle('sector')" style="background:${!byAsset?"var(--bld)":"var(--s1)"};border:none;padding:4px 9px;font-size:9.5px;font-weight:700;cursor:pointer;color:${!byAsset?"#93c5fd":"var(--t4)"};">القطاع</button>
+        <button onclick="portAllocToggle('asset')" style="background:${byAsset?"var(--bld)":"var(--s1)"};border:none;padding:4px 9px;font-size:9.5px;font-weight:700;cursor:pointer;color:${byAsset?"#93c5fd":"var(--t4)"};">الأصل</button>
+      </span>`,
     body:allocation.slices.length
-      ? `${vaDonut({slices:allocation.slices,centerLabel:"القيمة",centerValue:vaFmt(allocation.total,0),valueFmt:value=>vaMoney(value,0),ariaLabel:"توزيع قيمة المحفظة على القطاعات"})}
+      ? `${vaDonut({slices:allocation.slices,centerLabel:"القيمة",centerValue:vaFmt(allocation.total,0),valueFmt:value=>vaMoney(value,0),ariaLabel:byAsset?"توزيع قيمة المحفظة على الأصول":"توزيع قيمة المحفظة على القطاعات"})}
         ${allocation.skipped.length?`<div class="va-note">⚠️ ${allocation.skipped.length} مركز بلا سعر موثّق مستبعَد من التوزيع: ${sanitize(allocation.skipped.map(row=>row.p.sym).join(" · "))}</div>`:""}`
       : vaEmpty("لا يوجد مركز بسعر موثّق","التوزيع يحتاج سعر سوق حقيقيًا لكل مركز؛ لا نوزّع بالتساوي ولا بالسعر المدخل يدويًا."),
     foot:pfMarketFoot(stats.rows),
   });
-  return `${allocationCard}${pfHistoryCard()}${pfPnlCard(stats)}${pfPerformanceCard()}`;
+  return `${allocationCard}${pfCostVsMarketCard(stats)}${pfHistoryCard()}${pfPnlCard(stats)}${pfPerformanceCard()}`;
+}
+function portAllocToggle(mode){
+  portAllocMode=mode==="asset"?"asset":"sector";
+  const host=document.getElementById("port-analytics");
+  if(host){host.innerHTML=portAnalyticsBody();vaBindCharts(host);}
+}
+/* Cost basis vs current market value, per held position: two bars per row
+ * (cost = qty × average cost; market = qty × last verified price) scaled to
+ * the largest of the pair set, so the gap between them is the visible P/L.
+ * No verified price → honest empty card, never a drawn estimate. */
+function pfCostVsMarketCard(stats){
+  const rows=(stats?.rows||[]).filter(row=>row.pr!==null);
+  if(!rows.length){
+    return vaCard({
+      icon:"🧮",title:"التكلفة مقابل القيمة السوقية",sub:"لكل مركز قائم",
+      body:vaEmpty("لا توجد مراكز مسعّرة","الرسم يحتاج سعرًا موثّقًا لكل مركز قائم؛ لن نرسم ببيانات تقديرية أو قديمة."),
+    });
+  }
+  const max=Math.max(...rows.map(row=>Math.max(row.p.price*row.p.qty,row.pr*row.p.qty)),1e-9);
+  const totalCost=rows.reduce((sum,row)=>sum+row.p.price*row.p.qty,0);
+  const totalMv=rows.reduce((sum,row)=>sum+row.pr*row.p.qty,0);
+  const body=rows.map(row=>{
+    const cost=row.p.price*row.p.qty,mv=row.pr*row.p.qty,diff=mv-cost;
+    return `<div class="pf-cmp-row" title="${sanitize(row.p.sym)}: تكلفة ${vaFmt(cost,0)} ج · قيمة سوقية ${vaFmt(mv,0)} ج">
+      <div class="va-bar-l" title="${sanitize(row.p.name||row.p.sym)}">${sanitize(row.p.sym)}</div>
+      <div class="pf-cmp-track">
+        <div class="pf-cmp-fill pf-cmp-cost" style="width:${(cost/max*100).toFixed(2)}%"></div>
+        <div class="pf-cmp-fill pf-cmp-mv" style="width:${(mv/max*100).toFixed(2)}%;background:${diff>=0?"rgba(16,185,129,.85)":"rgba(248,113,113,.85)"}"></div>
+      </div>
+      <div class="pf-cmp-v"><span style="color:#60a5fa;">${vaFmt(cost,0)} ج</span><br/><span style="color:${diff>=0?"var(--g)":"var(--dn)"};">${vaFmt(mv,0)} ج (${diff>=0?"+":""}${vaFmt(diff,0)})</span></div>
+    </div>`;
+  }).join("")+`
+    <div class="pf-cmp-row" style="border-top:1px solid var(--b2);margin-top:4px;padding-top:6px;">
+      <div class="va-bar-l" style="font-weight:800;color:var(--t2);">الإجمالي</div>
+      <div></div>
+      <div class="pf-cmp-v"><span style="color:#60a5fa;font-weight:800;">${vaFmt(totalCost,0)} ج</span><br/><span style="color:${totalMv-totalCost>=0?"var(--g)":"var(--dn)"};font-weight:800;">${vaFmt(totalMv,0)} ج (${totalMv-totalCost>=0?"+":""}${vaFmt(totalMv-totalCost,0)})</span></div>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:7px;flex-wrap:wrap;">
+      <span class="va-lg"><i style="background:rgba(96,165,250,.8);"></i>التكلفة (متوسط الشراء × الكمية)</span>
+      <span class="va-lg"><i style="background:rgba(16,185,129,.85);"></i>القيمة السوقية (السعر الموثّق × الكمية)</span>
+    </div>`;
+  return vaCard({
+    icon:"🧮",title:"التكلفة مقابل القيمة السوقية",
+    sub:"شريطان لكل مركز: ما دفعته فيه مقابل قيمته الآن — الفرق هو ربح/خسارة غير المحقّق",
+    body,
+    foot:pfMarketFoot(stats.rows),
+  });
 }
 function vBuildPort(b){
   if(!U){
@@ -7244,10 +7495,19 @@ function vBuildPort(b){
   const isEmpty=!portfolio.length&&!hasTrades;
   b.innerHTML=`
     ${errBanner}
+    ${portfolioState.loaded?`<div class="vbox bl" style="padding:10px 12px;">
+      <div class="row between" style="align-items:center;flex-wrap:wrap;gap:7px;">
+        <div>
+          <div class="vbox-title" style="color:#93c5fd;margin:0;">💼 محفظتي</div>
+          <div style="color:var(--t5);font-size:8.8px;margin-top:3px;">بياناتك محفوظة في الخادم ومفصولة تمامًا عن أي مستخدم آخر</div>
+        </div>
+        <button class="btn btn-au" style="padding:7px 13px;font-size:11.5px;" onclick="portAddAssetFocus()">＋ إضافة أصل</button>
+      </div>
+    </div>`:""}
     ${portfolio.length?portKpis(st):""}
     ${isEmpty?`
     <div class="vbox bl">
-      <div style="text-align:center;padding:18px 0 14px;"><div style="font-size:30px;">💼</div><div style="color:var(--t1);font-weight:800;font-size:14px;margin-top:7px;">مركز محفظتك فارغ</div><div style="color:var(--t5);font-size:10.5px;margin-top:5px;line-height:1.8;max-width:420px;margin-left:auto;margin-right:auto;">سجّل أول عملية شراء أو بيع (الكمية والسعر والعمولة والتاريخ) وسيُبنى كل شيء تلقائيًا: متوسط التكلفة، الربح المحقّق وغير المحقّق، السيولة، التركيز والتقارير. الأسعار والقيمة تُحتسب في الخادم من مصادر موثّقة فقط.</div></div>
+      <div style="text-align:center;padding:18px 0 14px;"><div style="font-size:30px;">💼</div><div style="color:var(--t1);font-weight:800;font-size:14px;margin-top:7px;">مركز محفظتك فارغ</div><div style="color:var(--t5);font-size:10.5px;margin-top:5px;line-height:1.8;max-width:420px;margin-left:auto;margin-right:auto;">سجّل أول عملية شراء أو بيع (الكمية والسعر والعمولة والتاريخ) وسيُبنى كل شيء تلقائيًا: متوسط التكلفة، الربح المحقّق وغير المحقّق، السيولة، التركيز والتقارير. الأسعار والقيمة تُحتسب في الخادم من مصادر موثّقة فقط.</div><button class="btn btn-au" style="margin-top:11px;padding:8px 16px;font-size:12px;" onclick="portAddAssetFocus()">＋ إضافة أصل</button></div>
     </div>`:""}
     ${portfolio.length?`<div id="port-analytics">${portAnalyticsBody()}</div>`:""}
     ${portfolio.length?portInsights(st):""}
@@ -7317,6 +7577,7 @@ async function getMidday(){
     const mv=movers.length?movers.slice(0,3).map(s=>`${s.sym} ${stockChangeText(s.chgPct,1)}`).join("، ")+" ← صاعدون | "+movers.slice(-3).map(s=>`${s.sym} ${stockChangeText(s.chgPct,1)}`).join("، ")+" ← هابطون":"لا تتوفر نسب تغيير موثّقة كافية";
     const txt=await callAI({
       max_tokens:2000,
+      feature:"midday_report",
       system:"أنت محرر سوق تعليمي. استخدم الأرقام والعناوين الواردة فقط؛ لا تخترع سببًا للحركة ولا تقدّم توصية أو هدفًا سعريًا أو توقعًا.",
       messages:[{role:"user",content:`أنشئ ملخص منتصف اليوم ${new Date().toLocaleDateString("ar-EG")}:\n\nبيانات السوق المتاحة:\n${liveMarkets.eg.filter(m=>m.source&&m.source!=="غير متاح").map(m=>`${m.n}: ${m.v} (${m.c}) · ${m.source}`).join(" | ")||"غير متاحة"}\n\nأبرز التحركات المسجلة:\n${mv}\n\nعناوين الأخبار المتاحة:\n${hl||"غير متاحة"}\n\nالمطلوب: 1. وصف ما تعرضه البيانات 2. ما البيانات أو الأخبار الناقصة 3. عوامل عامة للمتابعة حتى الإغلاق، من دون توصية شراء أو بيع.`}]
     });
@@ -7925,6 +8186,7 @@ async function sendChat(){
     const ctx={portfolio:portfolio.map(p=>({sym:p.sym,price:p.price,qty:p.qty})), alerts};
     const reply = await callAI({
       max_tokens:2000,
+      feature:"assistant",
       context:ctx,
       memory:true,
       system:`أنت مساعد بيانات EgyTrend التعليمي للسوق المصري. أجب بالعربية اعتمادًا على الأدوات والبيانات المتاحة فقط، واذكر المصدر ووقت/حالة البيانات متى توفرا. لا تقدّم توصية شراء أو بيع أو احتفاظ أو زيادة/تخفيض مركز، ولا أهدافًا سعرية أو توقعات عائد/اتجاه. إذا سُئلت عن قرار شخصي، اشرح حدود البيانات والمخاطر العامة بدل توجيه القرار.\nأبرز العناوين المرخّصة المتاحة:\n${hl||"غير متاحة"}`,
@@ -7950,6 +8212,7 @@ async function getMorning(){
     const mktSummary=liveMarkets.eg.filter(m=>m.source&&m.source!=="غير متاح").slice(0,6).map(m=>`${m.n}: ${m.v} (${m.c}) · ${m.source}`).join(" | ");
     const txt = await callAI({
       max_tokens:1800,
+      feature:"morning_report",
       system:"أنت محرر موجز أسواق تعليمي بالعربية. اعتمد فقط على البيانات والعناوين التي تصلك. ممنوع التنبؤ بأداء اليوم، أو توصية شراء/بيع/احتفاظ، أو اختيار أسهم/قطاعات، أو أهداف أسعار. اذكر بوضوح التأخر أو نقص المصدر.",
       messages:[{role:"user",content:`أنشئ «موجز الصباح المتاح» بتاريخ ${new Date().toLocaleDateString("ar-EG")} ويتضمن: \n1. لقطة وصفية للأرقام المتاحة ووقت/مصدرها \n2. العناوين المعلنة كما هي دون استنتاج سببي مؤكد \n3. الأحداث أو البيانات العامة المعلنة للمتابعة \n4. ما لا تكفي البيانات للحكم عليه.\n\nبيانات السوق الموثقة:\n${mktSummary||"غير متاحة"}\n\nالعناوين المرخّصة:\n${hl}`}]
     });
@@ -7970,6 +8233,7 @@ async function getClosing(){
     const stocks=liveStocks.filter(s=>knownStockNumber(s.chgPct)!==null).slice(0,8).map(s=>`${s.sym}: ${s.price.toFixed(2)} ج (${stockChangeText(s.chgPct)})`).join(" | ");
     const txt = await callAI({
       max_tokens:1800,
+      feature:"closing_report",
       system:"أنت محرر موجز إغلاق تعليمي بالعربية. لا تستخدم إلا الوقائع الواردة. ممنوع التوقع لليوم التالي، وممنوع توصية شراء/بيع/احتفاظ أو نصيحة تخصيص/مخاطرة. لا تختلق أسباب حركة الأسعار؛ ميّز بوضوح بين الأرقام والعناوين وبين ما لا نعرفه.",
       messages:[{role:"user",content:`أنشئ «موجز الإغلاق المتاح» بتاريخ ${new Date().toLocaleDateString("ar-EG")} ويتضمن: \n1. ما الذي توضحه بيانات EGX والأسهم أدناه \n2. التغيرات المسجلة دون تفسير غير موثق \n3. العناوين المنشورة ذات الصلة مع مصدرها \n4. نقاط نقص البيانات/التأخر.\n\nالمؤشر المتاح:\n${egx?`${egx.n}: ${egx.v} (${egx.c}) · ${egx.source}`:"غير متاح"}\n\nأسهم موثقة:\n${stocks||"لا تتوفر نسب تغيير موثقة"}\n\nالعناوين المرخّصة:\n${hl}`}]
     });
@@ -8080,10 +8344,76 @@ async function portDelTx(id){
 }
 function portTxFormInit(sym){
   portTxEditId=null;
+  portAddAssetPrefill=sym?String(sym).toUpperCase().slice(0,16):null;
   const sec=document.getElementById("port-tx-sec");
   if(sec)sec.innerHTML=portTransactionsSection();
+  portAddAssetPrefill=null;
   const el=document.getElementById("ptx-sym");
   if(el&&sym){el.value=String(sym).slice(0,16);el.focus();}
+  if(sym)portStockHint(String(sym).toUpperCase());
+}
+/* ── "إضافة أصل": jump to the trade form and focus the stock search ── */
+function portAddAssetFocus(){
+  const sec=document.getElementById("port-tx-sec");
+  if(sec)sec.scrollIntoView({behavior:"smooth",block:"start"});
+  setTimeout(()=>{
+    const el=document.getElementById("ptx-sym");
+    if(el){el.focus();if(el.select)el.select();}
+  },380);
+}
+/* Stock picker for the form: candidates come ONLY from the server's stock
+ * list (liveStocks, loaded from /api/markets/stocks). Selecting a candidate
+ * fills the SYMBOL field only — the price field is always the user's real
+ * trade price, never auto-filled from a market quote. Free typing of any
+ * valid symbol stays possible (the server accepts it). */
+function portStockSuggest(q){
+  const box=document.getElementById("ptx-suggest");
+  if(!box)return;
+  const raw=String(q||"").trim();
+  if(!raw){box.classList.remove("open");box.innerHTML="";return;}
+  const query=raw.toUpperCase();
+  const scored=(liveStocks||[]).map(s=>{
+    const sym=String(s.sym||"").toUpperCase();
+    const score=sym===query?0:sym.startsWith(query)?1:sym.includes(query)?2:
+      String(s.name||"").includes(raw)?3:String(s.sector||"").includes(raw)?4:99;
+    return {s,score};
+  }).filter(x=>x.score<99)
+   .sort((a,b)=>a.score-b.score||String(a.s.sym).localeCompare(String(b.s.sym)))
+   .slice(0,8);
+  if(!scored.length){box.classList.remove("open");box.innerHTML="";return;}
+  box.innerHTML=scored.map((x,i)=>`<div class="pf-sg${i===0?" active":""}" onmousedown="portPickStock(${safeJsArg(x.s.sym)})">
+      <span class="sym">${sanitize(x.s.sym)}</span>
+      <span class="nm">${sanitize(x.s.name||"")}${x.s.sector?` · ${sanitize(x.s.sector)}`:""}</span>
+      ${x.s.noData||!Number.isFinite(x.s.price)?`<span class="px">بلا سعر الآن</span>`:`<span class="px">${Number(x.s.price).toFixed(2)} ج</span>`}
+    </div>`).join("");
+  box.classList.add("open");
+}
+function portPickStock(sym){
+  const el=document.getElementById("ptx-sym");
+  if(el)el.value=String(sym).toUpperCase().slice(0,16);
+  const box=document.getElementById("ptx-suggest");
+  if(box){box.classList.remove("open");box.innerHTML="";}
+  portStockHint(String(sym).toUpperCase());
+  const qty=document.getElementById("ptx-qty");
+  if(qty)qty.focus();
+}
+function portStockHint(sym){
+  const el=document.getElementById("ptx-stock-hint");
+  if(!el)return;
+  const key=String(sym||"").trim().toUpperCase();
+  if(!key){el.innerHTML="";return;}
+  const s=(liveStocks||[]).find(x=>String(x.sym||"").toUpperCase()===key);
+  if(!s){el.innerHTML="";return;}
+  const priceNote=Number.isFinite(s.price)?` · السعر الموثّق الآن: ${Number(s.price).toFixed(2)} ج (${sanitize(s.source||"مصدر غير متاح")}) — مرجع فقط، أدخل سعر صفقتك الفعلي`:" · بلا سعر موثّق الآن — أدخل سعر صفقتك الفعلي";
+  el.innerHTML=`${sanitize(s.name)}${s.sector?` · ${sanitize(s.sector)}`:""}${priceNote}`;
+}
+function portSuggestKey(e){
+  if(e.key!=="Enter")return;
+  const box=document.getElementById("ptx-suggest");
+  if(box&&box.classList.contains("open")){
+    const first=box.querySelector(".pf-sg");
+    if(first){e.preventDefault();if(first.onmousedown)first.onmousedown();}
+  }
 }
 async function delPort(id){
   if(!id||!confirm("أرشفة هذا المركز من محفظتك؟ يمكنك إضافته مرة أخرى لاحقًا."))return;
@@ -8220,6 +8550,7 @@ async function analyzePort(){
     }).join("\n");
     const txt = await callAI({
       max_tokens:1800,
+      feature:"portfolio_summary",
       system:"أنت محرر ملخص محفظة تعليمي بالعربية. استخدم البيانات الواردة فقط. ممنوع أن توصي بشراء أو بيع أو احتفاظ أو زيادة/تخفيض مركز أو إعادة موازنة، وممنوع توقع العائد. سعر الإدخال بيانات أدخلها المستخدم؛ صف أي فرق حسابي بأنه حساب وصفي لا نتيجة استثمارية. اذكر حدود البيانات والمخاطر العامة دون توجيه قرار.",
       messages:[{role:"user",content:`أنشئ ملخصًا وصفيًا للمحفظة بالترتيب:\n1. المراكز والأسعار المتاحة ومصادرها\n2. الفرق الحسابي الظاهر لكل مركز عند وجوده\n3. ملاحظة عن تنوع الرموز/القطاعات بناءً على القائمة فقط\n4. البيانات الناقصة أو المتأخرة\n5. المخاطر العامة التي ينبغي فهمها قبل أي قرار شخصي، بلا توصية.\n\nبيانات المحفظة:\n${portLines}\n\nعناوين سوق مرخّصة متاحة:\n${hl}`}]
     });
@@ -8769,6 +9100,7 @@ async function runRw(){
   try{
     const out = await callAI({
       max_tokens:2000,
+      feature:"rewriter",
       system:`أنت محرر أخبار EgyTrend بالعربية. أعد صياغة المحتوى المرسل فقط من دون إضافة حقائق أو معرفة خارجية، ومن دون توصيات أو توقعات أو تفسير حركة أسعار. استخدم هذا التنسيق:\n📌 العنوان: [عنوان وصفي غير مضلل]\n⚡ TL;DR: [جملة عن الواقعة الواردة]\n📋 الملخص: [3-4 جمل واضحة]\n📎 الوقائع والأطراف المذكورة: [ما ورد صراحة فقط]\n🧭 مصطلحات/سياق: [تعريف تعليمي من النص أو "غير متاح"]\n⚠️ حدود المحتوى: [ما لا يثبته النص]\n🏷️ التصنيف: [اقتصاد مصري/أسواق عالمية/بورصة/تحليل/كريبتو]`,
       messages:[{role:"user",content:`أعد صياغة هذا المحتوى:\n${txt}`}]
     });

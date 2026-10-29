@@ -13,7 +13,12 @@ process.env.LOG_LEVEL = "silent";
 
 type MemoryDatabase = Awaited<ReturnType<typeof createMemoryDatabase>>;
 let memory: MemoryDatabase;
-let reserve: (userId: string, requestType: string, tokensEstimate: number, trialDailyLimit?: number | null) => Promise<"ok" | "limit" | "unavailable">;
+let reserve: (
+  userId: string,
+  feature: string,
+  tokensEstimate: number,
+  trialDailyLimit?: number | null,
+) => Promise<{ ok: true; rowId: number; engine: "gemini" | "anthropic" | "local" } | "limit" | "unavailable">;
 
 before(async () => {
   memory = await createMemoryDatabase();

@@ -15,6 +15,8 @@ export const appUsersTable = pgTable("app_users", {
   plan: text("plan").notNull().default("free"),
   vipExpiresAt: timestamp("vip_expires_at"),
   status: text("status").notNull().default("active"),
+  /** Last successful login, stamped server-side (admin visibility). */
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

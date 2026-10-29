@@ -40,6 +40,19 @@ export type CommercialRedisplayReview = {
   note?: string;
 };
 
+/**
+ * Per-source fetch telemetry, written by the server after each attempt.
+ * Values are honest: a field is only set when that event actually happened
+ * on this instance. Telemetry never feeds prices or entitlements.
+ */
+export type SourceHealth = {
+  lastAttemptAt?: string; // ISO — latest fetch attempt (success or failure)
+  lastSuccessAt?: string; // ISO — latest attempt that returned >=1 valid item
+  lastError?: string; // short reason of the latest failing attempt (no secrets)
+  consecutiveFailures?: number;
+  itemsFetched?: number; // cumulative items returned by successful attempts
+};
+
 export type SourceMeta = {
   id: string;
   name: string;
@@ -53,6 +66,10 @@ export type SourceMeta = {
    * Missing metadata is treated as pending, and pending sources are never fetched.
    */
   commercialRedisplay?: CommercialRedisplayReview;
+  /** Operational stop, independent of the legal review: a disabled approved
+   * source is never fetched until re-enabled by an admin. */
+  disabled?: boolean;
+  health?: SourceHealth;
   /** Soft-deletion marker; archived content is retained on disk for recovery. */
   archivedAt?: string;
 };
@@ -133,7 +150,15 @@ function startWatcher(file: string, onChange: () => void): void {
    * warning. */
   if (!fsSync.existsSync(file)) return;
   try {
-    fsSync.watch(file, { persistent: false }, () => {
+    /* Watch the DIRECTORY, not the file: every save is atomic (tmp +
+     * rename), which replaces the file's inode — a file-level inotify
+     * watch is silently dead after the first admin save and external edits
+     * would never reload. Filtering on the file name keeps the two data
+     * files independent. */
+    const dir = path.dirname(file);
+    const name = path.basename(file);
+    fsSync.watch(dir, { persistent: false }, (_event, filename) => {
+      if (filename !== name) return;
       // debounce so we coalesce burst events
       setTimeout(onChange, 60);
     });
@@ -164,19 +189,63 @@ export function isCommercialRedisplayApproved(source: SourceMeta): boolean {
     && review.evidence.trim().length >= 8;
 }
 
-/** Active sources are the only third-party feeds that network code may fetch. */
-export function listSources(): SourceMeta[] {
-  return Object.values(sourcesCache).filter(isCommercialRedisplayApproved);
+/** Operational gate: legally approved AND not stopped by an admin. */
+export function isSourceOperational(source: SourceMeta): boolean {
+  return isCommercialRedisplayApproved(source) && !source.disabled;
 }
 
-/** Full inventory is admin-only; it includes archived/pending entries for review. */
+/** Operational sources are the only third-party feeds that network code may fetch. */
+export function listSources(): SourceMeta[] {
+  return Object.values(sourcesCache).filter(isSourceOperational);
+}
+
+/** Full inventory is admin-only; it includes archived/pending/disabled entries for review. */
 export function listSourceInventory(): SourceMeta[] {
   return Object.values(sourcesCache);
 }
 
 export function getSource(id: string): SourceMeta | undefined {
   const source = sourcesCache[id];
-  return source && isCommercialRedisplayApproved(source) ? source : undefined;
+  return source && isSourceOperational(source) ? source : undefined;
+}
+
+/** Admin operational stop/restore. Legal review and archival are untouched. */
+export async function setSourceDisabled(id: string, disabled: boolean): Promise<boolean> {
+  const current = sourcesCache[id];
+  if (!current || current.archivedAt) return false;
+  const next = { ...sourcesCache, [id]: { ...current, disabled } };
+  await writeJSONAtomic(SOURCES_FILE, next);
+  sourcesCache = next;
+  return true;
+}
+
+/**
+ * Record one fetch outcome for a source. Telemetry is best-effort: an
+ * unavailable durable store must never break or slow the fetch path, and the
+ * in-instance cache is updated regardless so the current view stays honest.
+ */
+export async function recordSourceHealth(
+  id: string,
+  event: { ok: boolean; error?: string; items?: number },
+): Promise<void> {
+  const current = sourcesCache[id];
+  if (!current) return;
+  const now = new Date().toISOString();
+  const prev = current.health ?? {};
+  const health: SourceHealth = {
+    ...prev,
+    lastAttemptAt: now,
+    ...(event.ok
+      ? { lastSuccessAt: now, consecutiveFailures: 0, lastError: undefined, itemsFetched: (prev.itemsFetched ?? 0) + (event.items ?? 0) }
+      : { lastError: event.error ? String(event.error).slice(0, 300) : "unknown error", consecutiveFailures: (prev.consecutiveFailures ?? 0) + 1 }),
+  };
+  const next = { ...sourcesCache, [id]: { ...current, health } };
+  sourcesCache = next;
+  try {
+    await writeJSONAtomic(SOURCES_FILE, next);
+  } catch (err) {
+    logger.warn({ err, source: id }, "dataStore: health write unavailable (in-instance view kept)");
+  }
 }
 
 export async function upsertSource(src: SourceMeta): Promise<void> {
@@ -188,7 +257,17 @@ export async function upsertSource(src: SourceMeta): Promise<void> {
     reviewedAt: new Date().toISOString(),
     note: "Awaiting documented commercial redisplay approval.",
   };
-  const next = { ...sourcesCache, [src.id]: { ...src, commercialRedisplay, archivedAt: undefined } };
+  /* Metadata edits must not reset the operational switch or telemetry. */
+  const next = {
+    ...sourcesCache,
+    [src.id]: {
+      ...src,
+      ...(existing?.disabled !== undefined ? { disabled: existing.disabled } : {}),
+      ...(existing?.health ? { health: existing.health } : {}),
+      commercialRedisplay,
+      archivedAt: undefined,
+    },
+  };
   await writeJSONAtomic(SOURCES_FILE, next);
   sourcesCache = next;
 }

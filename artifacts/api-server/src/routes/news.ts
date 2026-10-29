@@ -8,6 +8,7 @@ import {
   listSources,
   getSource,
   listCustomArticles,
+  recordSourceHealth,
   type SourceMeta,
 } from "../lib/dataStore";
 
@@ -516,6 +517,10 @@ const FAILS = new Map<string, number>();
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) EgyTrend/1.0";
 
+/* The production fetcher is the SSRF-guarded fetchSafeFeed. Tests may swap in
+ * a deterministic fake through __newsTest without weakening the guard. */
+let feedFetcher: (url: string, init?: RequestInit) => Promise<Response> = fetchSafeFeed;
+
 async function fetchSource(src: SourceMeta): Promise<{
   status: "ok";
   items: FeedItem[];
@@ -533,7 +538,7 @@ async function fetchSource(src: SourceMeta): Promise<{
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetchSafeFeed(src.url, {
+    const res = await feedFetcher(src.url, {
       signal: ctrl.signal,
       headers: {
         "User-Agent": UA,
@@ -553,16 +558,74 @@ async function fetchSource(src: SourceMeta): Promise<{
       CACHE.set(src.id, { ts: Date.now(), data });
       FAILS.delete(src.id);
     }
+    /* Honest telemetry: an empty feed is a data-validity failure too — a
+     * source is never "working" until it returns at least one real item. */
+    void recordSourceHealth(src.id, items.length > 0
+      ? { ok: true, items: items.length }
+      : { ok: false, error: "feed returned 0 items" }).catch(() => undefined);
     return data;
   } catch (err) {
     clearTimeout(t);
     FAILS.set(src.id, Date.now());
+    const reason = err instanceof Error ? err.message : "upstream error";
+    void recordSourceHealth(src.id, { ok: false, error: reason }).catch(() => undefined);
     /* Serve stale cache (up to 2 hr) rather than crashing when upstream fails */
     if (cached && Date.now() - cached.ts < STALE_TTL_MS) {
       logger.warn({ source: src.id }, "upstream failed — serving stale cache");
       return cached.data;
     }
     throw err;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+export type SourceProbeResult = {
+  ok: boolean;
+  testedAt: string; // ISO timestamp of THIS probe — the panel must show it
+  itemCount: number;
+  firstTitle?: string;
+  error?: string;
+};
+
+/**
+ * Admin connection probe: one real fetch through the same SSRF-guarded
+ * fetcher and parser, with data-validity checks (>=1 item carrying a usable
+ * title/link). A probe never mutates source state and never feeds the public
+ * cache: success proves "connectable now", not freshness, and failure proves
+ * "this attempt failed", not that the source is dead. The panel shows both
+ * the result and its timestamp.
+ */
+export async function probeSourceFeed(src: SourceMeta): Promise<SourceProbeResult> {
+  const testedAt = new Date().toISOString();
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await feedFetcher(src.url, {
+      signal: ctrl.signal,
+      headers: {
+        "User-Agent": UA,
+        Accept: "application/rss+xml, application/xml, application/atom+xml, text/xml, */*",
+        "Accept-Language": "ar,en;q=0.8",
+      },
+    });
+    if (!res.ok) {
+      void res.body?.cancel().catch(() => undefined);
+      return { ok: false, testedAt, itemCount: 0, error: `upstream ${res.status}` };
+    }
+    const xml = await readFeedText(res);
+    const items = parseFeed(xml, src.url, src.id);
+    if (!items.length) return { ok: false, testedAt, itemCount: 0, error: "feed returned 0 items" };
+    const first = items.find((i) => i.title && i.link);
+    if (!first) return { ok: false, testedAt, itemCount: items.length, error: "no item with usable title/link" };
+    return { ok: true, testedAt, itemCount: items.length, firstTitle: first.title.slice(0, 120) };
+  } catch (err) {
+    return {
+      ok: false,
+      testedAt,
+      itemCount: 0,
+      error: err instanceof Error ? err.message.slice(0, 200) : "fetch failed",
+    };
   } finally {
     clearTimeout(t);
   }
@@ -845,6 +908,14 @@ export const __newsTest = {
   assertSafeFeedUrl,
   fetchSafeFeed,
   readFeedText,
+  probeSourceFeed,
+  /** Tests only: swap the guarded fetcher for a deterministic fake. */
+  setFeedFetcherForTest: (fn: (url: string, init?: RequestInit) => Promise<Response>) => {
+    feedFetcher = fn;
+  },
+  resetFeedFetcherForTest: () => {
+    feedFetcher = fetchSafeFeed;
+  },
 };
 
 export default router;

@@ -5,6 +5,7 @@ export * from "./plan_price_change_logs";
 export * from "./coupons";
 export * from "./audit_logs";
 export * from "./ai_config";
+export * from "./db_backups";
 export * from "./payment_requests";
 export * from "./user_notifications";
 export * from "./settings";

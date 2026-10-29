@@ -38,6 +38,10 @@ export type EngineResult = {
   engine: "gemini" | "anthropic" | "local";
   model: string;
   toolCalls: number;
+  /** Provider-reported token counts. Undefined when the serving engine did
+   *  not meter this call (local engine, or missing upstream metadata). */
+  tokensIn?: number;
+  tokensOut?: number;
 };
 
 export type EngineError = {
@@ -95,9 +99,11 @@ export function engineName(): "gemini" | "anthropic" | "local" {
   if (anthropicKey()) return "anthropic";
   return "local";
 }
+export function modelForEngine(engine: "gemini" | "anthropic" | "local"): string {
+  return engine === "gemini" ? geminiModel() : engine === "anthropic" ? anthropicModel() : "egytrend-local";
+}
 export function activeModel(): string {
-  const e = engineName();
-  return e === "gemini" ? geminiModel() : e === "anthropic" ? anthropicModel() : "egytrend-local";
+  return modelForEngine(engineName());
 }
 
 /* ─── system prompt (grounding rules — the anti-hallucination core) ─── */
@@ -225,7 +231,7 @@ async function geminiRequestOnce(
   maxTokens: number,
   timeoutMs: number = GEMINI_TIMEOUT_MS,
   modelOverride?: string,
-): Promise<{ parts: GeminiPart[]; finishReason?: string }> {
+): Promise<{ parts: GeminiPart[]; finishReason?: string; usage: { inTokens: number | null; outTokens: number | null } }> {
   const key = geminiKey();
   const url = `${geminiBaseUrl()}/v1beta/models/${encodeURIComponent(modelOverride || geminiModel())}:generateContent`;
   const ctrl = new AbortController();
@@ -259,6 +265,7 @@ async function geminiRequestOnce(
         content?: { parts?: GeminiPart[] };
         finishReason?: string;
       }>;
+      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
     };
     try {
       data = JSON.parse(txt);
@@ -269,7 +276,24 @@ async function geminiRequestOnce(
     if (!cand) {
       throw new UpstreamError("gemini returned no candidates", "empty", r.status);
     }
-    return { parts: cand.content?.parts || [], finishReason: cand.finishReason };
+    /* Provider-reported token counts feed the cost dashboard. When the
+     * response carries no usage metadata the values stay NULL (not 0) so the
+     * metering row is reported as UNMETERED instead of a fabricated $0. */
+    const usageMeta = data.usageMetadata;
+    return {
+      parts: cand.content?.parts || [],
+      finishReason: cand.finishReason,
+      usage: {
+        inTokens:
+          usageMeta?.promptTokenCount != null && Number.isFinite(usageMeta.promptTokenCount)
+            ? Math.max(0, Math.floor(usageMeta.promptTokenCount))
+            : null,
+        outTokens:
+          usageMeta?.candidatesTokenCount != null && Number.isFinite(usageMeta.candidatesTokenCount)
+            ? Math.max(0, Math.floor(usageMeta.candidatesTokenCount))
+            : null,
+      },
+    };
   } catch (e) {
     if (e instanceof UpstreamError) throw e;
     const aborted = (e as Error)?.name === "AbortError";
@@ -308,7 +332,7 @@ async function geminiRequest(
   maxTokens: number,
   timeoutMs: number = GEMINI_TIMEOUT_MS,
   modelOverride?: string,
-): Promise<{ parts: GeminiPart[]; finishReason?: string; model: string }> {
+): Promise<{ parts: GeminiPart[]; finishReason?: string; model: string; usage: { inTokens: number | null; outTokens: number | null } }> {
   const deadline = Date.now() + timeoutMs;
   const models = geminiModelChain(modelOverride);
   let last: UpstreamError | null = null;
@@ -389,6 +413,12 @@ export async function geminiChat(
   let finalText = "";
   /* Which model actually served this turn (failover can swap it). */
   let usedModel = geminiModel();
+  /* Tokens accumulate across tool rounds: every round re-sends the growing
+   * context, so the metered cost is the sum of each round's usage. Null until
+   * a round actually reports metadata — a fully unreported turn stays
+   * unmetered (never a fabricated 0). */
+  let usedIn: number | null = null;
+  let usedOut: number | null = null;
   const deadline = Date.now() + GEMINI_TOTAL_BUDGET_MS;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -402,6 +432,8 @@ export async function geminiChat(
     const res = await geminiRequest(contents, system, maxTokens, remaining);
     const { parts } = res;
     usedModel = res.model;
+    if (res.usage.inTokens !== null) usedIn = (usedIn ?? 0) + res.usage.inTokens;
+    if (res.usage.outTokens !== null) usedOut = (usedOut ?? 0) + res.usage.outTokens;
     /* Latency telemetry: without it a slow reply is indistinguishable from a
      * slow tool or a model retry in the logs. */
     logger.info(
@@ -454,7 +486,14 @@ export async function geminiChat(
   if (!finalText) {
     throw new UpstreamError("gemini produced empty response", "empty");
   }
-  return { text: finalText, engine: "gemini", model: usedModel, toolCalls };
+  return {
+    text: finalText,
+    engine: "gemini",
+    model: usedModel,
+    toolCalls,
+    tokensIn: usedIn ?? undefined,
+    tokensOut: usedOut ?? undefined,
+  };
 }
 
 /* ─── Anthropic path (previous behavior, kept intact) ───────────────── */
@@ -488,7 +527,10 @@ export async function anthropicChat(
       if (r.status === 429) throw new UpstreamError("anthropic rate limited", "rate_limit", 429);
       throw new UpstreamError("anthropic upstream error", "upstream", r.status);
     }
-    let data: { content?: Array<{ type: string; text?: string }> };
+    let data: {
+      content?: Array<{ type: string; text?: string }>;
+      usage?: { input_tokens?: number; output_tokens?: number };
+    };
     try {
       data = JSON.parse(txt);
     } catch {
@@ -500,7 +542,21 @@ export async function anthropicChat(
       .join("\n")
       .trim();
     if (!text) throw new UpstreamError("anthropic empty response", "empty", r.status);
-    return { text, engine: "anthropic", model: anthropicModel(), toolCalls: 0 };
+    return {
+      text,
+      engine: "anthropic",
+      model: anthropicModel(),
+      toolCalls: 0,
+      /* Missing usage metadata → undefined (unmetered), never a fabricated 0. */
+      tokensIn:
+        data.usage?.input_tokens != null && Number.isFinite(data.usage.input_tokens)
+          ? Math.max(0, Math.floor(data.usage.input_tokens))
+          : undefined,
+      tokensOut:
+        data.usage?.output_tokens != null && Number.isFinite(data.usage.output_tokens)
+          ? Math.max(0, Math.floor(data.usage.output_tokens))
+          : undefined,
+    };
   } catch (e) {
     if (e instanceof UpstreamError) throw e;
     const aborted = (e as Error)?.name === "AbortError";
@@ -565,14 +621,199 @@ export async function geminiVerify(modelOverride?: string): Promise<GeminiVerify
 export { UpstreamError };
 export type { GeminiPart, GeminiContent };
 
+/* ─── admin provider management ──────────────────────────────────────
+ * The engine ORDER (Gemini primary → Anthropic fallback → local safety
+ * net) is fixed by design; the admin panel can only REMOVE an external
+ * provider from the chain (DB settings, ids only). The local engine is
+ * never disable-able, so the site degrades instead of going down. Keys
+ * stay env-only: this module reports PRESENCE, never values. */
+export async function disabledAiProviders(): Promise<Set<string>> {
+  try {
+    const { readAiProviderToggles } = await import("./ai-provider-settings");
+    return (await readAiProviderToggles()).disabled;
+  } catch {
+    return new Set();
+  }
+}
+
+/** Engine order as configured by env, minus admin-disabled providers. */
+export async function effectiveEngine(): Promise<"gemini" | "anthropic" | "local"> {
+  const disabled = await disabledAiProviders();
+  if (geminiKey() && !disabled.has("gemini")) return "gemini";
+  if (anthropicKey() && !disabled.has("anthropic")) return "anthropic";
+  return "local";
+}
+
+export type AiProbeResult = {
+  ok: boolean;
+  testedAt: number;
+  provider: "gemini" | "anthropic" | "local";
+  latencyMs?: number;
+  model?: string;
+  /** Short model reply, truncated — no request context, no credentials. */
+  sample?: string;
+  /** Stable category; provider error bodies never surface. */
+  error?: string;
+};
+
+const AI_PROBE_TIMEOUT_MS = 10_000;
+
+/**
+ * Short, safe response test per provider: at most one tiny real call,
+ * bounded to 10 s, with zero side effects — no usage rows, no budget
+ * reservation, no memory writes, no chat retry/failover fan-out. The key
+ * never leaves the server; error text is a stable category only.
+ */
+export async function aiProbe(provider: "gemini" | "anthropic" | "local"): Promise<AiProbeResult> {
+  const t0 = Date.now();
+  const done = (partial: Partial<AiProbeResult>): AiProbeResult => ({
+    ok: false,
+    testedAt: Date.now(),
+    provider,
+    latencyMs: Date.now() - t0,
+    ...partial,
+  });
+
+  if (provider === "local") {
+    try {
+      const text = await Promise.race([
+        localAiChat([{ role: "user", content: "اختبار اتصال: أجب بكلمة واحدة فقط." }]),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), AI_PROBE_TIMEOUT_MS)),
+      ]);
+      return done({ ok: true, model: "egytrend-local", sample: String(text).slice(0, 120) });
+    } catch (e) {
+      return done({ error: (e as Error)?.message === "timeout" ? "timeout" : "unavailable" });
+    }
+  }
+
+  if (provider === "gemini") {
+    if (!geminiKey()) return done({ error: "no_api_key" });
+    const result = await geminiVerify();
+    return done({
+      ok: result.ok,
+      model: result.model,
+      latencyMs: result.latencyMs,
+      error: result.ok ? undefined : result.error,
+    });
+  }
+
+  /* Anthropic: one minimal /v1/messages call, same shape as the production
+   * request but 16 output tokens and no system prompt. */
+  if (!anthropicKey()) return done({ error: "no_api_key" });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), AI_PROBE_TIMEOUT_MS);
+  try {
+    const r = await fetch(`${anthropicBase()}/v1/messages`, {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": anthropicKey(),
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: anthropicModel(),
+        max_tokens: 16,
+        messages: [{ role: "user", content: "Reply with the single word: OK" }],
+      }),
+    });
+    if (!r.ok) {
+      /* The provider body may echo request context or credentials: retain
+       * only the status, as the production path does. */
+      return done({ error: r.status === 429 ? "rate_limit" : "unavailable" });
+    }
+    const data = (await r.json()) as { content?: Array<{ type: string; text?: string }> };
+    const text = (data.content || [])
+      .filter((c) => c.type === "text" && typeof c.text === "string")
+      .map((c) => c.text as string)
+      .join("")
+      .trim();
+    return text
+      ? done({ ok: true, model: anthropicModel(), sample: text.slice(0, 120) })
+      : done({ error: "empty_response" });
+  } catch (e) {
+    return done({ error: (e as Error)?.name === "AbortError" ? "timeout" : "unavailable" });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export type AiProviderInfo = {
+  id: "gemini" | "anthropic" | "local";
+  name: string;
+  /** Fixed platform order: 1 primary, 2 fallback, 3 safety net. */
+  order: number;
+  role: "primary" | "fallback" | "safety-net";
+  /** Key/env presence only — never the value. */
+  keyPresent: boolean;
+  model: string;
+  adminDisabled: boolean;
+  active: boolean;
+  /** Every client AI feature flows through /api/ai/chat → the active
+   * engine; the list is what actually uses it today. */
+  features: string[];
+};
+
+export async function aiProvidersInfo(): Promise<{
+  engine: "gemini" | "anthropic" | "local";
+  providers: AiProviderInfo[];
+}> {
+  const disabled = await disabledAiProviders();
+  const engine = await effectiveEngine();
+  const CHAT_FEATURES = ["المساعد الذكي", "تحليل الأخبار", "تقرير الصباح"];
+  return {
+    engine,
+    providers: [
+      {
+        id: "gemini",
+        name: "Google Gemini",
+        order: 1,
+        role: "primary",
+        keyPresent: Boolean(geminiKey()),
+        model: geminiModel(),
+        adminDisabled: disabled.has("gemini"),
+        active: engine === "gemini",
+        features: CHAT_FEATURES,
+      },
+      {
+        id: "anthropic",
+        name: "Anthropic Claude",
+        order: 2,
+        role: "fallback",
+        keyPresent: Boolean(anthropicKey()),
+        model: anthropicModel(),
+        adminDisabled: disabled.has("anthropic"),
+        active: engine === "anthropic",
+        features: CHAT_FEATURES,
+      },
+      {
+        id: "local",
+        name: "محرك EgyTrend المحلي",
+        order: 3,
+        role: "safety-net",
+        keyPresent: true, /* built-in, no key needed */
+        model: "egytrend-local",
+        adminDisabled: false, /* never disable-able */
+        active: engine === "local",
+        features: CHAT_FEATURES,
+      },
+    ],
+  };
+}
+
 /* ─── engine dispatch ──────────────────────────────────────────────── */
 export async function runEngine(
   messages: ChatMsg[],
   system: string,
   maxTokens: number,
   ctx: EngineContext = {},
+  forcedEngine?: "gemini" | "anthropic" | "local",
 ): Promise<EngineResult> {
-  const name = engineName();
+  /* When the reservation already chose an engine under budget, dispatch to
+   * exactly that one (no re-selection). Otherwise: effective engine = env
+   * order minus admin-disabled. An admin disable must hold for the real chat
+   * path, not only for the status display. */
+  const name = forcedEngine ?? (await effectiveEngine());
   if (name === "gemini") {
     return geminiChat(messages, system, maxTokens, ctx);
   }

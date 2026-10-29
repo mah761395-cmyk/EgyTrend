@@ -72,6 +72,7 @@ export async function createMemoryDatabase(): Promise<{
       plan text NOT NULL DEFAULT 'free',
       vip_expires_at timestamp,
       status text NOT NULL DEFAULT 'active',
+      last_login_at timestamp,
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -497,7 +498,24 @@ export async function createMemoryDatabase(): Promise<{
       user_id text,
       request_type text NOT NULL,
       tokens_estimate integer DEFAULT 0,
+      provider text,
+      model text,
+      tokens_in integer,
+      tokens_out integer,
+      status text NOT NULL DEFAULT 'reserved',
+      cost_est_usd double precision,
+      cost_source text,
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE db_backups (
+      id serial PRIMARY KEY,
+      schema_name text NOT NULL,
+      table_count integer NOT NULL DEFAULT 0,
+      kind text NOT NULL DEFAULT 'manual',
+      created_by text,
+      verified boolean NOT NULL DEFAULT false,
+      note text,
+      created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE audit_logs (
       id serial PRIMARY KEY,

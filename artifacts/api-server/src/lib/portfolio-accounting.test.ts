@@ -187,3 +187,47 @@ test("round6 keeps six decimals stable", () => {
   assert.equal(round6(1.005 * 100 + 0.1 + 0.2), 100.8);
   assert.equal(round6(123456.123456789), 123456.123457);
 });
+
+test("totalBuyOutlay = Σ buys qty·price + buy fees (the return denominator)", () => {
+  const c = computePortfolio([
+    tx({ symbol: "COMI", side: "buy", quantity: 100, price: 10, fees: 20, tradeDate: "2026-01-01" }),
+    tx({ symbol: "COMI", side: "buy", quantity: 100, price: 14, fees: 0, tradeDate: "2026-01-05" }),
+    tx({ symbol: "COMI", side: "sell", quantity: 40, price: 13, fees: 5, tradeDate: "2026-01-10" }),
+  ], 5000);
+  // outlay = (100·10 + 20) + (100·14) = 1020 + 1400 = 2420 — sell fees excluded
+  near(c.totalBuyOutlay, 2420);
+  const led = c.bySymbol.get("COMI")!;
+  near(led.totalBuyValue, 2400); // 1000 + 1400, fees excluded
+  near(led.buyFees, 20); // only the buy fee
+  near(led.totalFees, 25); // buy 20 + sell 5
+});
+
+test("costBasisSold = Σ soldQty·avgCostAtTime, fees excluded; empty before any sell", () => {
+  const noSell = computePortfolio([
+    tx({ symbol: "COMI", side: "buy", quantity: 100, price: 10, fees: 20, tradeDate: "2026-01-01" }),
+  ], 5000);
+  assert.equal(noSell.costBasisSold, 0);
+  assert.equal(noSell.bySymbol.get("COMI")!.costBasisSold, 0);
+
+  const c = computePortfolio([
+    tx({ symbol: "COMI", side: "buy", quantity: 100, price: 10, fees: 20, tradeDate: "2026-01-01" }),
+    tx({ symbol: "COMI", side: "sell", quantity: 40, price: 13, fees: 5, tradeDate: "2026-01-10" }),
+  ], 5000);
+  // avg after the buy = (1000+20)/100 = 10.2 → cost basis of the sold 40 = 408
+  near(c.costBasisSold, 408);
+  near(c.bySymbol.get("COMI")!.costBasisSold, 408);
+  // and realized stays consistent: 40·13 − 5 − 408 = 107
+  near(c.realizedPnl, 107);
+});
+
+test("totalBuyOutlay accumulates across symbols for a portfolio-wide denominator", () => {
+  const c = computePortfolio([
+    tx({ symbol: "COMI", side: "buy", quantity: 100, price: 10, fees: 20, tradeDate: "2026-01-01" }),
+    tx({ symbol: "HLDI", side: "buy", quantity: 50, price: 20, fees: 10, tradeDate: "2026-01-02" }),
+    tx({ symbol: "HLDI", side: "sell", quantity: 20, price: 25, fees: 0, tradeDate: "2026-01-10" }),
+  ], 5000);
+  // COMI 1020 + HLDI (50·20 + 10) 1010 = 2030
+  near(c.totalBuyOutlay, 2030);
+  // HLDI avg = (1000+10)/50 = 20.2 → sold cost = 20·20.2 = 404
+  near(c.costBasisSold, 404);
+});
