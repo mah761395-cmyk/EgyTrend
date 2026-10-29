@@ -39,8 +39,8 @@ function validEmail(value: string | null): value is string {
 }
 
 export function evaluatePriceAlert(condition: AlertCondition, targetValue: number, quote: Pick<StockQuote, "price" | "chgPct">): boolean {
-  if (condition === "price_above") return Number.isFinite(quote.price) && quote.price >= targetValue;
-  if (condition === "price_below") return Number.isFinite(quote.price) && quote.price <= targetValue;
+  if (condition === "price_above") return typeof quote.price === "number" && quote.price >= targetValue;
+  if (condition === "price_below") return typeof quote.price === "number" && quote.price <= targetValue;
   if (condition === "change_percent_above") return Number.isFinite(quote.chgPct) && (quote.chgPct as number) >= targetValue;
   return Number.isFinite(quote.chgPct) && (quote.chgPct as number) <= targetValue;
 }
