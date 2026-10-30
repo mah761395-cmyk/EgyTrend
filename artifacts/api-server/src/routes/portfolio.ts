@@ -277,6 +277,11 @@ router.get("/portfolio", requireVipFeature("portfolio"), async (req: Request, re
       summary: {
         cash: computation.cash,
         investedCost: computation.investedCost,
+        /* Capital deployed on buys (qty·price + buy fees), all time — the
+         * documented denominator of the client-side return-on-cost %. */
+        totalBuyOutlay: computation.totalBuyOutlay,
+        /* Cost basis of the sold portion of every trade (fees excluded). */
+        costBasisSold: computation.costBasisSold,
         pricedMarketValue: market.pricedMarketValue,
         marketValue: market.marketValue,
         totalValue: market.totalValue,

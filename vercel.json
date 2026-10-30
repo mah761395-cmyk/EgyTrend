@@ -21,6 +21,14 @@
     {
       "path": "/api/markets/valuations",
       "schedule": "40 12 * * *"
+    },
+    {
+      "path": "/api/backups/cron",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/opportunities/cron",
+      "schedule": "10 15 * * 0-4"
     }
   ],
   "headers": [

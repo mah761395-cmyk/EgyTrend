@@ -19,17 +19,46 @@ import { LIMITS, getAttemptStore } from "../lib/rate-limit";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import {
-  listSources, listSourceInventory, upsertSource, deleteSource,
+  listSources, listSourceInventory, upsertSource, deleteSource, setSourceDisabled,
   listCustomArticles, upsertCustomArticle, deleteCustomArticle,
   type SourceMeta, type CustomArticle,
 } from "../lib/dataStore";
+import { probeSourceFeed } from "./news";
+import { getMarketDataService } from "../lib/market-data/service";
+import { readMarketProviderSettings, saveMarketProviderSettings } from "../lib/market-provider-settings";
+import { aiProbe, aiProvidersInfo } from "../lib/ai-engine";
+import {
+  readAiModelPrices,
+  saveAiModelPrices,
+  readAiBudgets,
+  saveAiBudgets,
+  providerBudgetState,
+  readBudgetAlerts,
+  refreshBudgetAlerts,
+  type AiBudgets,
+  type ModelPrice,
+} from "../lib/ai-costs";
+import {
+  createSchemaBackup,
+  listBackups,
+  BackupUnavailableError,
+  type BackupViewRow,
+} from "../lib/db-backups";
+import {
+  isToggleableAiProviderId,
+  readAiProviderLastTests,
+  readAiProviderToggles,
+  saveAiProviderLastTest,
+  saveAiProviderToggles,
+} from "../lib/ai-provider-settings";
 import { db } from "@workspace/db";
 import {
   employeesTable, subscriptionPlansTable, couponsTable, auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable, appUsersTable, userNotificationsTable,
   userSubscriptionsTable, appSettingsTable, planPriceOffersTable, planPriceChangeLogsTable,
   subscriptionLifecycleEventsTable, subscriptionRemindersSentTable, trialClaimsTable,
+  broadcastMessageUserStatesTable, referralAttributionsTable, referralRewardsTable, referralMessageDeliveriesTable,
 } from "@workspace/db";
-import { eq, desc, and, gte, lte, like, or, sql, isNull, inArray } from "drizzle-orm";
+import { asc, eq, desc, and, gte, lte, like, or, sql, isNull, inArray, type AnyColumn, type SQL } from "drizzle-orm";
 import {
   getEffectivePrice,
   getPaymentPriceLockHours,
@@ -379,19 +408,22 @@ function parseBroadcastDraftRequest(body: unknown): ReturnType<typeof validateBr
 /* ─── Audit log helper ─── */
 async function auditLog(
   action: string, actor: JWTPayload | undefined, target: string | undefined,
-  detail: Record<string, unknown>, _ip?: string,
+  detail: Record<string, unknown>, ip?: string,
 ): Promise<void> {
   try {
     /* Audit rows must be useful without becoming a shadow store of personal
-     * data. Retain staff ID/role and non-sensitive target identifiers only. */
+     * data: staff name/ID/role are retained for accountability (this log is
+     * admin-only), the request IP for incident reconstruction, and target is
+     * a non-sensitive identifier. `detail` stays result/cause metadata —
+     * never secrets, tokens, or user credentials. */
     await db.insert(auditLogsTable).values({
       action,
       actorId: actor?.sub ?? null,
-      actorName: actor ? `staff:${actor.sub}` : "legacy-admin",
+      actorName: actor?.name || (actor ? `staff:${actor.sub}` : "legacy-admin"),
       actorRole: actor?.role ?? "super_admin",
       target: target ?? null,
       detail,
-      ip: null,
+      ip: ip ? String(ip).slice(0, 64) : null,
     });
   } catch (e) {
     logger.warn({ err: e }, "audit log write failed");
@@ -740,6 +772,23 @@ router.post("/sources", requireAuth, requireWriteRate, requireRole("super_admin"
   res.json({ status: "ok", source: v });
 });
 
+router.put("/sources/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "editor"), async (req: AuthRequest, res: Response) => {
+  const id = String(req.params["id"] || "");
+  const existing = listSourceInventory().find((s) => s.id === id);
+  if (!existing) { res.status(404).json({ status: "error", message: "not found" }); return; }
+  if (existing.archivedAt) { res.status(409).json({ status: "error", message: "source is archived — restore it before editing" }); return; }
+  /* Merge over the existing row so unedited fields keep their values; the
+   * legal review, operational switch and telemetry survive the edit. */
+  const v = validateSource({ ...existing, ...(req.body || {}) });
+  if ("error" in v) { res.status(400).json({ status: "error", message: v.error }); return; }
+  if (v.id !== id) { res.status(400).json({ status: "error", message: "source id cannot be changed" }); return; }
+  try { await upsertSource(v); }
+  catch (err) { contentStorageUnavailable(res, err); return; }
+  await auditLog("update_source", req.actor, id, { name: v.name }, req.ip);
+  logger.info({ id }, "admin: source updated");
+  res.json({ status: "ok", source: v });
+});
+
 router.delete("/sources/:id", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
   const id = String(req.params["id"] || "");
   let ok: boolean;
@@ -749,6 +798,108 @@ router.delete("/sources/:id", requireAuth, requireWriteRate, requireRole("super_
   await auditLog("archive_source", req.actor, id, {}, req.ip);
   logger.info({ id }, "admin: source deleted");
   res.json({ status: "ok" });
+});
+
+/* Operational stop/restore — independent of the legal review. One source's
+ * outage (or choice) must never stop the others: /news aggregates with
+ * allSettled and keeps serving the remaining sources. */
+router.post("/sources/:id/set-disabled", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = String(req.params["id"] || "");
+  const disabled = req.body?.disabled === true;
+  let ok: boolean;
+  try { ok = await setSourceDisabled(id, disabled); }
+  catch (err) { contentStorageUnavailable(res, err); return; }
+  if (!ok) { res.status(404).json({ status: "error", message: "not found" }); return; }
+  await auditLog(disabled ? "disable_source" : "enable_source", req.actor, id, {}, req.ip);
+  logger.info({ id, disabled }, "admin: source operational state changed");
+  res.json({ status: "ok", id, disabled });
+});
+
+/* Real connection + data-validity probe. The result carries its own
+ * timestamp and is reported as-is: "connectable now" is never presented as
+ * a live feed state, and a failed probe is never auto-applied. */
+router.post("/sources/:id/test", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = String(req.params["id"] || "");
+  const source = listSourceInventory().find((s) => s.id === id);
+  if (!source) { res.status(404).json({ status: "error", message: "not found" }); return; }
+  if (source.archivedAt) { res.status(409).json({ status: "error", message: "source is archived" }); return; }
+  const result = await probeSourceFeed(source);
+  await auditLog("test_source", req.actor, id, { ok: result.ok, itemCount: result.itemCount }, req.ip);
+  res.json({ status: "ok", result });
+});
+
+/* ─── Market data providers (settings-gated) ─────────────────────────────
+ * Provider credentials exist ONLY in environment variables; these routes
+ * never read, copy or echo a key — state is "configured" (key + license
+ * present) vs "not_configured" vs "requires_contract", set from the env at
+ * provider construction. Toggles persist in app_settings (provider ids
+ * only), and the market service honours them fail-open. */
+router.get("/settings/market-providers", requireAuth, async (_req: AuthRequest, res: Response) => {
+  try {
+    const overview = await getMarketDataService().adminOverview();
+    res.json({ status: "ok", overview });
+  } catch (error) {
+    logger.error({ err: error }, "admin: market provider overview failed");
+    res.status(503).json({ status: "error", message: "market data service unavailable" });
+  }
+});
+
+router.post("/settings/market-providers/:id/set-disabled", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = String(req.params["id"] || "");
+  const service = getMarketDataService();
+  const descriptor = service.descriptors().find((d) => d.id === id);
+  if (!descriptor) { res.status(404).json({ status: "error", message: "not found" }); return; }
+  /* Only a provider that is actually in the chain (env-configured) can be
+   * toggled: "selecting" an unconfigured provider is impossible by design. */
+  if (descriptor.state !== "configured") {
+    res.status(409).json({
+      status: "error",
+      message: descriptor.state === "requires_contract"
+        ? "هذا المزوّد يتطلب عقدًا موثّقًا — لا يوجد ما يُعطَّل في الإعدادات"
+        : "المزوّد غير مُهيّأ (لا مفاتيح في البيئة) — لا يوجد ما يُعطَّل",
+    });
+    return;
+  }
+  const disable = Boolean(req.body?.["disabled"]);
+  try {
+    const settings = await readMarketProviderSettings();
+    if (disable) settings.disabled.add(id);
+    else settings.disabled.delete(id);
+    await saveMarketProviderSettings(settings.disabled);
+  } catch (error) {
+    logger.error({ err: error }, "admin: market provider toggle failed");
+    res.status(503).json({ status: "error", message: "settings storage unavailable" });
+    return;
+  }
+  const impact = await service.providerImpact(id);
+  await auditLog(disable ? "market_provider_disable" : "market_provider_enable", req.actor, id, { instruments: impact.instrumentSymbols.length }, req.ip);
+  res.json({ status: "ok", disabled: disable, impact });
+});
+
+/* Read-only impact preview so the disable confirmation can name exactly
+ * which instruments would lose a source — and when no other configured
+ * provider remains, that is stated in the dialog, not discovered later. */
+router.get("/settings/market-providers/:id/impact", requireAuth, async (req: AuthRequest, res: Response) => {
+  const id = String(req.params["id"] || "");
+  const service = getMarketDataService();
+  if (!service.descriptors().some((d) => d.id === id)) {
+    res.status(404).json({ status: "error", message: "not found" });
+    return;
+  }
+  const impact = await service.providerImpact(id);
+  res.json({ status: "ok", impact });
+});
+
+router.post("/settings/market-providers/:id/test", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = String(req.params["id"] || "");
+  const service = getMarketDataService();
+  if (!service.descriptors().some((d) => d.id === id)) {
+    res.status(404).json({ status: "error", message: "not found" });
+    return;
+  }
+  const result = await service.probeProvider(id);
+  await auditLog("market_provider_test", req.actor, id, { ok: result.ok }, req.ip);
+  res.json({ status: "ok", result });
 });
 
 /* ─── Articles (enhanced with audit) ─── */
@@ -1415,6 +1566,13 @@ router.delete("/coupons/:id", requireAuth, requireWriteRate, requireRole("super_
 
 /* Public: validate coupon code */
 router.post("/coupons/validate", async (req: Request, res: Response) => {
+  /* Public endpoint: coupon codes are human-readable admin strings, so an
+   * unlimited validate oracle would allow brute-force enumeration. Cap it
+   * per IP — one checkout attempt needs one or two calls. */
+  if (!rateLimitHit(`coupon-validate:${req.ip || "unknown"}`, 10, 5 * 60 * 1000)) {
+    res.status(429).json({ status: "error", message: "محاولات كثيرة؛ حاول بعد قليل" });
+    return;
+  }
   const { code } = req.body || {};
   if (!code) { res.status(400).json({ status: "error", message: "code required" }); return; }
   const [coupon] = await db.select().from(couponsTable)
@@ -1425,6 +1583,66 @@ router.post("/coupons/validate", async (req: Request, res: Response) => {
   if (coupon.expiresAt && coupon.expiresAt < now) { res.status(400).json({ status: "error", message: "coupon expired" }); return; }
   if (coupon.maxUses !== null && (coupon.usedCount ?? 0) >= coupon.maxUses) { res.status(400).json({ status: "error", message: "coupon usage limit reached" }); return; }
   res.json({ status: "ok", coupon: { code: coupon.code, discountType: coupon.discountType, discountValue: coupon.discountValue } });
+});
+
+/* ─── AI providers (settings-gated; keys env-only, presence state only) ──
+ * The engine order (Gemini primary → Anthropic fallback → local safety net)
+ * is fixed; the panel can only remove an external provider from the chain.
+ * The local engine is never disable-able, so disabling everything degrades
+ * the assistant honestly instead of taking the site down. */
+router.get("/ai-providers", requireAuth, async (_req: AuthRequest, res: Response) => {
+  try {
+    const info = await aiProvidersInfo();
+    const [cfg] = await db.select().from(aiConfigTable).limit(1);
+    const lastTests = await readAiProviderLastTests();
+    res.json({ status: "ok", info, lastTests, assistantGateEnabled: cfg?.analyzerEnabled ?? true });
+  } catch (error) {
+    logger.error({ err: error }, "admin: AI providers overview failed");
+    res.status(503).json({ status: "error", message: "ai settings unavailable" });
+  }
+});
+
+router.post("/ai-providers/:id/set-disabled", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = String(req.params["id"] || "");
+  if (id === "local") {
+    res.status(409).json({ status: "error", message: "المحرك المحلي هو شبكة الأمان — لا يمكن تعطيله أبدًا" });
+    return;
+  }
+  if (!isToggleableAiProviderId(id)) {
+    res.status(404).json({ status: "error", message: "not found" });
+    return;
+  }
+  const disable = Boolean(req.body?.["disabled"]);
+  try {
+    const settings = await readAiProviderToggles();
+    if (disable) settings.disabled.add(id);
+    else settings.disabled.delete(id);
+    await saveAiProviderToggles(settings.disabled);
+  } catch (error) {
+    logger.error({ err: error }, "admin: AI provider toggle failed");
+    res.status(503).json({ status: "error", message: "settings storage unavailable" });
+    return;
+  }
+  const info = await aiProvidersInfo();
+  await auditLog(disable ? "ai_provider_disable" : "ai_provider_enable", req.actor, id, { effectiveEngine: info.engine }, req.ip);
+  res.json({ status: "ok", disabled: disable, info });
+});
+
+router.post("/ai-providers/:id/test", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const id = String(req.params["id"] || "");
+  if (id !== "gemini" && id !== "anthropic" && id !== "local") {
+    res.status(404).json({ status: "error", message: "not found" });
+    return;
+  }
+  const result = await aiProbe(id);
+  await saveAiProviderLastTest(id, {
+    ok: result.ok,
+    at: new Date(result.testedAt).toISOString(),
+    error: result.error,
+    latencyMs: result.latencyMs,
+  });
+  await auditLog("ai_provider_test", req.actor, id, { ok: result.ok }, req.ip);
+  res.json({ status: "ok", result });
 });
 
 /* ─── AI Config ─── */
@@ -1474,6 +1692,366 @@ router.get("/ai-usage", requireAuth, requireRole("super_admin", "admin", "analys
   res.json({ status: "ok", totalRequests: Number(total?.count ?? 0), byType: byType.rows, topUsers: topUsers.rows, days });
 });
 
+/* ─── AI costs, budgets & metering (admin-only) ─────────────────────────
+ * Financial honesty: every figure below is an ESTIMATE computed from
+ * provider-reported token counts × the editable model price table. No
+ * provider billing/invoice API exists for this app, so the response and the
+ * UI never present these numbers as actual invoices. Rows without token
+ * counts are reported as unmetered, never as $0. */
+function aiCostsWindow(value: unknown): number {
+  const d = Number(value);
+  return d === 7 || d === 30 || d === 90 ? d : 30;
+}
+
+/* NOTE: aggregates use CASE WHEN (not SQL aggregate FILTER): the in-memory
+ * test database parses FILTER but silently ignores its predicate, so a
+ * filter-based sum would report wrong money. CASE semantics are identical on
+ * real PostgreSQL. */
+async function aiUsageWindowStats(since: Date) {
+  const result = await db.execute(sql`
+    SELECT count(*) as count,
+           coalesce(sum(case when status = 'ok' then 1 end), 0) as ok,
+           coalesce(sum(case when status in ('failed','local_fallback') then 1 end), 0) as failed,
+           coalesce(sum(case when tokens_in is not null then tokens_in end), 0) as tokens_in,
+           coalesce(sum(case when tokens_out is not null then tokens_out end), 0) as tokens_out,
+           coalesce(sum(case when cost_est_usd is not null then cost_est_usd end), 0) as cost,
+           coalesce(sum(case when cost_est_usd is not null then 1 end), 0) as metered
+      FROM ai_usage
+     WHERE created_at >= ${since}`);
+  const t = result.rows[0] ?? {};
+  return {
+    requests: Number(t["count"] ?? 0),
+    ok: Number(t["ok"] ?? 0),
+    failed: Number(t["failed"] ?? 0),
+    tokensIn: Number(t["tokens_in"] ?? 0),
+    tokensOut: Number(t["tokens_out"] ?? 0),
+    costEstUsd: Math.round(Number(t["cost"] ?? 0) * 1e6) / 1e6,
+    meteredRequests: Number(t["metered"] ?? 0),
+  };
+}
+
+router.get("/ai-costs", requireAuth, requireRole("super_admin", "admin"), async (req: Request, res: Response) => {
+  try {
+    const windowDays = aiCostsWindow(req.query["window"]);
+    const now = new Date();
+    const since = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+    const prevSince = new Date(now.getTime() - windowDays * 2 * 24 * 60 * 60 * 1000);
+
+    const [totals, prev] = await Promise.all([aiUsageWindowStats(since), aiUsageWindowStats(prevSince)]);
+
+    /* byDay is aggregated in JS, not with SQL date functions: the same
+     * endpoint must run on the real PostgreSQL and on the in-memory test DB
+     * (which implements no timestamp→date cast), and the input is bounded by
+     * the paid global daily cap (default ≤ 200 rows/day, max 5000) — at most
+     * a few tens of thousands of (date, cost) pairs for a 90-day window. */
+    const rawDays = await db
+      .select({ createdAt: aiUsageTable.createdAt, cost: aiUsageTable.costEstUsd })
+      .from(aiUsageTable)
+      .where(gte(aiUsageTable.createdAt, since))
+      .orderBy(asc(aiUsageTable.createdAt));
+    const byDayMap = new Map<string, { count: number; costEstUsd: number }>();
+    for (const r of rawDays) {
+      const day = r.createdAt ? r.createdAt.toISOString().slice(0, 10) : "";
+      const entry = byDayMap.get(day) ?? { count: 0, costEstUsd: 0 };
+      entry.count += 1;
+      if (r.cost !== null) entry.costEstUsd += r.cost;
+      byDayMap.set(day, entry);
+    }
+    const byDay = [...byDayMap.entries()]
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .map(([day, v]) => ({ day, count: v.count, costEstUsd: Math.round(v.costEstUsd * 1e6) / 1e6 }));
+
+    const groupRows = (rows: Array<Record<string, unknown>>) =>
+      rows.map((r) => ({
+        key: String(r["key"] ?? ""),
+        count: Number(r["count"] ?? 0),
+        tokensIn: Number(r["tokens_in"] ?? 0),
+        tokensOut: Number(r["tokens_out"] ?? 0),
+        costEstUsd: Math.round(Number(r["cost"] ?? 0) * 1e6) / 1e6,
+      }));
+
+    const [byProvider, byModel, byFeature, byUser] = await Promise.all([
+      db.execute(sql`
+        SELECT coalesce(provider, 'unmetered') as key,
+               count(*) as count,
+               coalesce(sum(case when tokens_in is not null then tokens_in end), 0) as tokens_in,
+               coalesce(sum(case when tokens_out is not null then tokens_out end), 0) as tokens_out,
+               coalesce(sum(case when cost_est_usd is not null then cost_est_usd end), 0) as cost
+          FROM ai_usage WHERE created_at >= ${since}
+         GROUP BY coalesce(provider, 'unmetered')
+         ORDER BY cost DESC`),
+      db.execute(sql`
+        SELECT coalesce(model, 'unmetered') as key,
+               count(*) as count,
+               coalesce(sum(case when tokens_in is not null then tokens_in end), 0) as tokens_in,
+               coalesce(sum(case when tokens_out is not null then tokens_out end), 0) as tokens_out,
+               coalesce(sum(case when cost_est_usd is not null then cost_est_usd end), 0) as cost
+          FROM ai_usage WHERE created_at >= ${since}
+         GROUP BY coalesce(model, 'unmetered')
+         ORDER BY cost DESC`),
+      db.execute(sql`
+        SELECT request_type as key,
+               count(*) as count,
+               coalesce(sum(case when tokens_in is not null then tokens_in end), 0) as tokens_in,
+               coalesce(sum(case when tokens_out is not null then tokens_out end), 0) as tokens_out,
+               coalesce(sum(case when cost_est_usd is not null then cost_est_usd end), 0) as cost
+          FROM ai_usage WHERE created_at >= ${since}
+         GROUP BY request_type
+         ORDER BY cost DESC`),
+      db.execute(sql`
+        SELECT coalesce(user_id, 'anonymous') as key,
+               count(*) as count,
+               coalesce(sum(case when cost_est_usd is not null then cost_est_usd end), 0) as cost
+          FROM ai_usage WHERE created_at >= ${since}
+         GROUP BY coalesce(user_id, 'anonymous')
+         ORDER BY cost DESC
+         LIMIT 10`),
+    ]);
+
+    const budgets = await readAiBudgets();
+    const budgetStates: Record<string, unknown> = {};
+    for (const id of ["gemini", "anthropic"]) {
+      budgetStates[id] = await providerBudgetState(db, budgets, id, now);
+    }
+    const alerts = await readBudgetAlerts();
+    const prices = await readAiModelPrices();
+
+    res.json({
+      status: "ok",
+      costBasis: "estimate",
+      windowDays,
+      totals,
+      prevWindow: { costEstUsd: prev.costEstUsd, requests: prev.requests },
+      byDay,
+      byProvider: groupRows(byProvider.rows),
+      byModel: groupRows(byModel.rows),
+      byFeature: groupRows(byFeature.rows),
+      byUser: (byUser.rows as Array<Record<string, unknown>>).map((r) => ({
+        user: String(r["key"]),
+        count: Number(r["count"]),
+        costEstUsd: Math.round(Number(r["cost"] ?? 0) * 1e6) / 1e6,
+      })),
+      budgets: { autoStop: budgets.autoStop, providers: budgets.providers, state: budgetStates },
+      alerts,
+      prices,
+    });
+  } catch (e) {
+    logger.error({ err: e }, "ai costs overview error");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
+});
+
+router.get("/ai-costs/rows", requireAuth, requireRole("super_admin", "admin"), async (req: Request, res: Response) => {
+  try {
+    const windowDays = aiCostsWindow(req.query["window"]);
+    const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+    const page = Math.max(0, Number(req.query["page"] || 0));
+    const limit = Math.min(100, Math.max(10, Number(req.query["limit"] || 25)));
+    const provider = String(req.query["provider"] || "").trim().slice(0, 40);
+    const model = String(req.query["model"] || "").trim().slice(0, 80);
+    const feature = String(req.query["feature"] || "").trim().slice(0, 40);
+    const status = String(req.query["status"] || "").trim().slice(0, 20);
+
+    let conditions = [gte(aiUsageTable.createdAt, since)];
+    if (provider) conditions.push(eq(aiUsageTable.provider, provider));
+    if (model) conditions.push(eq(aiUsageTable.model, model));
+    if (feature) conditions.push(eq(aiUsageTable.requestType, feature));
+    if (status) conditions.push(eq(aiUsageTable.status, status));
+
+    const rows = await db.select().from(aiUsageTable)
+      .where(and(...conditions))
+      .orderBy(desc(aiUsageTable.createdAt))
+      .limit(limit).offset(page * limit);
+    const [countRow] = await db.select({ count: sql<number>`count(*)` })
+      .from(aiUsageTable).where(and(...conditions));
+
+    res.json({
+      status: "ok",
+      costBasis: "estimate",
+      rows: rows.map((r) => ({
+        id: r.id,
+        userId: r.userId,
+        feature: r.requestType,
+        provider: r.provider,
+        model: r.model,
+        tokensIn: r.tokensIn,
+        tokensOut: r.tokensOut,
+        status: r.status,
+        costEstUsd: r.costEstUsd === null ? null : Math.round(r.costEstUsd * 1e6) / 1e6,
+        costSource: r.costSource,
+        createdAt: r.createdAt,
+      })),
+      total: Number(countRow?.count ?? 0),
+      page,
+      limit,
+    });
+  } catch (e) {
+    logger.error({ err: e }, "ai costs rows error");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
+});
+
+/* CSV export of the metered rows — a real file download, same filters. */
+router.get("/ai-costs/export", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  try {
+    const windowDays = aiCostsWindow(req.query["window"]);
+    const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+    const provider = String(req.query["provider"] || "").trim().slice(0, 40);
+    const model = String(req.query["model"] || "").trim().slice(0, 80);
+    const feature = String(req.query["feature"] || "").trim().slice(0, 40);
+    const status = String(req.query["status"] || "").trim().slice(0, 20);
+
+    let conditions = [gte(aiUsageTable.createdAt, since)];
+    if (provider) conditions.push(eq(aiUsageTable.provider, provider));
+    if (model) conditions.push(eq(aiUsageTable.model, model));
+    if (feature) conditions.push(eq(aiUsageTable.requestType, feature));
+    if (status) conditions.push(eq(aiUsageTable.status, status));
+
+    const rows = await db.select().from(aiUsageTable)
+      .where(and(...conditions))
+      .orderBy(desc(aiUsageTable.createdAt))
+      .limit(20_000);
+
+    const esc = (v: unknown) => {
+      const s = v === null || v === undefined ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [
+      "date_iso,user_id,feature,provider,model,tokens_in,tokens_out,status,cost_est_usd,cost_basis",
+      ...rows.map((r) =>
+        [
+          r.createdAt?.toISOString?.() ?? "",
+          r.userId ?? "",
+          r.requestType,
+          r.provider ?? "",
+          r.model ?? "",
+          r.tokensIn ?? "",
+          r.tokensOut ?? "",
+          r.status,
+          r.costEstUsd ?? "",
+          "estimate",
+        ].map(esc).join(","),
+      ),
+    ];
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="egytrend-ai-costs-${windowDays}d.csv"`);
+    res.type("text/csv");
+    res.send("\uFEFF" + lines.join("\n"));
+  } catch (e) {
+    logger.error({ err: e }, "ai costs export error");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
+});
+
+router.get("/ai-prices", requireAuth, requireRole("super_admin", "admin"), async (_req: Request, res: Response) => {
+  res.json({ status: "ok", prices: await readAiModelPrices(), costBasis: "estimate" });
+});
+
+router.put("/ai-prices", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const prices = (req.body || {}) as Record<string, ModelPrice>;
+  const result = await saveAiModelPrices(prices);
+  if (!result.ok) { res.status(400).json({ status: "error", message: result.error }); return; }
+  await auditLog("update_ai_model_prices", req.actor, "ai_model_prices", { models: Object.keys(prices).length }, req.ip);
+  res.json({ status: "ok", prices: await readAiModelPrices(), costBasis: "estimate" });
+});
+
+router.get("/ai-budgets", requireAuth, requireRole("super_admin", "admin"), async (_req: Request, res: Response) => {
+  const budgets = await readAiBudgets();
+  const states: Record<string, unknown> = {};
+  for (const id of ["gemini", "anthropic"]) {
+    states[id] = await providerBudgetState(db, budgets, id);
+  }
+  res.json({ status: "ok", budgets: { autoStop: budgets.autoStop, providers: budgets.providers }, state: states, alerts: await readBudgetAlerts() });
+});
+
+router.put("/ai-budgets", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  const body = (req.body || {}) as { autoStop?: boolean; providers?: Record<string, { dailyUsd?: number | null; monthlyUsd?: number | null }> };
+  const normalized: AiBudgets = {
+    autoStop: Boolean(body.autoStop),
+    providers: {
+      gemini: { dailyUsd: body.providers?.gemini?.dailyUsd ?? null, monthlyUsd: body.providers?.gemini?.monthlyUsd ?? null },
+      anthropic: { dailyUsd: body.providers?.anthropic?.dailyUsd ?? null, monthlyUsd: body.providers?.anthropic?.monthlyUsd ?? null },
+    },
+  };
+  const result = await saveAiBudgets(normalized);
+  if (!result.ok) { res.status(400).json({ status: "error", message: result.error }); return; }
+  await auditLog("update_ai_budgets", req.actor, "ai_budgets", { autoStop: Boolean(body.autoStop), providers: body.providers || {} }, req.ip);
+  const budgets = await readAiBudgets();
+  const states: Record<string, unknown> = {};
+  for (const id of ["gemini", "anthropic"]) {
+    states[id] = await providerBudgetState(db, budgets, id);
+  }
+  res.json({ status: "ok", budgets: { autoStop: budgets.autoStop, providers: budgets.providers }, state: states });
+});
+
+/* Re-evaluate alert state + (cooled-down) notifications on demand. */
+router.post("/ai-budgets/refresh-alerts", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (_req: AuthRequest, res: Response) => {
+  const alerts = await refreshBudgetAlerts(db);
+  res.json({ status: "ok", alerts });
+});
+
+/* ─── Database backups (admin-only) ─────────────────────────────────────
+ * Backups are dated in-database schema snapshots (same mechanism as the
+ * pre-migration copies). A ledger row exists only after the copy succeeded,
+ * and `verified` only after the post-copy row-count comparison passed — so
+ * the panel can never show a "successful" backup that was not actually made.
+ * Restore / deletion are deliberately NOT exposed here: they are explicit,
+ * confirmed CLI actions (scripts/restore-from-backup.mjs). */
+function backupView(row: BackupViewRow) {
+  return {
+    id: row.id,
+    schemaName: row.schemaName,
+    tableCount: row.tableCount,
+    kind: row.kind,
+    createdBy: row.createdBy,
+    verified: row.verified,
+    note: row.note,
+    schemaPresent: row.schemaPresent,
+    createdAt: row.createdAt,
+  };
+}
+
+router.get("/backups", requireAuth, requireRole("super_admin", "admin"), async (_req: Request, res: Response) => {
+  try {
+    const { rows, lastVerifiedBackup } = await listBackups(30);
+    res.json({
+      status: "ok",
+      lastVerifiedBackup: lastVerifiedBackup ? backupView(lastVerifiedBackup) : null,
+      rows: rows.map(backupView),
+    });
+  } catch (e) {
+    logger.error({ err: e }, "list backups error");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
+});
+
+router.post("/backups", requireAuth, requireWriteRate, requireRole("super_admin", "admin"), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await createSchemaBackup("manual", req.actor?.name ?? null);
+    await auditLog("create_db_backup", req.actor, result.schema, {
+      tableCount: result.tableCount,
+      verified: result.verified,
+    }, req.ip);
+    res.json({
+      status: "ok",
+      backup: {
+        schemaName: result.schema,
+        tableCount: result.tableCount,
+        verified: result.verified,
+        note: result.note,
+        createdAt: new Date(),
+      },
+    });
+  } catch (e) {
+    if (e instanceof BackupUnavailableError) {
+      res.status(503).json({ status: "error", message: "backup_unavailable" });
+      return;
+    }
+    logger.error({ err: e }, "create backup error");
+    res.status(500).json({ status: "error", message: "backup_failed" });
+  }
+});
+
 /* ─── Audit Logs ─── */
 router.get("/audit-logs", requireAuth, requireRole("super_admin", "admin"), async (req: Request, res: Response) => {
   const page = Math.max(0, Number(req.query["page"] || 0));
@@ -1493,26 +2071,100 @@ router.get("/audit-logs", requireAuth, requireRole("super_admin", "admin"), asyn
   const [countResult] = await db.select({ count: sql<number>`count(*)` }).from(auditLogsTable)
     .where(conditions.length ? and(...conditions) : undefined);
 
-  res.json({ status: "ok", logs, total: Number(countResult?.count ?? 0), page, limit });
+  /* Distinct actions (unfiltered) so the admin UI can populate its filter
+   * from what actually exists — new audit actions never require a client
+   * redeploy to become filterable. */
+  const actionRows = await db
+    .select({ action: auditLogsTable.action, count: sql<number>`count(*)` })
+    .from(auditLogsTable)
+    .groupBy(auditLogsTable.action)
+    .orderBy(desc(sql<number>`count(*)`), auditLogsTable.action);
+
+  res.json({
+    status: "ok",
+    logs,
+    total: Number(countResult?.count ?? 0),
+    page,
+    limit,
+    actions: actionRows.map((r) => ({ action: r.action, count: Number(r.count ?? 0) })),
+  });
 });
 
 /* ─── User Management (via localStorage sync) ─── */
-router.get("/users", requireAuth, requireRole("super_admin", "admin", "support"), async (_req: Request, res: Response) => {
+/* ─── User management (professional table) ───
+ * Server-side search/filter/sort/pagination. The effective plan follows the
+ * same entitlement precedence as hasVip(): a present, live subscription
+ * always overrides the legacy app_users.plan projection. */
+const USER_SORT_COLUMNS: Record<string, AnyColumn> = {
+  createdAt: appUsersTable.createdAt,
+  name: appUsersTable.name,
+  phone: appUsersTable.phone,
+  plan: appUsersTable.plan,
+  status: appUsersTable.status,
+  lastLoginAt: appUsersTable.lastLoginAt,
+};
+const USER_DEFAULT_PAGE_SIZE = 25;
+
+router.get("/users", requireAuth, requireRole("super_admin", "admin", "support"), async (req: Request, res: Response) => {
+  const q = String(req.query.q || "").trim().slice(0, 120);
+  const statusFilter = String(req.query.status || "").trim();
+  const planFilter = String(req.query.plan || "").trim();
+  const sortKey = USER_SORT_COLUMNS[String(req.query.sort || "")] ? String(req.query.sort) : "createdAt";
+  const sortDir = String(req.query.dir || "").toLowerCase() === "asc" ? "asc" : "desc";
+  const pageSize = Math.min(100, Math.max(1, Number.parseInt(String(req.query.pageSize || ""), 10) || USER_DEFAULT_PAGE_SIZE));
+  const page = Math.max(1, Number.parseInt(String(req.query.page || ""), 10) || 1);
+  const now = new Date();
+
+  const effectiveVip = sql<boolean>`(
+    ${userSubscriptionsTable.id} IS NOT NULL
+      AND ${userSubscriptionsTable.status} = 'active'
+      AND ${userSubscriptionsTable.expiresAt} > ${now}
+    ) OR (
+      ${userSubscriptionsTable.id} IS NULL
+      AND ${appUsersTable.plan} = 'vip'
+      AND (${appUsersTable.vipExpiresAt} IS NULL OR ${appUsersTable.vipExpiresAt} > ${now})
+  )`;
+  const conditions: SQL[] = [];
+  if (statusFilter === "active" || statusFilter === "banned") conditions.push(eq(appUsersTable.status, statusFilter));
+  if (planFilter === "vip") conditions.push(effectiveVip);
+  if (planFilter === "free") conditions.push(sql`NOT (${effectiveVip})`);
+  if (q) {
+    /* Substring search on the identity fields. LIKE wildcards are not escaped:
+     * an admin typing "%" or "_" gets wildcard semantics on both real
+     * PostgreSQL and the pg-mem test database (engine-identical behavior). */
+    const pattern = `%${q}%`;
+    conditions.push(or(
+      like(appUsersTable.email, pattern),
+      like(appUsersTable.name, pattern),
+      like(appUsersTable.phone, pattern),
+    )!);
+  }
+  const where = conditions.length ? and(...conditions) : undefined;
+  const sortColumn = USER_SORT_COLUMNS[sortKey];
+  const order = sortDir === "asc" ? asc(sortColumn) : desc(sortColumn);
+
+  const [totalRow] = await db.select({ count: sql<number>`count(*)` })
+    .from(appUsersTable)
+    .leftJoin(userSubscriptionsTable, eq(userSubscriptionsTable.userId, appUsersTable.id))
+    .where(where);
   const rows = await db.select({
     id: appUsersTable.id,
     phone: appUsersTable.phone,
+    email: appUsersTable.email,
     name: appUsersTable.name,
     legacyPlan: appUsersTable.plan,
     legacyVipExpiresAt: appUsersTable.vipExpiresAt,
     status: appUsersTable.status,
+    lastLoginAt: appUsersTable.lastLoginAt,
     createdAt: appUsersTable.createdAt,
     subscriptionStatus: userSubscriptionsTable.status,
     subscriptionExpiresAt: userSubscriptionsTable.expiresAt,
     subscriptionPlanKey: userSubscriptionsTable.planKey,
   }).from(appUsersTable)
     .leftJoin(userSubscriptionsTable, eq(userSubscriptionsTable.userId, appUsersTable.id))
-    .orderBy(desc(appUsersTable.createdAt)).limit(1000);
-  const now = new Date();
+    .where(where)
+    .orderBy(order, asc(appUsersTable.id))
+    .limit(pageSize).offset((page - 1) * pageSize);
   const users = rows.map((row) => {
     /* Administrative display follows the same entitlement precedence as
      * hasVip(): a present subscription always overrides legacy projection. */
@@ -1524,16 +2176,90 @@ router.get("/users", requireAuth, requireRole("super_admin", "admin", "support")
     return {
       id: row.id,
       phone: row.phone,
+      email: row.email,
       name: row.name,
       plan: hasSubscription ? (subscriptionActive ? "vip" : "free") : (legacyActive ? "vip" : "free"),
       vipExpiresAt: hasSubscription ? row.subscriptionExpiresAt : row.legacyVipExpiresAt,
       subscriptionStatus: hasSubscription ? (subscriptionActive ? "active" : row.subscriptionStatus) : "legacy",
       subscriptionPlanKey: row.subscriptionPlanKey,
       status: row.status,
+      lastLoginAt: row.lastLoginAt,
       createdAt: row.createdAt,
     };
   });
-  res.json({ status: "ok", users });
+  const total = Number(totalRow?.count ?? 0);
+  res.json({ status: "ok", users, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
+});
+
+/* Final account deletion — super_admin only. The account's own phone number
+ * must be echoed back in `confirm` so a misclick cannot wipe an account, and
+ * every guard below is server-side: financial and audit evidence is never
+ * destroyed (payment_requests is keyed by phone and audit_logs has no FK to
+ * app_users — both are preserved), staff-linked accounts are out of scope,
+ * and a live entitlement blocks deletion until it ends. */
+router.post("/users/:id/delete", requireAuth, requireWriteRate, requireRole("super_admin"), async (req: AuthRequest, res: Response) => {
+  const userId = Number.parseInt(String(req.params.id || ""), 10);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    res.status(400).json({ status: "error", message: "invalid user id" });
+    return;
+  }
+  const confirm = String(req.body?.confirm || "").trim();
+  const [user] = await db.select().from(appUsersTable).where(eq(appUsersTable.id, userId)).limit(1);
+  if (!user) { res.status(404).json({ status: "error", message: "user not found" }); return; }
+  if (confirm !== user.phone) {
+    res.status(400).json({ status: "error", message: "التأكيد ناقص: أدخل رقم هاتف الحساب نفسه قبل الحذف" });
+    return;
+  }
+  /* 1) Staff-linked accounts are managed from the employees section. */
+  if (isStaffLinkedPhone(user.phone)) {
+    res.status(409).json({ status: "error", message: "هذا الحساب مرتبط بحساب موظف؛ لا يمكن حذفه من إدارة المستخدمين" });
+    return;
+  }
+  const now = new Date();
+  /* 2) A live entitlement (paid or trial, including grace) blocks deletion:
+   * the customer still holds an active purchase. */
+  const [sub] = await db.select().from(userSubscriptionsTable).where(eq(userSubscriptionsTable.userId, userId)).limit(1);
+  const subRef = sub ? (sub.status === "grace" ? (sub.graceEndsAt || sub.expiresAt) : sub.expiresAt) : null;
+  if (sub && (sub.status === "active" || sub.status === "grace") && subRef && subRef > now) {
+    res.status(409).json({
+      status: "error",
+      message: `يوجد اشتراك ساري لهذا الحساب حتى ${new Date(subRef).toLocaleDateString("ar-EG")} — انتظر انتهاءه أو ألغِه أولًا`,
+    });
+    return;
+  }
+  /* 3) Referral attributions/rewards/deliveries are immutable financial
+   * records (RESTRICT FKs): verify explicitly and explain, instead of a
+   * raw foreign-key error. */
+  const [atts, rews, dels] = await Promise.all([
+    db.select({ count: sql<number>`count(*)` }).from(referralAttributionsTable).where(eq(referralAttributionsTable.invitedUserId, userId)),
+    db.select({ count: sql<number>`count(*)` }).from(referralRewardsTable).where(eq(referralRewardsTable.recipientUserId, userId)),
+    db.select({ count: sql<number>`count(*)` }).from(referralMessageDeliveriesTable).where(eq(referralMessageDeliveriesTable.recipientUserId, userId)),
+  ]);
+  if ((atts[0]?.count ?? 0) > 0 || (rews[0]?.count ?? 0) > 0 || (dels[0]?.count ?? 0) > 0) {
+    res.status(409).json({ status: "error", message: "الحساب طرف في سجلات برنامج الإحالة (عروض/مكافآت) — لا يمكن حذفه حفاظًا على السجلات المالية" });
+    return;
+  }
+  try {
+    await db.transaction(async (tx) => {
+      /* Operational lifecycle rows that RESTRICT-reference the account are
+       * removed first; the entitlement row follows. Payment evidence
+       * (payment_requests) and audit logs have no FK to app_users and are
+       * deliberately preserved. */
+      await tx.delete(subscriptionRemindersSentTable).where(eq(subscriptionRemindersSentTable.userId, userId));
+      await tx.delete(subscriptionLifecycleEventsTable).where(eq(subscriptionLifecycleEventsTable.userId, userId));
+      await tx.delete(broadcastMessageUserStatesTable).where(eq(broadcastMessageUserStatesTable.userId, userId));
+      await tx.delete(trialClaimsTable).where(eq(trialClaimsTable.userId, userId));
+      await tx.delete(userSubscriptionsTable).where(eq(userSubscriptionsTable.userId, userId));
+      await tx.delete(appUsersTable).where(eq(appUsersTable.id, userId));
+    });
+    /* Kill every open session of the deleted account immediately. */
+    await revokeAllSessions("user", userId);
+    await auditLog("delete_user", req.actor, `user:${userId}`, { phone: user.phone, name: user.name, retained: ["payment_requests", "audit_logs"] }, req.ip);
+    res.json({ status: "ok", deleted: userId, phone: user.phone });
+  } catch (e) {
+    logger.error({ err: e }, "user delete failed");
+    res.status(500).json({ status: "error", message: "server error" });
+  }
 });
 
 router.post("/users/action", requireAuth, requireWriteRate, requireRole("super_admin", "admin", "support"), async (req: AuthRequest, res: Response) => {

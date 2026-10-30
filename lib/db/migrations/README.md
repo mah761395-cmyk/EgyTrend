@@ -44,6 +44,8 @@ They are intentionally SQL files rather than a `drizzle-kit push`: no verified i
 - `0013_vip_onboarding_tour` adds display-state columns for the guided VIP welcome tour on the existing `user_onboarding` row (version, status and timestamps). It is shown once when an account first holds an active VIP entitlement and never grants, extends, or renews access. Its rollback removes only those tour columns.
 - `0017_data_quality_events` adds the bounded, anomaly-only telemetry table for data-source monitoring (proposal: `docs/data-quality-monitoring-plan.md`). Additive only; its rollback drops the telemetry table and nothing else.
 - `0018_user_onboarding_tour_replayed` adds the `vip_tour_replayed_at` timestamp so a VIP-tour replay is recorded server-side without clearing the permanent completion/skip state. Additive only; its rollback removes only that column.
+- `0019_portfolio_transactions` adds the per-trade portfolio ledger (`portfolio_transactions`) and per-user cash settings (`portfolio_settings`) for the professional portfolio dashboard. Additive only; the legacy `portfolio_positions` table is left untouched and merged as read-only legacy positions.
+- `0020_app_users_last_login` adds the nullable `last_login_at` timestamp stamped on each successful user login (admin user table). Additive only; nothing is invented for users who never logged in; its rollback removes only that column.
 
 ## Safe execution sequence
 

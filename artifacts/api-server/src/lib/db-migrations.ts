@@ -10,6 +10,10 @@ import {
   reportFromLedger,
   type Queryable,
 } from "./db-migration-ledger";
+import { SNAPSHOT_PREFIX, snapshotPublicTablesTo } from "./db-snapshot";
+
+export type { Queryable };
+export { SNAPSHOT_PREFIX, snapshotPublicTablesTo };
 import {
   MIGRATION_IDS,
   autoMigrateEnabled,
@@ -40,6 +44,10 @@ import up0015 from "../../../../lib/db/migrations/0015_user_fee_profiles.up.sql"
 import up0017 from "../../../../lib/db/migrations/0017_data_quality_events.up.sql";
 import up0018 from "../../../../lib/db/migrations/0018_user_onboarding_tour_replayed.up.sql";
 import up0019 from "../../../../lib/db/migrations/0019_portfolio_transactions.up.sql";
+import up0020 from "../../../../lib/db/migrations/0020_app_users_last_login.up.sql";
+import up0021 from "../../../../lib/db/migrations/0021_ai_usage_metering.up.sql";
+import up0022 from "../../../../lib/db/migrations/0022_db_backups.up.sql";
+import up0023 from "../../../../lib/db/migrations/0023_opportunity_signals.up.sql";
 
 export type SqlMigration = { id: string; sql: string };
 
@@ -62,6 +70,10 @@ const SQL_BY_ID: Record<string, string> = {
   "0017_data_quality_events": up0017,
   "0018_user_onboarding_tour_replayed": up0018,
   "0019_portfolio_transactions": up0019,
+  "0020_app_users_last_login": up0020,
+  "0021_ai_usage_metering": up0021,
+  "0022_db_backups": up0022,
+  "0023_opportunity_signals": up0023,
 };
 
 export const SQL_MIGRATIONS: readonly SqlMigration[] = MIGRATION_IDS.map((id) => {
@@ -71,7 +83,6 @@ export const SQL_MIGRATIONS: readonly SqlMigration[] = MIGRATION_IDS.map((id) =>
 });
 
 const MIGRATION_LOCK_ID = 843912608;
-const SNAPSHOT_PREFIX = "egytrend_backup_";
 /** How long a boot waits for another instance that is migrating right now. */
 const LOCK_ATTEMPTS = 4;
 const LOCK_RETRY_MS = 3000;
@@ -105,33 +116,19 @@ async function currentDrift(client: Queryable, migration: SqlMigration): Promise
   return planned.filter((item) => !present[item.kind].has(item.object));
 }
 
-/**
- * Copy every public table (structure + data) into a dated snapshot schema and
- * record the drift that is about to be repaired. Cheap for this workload
- * (hundreds of rows per table) and restorable row-for-row with
- * INSERT INTO public.<table> SELECT * FROM <snapshot>.<table>.
- */
+/** Pre-migration snapshot: dated schema copy plus the drift that is about
+ * to be repaired. (The copy itself lives in db-snapshot.ts so it can be
+ * reused by the backup system without pulling *.sql into the module graph.) */
 async function snapshotPublicTables(client: Queryable, drift: DriftedObject[]): Promise<string> {
   const schema = `${SNAPSHOT_PREFIX}${new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "")}`;
-  await client.query(`CREATE SCHEMA IF NOT EXISTS ${quoteIdent(schema)}`);
-
-  const tables = await client.query(`SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename`);
-  let copied = 0;
-  for (const row of tables.rows) {
-    const name = String(row.tablename);
-    if (name === MIGRATION_LEDGER) continue;
-    await client.query(
-      `CREATE TABLE IF NOT EXISTS ${quoteIdent(schema)}.${quoteIdent(name)} AS SELECT * FROM public.${quoteIdent(name)}`,
-    );
-    copied += 1;
-  }
+  const copied = await snapshotPublicTablesTo(client, schema);
   await client.query(
     `CREATE TABLE IF NOT EXISTS ${quoteIdent(schema)}._pre_migration_drift (recorded_at timestamptz NOT NULL DEFAULT now(), missing jsonb NOT NULL)`,
   );
   await client.query(`INSERT INTO ${quoteIdent(schema)}._pre_migration_drift (missing) VALUES ($1::jsonb)`, [
     JSON.stringify(drift),
   ]);
-  logger.info({ schema, tables: copied }, "pre-migration snapshot created");
+  logger.info({ schema, tables: copied.length }, "pre-migration snapshot created");
   return schema;
 }
 

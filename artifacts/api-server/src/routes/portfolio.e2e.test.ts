@@ -175,6 +175,10 @@ test("multiple buys and sells compute moving-average cost, realized P/L, fees an
   near(summary.investedCost, 140 * 12.05, 0.05, "cost basis of held shares");
   near(summary.realizedPnl, 172, 0.05, "summary realized P/L");
   near(summary.totalFees, 15, 0.011, "summary total fees");
+  /* Return-on-cost inputs: capital deployed on buys (fees included) and the
+   * cost basis of the sold portion (fees excluded). */
+  near(summary.totalBuyOutlay, 1000 + 10 + 1400, 0.05, "total buy outlay = Σ qty·price + buy fees");
+  near(summary.costBasisSold, 60 * 12.05, 0.05, "cost basis of the 60 sold shares");
   assert.equal(summary.buyCount, 2);
   assert.equal(summary.sellCount, 1);
   assert.equal(body.marketAvailable, false, "snapshot unavailable in the isolated harness");

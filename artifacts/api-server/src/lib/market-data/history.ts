@@ -319,6 +319,14 @@ export function historySnapshotFromRows(options: {
   return base;
 }
 
+/* Test seam: pg-mem cannot run the repository's ranked window-function
+ * query, so in-process tests register a plain-select equivalent (same
+ * contract, same data). Production always uses the Drizzle repository. */
+let testReadRepository: MarketHistoryReadRepository | null = null;
+export function setMarketHistoryReadRepositoryForTest(repository: MarketHistoryReadRepository | null): void {
+  testReadRepository = repository;
+}
+
 export async function getMarketHistorySnapshot(options: {
   instrumentId: string;
   range?: HistoryRange;
@@ -333,7 +341,7 @@ export async function getMarketHistorySnapshot(options: {
   if (options.allowedSourceIds && options.allowedSourceIds.size === 0) {
     return historySnapshotFromRows({ instrumentId: options.instrumentId, range, rows: [], includeIndicators: options.includeIndicators, allowedSourceIds: options.allowedSourceIds });
   }
-  const repository = options.repository ?? new DrizzleMarketHistoryReadRepository();
+  const repository = options.repository ?? testReadRepository ?? new DrizzleMarketHistoryReadRepository();
   const rows = await repository.list([options.instrumentId], historyStartDate(range, options.now));
   return historySnapshotFromRows({
     instrumentId: options.instrumentId,
@@ -357,7 +365,7 @@ export async function getMarketSparklines(options: {
   if (options.allowedSourceIds && options.allowedSourceIds.size === 0) {
     return ids.map((instrumentId) => ({ instrumentId, available: false, points: [] }));
   }
-  const repository = options.repository ?? new DrizzleMarketHistoryReadRepository();
+  const repository = options.repository ?? testReadRepository ?? new DrizzleMarketHistoryReadRepository();
   const days = Math.max(7, Math.min(180, Math.floor(options.days ?? 31)));
   const fromDate = historyStartDateForDays(days, options.now);
   const rows = await repository.list(ids, fromDate);

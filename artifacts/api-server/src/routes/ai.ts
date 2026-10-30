@@ -9,7 +9,10 @@ import {
   prepareMessages,
   remember,
   engineName,
+  effectiveEngine,
+  disabledAiProviders,
   activeModel,
+  modelForEngine,
   geminiKey,
   anthropicKey,
   geminiVerify,
@@ -18,6 +21,14 @@ import {
   type GeminiVerify,
 } from "../lib/ai-engine";
 import { localAiChat } from "../lib/local-ai";
+import {
+  readAiBudgets,
+  pickBudgetedEngine,
+  readAiModelPrices,
+  estimateCallCostUsd,
+  updateAiUsageRow,
+  refreshBudgetAlerts,
+} from "../lib/ai-costs";
 import type { PortItem, AlertItem } from "../lib/ai-tools";
 
 const router: IRouter = Router();
@@ -53,9 +64,30 @@ const AI_GLOBAL_DAILY_HARD_CAP = Math.max(
   Math.min(Number(process.env["AI_GLOBAL_DAILY_HARD_CAP"]) || 200, 5_000),
 );
 
-type AiReservation = "ok" | "limit" | "unavailable";
+type AiReservation =
+  | { ok: true; rowId: number; engine: "gemini" | "anthropic" | "local" }
+  | "limit"
+  | "unavailable";
 
-async function reserveExternalAiRequest(userId: string, requestType: string, tokensEstimate: number, trialDailyLimit: number | null = null): Promise<AiReservation> {
+/* Client-declared feature label, restricted server-side to a known set.
+ * Used ONLY for metering/reporting (costs per feature) — never for auth or
+ * authorization, which stay on the VIP entitlement above. */
+const AI_FEATURES = new Set([
+  "assistant",
+  "article_analysis",
+  "morning_report",
+  "midday_report",
+  "closing_report",
+  "portfolio_summary",
+  "rewriter",
+]);
+
+async function reserveExternalAiRequest(
+  userId: string,
+  requestType: string,
+  tokensEstimate: number,
+  trialDailyLimit: number | null = null,
+): Promise<AiReservation> {
   try {
     /* `COUNT then INSERT` is otherwise racy across concurrent serverless
      * invocations: multiple requests can all observe the final remaining slot.
@@ -79,8 +111,27 @@ async function reserveExternalAiRequest(userId: string, requestType: string, tok
         ? Math.max(0, Math.min(Number(trialDailyLimit), AI_PER_PRINCIPAL_HARD_CAP))
         : null;
       const perPrincipalLimit = trialLimit === null ? configuredLimit : Math.min(configuredLimit, trialLimit);
-      if (perPrincipalLimit === 0) return "limit" as const;
 
+      /* Budget-aware engine pick under the same lock: confirmed spend is
+       * visible to every instance, so a budget-exhausted provider drops out
+       * atomically (the call falls to the next provider or the free local
+       * engine — the site itself never stops). */
+      const disabled = await disabledAiProviders();
+      const budgets = await readAiBudgets();
+      const pick = await pickBudgetedEngine(
+        tx,
+        { gemini: Boolean(geminiKey()) && !disabled.has("gemini"), anthropic: Boolean(anthropicKey()) && !disabled.has("anthropic") },
+        budgets,
+      );
+
+      /* The local engine is free: no reservation row and NO paid cap applies
+       * — a daily-limit state must never 429 a request the free engine can
+       * answer (caps exist to bound PAID spend, checked only for paid picks). */
+      if (pick.engine === "local") {
+        return { ok: true as const, rowId: 0, engine: "local" as const };
+      }
+
+      if (perPrincipalLimit === 0) return "limit" as const;
       const [principalUsage] = await tx
         .select({ n: sql<number>`count(*)` })
         .from(aiUsageTable)
@@ -93,8 +144,14 @@ async function reserveExternalAiRequest(userId: string, requestType: string, tok
         .where(gte(aiUsageTable.createdAt, since));
       if (Number(globalUsage?.n || 0) >= AI_GLOBAL_DAILY_HARD_CAP) return "limit" as const;
 
-      await tx.insert(aiUsageTable).values({ userId, requestType, tokensEstimate });
-      return "ok" as const;
+      const [inserted] = await tx.insert(aiUsageTable).values({
+        userId,
+        requestType,
+        tokensEstimate,
+        provider: pick.engine,
+        status: "reserved",
+      }).returning({ id: aiUsageTable.id });
+      return { ok: true as const, rowId: Number(inserted?.id ?? 0), engine: pick.engine as "gemini" | "anthropic" };
     });
   } catch (e) {
     logger.warn({ err: e }, "AI budget reservation unavailable");
@@ -107,6 +164,8 @@ type ChatBody = {
   messages?: Array<{ role: "user" | "assistant"; content: string }>;
   max_tokens?: number;
   model?: string;
+  /** Metering label only (server-side allowlist); never trusted for auth. */
+  feature?: string;
   /* Client-supplied OWN context — used by get_portfolio / get_alerts tools.
    * Never trusted for anything else and never used to look up other users. */
   portfolio?: Array<{ sym: string; price: number; qty: number }>;
@@ -253,26 +312,72 @@ router.post("/chat", async (req: Request, res: Response) => {
       })),
   };
 
-  const engine = engineName();
-  if (engine !== "local") {
-    const reservation = await reserveExternalAiRequest(
-      userKey,
-      `chat-${engine}-reserved`,
-      maxTokens,
-      entitlement?.subscriptionType === "trial" ? entitlement.trialAiDailyLimit : null,
-    );
-    if (reservation === "limit") {
-      res.status(429).json({ status: "error", message: "ai_daily_limit" });
-      return;
-    }
-    if (reservation === "unavailable") {
-      res.status(503).json({ status: "error", message: "ai_budget_unavailable" });
-      return;
-    }
+  /* Metering label: a client-declared feature inside a fixed server-side
+   * allowlist (reporting only — authorization stays on the VIP gate above). */
+  const feature =
+    typeof body.feature === "string" && AI_FEATURES.has(body.feature) ? body.feature : "chat";
+
+  /* Reserve (paid) or pass through (local) under the shared lock: the
+   * reservation also performs the budget-aware engine pick, so the dispatch
+   * below runs exactly the engine that was booked — no re-selection. */
+  let reservation = await reserveExternalAiRequest(
+    userKey,
+    feature,
+    maxTokens,
+    entitlement?.subscriptionType === "trial" ? entitlement.trialAiDailyLimit : null,
+  );
+  if (reservation === "limit") {
+    res.status(429).json({ status: "error", message: "ai_daily_limit" });
+    return;
+  }
+  let degradedToLocal = false;
+  if (reservation === "unavailable") {
+    /* Metering could not be secured (the advisory-locked transaction failed).
+     * A paid call is never admitted in that state — but the LOCAL engine is
+     * free, needs no budget lock and no reservation row, so we degrade to it
+     * instead of failing the request: a metering failure must never take the
+     * site (or its free safety net) down, and nothing is ever charged. */
+    logger.warn("ai reservation unavailable — serving with the free local engine");
+    reservation = { ok: true, rowId: 0, engine: "local" };
+    degradedToLocal = true;
   }
 
+  /* Close out the metered row exactly once, in place (update, never a
+   * second insert) — this is what keeps a request from double-booking. */
+  const closeRow = (patch: Parameters<typeof updateAiUsageRow>[1]) => {
+    if (reservation.rowId > 0) {
+      void updateAiUsageRow(reservation.rowId, patch).catch((e) =>
+        logger.warn({ err: e }, "ai usage row update failed"),
+      );
+    }
+  };
+  const refreshAlerts = () => {
+    void refreshBudgetAlerts(db).catch((e) =>
+      logger.warn({ err: e }, "budget alert refresh failed"),
+    );
+  };
+
   try {
-    const result = await runEngine(messages, systemPrompt, maxTokens, ctx);
+    const result = await runEngine(messages, systemPrompt, maxTokens, ctx, reservation.engine);
+
+    if (result.engine === "local" && reservation.engine !== "local") {
+      /* The booked external provider failed and the local engine answered
+       * instead: the paid attempt is a failed attempt (cost stays null). */
+      closeRow({ status: "local_fallback", provider: null, model: result.model });
+    } else if (result.engine !== "local") {
+      const prices = await readAiModelPrices().catch(() => ({} as Record<string, { inPerM: number; outPerM: number }>));
+      const cost = estimateCallCostUsd(result.model, result.tokensIn ?? null, result.tokensOut ?? null, prices);
+      closeRow({
+        provider: result.engine,
+        model: result.model,
+        tokensIn: result.tokensIn ?? null,
+        tokensOut: result.tokensOut ?? null,
+        status: "ok",
+        costEstUsd: cost,
+        costSource: cost === null ? null : "estimate",
+      });
+      if (cost !== null) refreshAlerts();
+    }
 
     /* Persist the exchange for follow-up context. */
     remember(memKey, [
@@ -286,16 +391,20 @@ router.post("/chat", async (req: Request, res: Response) => {
       model: result.model,
       engine: result.engine,
       toolCalls: result.toolCalls,
+      /* Honest signal: the user asked for the full AI and got the free
+       * data-driven engine because metering could not be secured. */
+      ...(degradedToLocal && result.engine === "local" ? { degraded: true } : {}),
     });
   } catch (e) {
     const err = e instanceof UpstreamError ? e : null;
     const kind = err?.kind;
 
-    logger.warn({ err: e, kind, engine }, "ai chat engine failed");
+    logger.warn({ err: e, kind, engine: reservation.engine }, "ai chat engine failed");
 
     /* Gemini/Anthropic rate-limited upstream → surface as 429 (frontend
      * already shows the friendly "wait a minute" message). */
     if (kind === "rate_limit") {
+      closeRow({ status: "failed", provider: null, model: null });
       res.status(429).json({ status: "error", message: "rate_limit" });
       return;
     }
@@ -306,6 +415,7 @@ router.post("/chat", async (req: Request, res: Response) => {
     try {
       const localText = await withTimeout(localAiChat(messages), LOCAL_FALLBACK_TIMEOUT_MS);
       if (localText && !localText.startsWith("⚠️ حدث خطأ")) {
+        if (reservation.engine !== "local") closeRow({ status: "local_fallback", provider: null, model: "egytrend-local" });
         res.json({
           status: "ok",
           text: localText,
@@ -321,6 +431,7 @@ router.post("/chat", async (req: Request, res: Response) => {
     }
 
     /* Everything failed → explicit honest message (never a fake answer). */
+    closeRow({ status: "failed", provider: null, model: null });
     if (kind === "timeout") {
       res.status(504).json({ status: "error", message: "timeout", detail: NO_DATA_MSG });
       return;
@@ -371,13 +482,13 @@ async function cachedGeminiVerification(model: string): Promise<GeminiVerify> {
 }
 
 router.get("/status", async (req: Request, res: Response) => {
-  const engine = engineName();
+  const engine = await effectiveEngine();
   const body = {
     status: "ok",
     provisioned: Boolean(geminiKey() || anthropicKey()),
     enabled: await isAiEnabled(),
     engine,
-    model: activeModel(),
+    model: modelForEngine(engine),
   };
 
   if (req.query.verify !== "1") {
@@ -390,7 +501,10 @@ router.get("/status", async (req: Request, res: Response) => {
     return;
   }
   if (engine !== "gemini") {
-    res.status(409).json({ ...body, verify: { ok: false, model: body.model, latencyMs: 0, error: "gemini_not_configured" } });
+    /* Distinguish the two honest causes: a key exists but the admin
+     * disabled Gemini, vs no key at all. */
+    const reason = geminiKey() ? "gemini_disabled_by_admin" : "gemini_not_configured";
+    res.status(409).json({ ...body, verify: { ok: false, model: body.model, latencyMs: 0, error: reason } });
     return;
   }
 

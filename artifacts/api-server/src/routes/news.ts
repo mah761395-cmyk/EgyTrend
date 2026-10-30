@@ -8,6 +8,7 @@ import {
   listSources,
   getSource,
   listCustomArticles,
+  recordSourceHealth,
   type SourceMeta,
 } from "../lib/dataStore";
 
@@ -516,6 +517,10 @@ const FAILS = new Map<string, number>();
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) EgyTrend/1.0";
 
+/* The production fetcher is the SSRF-guarded fetchSafeFeed. Tests may swap in
+ * a deterministic fake through __newsTest without weakening the guard. */
+let feedFetcher: (url: string, init?: RequestInit) => Promise<Response> = fetchSafeFeed;
+
 async function fetchSource(src: SourceMeta): Promise<{
   status: "ok";
   items: FeedItem[];
@@ -533,7 +538,7 @@ async function fetchSource(src: SourceMeta): Promise<{
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetchSafeFeed(src.url, {
+    const res = await feedFetcher(src.url, {
       signal: ctrl.signal,
       headers: {
         "User-Agent": UA,
@@ -553,16 +558,74 @@ async function fetchSource(src: SourceMeta): Promise<{
       CACHE.set(src.id, { ts: Date.now(), data });
       FAILS.delete(src.id);
     }
+    /* Honest telemetry: an empty feed is a data-validity failure too — a
+     * source is never "working" until it returns at least one real item. */
+    void recordSourceHealth(src.id, items.length > 0
+      ? { ok: true, items: items.length }
+      : { ok: false, error: "feed returned 0 items" }).catch(() => undefined);
     return data;
   } catch (err) {
     clearTimeout(t);
     FAILS.set(src.id, Date.now());
+    const reason = err instanceof Error ? err.message : "upstream error";
+    void recordSourceHealth(src.id, { ok: false, error: reason }).catch(() => undefined);
     /* Serve stale cache (up to 2 hr) rather than crashing when upstream fails */
     if (cached && Date.now() - cached.ts < STALE_TTL_MS) {
       logger.warn({ source: src.id }, "upstream failed — serving stale cache");
       return cached.data;
     }
     throw err;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+export type SourceProbeResult = {
+  ok: boolean;
+  testedAt: string; // ISO timestamp of THIS probe — the panel must show it
+  itemCount: number;
+  firstTitle?: string;
+  error?: string;
+};
+
+/**
+ * Admin connection probe: one real fetch through the same SSRF-guarded
+ * fetcher and parser, with data-validity checks (>=1 item carrying a usable
+ * title/link). A probe never mutates source state and never feeds the public
+ * cache: success proves "connectable now", not freshness, and failure proves
+ * "this attempt failed", not that the source is dead. The panel shows both
+ * the result and its timestamp.
+ */
+export async function probeSourceFeed(src: SourceMeta): Promise<SourceProbeResult> {
+  const testedAt = new Date().toISOString();
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await feedFetcher(src.url, {
+      signal: ctrl.signal,
+      headers: {
+        "User-Agent": UA,
+        Accept: "application/rss+xml, application/xml, application/atom+xml, text/xml, */*",
+        "Accept-Language": "ar,en;q=0.8",
+      },
+    });
+    if (!res.ok) {
+      void res.body?.cancel().catch(() => undefined);
+      return { ok: false, testedAt, itemCount: 0, error: `upstream ${res.status}` };
+    }
+    const xml = await readFeedText(res);
+    const items = parseFeed(xml, src.url, src.id);
+    if (!items.length) return { ok: false, testedAt, itemCount: 0, error: "feed returned 0 items" };
+    const first = items.find((i) => i.title && i.link);
+    if (!first) return { ok: false, testedAt, itemCount: items.length, error: "no item with usable title/link" };
+    return { ok: true, testedAt, itemCount: items.length, firstTitle: first.title.slice(0, 120) };
+  } catch (err) {
+    return {
+      ok: false,
+      testedAt,
+      itemCount: 0,
+      error: err instanceof Error ? err.message.slice(0, 200) : "fetch failed",
+    };
   } finally {
     clearTimeout(t);
   }
@@ -673,6 +736,32 @@ function dedupeAndRankFeeds(feeds: NewsFeed[]): NewsFeed[] {
   return normalized.sort((a, b) => newsImportance(b.items[0]!) - newsImportance(a.items[0]!));
 }
 
+/** Honest headline count for "news in the last 24h": unique items actually
+ * published inside the window, counted across ALL feeds BEFORE the 12-per-feed
+ * presentation cap, deduplicated with the same key the ranking uses. Undated
+ * and future-dated items are excluded, matching the parser's rules. */
+export function countNewsInWindow(
+  feeds: Array<{ items?: Array<{ pubDate: string }> }>,
+  now: number,
+  windowMs = 24 * 3600 * 1000,
+): number {
+  const seen = new Set<string>();
+  let count = 0;
+  for (const feed of feeds) {
+    for (const item of feed.items ?? []) {
+      const key = newsDedupKey(item as FeedItem);
+      if (key) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      const t = Date.parse(item?.pubDate);
+      if (!Number.isFinite(t) || t <= 0 || t > now) continue;
+      if (now - t <= windowMs) count++;
+    }
+  }
+  return count;
+}
+
 function rankedItemsFromFeeds(feeds: NewsFeed[]): RankedNewsItem[] {
   return feeds.flatMap((feed) => feed.items.map((item) => ({
     ...item,
@@ -699,6 +788,9 @@ type NewsSnapshot = {
   feeds: NewsFeed[];
   /** Canonical, server-ranked presentation list for browser clients. */
   items: RankedNewsItem[];
+  /** Unique news published in the last 24h across all feeds, counted before
+   * the presentation cap — the honest number for landing/stats cards. */
+  count24h: number;
   availability: "available" | "unavailable";
   reason?: "no_approved_sources" | "upstream_unavailable";
   errors: Array<{ source: string; message: string }>;
@@ -732,6 +824,7 @@ async function buildNewsAgg(): Promise<NewsSnapshot | null> {
     const custom = customArticlesFeed();
     if (custom.items.length > 0) feeds.unshift(custom);
     if (errors.length > 0) logger.warn({ errors }, "some news sources failed");
+    const count24h = countNewsInWindow(feeds, Date.now());
     const rankedFeeds = dedupeAndRankFeeds(feeds);
     const items = rankedItemsFromFeeds(rankedFeeds);
     const availability = items.length > 0 ? "available" : "unavailable";
@@ -739,6 +832,7 @@ async function buildNewsAgg(): Promise<NewsSnapshot | null> {
       status: "ok",
       feeds: rankedFeeds,
       items,
+      count24h,
       availability,
       ...(availability === "unavailable"
         ? { reason: sources.length === 0 ? "no_approved_sources" as const : "upstream_unavailable" as const }
@@ -805,6 +899,7 @@ router.get("/news", async (req, res) => {
  * production interface. */
 export const __newsTest = {
   parseFeed,
+  countNewsInWindow,
   newsDedupKey,
   newsImportance,
   dedupeAndRankFeeds,
@@ -813,6 +908,14 @@ export const __newsTest = {
   assertSafeFeedUrl,
   fetchSafeFeed,
   readFeedText,
+  probeSourceFeed,
+  /** Tests only: swap the guarded fetcher for a deterministic fake. */
+  setFeedFetcherForTest: (fn: (url: string, init?: RequestInit) => Promise<Response>) => {
+    feedFetcher = fn;
+  },
+  resetFeedFetcherForTest: () => {
+    feedFetcher = fetchSafeFeed;
+  },
 };
 
 export default router;
