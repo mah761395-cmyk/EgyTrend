@@ -152,7 +152,7 @@ test("mobile (360px): board under title + CTA, single column, no clipping", () =
 });
 
 test("background: decorative animated light beams, motion-safe, no canvas", () => {
-  const bg = html.match(/<div class="lnd-bg" aria-hidden="true">[\s\S]*?<\/svg>\s*<\/div>/);
+  const bg = html.match(/<div class="lnd-bg" aria-hidden="true">[\s\S]*?<\/svg>\s*((?:<i class="lnd-spark[^>]*><\/i>\s*){5})<\/div>/);
   assert.ok(bg, "the hero carries an aria-hidden background layer");
   assert.ok(bg[0].includes('class="lnd-bg-ray r1"') && bg[0].includes("lnd-bg-lines"), "elliptical rays plus thin SVG lines");
   assert.doesNotMatch(bg[0], /<canvas/i, "no canvas");
@@ -227,4 +227,124 @@ test("the guest board fetches only the public endpoints", () => {
   assert.deepEqual(urls, ["/api/markets/stocks", "/api/news/sources", "/api/news"], "stats read exactly the three public endpoints");
   const retry = html.slice(html.indexOf("window.lndRetry="), html.indexOf("};", html.indexOf("window.lndRetry=")) + 2);
   assert.ok(!/fetchJsonWithTimeout/.test(retry), "the manual retry reuses the shared board fetch, not a new endpoint");
+});
+
+test("document order: hero → stats → 4 cards → principles → gold VIP → plans → green trial → calculator → how → faq → footer", () => {
+  const order = [
+    '<section class="lnd-hero"',
+    '<section class="lnd-stats" id="lnd-stats"',
+    '<section id="features"',
+    '<section id="principles"',
+    '<section id="vip"',
+    '<section id="pricing"',
+    '<section class="lnd-trial"',
+    '<section id="calculator"',
+    '<section id="landing-how"',
+    '<section id="faq"',
+    '<footer class="lnd-footer">',
+  ];
+  const pos = order.map((s) => {
+    const i = html.indexOf(s);
+    assert.ok(i !== -1, `missing ${s}`);
+    return i;
+  });
+  assert.deepEqual([...pos].sort((a, b) => a - b), pos, "sections appear in the design order");
+  assert.ok(!html.includes('class="lnd-cta-final"'), "the old final CTA banner is gone (replaced by the green trial card)");
+});
+
+test("background details: visible curves, dot grid, sparkles, stronger right glow", () => {
+  const bg = html.match(/<div class="lnd-bg" aria-hidden="true">[\s\S]*?<\/svg>\s*((?:<i class="lnd-spark[^>]*><\/i>\s*){5})<\/div>/);
+  assert.ok(bg, "background layer: rays + dot grid + curves + five sparkles");
+  assert.ok(bg[0].includes('class="lnd-bg-dots"'), "dot-grid texture present");
+  assert.doesNotMatch(bg[0], /<canvas/i, "still no canvas");
+  const css = html.slice(html.indexOf(".lnd-bg{"), html.indexOf(".lnd-badge{"));
+  assert.match(css, /rgba\(16,185,129,\.22\)/, "the right-side green glow was strengthened");
+  assert.match(bg[0], /stroke="rgba\(52,211,153,\.15\)"/, "the green curve is visibly brighter");
+  assert.match(css, /\.lnd-bg-dots\{[^}]*radial-gradient\(rgba\(148,163,184,\.13\) 1px[^}]*mask-image:linear-gradient/, "dots are subtle and masked to the top");
+  assert.match(css, /\.lnd-spark-plus::before\{left:4px;top:0/, "plus marks are built from the sparkle element");
+  const rays = css.match(/@keyframes lndRay[ABC]\{[^@]*?\}\}/g) || [];
+  assert.ok(rays.length >= 3, "three ray keyframes still exist");
+  for (const kf of rays) {
+    assert.match(kf, /transform:/, "rays still move via transform only");
+    assert.doesNotMatch(kf, /top:|left:|right:|bottom:|width:|height:/, "…and nothing else");
+  }
+});
+
+test("four tool cards: real market rows, real headlines, locked VIP, computed example", () => {
+  for (const id of ["feat-mkt-visual", "feat-news-list", "feat-calc-visual"])
+    assert.ok(html.includes(`id="${id}"`), `card ${id} exists`);
+  assert.match(html, /id="feat-mkt-live" role="status"/, "the markets card announces its data state");
+  assert.match(html, /id="lnd-features-title">كل ما يحتاجه المستثمر، <span class="lnd-hl">في شاشة واحدة\.<\/span>/, "the design headline of the cards section");
+  assert.match(html, /<a href="#pricing">شوف الباقات<\/a>/, "the opportunities card links to the real plans section");
+  const feat = functionBody("renderFeatCards");
+  assert.match(feat, /rowById\("egx:EGX30"\)/, "markets card reuses the hero rows");
+  assert.match(feat, /rowById\("fx:USD-EGP"\)/, "…including the EGP pair");
+  assert.match(feat, /\.filter\(d=>isReal\(d\[0\]\)\)/, "unpriced rows are never shown in the card");
+  assert.match(feat, /الأسعار غير متاحة الآن — لن نعرض أرقامًا بديلة\./, "honest unavailable state in the card");
+  assert.match(feat, /window\.__lndNewsTop/, "headlines come from the shared /api/news response");
+  assert.match(feat, /calcCompute\(\{amt:10000,price:25,pct:6\}\)/, "the example is computed with the public formula");
+  assert.match(html, /مثال محسوب/, "the example is labeled as computed, not a recommendation");
+  const stats = functionBody("loadStats");
+  assert.match(stats, /window\.__lndNewsTop=d\.items\.slice\(0,3\)/, "top-3 headlines are captured from the same /api/news response (no extra request)");
+  assert.ok(!/fetch|fetchJsonWithTimeout/.test(feat), "renderFeatCards renders only what the board/stats already loaded");
+});
+
+test("three principles pin the honesty contract", () => {
+  const sec = html.slice(html.indexOf('<section id="principles"'), html.indexOf('<section id="vip"'));
+  for (const [num, title] of [["01", "بيانات حقيقية"], ["02", "مصدر ووقت"], ["03", "وضوح كامل"]])
+    assert.ok(sec.includes(`>${num}<`) && sec.includes(title), `principle ${num} «${title}»`);
+});
+
+test("gold VIP card: design gold, gated features, CTA to the real plans", () => {
+  const sec = html.slice(html.indexOf('<section id="vip"'), html.indexOf('<section id="pricing"'));
+  assert.match(sec, /lnd-vip-gold/, "the gold card exists");
+  assert.match(sec, /id="lnd-vip-title">أدوات الكبار\. بيانات أدق\./, "the design headline");
+  assert.match(sec, /تُفعَّل على حسابك وتتحقق صلاحيتها من الخادم/, "honesty: features are gated server-side");
+  assert.match(sec, /href="#pricing">افتح VIP/, "the CTA anchors to the real plans section");
+  assert.ok(sec.includes("تنبيهات سعرية") && sec.includes("محلل أخبار") && sec.includes("Screener"), "the VIP features are listed");
+  const css = html.match(/\.lnd-vip-gold\{[^}]*\}/)[0];
+  assert.match(css, /rgba\(227,183,91/, "gold accent per design (#E3B75B = rgba(227,183,91))");
+});
+
+test("plans: static 0-EGP free card + server plan cards; strikethrough only from admin oldPrice", () => {
+  const sec = html.slice(html.indexOf('<section id="pricing"'), html.indexOf('<section class="lnd-trial"'));
+  assert.match(sec, /class="lnd-plan lnd-plan-free"/, "the free card is static HTML");
+  assert.match(sec, /<b>٠<\/b><span>ج\.م — للأبد<\/span>/, "…at 0 EGP forever");
+  assert.ok(sec.includes('id="lnd-vip-plans"'), "server plans render into the section");
+  assert.ok(sec.includes('id="lnd-pay-methods"') && sec.includes('id="lnd-policy"'), "payment methods + policy block kept");
+  const price = functionBody("renderPricing");
+  assert.match(price, /fetchSubscriptionConfig/, "plans come only from /api/payments/config");
+  assert.ok(price.includes('p.oldPrice?`<s>${fmtInt(p.oldPrice)}</s>`:""'), "strikethrough only when the admin set an oldPrice");
+  assert.ok(price.includes('p.badge?`<span class="lnd-plan-badge">'), "badges only from the admin config");
+  assert.ok(price.includes('data-vip="${esc(key)}"'), "plan CTAs are wired");
+  assert.match(price, /openAuthModal\("register"\)/, "…to the real registration flow");
+  assert.match(price, /تعذر تحميل الباقات الآن — لن نعرض أسعارًا بديلة\./, "failure refuses substitute prices");
+  assert.match(price, /lnd-pricing-retry/, "…with a manual retry");
+});
+
+test("green trial card: real email → real registration, no fake trial promise", () => {
+  const sec = html.slice(html.indexOf('<section class="lnd-trial"'), html.indexOf('<section id="calculator"'));
+  assert.match(sec, /لا بطاقة، لا خصم، ولا تجديد تلقائي/, "the trial terms match the real server flow");
+  assert.match(sec, /7 أيام/, "…7 days as implemented server-side");
+  assert.match(sec, /onsubmit="return lndStartTrial\(this\)"/, "the form is handled by lndStartTrial");
+  const fn = functionBody("lndStartTrial");
+  assert.match(fn, /openAuthModal\("register"\)/, "opens the real registration modal");
+  assert.match(fn, /a-email/, "…and prefills the registration email");
+  assert.match(fn, /window\.__lndTrialEmail/, "the email is passed to the flow");
+  assert.ok(!/alert\(|confirm\(/.test(fn), "no blocking dialogs");
+  const css = html.match(/\.lnd-trial\{[^}]*\}/)[0];
+  assert.match(css, /#34D399,#0E9F6E/, "green gradient per design");
+  const trialCss = html.slice(html.indexOf(".lnd-trial-row input{"), html.indexOf("/* ─── Footer rebuild"));
+  assert.match(trialCss, /\.lnd-trial-row input\{[^}]*min-height:50px/, "input is a 44px+ touch target");
+  assert.match(trialCss, /\.lnd-trial-btn\{min-height:50px/, "the button is a 44px+ touch target");
+});
+
+test("footer: brand + real platform/resources/contact columns, disclaimer kept", () => {
+  const fStart = html.indexOf('<footer class="lnd-footer">');
+  const foot = html.slice(fStart, html.indexOf("</footer>", fStart));
+  assert.ok(foot.includes('href="/privacy.html"') && foot.includes('href="/terms.html"'), "privacy + terms link to the real pages");
+  assert.ok(foot.includes("wa.me/201008605139"), "the WhatsApp contact is kept");
+  assert.match(foot, /وليست توصية استثمارية/, "the financial disclaimer is kept");
+  for (const col of ["المنصة", "موارد", "تواصل"]) assert.ok(foot.includes(`<b>${col}</b>`), `column ${col}`);
+  assert.ok(html.includes('id="lnd-mobbar"'), "the mobile quick bar is still present");
 });

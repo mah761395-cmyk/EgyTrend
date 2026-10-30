@@ -1294,13 +1294,24 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 /* ── Animated light beams (transform-only, 18-28s; off under reduced motion) ── */
 .lnd-bg{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;}
 .lnd-bg-ray{position:absolute;border-radius:50%;filter:blur(70px);will-change:transform;}
-.lnd-bg-ray.r1{width:64vw;height:64vw;top:-38vw;right:-14vw;background:radial-gradient(closest-side,rgba(16,185,129,.17),rgba(16,185,129,.05) 45%,transparent 72%);animation:lndRayA 24s ease-in-out infinite;}
+.lnd-bg-ray.r1{width:64vw;height:64vw;top:-38vw;right:-14vw;background:radial-gradient(closest-side,rgba(16,185,129,.22),rgba(16,185,129,.07) 45%,transparent 72%);animation:lndRayA 24s ease-in-out infinite;}
 .lnd-bg-ray.r2{width:52vw;height:52vw;top:-30vw;left:-16vw;background:radial-gradient(closest-side,rgba(56,189,248,.13),rgba(56,189,248,.04) 45%,transparent 72%);animation:lndRayB 28s ease-in-out infinite;}
 .lnd-bg-ray.r3{width:30vw;height:30vw;top:6vw;left:34vw;background:radial-gradient(closest-side,rgba(16,185,129,.10),transparent 70%);animation:lndRayC 18s ease-in-out infinite;}
 @keyframes lndRayA{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(-4vw,3vw,0) scale(1.10)}}
 @keyframes lndRayB{0%,100%{transform:translate3d(0,0,0) scale(1.05)}50%{transform:translate3d(5vw,-2vw,0) scale(.97)}}
 @keyframes lndRayC{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(-3vw,-2.5vw,0)}}
 .lnd-bg-lines{position:absolute;right:0;bottom:0;left:0;width:100%;height:62%;}
+.lnd-bg-dots{position:absolute;inset:0;background-image:radial-gradient(rgba(148,163,184,.13) 1px,transparent 1.4px);background-size:26px 26px;-webkit-mask-image:linear-gradient(180deg,rgba(0,0,0,.55),transparent 78%);mask-image:linear-gradient(180deg,rgba(0,0,0,.55),transparent 78%);}
+.lnd-spark{position:absolute;width:3px;height:3px;border-radius:50%;background:rgba(232,238,248,.5);}
+.lnd-spark-plus{width:9px;height:9px;background:none;border-radius:0;}
+.lnd-spark-plus::before,.lnd-spark-plus::after{content:"";position:absolute;background:rgba(52,211,153,.55);}
+.lnd-spark-plus::before{left:4px;top:0;width:1px;height:9px;}
+.lnd-spark-plus::after{top:4px;left:0;height:1px;width:9px;}
+.lnd-spark.sp1{top:22%;right:18%;}
+.lnd-spark.sp2{top:58%;right:8%;background:rgba(52,211,153,.55);}
+.lnd-spark.sp3{top:34%;left:6%;}
+.lnd-spark.sp4{top:70%;right:30%;}
+.lnd-spark.sp5{top:14%;left:24%;}
 @media (prefers-reduced-motion:reduce){.lnd-bg-ray{animation:none}.lnd-mkt-badge i{animation:none}}
 .lnd-badge{display:inline-flex;align-items:center;gap:7px;background:rgba(52,211,153,.10);border:1px solid rgba(52,211,153,.35);color:#34D399;font-size:11px;font-weight:800;border-radius:999px;padding:6px 13px;margin:0 0 16px;}
 .lnd-badge .et-icon{font-size:13px;}
@@ -1362,6 +1373,102 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 @media (min-width:680px){.lnd-nav-inner{padding:0 34px;}.lnd-main{padding:0 34px;}.lnd-hero{padding:64px 0 34px;gap:54px;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);}.lnd-hero-copy h1{font-size:clamp(44px,5.2vw,76px);}.lnd-lede{font-size:15.5px;}}
 @media (max-width:520px){.lnd-h1-br{display:none;}}
 @media (min-width:1024px){.lnd-nav-inner,.lnd-menu{max-width:1240px;}.lnd-main,.lnd-footer{max-width:1240px;}}
+/* ─── Features: four tool cards ─── */
+.lnd-hl{color:#34D399;}
+.lnd-feat-grid{display:grid;grid-template-columns:1fr;gap:14px;}
+@media (min-width:820px){.lnd-feat-grid{grid-template-columns:1fr 1fr;gap:16px;}}
+.lnd-feat-card{background:rgba(14,21,36,.62);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:20px;display:flex;flex-direction:column;min-width:0;}
+.lnd-feat-head{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+.lnd-feat-tag{font-size:9.5px;font-weight:900;color:#93A1B8;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:4px 11px;}
+.lnd-feat-tag-vip{color:#E3B75B;background:rgba(227,183,91,.08);border-color:rgba(227,183,91,.40);}
+.lnd-feat-live{margin-inline-start:auto;display:inline-flex;align-items:center;gap:5px;font-size:9px;font-weight:800;color:#93A1B8;}
+.lnd-feat-live.live{color:#34D399;}
+.lnd-feat-live i{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;}
+.lnd-feat-card h3{font-size:16px;font-weight:900;color:#E8EEF8;margin:0 0 6px;}
+.lnd-feat-card > p{font-size:12px;color:#93A1B8;line-height:1.8;margin:0 0 14px;}
+.lnd-feat-visual{margin-top:auto;background:rgba(7,11,20,.55);border:1px solid rgba(255,255,255,.07);border-radius:16px;padding:13px;display:grid;gap:9px;}
+.lnd-feat-mrow{display:flex;align-items:center;gap:9px;min-width:0;}
+.lnd-feat-mrow .fm-name{font-size:11.5px;font-weight:800;color:#E8EEF8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.lnd-feat-mrow .fm-sub{font-size:9px;color:#93A1B8;margin-top:1px;}
+.lnd-feat-mrow .fm-val{font-family:var(--mono);font-size:12px;font-weight:700;color:#E8EEF8;direction:ltr;margin-inline-start:auto;white-space:nowrap;}
+.lnd-feat-mrow .fm-chg{font-family:var(--mono);font-size:10px;font-weight:700;direction:ltr;white-space:nowrap;}
+.fm-chg.up{color:#34D399;}.fm-chg.down{color:#F87171;}.fm-chg.flat{color:#93A1B8;}
+.lnd-feat-mrow .fm-src{font-size:8.5px;color:#93A1B8;width:100%;line-height:1.6;}
+.lnd-feat-news{gap:10px;}
+.lnd-feat-nrow{display:flex;flex-direction:column;gap:3px;min-width:0;}
+.lnd-feat-nrow a{color:#E8EEF8;text-decoration:none;font-size:11.5px;font-weight:700;line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.lnd-feat-nrow a:hover{color:#34D399;}
+.lnd-feat-nrow small{font-size:9px;color:#93A1B8;}
+.lnd-feat-lock{align-items:center;text-align:center;justify-content:center;gap:6px;padding:20px 13px;}
+.lnd-lock-ic{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;background:rgba(227,183,91,.10);border:1px solid rgba(227,183,91,.35);color:#E3B75B;}
+.lnd-lock-ic .et-icon{font-size:18px;}
+.lnd-feat-lock b{color:#E8EEF8;font-size:13px;font-weight:900;}
+.lnd-feat-lock small{font-size:10px;color:#93A1B8;line-height:1.7;max-width:280px;}
+.lnd-feat-lock a{color:#E3B75B;font-size:11px;font-weight:800;text-decoration:none;margin-top:4px;}
+.lnd-feat-lock a:hover{text-decoration:underline;}
+.lnd-feat-calc-res{display:flex;align-items:baseline;gap:8px;}
+.lnd-feat-calc-res b{font-family:var(--mono);font-size:20px;font-weight:800;color:#34D399;direction:ltr;}
+.lnd-feat-calc-res span{font-size:10px;color:#93A1B8;font-weight:700;}
+.lnd-feat-bars{display:flex;align-items:flex-end;gap:6px;height:54px;padding-top:4px;}
+.lnd-feat-bars i{flex:1;background:linear-gradient(180deg,rgba(52,211,153,.75),rgba(16,185,129,.28));border-radius:4px 4px 2px 2px;min-width:8px;}
+.lnd-feat-visual small{font-size:9px;color:#93A1B8;line-height:1.7;}
+/* ─── Feature card extras ─── */
+.lnd-feat-empty{font-size:11px;color:#93A1B8;line-height:1.8;}
+.lnd-feat-nrow b{font-size:11.5px;font-weight:700;color:#E8EEF8;line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.lnd-plan-price s{font-family:var(--mono);font-size:12px;color:#8FA0C9;direction:ltr;}
+.lnd-plan-hot{border-color:rgba(52,211,153,.5);box-shadow:0 18px 50px rgba(16,185,129,.10);}
+/* ─── Principles ─── */
+.lnd-principles{display:grid;grid-template-columns:1fr;gap:14px;}
+@media (min-width:820px){.lnd-principles{grid-template-columns:repeat(3,1fr);gap:16px;}}
+.lnd-principle{background:rgba(14,21,36,.45);border:1px solid rgba(255,255,255,.07);border-radius:20px;padding:20px 18px;position:relative;}
+.lnd-pr-num{display:block;font-family:var(--mono);font-size:34px;font-weight:800;color:#34D399;line-height:1;margin-bottom:10px;}
+.lnd-principle h3{font-size:15px;font-weight:900;color:#E8EEF8;margin:0 0 7px;}
+.lnd-principle p{font-size:11.5px;color:#93A1B8;line-height:1.85;margin:0;}
+/* ─── Gold VIP card ─── */
+.lnd-vip-gold{display:grid;grid-template-columns:1fr;gap:18px;background:linear-gradient(150deg,rgba(227,183,91,.10),rgba(14,21,36,.72) 46%);border:1px solid rgba(227,183,91,.40);border-radius:24px;padding:26px 22px;box-shadow:0 24px 70px rgba(0,0,0,.30);}
+@media (min-width:820px){.lnd-vip-gold{grid-template-columns:1.1fr .9fr;gap:28px;align-items:center;padding:32px 30px;}}
+.lnd-vip-gold-kicker{display:inline-block;font-size:10px;font-weight:900;letter-spacing:.5px;color:#E3B75B;background:rgba(227,183,91,.10);border:1px solid rgba(227,183,91,.40);border-radius:999px;padding:4px 12px;margin:0 0 12px;}
+.lnd-vip-gold-copy h2{font-size:clamp(24px,3.6vw,34px);line-height:1.3;font-weight:900;color:#E8EEF8;margin:0 0 10px;}
+.lnd-vip-gold-copy p{font-size:12.5px;color:#93A1B8;line-height:1.9;margin:0 0 18px;max-width:460px;}
+.lnd-vip-gold-cta{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#D9A63C,#E3B75B);color:#231a04;font-size:13px;font-weight:900;border-radius:13px;padding:13px 22px;min-height:48px;text-decoration:none;box-shadow:0 12px 30px rgba(227,183,91,.22);transition:filter .15s,transform .18s;}
+.lnd-vip-gold-cta:hover{filter:brightness(1.06);transform:translateY(-2px);}
+.lnd-vip-gold-feats{list-style:none;margin:0;padding:0;display:grid;gap:10px;}
+.lnd-vip-gold-feats li{display:flex;gap:9px;align-items:flex-start;font-size:12px;color:#C7D2E4;font-weight:700;line-height:1.7;background:rgba(14,21,36,.55);border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:11px 13px;}
+.lnd-vip-gold-feats li::before{content:"✓";color:#E3B75B;font-weight:900;flex:0 0 auto;}
+/* ─── Plans (free + admin plans side by side) ─── */
+.lnd-plans-new{grid-template-columns:1fr;}
+@media (min-width:900px){.lnd-plans-new{grid-template-columns:290px 1fr;}}
+.lnd-plans-new > #lnd-vip-plans{margin-bottom:0;}
+#lnd-vip-plans{display:grid;grid-template-columns:1fr;gap:14px;align-content:stretch;}
+@media (min-width:640px){#lnd-vip-plans{grid-template-columns:repeat(2,1fr);}}
+@media (min-width:1080px){#lnd-vip-plans{grid-template-columns:repeat(3,1fr);}}
+#lnd-vip-plans .lnd-plan{padding:22px 18px;}
+#lnd-vip-plans .lnd-vip-plans{display:contents;}
+/* ─── Green trial card ─── */
+.lnd-trial{display:grid;grid-template-columns:1fr;gap:20px;background:linear-gradient(135deg,#34D399,#0E9F6E);border-radius:24px;padding:30px 24px;margin:60px 0 10px;position:relative;overflow:hidden;}
+.lnd-trial::before{content:"";position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.16) 1px,transparent 1.4px);background-size:22px 22px;pointer-events:none;}
+.lnd-trial > *{position:relative;}
+.lnd-trial-kicker{display:inline-block;font-size:10px;font-weight:900;color:#04121F;background:rgba(4,18,31,.14);border-radius:999px;padding:4px 12px;margin:0 0 12px;}
+.lnd-trial-copy h2{font-size:clamp(24px,3.8vw,36px);line-height:1.25;font-weight:900;color:#04121F;margin:0 0 8px;}
+.lnd-trial-copy p{font-size:13px;color:rgba(4,18,31,.78);font-weight:600;line-height:1.8;margin:0;max-width:420px;}
+.lnd-trial-form{align-self:center;min-width:0;}
+@media (min-width:820px){.lnd-trial{grid-template-columns:1.1fr .9fr;align-items:center;padding:36px 34px;}}
+.lnd-trial-label{display:block;font-size:11px;font-weight:900;color:#04121F;margin-bottom:8px;}
+.lnd-trial-row{display:flex;gap:9px;flex-wrap:wrap;}
+.lnd-trial-row input{flex:1 1 200px;min-height:50px;border:1px solid rgba(4,18,31,.25);border-radius:13px;background:#fff;color:#04121F;font:600 13.5px var(--sans);padding:0 15px;outline:none;}
+.lnd-trial-row input::placeholder{color:rgba(4,18,31,.45);}
+.lnd-trial-row input:focus-visible{outline:2px solid #04121F;outline-offset:2px;}
+.lnd-trial-btn{min-height:50px;border:0;border-radius:13px;background:#04121F;color:#E8EEF8;font:900 13.5px var(--sans);padding:0 24px;cursor:pointer;transition:transform .15s,filter .15s;}
+.lnd-trial-btn:hover{transform:translateY(-2px);filter:brightness(1.15);}
+.lnd-trial-btn:focus-visible{outline:2px solid #04121F;outline-offset:3px;}
+/* ─── Footer rebuild ─── */
+.lnd-foot-grid{display:grid;grid-template-columns:1fr;gap:20px;margin-bottom:20px;}
+@media (min-width:760px){.lnd-foot-grid{grid-template-columns:1.3fr 1fr 1fr 1fr;gap:26px;}}
+.lnd-foot-brand p{font-size:11px;color:#93A1B8;line-height:1.8;margin:12px 0 0;max-width:280px;}
+.lnd-foot-col{display:grid;gap:8px;align-content:start;}
+.lnd-foot-col b{font-size:11px;font-weight:900;color:#E8EEF8;margin-bottom:3px;}
+.lnd-foot-col a{color:#93A1B8;text-decoration:none;font-size:11.5px;font-weight:600;padding:3px 0;}
+.lnd-foot-col a:hover{color:#34D399;}
 #landing #features,#landing .landing-how,#landing .landing-features,#landing #vip,#landing #calculator,#landing #pricing,#landing #faq{scroll-margin-top:84px;}
 /* Retained pre-upgrade sections (features / how-it-works) keep their original
    styling — replaced in full by the Phase-2 "Why" cards. */
@@ -1604,11 +1711,15 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
         <span class="lnd-bg-ray r1"></span>
         <span class="lnd-bg-ray r2"></span>
         <span class="lnd-bg-ray r3"></span>
+        <div class="lnd-bg-dots"></div>
         <svg class="lnd-bg-lines" viewBox="0 0 1440 620" preserveAspectRatio="none">
-          <path d="M-20 470 C 320 380 720 500 1460 330" fill="none" stroke="rgba(147,161,184,.08)" stroke-width="1"/>
-          <path d="M-20 520 C 420 430 860 560 1460 400" fill="none" stroke="rgba(52,211,153,.07)" stroke-width="1"/>
-          <path d="M-20 380 C 500 300 900 420 1460 260" fill="none" stroke="rgba(147,161,184,.05)" stroke-width="1"/>
+          <path d="M-20 470 C 320 380 720 500 1460 330" fill="none" stroke="rgba(163,177,198,.16)" stroke-width="1.2"/>
+          <path d="M-20 520 C 420 430 860 560 1460 400" fill="none" stroke="rgba(52,211,153,.15)" stroke-width="1.2"/>
+          <path d="M-20 380 C 500 300 900 420 1460 260" fill="none" stroke="rgba(163,177,198,.10)" stroke-width="1"/>
+          <path d="M-20 590 C 380 520 900 620 1460 470" fill="none" stroke="rgba(52,211,153,.08)" stroke-width="1"/>
         </svg>
+        <i class="lnd-spark sp1"></i><i class="lnd-spark sp2"></i><i class="lnd-spark sp3"></i>
+        <i class="lnd-spark lnd-spark-plus sp4"></i><i class="lnd-spark lnd-spark-plus sp5"></i>
       </div>
       <div class="lnd-hero-copy">
         <p class="lnd-badge"><svg class="et-icon" aria-hidden="true"><use href="#i-pulse"></use></svg> بيانات حقيقية — كل رقم بمصدر ووقت</p>
@@ -1649,68 +1760,116 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
 
     <section id="features" class="lnd-sec" aria-labelledby="lnd-features-title">
       <div class="lnd-sec-head">
-        <p class="lnd-kicker2">ليش EgyTrend؟</p>
-        <h2 id="lnd-features-title">كل حاجة تفهم بيها يومك مع السوق، في مكان واحد.</h2>
-        <p class="lnd-sec-sub">أربع أدوات جوهرية — وكل بطاقة موصوفة بالمزايا الفعلية وخطة اشتراكها كما هي.</p>
+        <p class="lnd-kicker2">الأدوات الجوهرية</p>
+        <h2 id="lnd-features-title">كل ما يحتاجه المستثمر، <span class="lnd-hl">في شاشة واحدة.</span></h2>
+        <p class="lnd-sec-sub">نفس الأرقام الحقيقية التي تراها بعد التسجيل — المصدر ووقت التحديث تحت كل رقم.</p>
       </div>
-      <div class="lnd-why">
-        <article class="lnd-why-card">
-          <span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-clock"></use></svg></span>
-          <h3>ملخصات وتقارير <span class="lnd-plan-tag">VIP</span></h3>
-          <p>موجز صباحي ومنتصف اليوم وإغلاق: وصف واضح لأهم التحركات والأخبار من البيانات المتاحة — مع بيان صريح لما لا تكفيه البيانات للحكم عليه. بلا استنتاجات وبلا وعود.</p>
+      <div class="lnd-feat-grid">
+        <article class="lnd-feat-card">
+          <div class="lnd-feat-head"><span class="lnd-feat-tag">الأسواق</span><span class="lnd-feat-live" id="feat-mkt-live" role="status"></span></div>
+          <h3>أسواق تتحدّث أمامك</h3>
+          <p>EGX والمؤشرات العالمية والسلع والكريبتو والعملات — السعر والتغيّر والمصدر ووقت التحديث.</p>
+          <div class="lnd-feat-visual" id="feat-mkt-visual" aria-label="أمثلة من أسعار اللوحة الحالية"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>
         </article>
-        <article class="lnd-why-card">
-          <span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-bell"></use></svg></span>
-          <h3>تنبيهات سعرية <span class="lnd-plan-tag">VIP</span></h3>
-          <p>تنبيهات على الأسهم اللي تتابعها: تُقيَّم من الخادم على الأسعار المتاحة وتوصلك — من غير ما تكون قاعد على الشاشة طول اليوم.</p>
+        <article class="lnd-feat-card">
+          <div class="lnd-feat-head"><span class="lnd-feat-tag">الأخبار</span></div>
+          <h3>أخبار من مصدرها</h3>
+          <p>من مصادر معتمدة — بالعربي والإنجليزي، والعنوان مع مصدره ووقت النشر.</p>
+          <div class="lnd-feat-visual lnd-feat-news" id="feat-news-list" aria-label="أحدث العناوين من المصادر المعتمدة"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>
         </article>
-        <article class="lnd-why-card">
-          <span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-card"></use></svg></span>
-          <h3>المحفظة <span class="lnd-plan-tag">VIP</span></h3>
-          <p>اسجّل صفقاتك وراجع أرقام محفظتك في مكان واحد. كل طلب يتحقق من الخادم (الحساب والصلاحية) — لا حساب يلمس بيانات التاني.</p>
+        <article class="lnd-feat-card">
+          <div class="lnd-feat-head"><span class="lnd-feat-tag lnd-feat-tag-vip">VIP</span></div>
+          <h3>فرص — تُحسب على حسابك أنت</h3>
+          <p>متابعة وصفية من بيانات السوق المتاحة تُقيَّم من الخادم. لا نعرض إشارات حقيقية لزائر غير مسجَّل.</p>
+          <div class="lnd-feat-visual lnd-feat-lock">
+            <span class="lnd-lock-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-lock"></use></svg></span>
+            <b>ميزة VIP</b>
+            <small>تُفتح بعد تفعيل VIP — تُقيَّم من الخادم على أسعار المصادر المرخصة.</small>
+            <a href="#pricing">شوف الباقات</a>
+          </div>
         </article>
-        <article class="lnd-why-card">
-          <span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-calculator"></use></svg></span>
-          <h3>حاسبات <span class="lnd-plan-tag">VIP</span></h3>
-          <p>حاسبات استثمار وأرباح تُحسب من مدخلاتك أمامك بالافتراضات معلنة — والنتيجة تقديرية وليست توصية. (والحاسبة اللي تحت شغالة دلوقتي من غير تسجيل.)</p>
+        <article class="lnd-feat-card">
+          <div class="lnd-feat-head"><span class="lnd-feat-tag">الحاسبات</span></div>
+          <h3>حاسبات المستثمر</h3>
+          <p>تُحسب أمامك بالافتراضات المعلنة — والنتيجة تقديرية وليست توصية.</p>
+          <div class="lnd-feat-visual" id="feat-calc-visual">
+            <div class="lnd-feat-calc-res"><b id="feat-calc-annual" dir="ltr">—</b><span>عائد سنوي متوقع (مثال محسوب)</span></div>
+            <div class="lnd-feat-bars" id="feat-calc-bars" aria-hidden="true"></div>
+            <small>مثال محسوب: 10,000 ج.م بسعر 25 وتوزيع 6% — نفس معادلة الحاسبة الكاملة بالأسفل.</small>
+          </div>
         </article>
+      </div>
+    </section>
+
+    <section id="principles" class="lnd-sec" aria-labelledby="lnd-principles-title">
+      <div class="lnd-sec-head">
+        <p class="lnd-kicker2">لماذا تثق بالأرقام؟</p>
+        <h2 id="lnd-principles-title">ثلاثة أشياء لا نساوم عليها.</h2>
+      </div>
+      <div class="lnd-principles">
+        <div class="lnd-principle"><span class="lnd-pr-num">01</span><h3>بيانات حقيقية</h3><p>كل رقم من مصدر مرخّص أو معلَن — لا أرقام توضيحية تُقدَّم كحقيقية، ولا «حي» إلا إذا قاله المصدر نفسه.</p></div>
+        <div class="lnd-principle"><span class="lnd-pr-num">02</span><h3>مصدر ووقت</h3><p>تحت كل رقم: من أين جاء ومتى حُدّث بوقت القاهرة. ولو تأخر، يظهر وسام «قد تكون الأرقام متأخرة».</p></div>
+        <div class="lnd-principle"><span class="lnd-pr-num">03</span><h3>وضوح كامل</h3><p>ما لا تتوفر بياناته يُعرض «غير متاح» — لا فراغ خفي، ولا رقم قديم يُقدَّم كجديد، ولا بديل يُخمَّن.</p></div>
       </div>
     </section>
 
     <section id="vip" class="lnd-sec" aria-labelledby="lnd-vip-title">
-      <div class="lnd-vip">
-        <div class="lnd-vip-head">
-          <div class="lnd-sec-head">
-            <p class="lnd-kicker2" style="color:#F5C451;border-color:rgba(245,196,81,.45);background:rgba(245,196,81,.08);">VIP</p>
-            <h2 id="lnd-vip-title">أدوات الكبار، بالعربي وفي مكان واحد.</h2>
-            <p class="lnd-sec-sub">كل أداة في القائمة منفذة فعليًا وتتحقق صلاحيتها من الخادم. العيّنات التوضيحية موسومة بوضوح — لا نتوهم نتيجة ونبيعها كحقيقية.</p>
-          </div>
-          <a class="lnd-vip-cta" href="#pricing">افتح VIP <svg class="et-icon" aria-hidden="true" style="transform:rotate(180deg)"><use href="#i-arrow"></use></svg></a>
+      <div class="lnd-vip-gold">
+        <div class="lnd-vip-gold-copy">
+          <p class="lnd-vip-gold-kicker">VIP</p>
+          <h2 id="lnd-vip-title">أدوات الكبار. بيانات أدق.</h2>
+          <p>كل ميزة تُفعَّل على حسابك وتتحقق صلاحيتها من الخادم — العيّنات التوضيحية موسومة بوضوح، ولا نتوهم نتيجة ونبيعها كحقيقية.</p>
+          <a class="lnd-vip-gold-cta" href="#pricing">افتح VIP <svg class="et-icon" aria-hidden="true" style="transform:rotate(180deg)"><use href="#i-arrow"></use></svg></a>
         </div>
-        <div class="lnd-vip-grid">
-          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-megaphone"></use></svg></span><h3>الأخبار العاجلة</h3><p>الخبر العاجل في تبويب خاص مرتب حسب الأولوية — مع المصدر ووقت النشر، لا عنوان منقطع عن سياقه.</p></article>
-          <article class="lnd-vip-item"><span class="lnd-demo-badge">مثال توضيحي — ليست فرصًا حقيقية</span><h3>الفرص</h3><p>بطاقات متابعة وصفية من بيانات السوق المتاحة. عيّنة بالأصناف الوهمية:</p>
-            <div class="lnd-demo-rows" aria-label="عيّنات توضيحية بأسماء وهمية">
-              <div class="lnd-demo-row"><span>أصل (أ) — تقني</span><b>+8.5%</b><span class="d-risk">مخاطرة: متوسطة</span></div>
-              <div class="lnd-demo-row"><span>صندوق (ب) — أسهم مصري</span><b>+4.2%</b><span class="d-risk">مخاطرة: منخفضة</span></div>
-              <div class="lnd-demo-row"><span>مؤشر (ج) — عالمي</span><b>+6.0%</b><span class="d-risk">مخاطرة: متوسطة-عالية</span></div>
-            </div>
-          </article>
-          <article class="lnd-vip-item"><span class="lnd-demo-badge">نص توضيحي — التحليل الفعلي على حسابك</span><h3>محلل الأخبار</h3><p>عيّنات قراءة الخبر:</p>
-            <div class="lnd-demo-rows">
-              <div class="lnd-demo-row"><span>«نتائج قطاع البنوك تتجاوز التوقعات» — التوجه: إيجابي · القطاع: بنوك · التأثير: متوسط</span></div>
-            </div>
-          </article>
-          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-spark"></use></svg></span><h3>المستشار AI</h3><p>تحلّل الخبر أو السوق بضغطة «حلّل الآن»، وحوار تعليمي على بيانات المنصة المتاحة — بحدود يومية مخصصة للحساب.</p></article>
-          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-search"></use></svg></span><h3>Screener</h3><p>فلتر الأسهم المصرية بعشرات المعايير: P/E، الحجم، السوق، القطاع — مثل ما تعمل في Investing.com، بس بالعربي وداخل المنصة.</p></article>
-          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-card"></use></svg></span><h3>المحفظة</h3><p>أرقام محفظتك وصفقاتك في ملخص وصفي واحد — مع حماية ملكية الحساب من الخادم في كل طلب.</p></article>
-          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-calendar"></use></svg></span><h3>التقارير</h3><p>موجزات الصباح ومنتصف اليوم والإغلاق المبنية على البيانات المتاحة، مع ذكر صريح للنواقص والتأخر.</p></article>
-          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-bell"></use></svg></span><h3>التنبيهات</h3><p>تنبيهات سعرية على اختيارك تُقيَّم دوريًا من الخادم على أسعار المصادر المرخصة.</p></article>
-          <article class="lnd-vip-item"><span class="lnd-why-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-chart"></use></svg></span><h3>مؤشرات الشارت</h3><p>MA(20) وRSI(14) فوق شارت السهم محسوبين من السجل اليومي. الشارت الأساسي متاح للجميع — المؤشرات ميزة VIP.</p></article>
-        </div>
+        <ul class="lnd-vip-gold-feats">
+          <li>تنبيهات سعرية تُقيَّم من الخادم</li>
+          <li>محلل أخبار ومساعد AI بحدود يومية</li>
+          <li>الحاسبات المتقدمة</li>
+          <li>شارت + MA(20) وRSI(14)</li>
+          <li>المحفظة بحماية ملكية من الخادم</li>
+          <li>Screener بفلاتر كاملة</li>
+        </ul>
       </div>
     </section>
 
+    <section id="pricing" class="lnd-sec" aria-labelledby="lnd-pricing-title">
+      <div class="lnd-sec-head">
+        <p class="lnd-kicker2">الأسعار</p>
+        <h2 id="lnd-pricing-title">اختر الباقة المناسبة لك.</h2>
+        <p class="lnd-sec-sub">الأسعار وطرق الدفع من المصدر المركزي للمنصة — لا نسخة ثابتة، وأي تعديل من الإدارة يظهر تلقائيًا. السعر القديم مشطوب فقط إذا حدّدته الإدارة.</p>
+      </div>
+      <div class="lnd-plans lnd-plans-new">
+        <div class="lnd-plan lnd-plan-free">
+          <div class="lnd-plan-name">مجاني</div>
+          <div class="lnd-plan-price"><b>٠</b><span>ج.م — للأبد</span></div>
+          <ul class="lnd-plan-feats">
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> الأسعار الحية مع المصدر ووقت التحديث</li>
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> أخبار من مصادر موثّقة</li>
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> الشارت الأساسي للأسهم</li>
+            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> حساب مجاني — بدون بطاقة بنكية</li>
+          </ul>
+          <button type="button" class="lnd-primary lnd-plan-cta" onclick="openAuthModal('register')">ابدأ مجاناً</button>
+        </div>
+        <div id="lnd-vip-plans" class="lnd-vip-plans" role="status" aria-label="جارٍ تحميل الباقات من الخادم"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>
+      </div>
+      <div id="lnd-pay-methods" class="lnd-pay-methods"></div>
+      <div id="lnd-policy" class="lnd-policy"></div>
+    </section>
+
+    <section class="lnd-trial" aria-labelledby="lnd-trial-title">
+      <div class="lnd-trial-copy">
+        <p class="lnd-trial-kicker">عرض البداية</p>
+        <h2 id="lnd-trial-title">ابدأ بأسبوع VIP مجاناً.</h2>
+        <p>لا بطاقة، لا خصم، ولا تجديد تلقائي — التجربة 7 أيام وتُفتح من حسابك بعد التسجيل.</p>
+      </div>
+      <form class="lnd-trial-form" onsubmit="return lndStartTrial(this)">
+        <label class="lnd-trial-label" for="lnd-trial-email">بريدك الإلكتروني</label>
+        <div class="lnd-trial-row">
+          <input id="lnd-trial-email" name="email" type="email" autocomplete="email" dir="ltr" placeholder="you@example.com" required>
+          <button type="submit" class="lnd-trial-btn">ابدأ مجاناً</button>
+        </div>
+      </form>
+    </section>
     <section id="calculator" class="lnd-sec" aria-labelledby="lnd-calc-title">
       <div class="lnd-sec-head">
         <p class="lnd-kicker2">جرّب الحاسبة</p>
@@ -1741,45 +1900,6 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       </div>
       <div id="lnd-calc-cmp" class="lnd-calc-cmp" hidden></div>
     </section>
-    <section id="pricing" class="lnd-sec" aria-labelledby="lnd-pricing-title">
-      <div class="lnd-sec-head">
-        <p class="lnd-kicker2">الأسعار</p>
-        <h2 id="lnd-pricing-title">ابدأ مجاناً — واطوّر لما تحتاج.</h2>
-        <p class="lnd-sec-sub">الأسعار وطرق الدفع هنا تُجلب مباشرة من المصدر المركزي للمنصة — لا نسخة ثابتة من أي سعر في الصفحة، وأي تعديل من الإدارة يظهر تلقائيًا.</p>
-      </div>
-      <div class="lnd-plans">
-        <div class="lnd-plan">
-          <div class="lnd-plan-name">Free</div>
-          <div class="lnd-plan-price"><b>٠</b><span>ج.م — مجاني</span></div>
-          <ul class="lnd-plan-feats">
-            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> الأسعار الحية مع المصدر ووقت التحديث</li>
-            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> أخبار من مصادر موثّقة</li>
-            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> الشارت الأساسي للأسهم (OHLC)</li>
-            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> حساب مجاني — بدون بطاقة بنكية</li>
-          </ul>
-          <button type="button" class="lnd-primary lnd-plan-cta" onclick="openAuthModal('register')">ابدأ مجاناً</button>
-        </div>
-        <div class="lnd-plan lnd-plan-vip">
-          <span class="lnd-plan-badge">الأكثر طلباً</span>
-          <div class="lnd-plan-name">VIP</div>
-          <div id="lnd-vip-plans" class="lnd-vip-plans" role="status" aria-label="جارٍ تحميل الباقات من الخادم"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>
-          <ul class="lnd-plan-feats">
-            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> كل مزايا Free</li>
-            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> تنبيهات سعرية</li>
-            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> Screener بفلاتر متقدمة</li>
-            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> المحفظة</li>
-            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> مستشار AI وتحليل الأخبار</li>
-            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> تقارير الصباح ومنتصف اليوم والإغلاق</li>
-            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> مؤشرات MA(20) وRSI(14) على الشارت</li>
-            <li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> الحاسبات المتقدمة والأخبار العاجلة</li>
-          </ul>
-          <div id="lnd-pay-methods" class="lnd-pay-methods"></div>
-          <button type="button" class="lnd-vip-cta lnd-plan-cta" style="width:100%" onclick="openAuthModal('register')">افتح VIP — سجّل واختار باقتك</button>
-          <div id="lnd-policy" class="lnd-policy"></div>
-        </div>
-      </div>
-    </section>
-
     <section id="landing-how" class="landing-how" aria-labelledby="landing-how-title">
       <div><p class="landing-kicker">بداية بسيطة</p><h2 id="landing-how-title">من أول تسجيل لحد أول متابعة.</h2></div>
       <ol class="landing-steps">
@@ -1822,24 +1942,40 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       </div>
     </section>
 
-    <section class="lnd-cta-final" aria-labelledby="lnd-final-title">
-      <h2 id="lnd-final-title">ابدأ النهارده.</h2>
-      <p>سجّل مجاناً، وافتح كل سوقك في شاشة واحدة — الأسعار والأخبار والأدوات، بالعربي وبمصدر واضح لكل رقم.</p>
-      <div class="lnd-actions">
-        <button type="button" class="lnd-primary" onclick="openAuthModal('register')">ابدأ مجاناً <svg class="et-icon" aria-hidden="true"><use href="#i-arrow"></use></svg></button>
-        <a class="lnd-secondary" href="#pricing">شوف الأسعار</a>
-      </div>
-    </section>
+    
   </main>
 
   <footer class="lnd-footer">
+    <div class="lnd-foot-grid">
+      <div class="lnd-foot-brand">
+        <a class="lnd-brand" href="#landing" aria-label="EgyTrend — الرئيسية">
+          <span class="lnd-brand-mark"><svg class="et-icon" aria-hidden="true"><use href="#i-logo"></use></svg></span>
+          <span><strong>EgyTrend</strong><small>البورصة المصرية بالعربي</small></span>
+        </a>
+        <p>منصة معلوماتية — كل رقم بمصدر ووقت، ولا توصية استثمارية.</p>
+      </div>
+      <nav class="lnd-foot-col" aria-label="المنصة">
+        <b>المنصة</b>
+        <a href="#features">الأسواق والأدوات</a>
+        <a href="#calculator">الحاسبات</a>
+        <a href="#pricing">الأسعار</a>
+        <a href="#faq">الأسئلة الشائعة</a>
+      </nav>
+      <nav class="lnd-foot-col" aria-label="موارد">
+        <b>موارد</b>
+        <a href="/privacy.html">سياسة الخصوصية</a>
+        <a href="/terms.html">الشروط والأحكام</a>
+        <a href="#faq">الدفع والإلغاء والاسترداد</a>
+        <a href="#faq">حماية بياناتك</a>
+      </nav>
+      <nav class="lnd-foot-col" aria-label="تواصل">
+        <b>تواصل</b>
+        <a href="https://wa.me/201008605139" target="_blank" rel="noopener noreferrer">الدعم: واتساب 01008605139</a>
+        <a href="tel:+201008605139" dir="ltr">01008605139</a>
+      </nav>
+    </div>
     <p class="f-disc">المعلومات المعروضة لأغراض الاطلاع والتعليم فقط، وليست توصية استثمارية أو وعدًا بتحقيق الأرباح. التداول في الأسواق المالية ينطوي على مخاطر قد تؤدي إلى خسارة رأس المال.</p>
-    <nav aria-label="روابط المنصة">
-      <span class="f-copy">© 2026 EgyTrend</span>
-      <a href="/privacy.html">سياسة الخصوصية</a>
-      <a href="/terms.html">الشروط والأحكام</a>
-      <a href="https://wa.me/201008605139" target="_blank" rel="noopener noreferrer">الدعم: واتساب 01008605139</a>
-    </nav>
+    <p class="f-copy">© 2026 EgyTrend — الأسعار للاطلاع العام.</p>
   </footer>
 
   <div class="lnd-mobbar" id="lnd-mobbar" aria-label="إجراءات سريعة">
@@ -3249,6 +3385,7 @@ function showGuestLanding(){
 
     // Sparkline for the index: request it once from the shared licensed endpoint.
     if(!window.__lndSparkRequested){window.__lndSparkRequested=true;try{scheduleSparklines(["egx:EGX30","fx:USD-EGP","commodity:XAU","crypto:BTC"]);}catch(_){}}
+    renderFeatCards();
 
     const status=$("lnd-mock-status");
     const heroStart=window.__lndHeroStartAt||(window.__lndHeroStartAt=Date.now());
@@ -3282,8 +3419,59 @@ function showGuestLanding(){
         (reals.length<defs.length?`<span class="lnd-chip">بعض الأسعار غير متاحة حاليًا</span>`:"");
     }
     grid.innerHTML=defs.map(d=>isReal(d[0])?cardHtml(d[0],d[2]):missingCardHtml((d[0]&&d[0].n)||d[1],d[2])).join("")+FEATURE_CARD;
+    renderFeatCards();
   }
   window.__lndRender=renderHero;
+
+  /* Feature cards — the SAME rows, sources and times as the hero board.
+   * No synthetic numbers: if a row is not real it is not shown, and the
+   * calculators example is computed with the exact public formula. */
+  function renderFeatCards(){
+    const mv=document.getElementById("feat-mkt-visual");
+    if(mv){
+      const defs=[[rowById("egx:EGX30"),"مؤشر EGX30"],[rowById("fx:USD-EGP"),"دولار/جنيه"],[rowById("commodity:XAU"),"ذهب — أونصة"],[rowById("crypto:BTC"),"بيتكوين"]];
+      const rows=defs.filter(d=>isReal(d[0]));
+      const live=document.getElementById("feat-mkt-live");
+      if(live){
+        const anyLive=rows.some(d=>rowIsLive(d[0]));
+        live.className="lnd-feat-live"+(rows.length?" live":"");
+        live.innerHTML=`<i></i>${rows.length?(anyLive?"بيانات حية":"آخر أسعار موثقة"):"بانتظار البيانات"}`;
+      }
+      if(!rows.length){
+        mv.innerHTML=`<span class="lnd-feat-empty">الأسعار غير متاحة الآن — لن نعرض أرقامًا بديلة.</span>`;
+      }else{
+        mv.innerHTML=rows.slice(0,3).map(([r,label])=>{
+          const d=deltaCls(r);
+          const t=Number(r.refTime)||Number(r.asOf)||0;
+          return `<div class="lnd-feat-mrow">
+            <span class="fm-name">${esc(r.n)}</span>
+            <span class="fm-val">${esc(r.v)}</span>
+            ${r.c&&r.c!=="—"&&!/غير متاح/.test(r.c)?`<span class="fm-chg ${d}" dir="ltr">${esc(r.c)}</span>`:`<span class="fm-chg flat" dir="ltr">—</span>`}
+            <span class="fm-src">${esc(label)}${r.source&&r.source!=="غير متاح"?` · ${esc(r.source)}`:""}${t>0?` · ${esc(fmtCairoFull(t))}`:""}</span>
+          </div>`;
+        }).join("");
+      }
+    }
+    const nv=document.getElementById("feat-news-list");
+    if(nv){
+      const top=window.__lndNewsTop||[];
+      nv.innerHTML=top.length?top.map(a=>`
+        <div class="lnd-feat-nrow"><b>${esc(a.t)}</b><small>${a.s?esc(a.s):"مصدر موثّق"}${a.ts>0?` · ${esc(fmtCairoFull(a.ts))}`:""}</small></div>`).join("")
+        :`<span class="lnd-feat-empty">أحدث العناوين تظهر هنا من المصادر المعتمدة — بعد جاهزية الفيد.</span>`;
+    }
+    const cv=document.getElementById("feat-calc-visual");
+    if(cv){
+      const r=calcCompute({amt:10000,price:25,pct:6});
+      if(!r.err){
+        const out=document.getElementById("feat-calc-annual");
+        if(out)out.textContent=fmtInt(r.annual);
+        const sm=cv.querySelector("small");
+        if(sm)sm.textContent=`مثال محسوب: ${fmtInt(r.shares)} سهم من ${fmtInt(r.cost)} ج.م بسعر 25 ج.م وتوزيع 6% — نفس معادلة الحاسبة الكاملة بالأسفل.`;
+        const bars=cv.querySelector("#feat-calc-bars");
+        if(bars)bars.innerHTML="<i style=\"height:38%\"></i><i style=\"height:56%\"></i><i style=\"height:72%\"></i><i style=\"height:88%\"></i><i style=\"height:64%\"></i><i style=\"height:48%\"></i>";
+      }
+    }
+  }
 
   /* Stats — every number from a real endpoint; a failed metric hides itself. */
   async function loadStats(){
@@ -3325,6 +3513,14 @@ function showGuestLanding(){
         n=d.items.filter(a=>{const t=Date.parse(a?.pubDate);return Number.isFinite(t)&&t>0&&(now-t)<day;}).length;
       }
       if(n>0){set("lnd-stat-news",fmtInt(n));showWrap();}
+      if(Array.isArray(d?.items)&&d.items.length){
+        window.__lndNewsTop=d.items.slice(0,3).map(it=>({
+          t:String(it?.title||"").replace(/\s+/g," ").trim().slice(0,200),
+          s:String((it?.source&&it.source.name)||"").slice(0,60),
+          ts:Date.parse(String(it?.pubDate||""))||0,
+        })).filter(x=>x.t);
+        if(window.__lndNewsTop.length)renderFeatCards();
+      }
     }catch(_){}
 
     // 4) Last price update — the newest REAL hero row's asOf (never the
@@ -3456,12 +3652,15 @@ function showGuestLanding(){
         const plans=Object.entries(cfg.plans);
         host.setAttribute("aria-label","الباقات المتاحة من الخادم");
         host.innerHTML=plans.length?plans.map(([key,p])=>`
-          <div class="lnd-vip-plan">
-            <div><div class="vp-name">${esc(p.l)}</div><div class="vp-per">${esc(p.per)}</div></div>
-            ${p.badge?`<span class="vp-badge">${esc(p.badge)}</span>`:""}
-            <span class="vp-price">${p.oldPrice?`<s>${fmtInt(p.oldPrice)}</s>`:""}<b>${fmtInt(p.p)}</b><span style="font-size:10px;color:#8FA0C9;">ج.م</span></span>
+          <div class="lnd-plan ${p.priceBadge?"lnd-plan-hot":""}">
+            ${p.badge?`<span class="lnd-plan-badge">${esc(p.badge)}</span>`:""}
+            <div class="lnd-plan-name">${esc(p.l)}</div>
+            <div class="lnd-plan-price">${p.oldPrice?`<s>${fmtInt(p.oldPrice)}</s>`:""}<b>${fmtInt(p.p)}</b><span>ج.م / ${esc(p.per)}</span></div>
+            <ul class="lnd-plan-feats">${(p.features||[]).map(f=>`<li><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg>${esc(f)}</li>`).join("")||"<li>تفاصيل الباقة تظهر بعد تسجيل الدخول.</li>"}</ul>
+            <button type="button" class="lnd-primary lnd-plan-cta" data-vip="${esc(key)}">اشترك — ${esc(p.l)}</button>
           </div>`).join("")
           :`<div class="lnd-calc-err" role="alert">لا توجد باقات منشورة من الخادم حاليًا.</div>`;
+        host.querySelectorAll("[data-vip]").forEach(b=>b.addEventListener("click",()=>openAuthModal("register")));
         const pm=document.getElementById("lnd-pay-methods");
         if(pm){
           pm.innerHTML=(cfg.methods||[]).map(m=>`
@@ -3481,6 +3680,25 @@ function showGuestLanding(){
         });
       }finally{clearTimeout(timer);}
     })();
+  }
+
+  /* Green trial card — no fake promise: opens the real registration flow
+   * and prefills the email, so the 7-day trial is claimed from the account
+   * itself (server-side, no card, no auto-renew). */
+  function lndStartTrial(form){
+    const email=String(form?.elements?.email?.value||"").trim();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){
+      const el=document.getElementById("lnd-trial-email");
+      if(el)el.focus();
+      return false;
+    }
+    window.__lndTrialEmail=email;
+    openAuthModal("register");
+    setTimeout(()=>{
+      const e2=document.getElementById("a-email");
+      if(e2&&document.getElementById("reg-email-wrap")?.style.display!=="none")e2.value=email;
+    },150);
+    return false;
   }
 
   function start(){
