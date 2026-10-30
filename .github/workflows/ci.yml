@@ -66,8 +66,12 @@ jobs:
           if [ "$RC" -ne 0 ]; then
             N=$(wc -l < /tmp/ci-test-output.log)
             echo "::error file=.github/workflows/ci.yml::DIAG: pnpm test exit=$RC log_lines=$N"
-            grep -E "^not ok" /tmp/ci-test-output.log | head -6 | while IFS= read -r l; do
+            # pnpm prefixes workspace output, so do NOT anchor at line start.
+            grep -E "not ok [0-9]+ - " /tmp/ci-test-output.log | head -6 | while IFS= read -r l; do
               echo "::error file=.github/workflows/ci.yml::DIAG notok: ${l:0:300}"
+            done
+            grep -E "AssertionError|strictly equal|actual:|expected:|type: 'test'|location:" /tmp/ci-test-output.log | head -10 | while IFS= read -r l; do
+              echo "::error file=.github/workflows/ci.yml::DIAG detail: ${l:0:300}"
             done
             echo "::error file=.github/workflows/ci.yml::DIAG totals: $(grep -E 'test: # (tests|pass|fail)' /tmp/ci-test-output.log | tail -12 | tr '\n' '|')"
             echo "::error file=.github/workflows/ci.yml::DIAG lastline: $(tail -1 /tmp/ci-test-output.log | cut -c1-300)"
