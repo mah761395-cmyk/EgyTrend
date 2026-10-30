@@ -715,14 +715,21 @@ test("cash events are isolated between users", async () => {
 
 /* ═══════════ Value-over-time series ═══════════ */
 
-function cairoTodayForTest(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+function cairoTodayForTest(from: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" }).format(from);
 }
 
 function daysBefore(days: number, from: Date): string {
-  const d = new Date(from);
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
+  /* Cairo calendar date, consistent with cairoTodayForTest() and the route's
+   * cairoToday(). The previous UTC-based math returned the previous day while
+   * Cairo was already on the next one (Cairo 00:00–03:00 = UTC 21:00–24:00),
+   * so the "today" close row landed one day early and the series reported
+   * an honest gap on the final day → basis "partial" (CI failed 2026-10-30). */
+  const m = cairoTodayForTest(from).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) throw new Error("unparseable Cairo date");
+  /* Noon anchor: pure calendar-day arithmetic, no local-timezone drift. */
+  const anchor = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) - days, 12);
+  return new Date(anchor).toISOString().slice(0, 10);
 }
 
 test("the portfolio series endpoint is VIP-gated and fails closed without approved history", async () => {
