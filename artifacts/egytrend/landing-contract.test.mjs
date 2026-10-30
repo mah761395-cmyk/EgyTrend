@@ -45,9 +45,10 @@ test("guest board rows are resolved by instrumentId (root cause)", () => {
   const byId = functionBody("rowById");
   assert.match(byId, /x\.instrumentId===id/, "rowById must match the instrumentId field");
   assert.ok(!/x\.id===id/.test(byId), "rowById must not match a bare .id field");
+  assert.match(byId, /\["eg","gl","cm","cr","fx"\]/, "rowById scans the fx section too (EGP pairs live there since M1)");
   const card = functionBody("cardHtml");
   assert.match(card, /r\.v/, "the card value is the row's own value");
-  assert.match(card, /r\.instrumentId==="egx:EGX30"/, "the sparkline is keyed by instrumentId too");
+  assert.match(card, /\["egx:EGX30","fx:USD-EGP","commodity:XAU","crypto:BTC"\]\.includes\(r\.instrumentId\)/, "sparklines are keyed by instrumentId for the four hero assets");
   const missing = functionBody("missingCardHtml");
   assert.match(missing, /—/, "an unpriced row shows —, never an invented number");
   assert.ok(!/\d{2,}/.test(missing), "no numeric literal in the missing card");
@@ -136,7 +137,7 @@ test("mobile (360px): board under title + CTA, single column, no clipping", () =
   // Base layout is single column; two columns only from 680px up.
   const heroRule = html.match(/\.lnd-hero\{display:grid;grid-template-columns:1fr;[^}]*\}/);
   assert.ok(heroRule, "the base (mobile) hero is a single column");
-  const twoCol = ".lnd-hero{padding:64px 0 34px;gap:54px;grid-template-columns:minmax(0,1.02fr) minmax(340px,.98fr);}";
+  const twoCol = ".lnd-hero{padding:64px 0 34px;gap:54px;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);}";
   assert.ok(html.includes(twoCol), "the two-column hero rule exists");
   assert.ok(html.indexOf("@media (min-width:680px){") < html.indexOf(twoCol), "…and it lives inside the >=680px media query, not the base layout");
   // Stat values (including the long «٢٧ أكتوبر، ٠٥:٠٦ م» string) must be
@@ -148,6 +149,64 @@ test("mobile (360px): board under title + CTA, single column, no clipping", () =
   // (min-width:0 is the overflow guard and is required).
   const boardCss = html.slice(html.indexOf(".lnd-mock-status"), html.indexOf(".lnd-stats{display:grid"));
   assert.ok(!/min-width:\s*[1-9]/.test(boardCss), "the price board uses no positive fixed min-width");
+});
+
+test("background: decorative animated light beams, motion-safe, no canvas", () => {
+  const bg = html.match(/<div class="lnd-bg" aria-hidden="true">[\s\S]*?<\/svg>\s*((?:<i class="lnd-spark[^>]*><\/i>\s*){5})<\/div>/);
+  assert.ok(bg, "the hero carries an aria-hidden background layer");
+  assert.ok(bg[0].includes('class="lnd-bg-ray r1"') && bg[0].includes("lnd-bg-lines"), "elliptical rays plus thin SVG lines");
+  assert.doesNotMatch(bg[0], /<canvas/i, "no canvas");
+  const css = html.slice(html.indexOf(".lnd-bg{"), html.indexOf(".lnd-badge{"));
+  assert.match(css, /\.lnd-bg\{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;\}/, "absolute, behind content, click-through");
+  // Each keyframe animates transform only (no top/left/width/height tweens).
+  const rays = css.match(/@keyframes lndRay[ABC]\{[^@]*?\}\}/g) || [];
+  assert.ok(rays.length >= 3, "three ray keyframes exist");
+  for (const kf of rays) {
+    assert.match(kf, /transform:/, "the ray moves via transform");
+    assert.doesNotMatch(kf, /top:|left:|right:|bottom:|width:|height:/, "…and nothing else");
+  }
+  // Slow, ambient drift: 18-28s per ray.
+  assert.match(css, /lndRayA 24s/, "ray A ~24s");
+  assert.match(css, /lndRayB 28s/, "ray B ~28s");
+  assert.match(css, /lndRayC 18s/, "ray C ~18s");
+  assert.match(css, /@media \(prefers-reduced-motion:reduce\)\{\.lnd-bg-ray\{animation:none\}/, "reduced motion stops the beams");
+});
+
+test("header badge: market state from the live state, never fixed text", () => {
+  const badge = functionBody("renderLndMktBadge");
+  assert.match(badge, /marketFreshness/, "state comes from the board's freshness");
+  assert.match(badge, /rows\.some\(rowIsLive\)/, "«مباشر» only when the source marks a row live");
+  assert.match(badge, /تحديث مباشر/, "live label");
+  assert.match(badge, /إغلاق السوق/, "closed label");
+  assert.match(badge, /غير متاح/, "unavailable label");
+  assert.match(badge, /جارِ التحميل/, "loading label");
+  assert.match(badge, /b\.innerHTML=/, "the label is (re)written on every render");
+  assert.match(html, /id="lnd-mkt-badge" role="status"/, "badge is an announced status");
+  const hero = functionBody("renderHero");
+  assert.match(hero, /renderLndMktBadge\(\);/, "renderHero keeps the badge in sync");
+});
+
+test("hero: new title with Amiri accent, 76px on desktop, four real assets in the board", () => {
+  assert.match(html, /<h1 id="landing-title">أسواقك كلها في مكان واحد،<br class="lnd-h1-br"> <em>وبالعربي\.<\/em><\/h1>/, "the design headline");
+  assert.match(html, /family=Amiri:wght@400;700&family=Cairo/, "Amiri is loaded (display=swap on the link)");
+  assert.match(html, /display=swap/, "font swap");
+  const emCss = html.match(/\.lnd-hero-copy h1 em\{[^}]*\}/)[0];
+  assert.match(emCss, /font-family:"Amiri",serif/, "accent word in Amiri");
+  assert.match(emCss, /color:var\(--gl\)/, "accent colour per design (tokenised)");
+  const h1 = html.match(/\.lnd-hero-copy h1\{[^}]*\}/)[0];
+  assert.match(h1, /clamp\(34px,7\.2vw,76px\)/, "76px cap on desktop, fluid on mobile");
+  const hero = functionBody("renderHero");
+  assert.match(hero, /rowById\("commodity:XAU"\)/, "gold is a hero asset");
+  assert.match(hero, /rowById\("crypto:BTC"\)/, "BTC is a hero asset");
+  assert.match(hero, /rowById\("egx:EGX30"\)/, "EGX30 is a hero asset");
+  assert.match(hero, /rowById\("fx:USD-EGP"\)/, "USD/EGP is a hero asset");
+  assert.match(html, /class="lnd-board"/, "the board panel exists");
+  const boardCss = html.match(/\.lnd-board\{[^}]*\}/)[0];
+  assert.match(boardCss, /background:var\(--glass\)/, "glass background per design (tokenised)");
+  assert.match(boardCss, /backdrop-filter:blur\(16px\)/, "16px blur per design");
+  assert.match(boardCss, /border-radius:var\(--r24\)/, "24px radius per design (tokenised)");
+  const navCss = html.match(/\.lnd-nav\{[^}]*\}/)[0];
+  assert.match(navCss, /background:var\(--glass\);backdrop-filter:blur\(16px\)/, "glass header per design (tokenised)");
 });
 
 test("server half: count24h is counted before the presentation cap", () => {
@@ -168,4 +227,239 @@ test("the guest board fetches only the public endpoints", () => {
   assert.deepEqual(urls, ["/api/markets/stocks", "/api/news/sources", "/api/news"], "stats read exactly the three public endpoints");
   const retry = html.slice(html.indexOf("window.lndRetry="), html.indexOf("};", html.indexOf("window.lndRetry=")) + 2);
   assert.ok(!/fetchJsonWithTimeout/.test(retry), "the manual retry reuses the shared board fetch, not a new endpoint");
+});
+
+test("document order: hero → stats → 4 cards → principles → gold VIP → plans → green trial → calculator → how → faq → footer", () => {
+  const order = [
+    '<section class="lnd-hero"',
+    '<section class="lnd-stats" id="lnd-stats"',
+    '<section id="features"',
+    '<section id="principles"',
+    '<section id="vip"',
+    '<section id="pricing"',
+    '<section class="lnd-trial"',
+    '<section id="calculator"',
+    '<section id="landing-how"',
+    '<section id="faq"',
+    '<footer class="lnd-footer">',
+  ];
+  const pos = order.map((s) => {
+    const i = html.indexOf(s);
+    assert.ok(i !== -1, `missing ${s}`);
+    return i;
+  });
+  assert.deepEqual([...pos].sort((a, b) => a - b), pos, "sections appear in the design order");
+  assert.ok(!html.includes('class="lnd-cta-final"'), "the old final CTA banner is gone (replaced by the green trial card)");
+});
+
+test("background details: visible curves, dot grid, sparkles, stronger right glow", () => {
+  const bg = html.match(/<div class="lnd-bg" aria-hidden="true">[\s\S]*?<\/svg>\s*((?:<i class="lnd-spark[^>]*><\/i>\s*){5})<\/div>/);
+  assert.ok(bg, "background layer: rays + dot grid + curves + five sparkles");
+  assert.ok(bg[0].includes('class="lnd-bg-dots"'), "dot-grid texture present");
+  assert.doesNotMatch(bg[0], /<canvas/i, "still no canvas");
+  const css = html.slice(html.indexOf(".lnd-bg{"), html.indexOf(".lnd-badge{"));
+  assert.match(css, /rgba\(16,185,129,\.22\)/, "the right-side green glow was strengthened");
+  assert.match(bg[0], /stroke="rgba\(52,211,153,\.15\)"/, "the green curve is visibly brighter");
+  assert.match(css, /\.lnd-bg-dots\{[^}]*radial-gradient\(rgba\(148,163,184,\.13\) 1px[^}]*mask-image:linear-gradient/, "dots are subtle and masked to the top");
+  assert.match(css, /\.lnd-spark-plus::before\{left:4px;top:0/, "plus marks are built from the sparkle element");
+  const rays = css.match(/@keyframes lndRay[ABC]\{[^@]*?\}\}/g) || [];
+  assert.ok(rays.length >= 3, "three ray keyframes still exist");
+  for (const kf of rays) {
+    assert.match(kf, /transform:/, "rays still move via transform only");
+    assert.doesNotMatch(kf, /top:|left:|right:|bottom:|width:|height:/, "…and nothing else");
+  }
+});
+
+test("four tool cards: real market rows, real headlines, locked VIP, computed example", () => {
+  for (const id of ["feat-mkt-visual", "feat-news-list", "feat-calc-visual"])
+    assert.ok(html.includes(`id="${id}"`), `card ${id} exists`);
+  assert.match(html, /id="feat-mkt-live" role="status"/, "the markets card announces its data state");
+  assert.match(html, /id="lnd-features-title">كل ما يحتاجه المستثمر <span class="lnd-hl">في شاشة واحدة\.<\/span>/, "the design headline of the cards section");
+  assert.match(html, /<a href="#pricing">شوف الباقات<\/a>/, "the opportunities card links to the real plans section");
+  const feat = functionBody("renderFeatCards");
+  assert.match(feat, /rowById\("egx:EGX30"\)/, "markets card reuses the hero rows");
+  assert.match(feat, /rowById\("fx:USD-EGP"\)/, "…including the EGP pair");
+  assert.match(feat, /\.filter\(d=>isReal\(d\[0\]\)\)/, "unpriced rows are never shown in the card");
+  assert.match(feat, /الأسعار غير متاحة الآن — لن نعرض أرقامًا بديلة\./, "honest unavailable state in the card");
+  assert.match(feat, /window\.__lndNewsTop/, "headlines come from the shared /api/news response");
+  assert.match(feat, /calcCompute\(\{amt:10000,price:25,pct:6\}\)/, "the example is computed with the public formula");
+  assert.match(html, /مثال محسوب/, "the example is labeled as computed, not a recommendation");
+  const stats = functionBody("loadStats");
+  assert.match(stats, /window\.__lndNewsTop=d\.items\.slice\(0,3\)/, "top-3 headlines are captured from the same /api/news response (no extra request)");
+  assert.ok(!/fetch|fetchJsonWithTimeout/.test(feat), "renderFeatCards renders only what the board/stats already loaded");
+});
+
+test("three principles pin the honesty contract", () => {
+  const sec = html.slice(html.indexOf('<section id="principles"'), html.indexOf('<section id="vip"'));
+  for (const [num, title] of [["01", "بيانات حقيقية"], ["02", "مصدر ووقت"], ["03", "وضوح كامل"]])
+    assert.ok(sec.includes(`>${num}<`) && sec.includes(title), `principle ${num} «${title}»`);
+});
+
+test("gold VIP card: design gold, gated features, CTA to the real plans", () => {
+  const sec = html.slice(html.indexOf('<section id="vip"'), html.indexOf('<section id="pricing"'));
+  assert.match(sec, /lnd-vip-gold/, "the gold card exists");
+  assert.match(sec, /id="lnd-vip-title">قرارات أدق\. أدوات أقوى\./, "the design headline");
+  assert.match(sec, /تُفعَّل على حسابك وتُحسب على أسعار المصادر المرخّصة وتتحقق صلاحيتها من الخادم/, "honesty: features are computed on licensed prices and gated server-side");
+  assert.match(sec, /href="#pricing">افتح VIP/, "the CTA anchors to the real plans section");
+  assert.ok(sec.includes("تنبيهات سعرية") && sec.includes("محلل أخبار") && sec.includes("الحاسبات المتقدمة"), "the five VIP features are listed");
+  const css = html.match(/\.lnd-vip-gold\{[^}]*\}/)[0];
+  assert.match(css, /rgba\(227,183,91/, "gold accent per design (#E3B75B = rgba(227,183,91))");
+});
+
+test("plans: static 0-EGP free card + server plan cards; strikethrough only from admin oldPrice", () => {
+  const sec = html.slice(html.indexOf('<section id="pricing"'), html.indexOf('<section class="lnd-trial"'));
+  assert.match(sec, /class="lnd-plan lnd-plan-free"/, "the free card is static HTML");
+  assert.match(sec, /<b>٠<\/b><span>ج\.م — للأبد<\/span>/, "…at 0 EGP forever");
+  assert.ok(sec.includes('id="lnd-vip-plans"'), "server plans render into the section");
+  assert.ok(sec.indexOf('id="lnd-vip-plans"') < sec.indexOf('class="lnd-plan lnd-plan-free"'), "per design: VIP plans sit on the right, the free card leftmost");
+  assert.ok(sec.includes('id="lnd-pay-methods"') && sec.includes('id="lnd-policy"'), "payment methods + policy block kept");
+  const price = functionBody("renderPricing");
+  assert.match(price, /fetchSubscriptionConfig/, "plans come only from /api/payments/config");
+  assert.ok(price.includes('p.oldPrice?`<s>${fmtInt(p.oldPrice)}</s>`:""'), "strikethrough only when the admin set an oldPrice");
+  assert.ok(price.includes('p.badge?`<span class="lnd-plan-badge">'), "badges only from the admin config");
+  assert.ok(price.includes('data-vip="${esc(key)}"'), "plan CTAs are wired");
+  assert.match(price, /openAuthModal\("register"\)/, "…to the real registration flow");
+  assert.match(price, /تعذر تحميل الباقات الآن — لن نعرض أسعارًا بديلة\./, "failure refuses substitute prices");
+  assert.match(price, /lnd-pricing-retry/, "…with a manual retry");
+});
+
+test("green trial card: real email → real registration, no fake trial promise", () => {
+  const sec = html.slice(html.indexOf('<section class="lnd-trial"'), html.indexOf('<section id="calculator"'));
+  assert.match(sec, /لا بطاقة، لا خصم، ولا تجديد تلقائي/, "the trial terms match the real server flow");
+  assert.match(sec, /7 أيام/, "…7 days as implemented server-side");
+  assert.match(sec, /onsubmit="return lndStartTrial\(this\)"/, "the form is handled by lndStartTrial");
+  const fn = functionBody("lndStartTrial");
+  assert.match(fn, /openAuthModal\("register"\)/, "opens the real registration modal");
+  assert.match(fn, /a-email/, "…and prefills the registration email");
+  assert.match(fn, /window\.__lndTrialEmail/, "the email is passed to the flow");
+  assert.ok(!/alert\(|confirm\(/.test(fn), "no blocking dialogs");
+  const css = html.match(/\.lnd-trial\{[^}]*\}/)[0];
+  assert.match(css, /var\(--gl\),#0E9F6E/, "green gradient per design (tokenised)");
+  const trialCss = html.slice(html.indexOf(".lnd-trial-row input{"), html.indexOf("/* ─── Footer rebuild"));
+  assert.match(trialCss, /\.lnd-trial-row input\{[^}]*min-height:50px/, "input is a 44px+ touch target");
+  assert.match(trialCss, /\.lnd-trial-btn\{min-height:50px/, "the button is a 44px+ touch target");
+});
+
+test("footer: brand + real platform/resources/contact columns, disclaimer kept", () => {
+  const fStart = html.indexOf('<footer class="lnd-footer">');
+  const foot = html.slice(fStart, html.indexOf("</footer>", fStart));
+  assert.ok(foot.includes('href="/privacy.html"') && foot.includes('href="/terms.html"'), "privacy + terms link to the real pages");
+  assert.ok(foot.includes("wa.me/201008605139"), "the WhatsApp contact is kept");
+  assert.match(foot, /وليست توصية استثمارية/, "the financial disclaimer is kept");
+  for (const col of ["المنصة", "موارد", "تواصل"]) assert.ok(foot.includes(`<b>${col}</b>`), `column ${col}`);
+  assert.ok(html.includes('id="lnd-mobbar"'), "the mobile quick bar is still present");
+});
+
+/* ────────────────────────────────────────────────────────────────
+   STEP 1 — design tokens (single source of truth for ALL pages)
+   ──────────────────────────────────────────────────────────────── */
+
+const tokensCss = readFileSync(join(here, "tokens.css"), "utf8");
+const uiCss = readFileSync(join(here, "ui.css"), "utf8");
+const chartRuntime = readFileSync(join(here, "src", "chart-runtime.ts"), "utf8");
+const adminHtml = readFileSync(join(here, "admin.html"), "utf8");
+
+function styleBlocks(page) {
+  return [...page.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]);
+}
+
+test("tokens: both files exist and are the single :root source loaded by BOTH entries", () => {
+  const defined = new Set([...tokensCss.matchAll(/--[a-z0-9-]+(?=:)/g)].map((m) => m[0]));
+  assert.ok(defined.size >= 60, `tokens.css defines the full palette (${defined.size} custom properties)`);
+  for (const name of ["--ink", "--s1", "--b1", "--t1", "--t3", "--g", "--g2", "--gl", "--vip", "--up", "--dn", "--glass", "--hairline", "--r16", "--sh-1", "--t-fast", "--sans", "--mono"])
+    assert.ok(defined.has(name), `tokens.css defines ${name}`);
+  // exactly one :root, in tokens.css only
+  assert.equal((tokensCss.match(/:root/g) || []).length, 1, "tokens.css owns the single :root");
+  assert.equal((uiCss.match(/:root/g) || []).length, 0, "ui.css adds no :root of its own");
+  // both pages load them via the shared JS bridge (Vite 7 drops shared linked CSS
+  // across multiple HTML entries, so the imports live in the entry module)
+  assert.match(chartRuntime, /import "\.\.\/tokens\.css"/, "chart-runtime imports tokens.css");
+  assert.match(chartRuntime, /import "\.\.\/ui\.css"/, "chart-runtime imports ui.css");
+  for (const [name, page] of [["index.html", html], ["admin.html", adminHtml]]) {
+    assert.equal((page.match(/<link[^>]*tokens\.css/g) || []).length, 0, `${name}: no dangling <link> (would be dropped by Vite)`);
+    assert.match(page, /<script type="module" src="\/src\/chart-runtime\.ts">/, `${name} loads the shared CSS bridge`);
+  }
+});
+
+test("tokens: no page defines :root of its own anymore (no duplication)", () => {
+  for (const [name, page] of [["index.html", html], ["admin.html", adminHtml]]) {
+    assert.equal((styleBlocks(page).join("\n").match(/:root/g) || []).length, 0, `${name}: :root lives only in tokens.css`);
+  }
+});
+
+test("tokens: every var() used is defined in tokens.css (no undefined custom properties)", () => {
+  const defined = new Set([...tokensCss.matchAll(/--[a-z0-9-]+(?=:)/g)].map((m) => m[0]));
+  const used = new Set();
+  for (const page of [html, adminHtml, uiCss]) {
+    const blocks = page === uiCss ? [uiCss] : styleBlocks(page);
+    for (const m of blocks.join("\n").matchAll(/var\(\s*(--[a-z0-9-]+)/g)) used.add(m[1]);
+  }
+  const missing = [...used].filter((u) => !defined.has(u));
+  assert.deepEqual(missing, [], `undefined custom properties: ${missing.join(", ")}`);
+});
+
+test("tokens: the var(--bg) bug is gone and unified colours use the app tokens", () => {
+  for (const [name, page] of [["index.html", html], ["admin.html", adminHtml]]) {
+    assert.ok(!/var\(--bg\)/.test(page), `${name}: no var(--bg) (undefined variable bug)`);
+    // divergent colours now reference tokens, not raw hex
+    const css = styleBlocks(page).join("\n").toUpperCase();
+    for (const gone of ["#EAF0FF", "#F5C451", "#24305E", "#04121F", "#B9C4E6", "#C9D4F2", "#C7D2E4", "#8FA0C9", "#2F3F7A"])
+      assert.ok(!css.includes(gone), `${name}: ${gone} unified into tokens.css`);
+  }
+});
+
+test("tokens: green accent, glass and reduced-motion live in the single token file", () => {
+  assert.match(tokensCss, /--gl:#34D399/, "#34D399 registered as --gl");
+  assert.match(tokensCss, /--glass:rgba\(14,21,36,\.62\)/, "landing glass value tokenised");
+  assert.match(tokensCss, /--glass-hdr:rgba\(3,7,18,\.96\)/, "header glass tokenised");
+  assert.match(tokensCss, /--hairline:rgba\(255,255,255,\.08\)/, "hairline tokenised");
+  assert.match(tokensCss, /@media \(prefers-reduced-motion:\s*reduce\)/, "global reduced-motion rule");
+  assert.match(tokensCss, /animation-iteration-count:1 !important/, "animations stop (not hide) under reduced motion");
+});
+
+/* ── STEP 5 — contrast + states (empty/loading/error are never void) ── */
+
+function wcagLum(hex) {
+  const h = hex.replace("#", "");
+  const f = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2];
+}
+function wcagContrast(a, b) {
+  const la = wcagLum(a), lb = wcagLum(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+test("contrast: every text token hits ≥4.5:1 on the surfaces it renders on", () => {
+  const get = (name) => {
+    const m = tokensCss.match(new RegExp(`--${name}:(#[0-9A-Fa-f]{6})`));
+    assert.ok(m, `tokens.css defines --${name} as hex`);
+    return m[1];
+  };
+  const surfaces = { ink: get("ink"), s1: get("s1"), s2: get("s2"), s3: get("s3") };
+  for (const t of ["t1", "t2", "t3", "t4", "t5"]) {
+    for (const [sname, hex] of Object.entries(surfaces)) {
+      const ratio = wcagContrast(get(t), hex);
+      assert.ok(ratio >= 4.5, `--${t} on --${sname} is ${ratio.toFixed(2)}:1 (need 4.5)`);
+    }
+  }
+});
+
+test("states: loading shows a spinner/skeleton, errors name themselves + offer retry, empties explain", () => {
+  // loading indicators
+  assert.match(html, /class="sp sp-g"/, "opps loading spinner (static ring stays visible without motion)");
+  assert.match(html, /function showSkeletons\(/, "news feed skeleton rows");
+  assert.match(html, /function marketSkeletonRows\(/, "markets skeleton rows");
+  assert.match(html, /calculator-skeleton/, "calculators skeleton");
+  assert.match(html, /vloading\.v-skeleton/, "VIP loading skeleton");
+  // clear error messages + retry, no silent failures
+  assert.match(html, /تعذّر تحميل الأخبار — حاول مرة أخرى/, "news error message names the failure");
+  assert.match(html, /fetchMarketsData\(true\)"[^>]*>↻ إعادة المحاولة/, "markets retry button");
+  assert.match(html, /تعذر تحميل الفرص/, "opps error message");
+  assert.match(html, /defe|تعذر التحديث — لا توجد بيانات بديلة/, "opps failed-refresh notice is explicit");
+  assert.match(html, /بيانات الأسواق غير متاحة حاليًا/, "ticker honest unavailable line");
+  // empty states explain what to do
+  assert.match(html, /لا توجد أخبار مطابقة للفلتر/, "news empty state");
+  assert.match(html, /قائمة المتابعة فارغة/, "watchlist empty state explains how to add");
+  assert.match(html, /لا توجد فرص في هذه الفئة/, "opps empty state");
 });

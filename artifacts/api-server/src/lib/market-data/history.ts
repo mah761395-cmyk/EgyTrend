@@ -195,7 +195,12 @@ export type MarketSparkline = {
  * vendors can create a visually plausible but false candle series, so it is
  * forbidden even when both sources are licensed.
  */
-function selectOneSource(rows: StoredMarketOhlc[], allowedSourceIds?: ReadonlySet<string>): StoredMarketOhlc[] {
+/**
+ * Choose the single most complete licensed source for an instrument's rows.
+ * Exported so other read paths (e.g. the portfolio value series) reuse the
+ * exact same license/quality rules instead of re-implementing them.
+ */
+export function selectOneSource(rows: StoredMarketOhlc[], allowedSourceIds?: ReadonlySet<string>): StoredMarketOhlc[] {
   const stats = new Map<string, { count: number; latest: number }>();
   for (const row of rows) {
     if (allowedSourceIds && !allowedSourceIds.has(row.sourceId)) continue;
@@ -237,7 +242,8 @@ function rowsToBars(rows: StoredMarketOhlc[]): ChartBar[] {
   });
 }
 
-function sourceMeta(rows: StoredMarketOhlc[]): MarketHistorySnapshot["source"] | undefined {
+/** Source attribution of a row set (most recent as-of wins). Exported for reuse. */
+export function sourceMeta(rows: StoredMarketOhlc[]): MarketHistorySnapshot["source"] | undefined {
   const latest = [...rows].sort((a, b) => b.asOf.getTime() - a.asOf.getTime())[0];
   if (!latest) return undefined;
   return {
@@ -325,6 +331,11 @@ export function historySnapshotFromRows(options: {
 let testReadRepository: MarketHistoryReadRepository | null = null;
 export function setMarketHistoryReadRepositoryForTest(repository: MarketHistoryReadRepository | null): void {
   testReadRepository = repository;
+}
+
+/** Same repository fallback the read endpoints use (override → seam → Drizzle). */
+export function resolveMarketHistoryReadRepository(override?: MarketHistoryReadRepository): MarketHistoryReadRepository {
+  return override ?? testReadRepository ?? new DrizzleMarketHistoryReadRepository();
 }
 
 export async function getMarketHistorySnapshot(options: {

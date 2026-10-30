@@ -1,0 +1,53 @@
+/* ============================================================
+   EgyTrend — Shared UI primitives (visual contracts)
+   Every value reads from tokens.css. Applied to app pages in
+   UI-unify steps 2-4; creating them here centralizes the look.
+   ============================================================ */
+/* ── Card ── */
+.ui-card{background:var(--s1);border:1px solid var(--b1);border-radius:var(--r16);padding:var(--sp-4);min-width:0;}
+.ui-card--glass{background:var(--glass);backdrop-filter:blur(var(--blur-glass));-webkit-backdrop-filter:blur(var(--blur-glass));border:1px solid var(--hairline);border-radius:var(--r24);}
+.ui-card--gold{background:linear-gradient(150deg,rgba(227,183,91,.10),rgba(14,21,36,.72) 46%);border:1px solid rgba(227,183,91,.40);border-radius:var(--r24);}
+.ui-card--dense{padding:var(--sp-3);border-radius:var(--r12);}
+/* ── Button — 44px min touch target, 150ms transitions ── */
+.ui-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:1px solid var(--b1);border-radius:var(--r12);background:var(--s2);color:var(--t1);font:800 13px var(--sans);cursor:pointer;padding:0 var(--sp-4);transition:filter var(--t-fast),border-color var(--t-fast),background var(--t-fast);}
+.ui-btn:hover{filter:brightness(1.08);}
+.ui-btn:focus-visible{outline:none;box-shadow:var(--focus);}
+.ui-btn:disabled{opacity:.5;cursor:not-allowed;}
+.ui-btn--primary{border:0;background:linear-gradient(135deg,var(--g2),var(--gl));color:var(--ink);box-shadow:var(--sh-glow-lg);}
+.ui-btn--gold{border:0;background:linear-gradient(135deg,var(--vip2),var(--vip));color:var(--ink);box-shadow:var(--sh-gold);}
+.ui-btn--ghost{background:transparent;}
+.ui-btn--danger{background:var(--dnd);border-color:var(--dn);}
+.ui-btn--icon{width:44px;height:44px;padding:0;background:var(--s1);}
+/* ── Badge / chip — status variants (never a fixed label) ── */
+.ui-badge{display:inline-flex;align-items:center;gap:6px;font-size:9.5px;font-weight:800;color:var(--t2);background:var(--glass);border:1px solid var(--hairline);border-radius:var(--r-full);padding:5px 10px;line-height:1;}
+.ui-badge i{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;flex:0 0 auto;}
+.ui-badge--live{color:var(--gl);border-color:var(--gb2);}
+.ui-badge--closed{color:var(--t3);}
+.ui-badge--stale{color:var(--au);border-color:var(--au);}
+.ui-badge--err{color:var(--dn);border-color:var(--dn);background:var(--dnd);}
+.ui-badge--vip{color:var(--vip);border-color:rgba(227,183,91,.45);background:var(--vipd);}
+.ui-badge--neutral{color:var(--t3);border-color:var(--b1);background:var(--s1);}
+/* ── Input ── */
+.ui-input{width:100%;min-height:44px;padding:var(--sp-3) var(--sp-4);background:var(--s1);border:1px solid var(--b1);border-radius:var(--r12);color:var(--t1);font:600 14px var(--sans);outline:none;transition:border-color var(--t-fast),box-shadow var(--t-fast);}
+.ui-input::placeholder{color:var(--t5);}
+.ui-input:focus{border-color:var(--gb2);box-shadow:var(--focus);}
+/* ── Tabs ── */
+.ui-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none;}
+.ui-tabs::-webkit-scrollbar{display:none;}
+.ui-tab{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 var(--sp-4);border:1px solid var(--b1);border-radius:var(--r-full);background:var(--s1);color:var(--t3);font:800 12px var(--sans);cursor:pointer;transition:color var(--t-fast),border-color var(--t-fast),background var(--t-fast);}
+.ui-tab:hover{color:var(--t1);}
+.ui-tab.on{color:var(--gl);border-color:var(--gb2);background:var(--gd);}
+/* ── Table + horizontal scroll box (390px-safe) ── */
+.ui-tbl-wrap{overflow-x:auto;border:1px solid var(--b1);border-radius:var(--r12);-webkit-overflow-scrolling:touch;}
+.ui-tbl{width:100%;border-collapse:collapse;font-size:11px;color:var(--t2);}
+.ui-tbl th{font-weight:800;color:var(--t4);text-align:start;padding:8px 10px;border-bottom:1px solid var(--b1);white-space:nowrap;background:var(--s1);}
+.ui-tbl td{padding:8px 10px;border-bottom:1px solid var(--b1);white-space:nowrap;}
+.ui-tbl tr:last-child td{border-bottom:0;}
+/* ── Price + source line (markets contract: value, delta, source, time) ── */
+.ui-price{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--t1);direction:ltr;}
+.ui-src{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--t4);line-height:1.6;}
+.ui-delta-up{color:var(--gl);}
+.ui-delta-dn{color:var(--dn);}
+.ui-delta-flat{color:var(--t4);}
+/* ── Skeleton (same shimmer contract as .sk; stays visible under reduced motion) ── */
+.ui-skel{display:block;background:linear-gradient(90deg,var(--ink3) 25%,var(--ink4) 50%,var(--ink3) 75%);background-size:600px 100%;animation:shimmer 1.4s ease infinite;border-radius:var(--r10);}

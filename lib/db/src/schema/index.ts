@@ -16,6 +16,7 @@ export * from "./subscription_lifecycle";
 export * from "./free_trials";
 export * from "./referrals";
 export * from "./broadcast_messages";
+export * from "./portfolio_cash_events";
 export * from "./portfolio_positions";
 export * from "./portfolio_transactions";
 export * from "./portfolio_settings";

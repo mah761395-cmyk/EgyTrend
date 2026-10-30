@@ -4,6 +4,7 @@ import { after, before, test } from "node:test";
 import { and, eq, isNull } from "drizzle-orm";
 import {
   appUsersTable,
+  portfolioCashEventsTable,
   portfolioPositionsTable,
   portfolioSettingsTable,
   portfolioTransactionsTable,
@@ -27,6 +28,11 @@ type MemoryDatabase = Awaited<ReturnType<typeof createMemoryDatabase>>;
 let memory: MemoryDatabase;
 let server: http.Server;
 let baseUrl = "";
+/* pg-mem cannot run the history store's ranked window-function query, so
+ * tests register a plain-select equivalent with the same contract (mirrors
+ * the payment-lifecycle harness). Individual tests may swap it and must
+ * restore it afterwards. */
+let pgMemHistorySeam: import("../lib/market-data/history").MarketHistoryReadRepository | null = null;
 
 type CookieJar = { value?: string };
 
@@ -91,6 +97,17 @@ const near = (actual: unknown, expected: number, eps = 0.011, label = "") => {
 before(async () => {
   memory = await createMemoryDatabase();
   (globalThis as typeof globalThis & { __egytrendTestDatabase?: typeof memory.db }).__egytrendTestDatabase = memory.db;
+  const { setMarketHistoryReadRepositoryForTest } = await import("../lib/market-data/history");
+  const { marketDailyOhlcTable } = await import("@workspace/db/schema");
+  pgMemHistorySeam = {
+    async list(instrumentIds: string[], fromDate?: string) {
+      const rows = await memory.db.select().from(marketDailyOhlcTable);
+      return rows
+        .filter((row) => instrumentIds.includes(row.instrumentId) && (!fromDate || row.tradingDate >= fromDate))
+        .sort((a, b) => a.tradingDate.localeCompare(b.tradingDate));
+    },
+  };
+  setMarketHistoryReadRepositoryForTest(pgMemHistorySeam);
   const { default: app } = await import("../app");
   server = http.createServer(app);
   await new Promise<void>((resolve, reject) => {
@@ -103,6 +120,8 @@ before(async () => {
 });
 
 after(async () => {
+  const { setMarketHistoryReadRepositoryForTest } = await import("../lib/market-data/history");
+  setMarketHistoryReadRepositoryForTest(null);
   if (server) {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
@@ -541,4 +560,323 @@ test("portfolio alert valuation is pure, uses verified quotes only, and never in
   assert.equal(evaluatePortfolioCondition("portfolio_value_below", 1000, 1000.01), false);
   assert.equal(evaluatePortfolioCondition("concentration_above", 45, 45.01), true);
   assert.equal(evaluatePortfolioCondition("concentration_above", 45, 44.99), false);
+});
+
+/* ═══════════ Cash events: deposits / withdrawals / dividends ═══════════ */
+
+test("cash events move the cash line and are listed with their totals", async () => {
+  const { jar } = await registerVipUser("01088880001", "Cash Events User");
+
+  const deposit = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "deposit", amount: 5000, tradeDate: "2026-09-01", note: "تحويل من البنك" }),
+  });
+  assert.equal(deposit.response.status, 201, "deposit accepted");
+  near((deposit.body as { totalCash?: number }).totalCash, 5000, 0.01, "cash after deposit");
+
+  const withdrawal = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "withdrawal", amount: 3000, tradeDate: "2026-09-02" }),
+  });
+  assert.equal(withdrawal.response.status, 201, "withdrawal within balance accepted");
+  near((withdrawal.body as { totalCash?: number }).totalCash, 2000, 0.01, "cash after withdrawal");
+
+  const dividend = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "dividend", amount: 250, tradeDate: "2026-09-03", symbol: "COMI" }),
+  });
+  assert.equal(dividend.response.status, 201, "dividend accepted");
+  near((dividend.body as { totalCash?: number }).totalCash, 2250, 0.01, "cash after dividend");
+  const dividendEvent = (dividend.body as { event: Record<string, unknown> }).event;
+  assert.equal(dividendEvent.symbol, "COMI", "dividend keeps the paying symbol");
+  assert.equal(typeof dividendEvent.instrumentId, "string", "dividend resolves the catalog instrument id");
+
+  const read = await api("/api/portfolio", jar);
+  assert.equal(read.response.status, 200);
+  const summary = summaryOf(read.body);
+  near(summary.cash, 2250, 0.01, "GET summary.cash includes cash events");
+  near(summary.cashEventsIn, 5250, 0.01, "cashEventsIn = deposit + dividend");
+  near(summary.cashEventsOut, 3000, 0.01, "cashEventsOut = withdrawal");
+  const events = (read.body?.cashEvents as Array<Record<string, unknown>>) || [];
+  assert.equal(events.length, 3, "all three events listed");
+  assert.equal(events[0].kind, "dividend", "newest event first");
+  assert.equal(events[0].tradeDate, "2026-09-03");
+  assert.equal(events[0].note === null, true);
+  assert.equal(events[2].note, "تحويل من البنك");
+
+  /* A withdrawal above the known balance is rejected with the exact amount. */
+  const tooBig = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "withdrawal", amount: 999999, tradeDate: "2026-09-04" }),
+  });
+  assert.equal(tooBig.response.status, 400, "over-withdrawal rejected");
+  assert.equal((tooBig.body as { code?: string }).code, "insufficient_cash");
+  near((tooBig.body as { cashAvailable?: number }).cashAvailable, 2250, 0.01, "reported available balance");
+
+  /* Deleting the deposit (soft archive) removes it from the cash line. */
+  const depositId = String((deposit.body as { event: { id: string } }).event.id);
+  const del = await api(`/api/portfolio/cash/${depositId}`, jar, { method: "DELETE" });
+  assert.equal(del.response.status, 200);
+  near((del.body as { totalCash?: number }).totalCash, -2750, 0.01, "cash after removing the deposit");
+  const read2 = await api("/api/portfolio", jar);
+  near(summaryOf(read2.body).cash, -2750, 0.01, "GET cash reflects the archived event");
+  const events2 = (read2.body?.cashEvents as Array<Record<string, unknown>>) || [];
+  assert.equal(events2.length, 2, "archived event no longer listed");
+  const [dbRow] = await memory.db.select().from(portfolioCashEventsTable).where(eq(portfolioCashEventsTable.id, depositId));
+  assert.ok(dbRow.archivedAt, "row is soft-archived, never hard-deleted");
+});
+
+test("withdrawal validation is temporal: it uses the balance as of the event date", async () => {
+  const { jar } = await registerVipUser("01099990001", "Cash Time User");
+  const settings = await api("/api/portfolio/settings", jar, {
+    method: "PUT",
+    body: JSON.stringify({ startingCash: 1000 }),
+  });
+  assert.equal(settings.response.status, 200);
+  const buy = await api("/api/portfolio/transactions", jar, addTxInit("COMI", "buy", 100, 10, { tradeDate: "2026-09-01" }));
+  assert.equal(buy.response.status, 201, "buy accepted (1000 cash exactly)");
+
+  /* Balance as of 2026-09-15 is 0 (the buy used everything) — reject. */
+  const beforeDeposit = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "withdrawal", amount: 500, tradeDate: "2026-09-15" }),
+  });
+  assert.equal(beforeDeposit.response.status, 400);
+  assert.equal((beforeDeposit.body as { code?: string }).code, "insufficient_cash");
+  near((beforeDeposit.body as { cashAvailable?: number }).cashAvailable, 0, 0.01, "zero balance at that date");
+
+  /* A deposit on 09-10 makes 800 available as of 09-15 — accept. */
+  const deposit = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "deposit", amount: 800, tradeDate: "2026-09-10" }),
+  });
+  assert.equal(deposit.response.status, 201);
+  const afterDeposit = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "withdrawal", amount: 500, tradeDate: "2026-09-15" }),
+  });
+  assert.equal(afterDeposit.response.status, 201, "same withdrawal now fits the balance of its date");
+
+  /* Still impossible for an earlier date: the deposit post-dates 09-05. */
+  const earlier = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "withdrawal", amount: 1, tradeDate: "2026-09-05" }),
+  });
+  assert.equal(earlier.response.status, 400, "withdrawal before the deposit is still impossible");
+});
+
+test("cash event input is validated and VIP-gated like the rest of the portfolio", async () => {
+  const { jar } = await registerVipUser("01022220003", "Cash Validation User");
+
+  const badKind = await api("/api/portfolio/cash", jar, { method: "POST", body: JSON.stringify({ kind: "gift", amount: 100 }) });
+  assert.equal(badKind.response.status, 400, "unknown kind rejected");
+  const negative = await api("/api/portfolio/cash", jar, { method: "POST", body: JSON.stringify({ kind: "deposit", amount: -5 }) });
+  assert.equal(negative.response.status, 400, "negative amount rejected");
+  const huge = await api("/api/portfolio/cash", jar, { method: "POST", body: JSON.stringify({ kind: "deposit", amount: 1e12 }) });
+  assert.equal(huge.response.status, 400, "unbounded amount rejected");
+  const future = await api("/api/portfolio/cash", jar, { method: "POST", body: JSON.stringify({ kind: "deposit", amount: 10, tradeDate: "2100-01-01" }) });
+  assert.equal(future.response.status, 400, "future date rejected");
+  const unknownSymbol = await api("/api/portfolio/cash", jar, { method: "POST", body: JSON.stringify({ kind: "dividend", amount: 10, symbol: "NOTREAL" }) });
+  assert.equal(unknownSymbol.response.status, 400, "dividend for a non-catalog symbol rejected");
+  const genericDividend = await api("/api/portfolio/cash", jar, { method: "POST", body: JSON.stringify({ kind: "dividend", amount: 10 }) });
+  assert.equal(genericDividend.response.status, 201, "generic dividend (no symbol) accepted");
+
+  const anonWrite = await api("/api/portfolio/cash", {}, { method: "POST", body: JSON.stringify({ kind: "deposit", amount: 10 }) });
+  assert.equal(anonWrite.response.status, 401, "anonymous cash write rejected");
+  const freeJar: CookieJar = {};
+  const freeReg = await api("/api/user/register", freeJar, {
+    method: "POST",
+    body: JSON.stringify({ name: "Free Cash User", phone: "01000000009", password: "FreeCashPass123!" }),
+  });
+  assert.equal(freeReg.response.status, 201);
+  const freeWrite = await api("/api/portfolio/cash", freeJar, { method: "POST", body: JSON.stringify({ kind: "deposit", amount: 10 }) });
+  assert.equal(freeWrite.response.status, 403, "free user cash write is VIP-gated");
+});
+
+test("cash events are isolated between users", async () => {
+  const alice = await registerVipUser("01088880002", "Cash Alice");
+  const bob = await registerVipUser("01088880003", "Cash Bob");
+  const deposit = await api("/api/portfolio/cash", alice.jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "deposit", amount: 7777, tradeDate: "2026-09-01" }),
+  });
+  assert.equal(deposit.response.status, 201);
+  const depositId = String((deposit.body as { event: { id: string } }).event.id);
+
+  const bobRead = await api("/api/portfolio", bob.jar);
+  assert.equal(((bobRead.body?.cashEvents as unknown[]) || []).length, 0, "bob sees no cash events");
+  near(summaryOf(bobRead.body).cash, 0, 0.01, "bob's cash is untouched");
+
+  const bobDelete = await api(`/api/portfolio/cash/${depositId}`, bob.jar, { method: "DELETE" });
+  assert.equal(bobDelete.response.status, 404, "bob cannot archive alice's event");
+  const aliceRead = await api("/api/portfolio", alice.jar);
+  near(summaryOf(aliceRead.body).cash, 7777, 0.01, "alice's deposit survived");
+});
+
+/* ═══════════ Value-over-time series ═══════════ */
+
+function cairoTodayForTest(from: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" }).format(from);
+}
+
+function daysBefore(days: number, from: Date): string {
+  /* Cairo calendar date, consistent with cairoTodayForTest() and the route's
+   * cairoToday(). The previous UTC-based math returned the previous day while
+   * Cairo was already on the next one (Cairo 00:00–03:00 = UTC 21:00–24:00),
+   * so the "today" close row landed one day early and the series reported
+   * an honest gap on the final day → basis "partial" (CI failed 2026-10-30). */
+  const m = cairoTodayForTest(from).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) throw new Error("unparseable Cairo date");
+  /* Noon anchor: pure calendar-day arithmetic, no local-timezone drift. */
+  const anchor = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) - days, 12);
+  return new Date(anchor).toISOString().slice(0, 10);
+}
+
+test("the portfolio series endpoint is VIP-gated and fails closed without approved history", async () => {
+  const anon = await api("/api/portfolio/series?range=1M", {});
+  assert.equal(anon.response.status, 401, "anonymous series read is rejected");
+
+  const freeJar: CookieJar = {};
+  const freeReg = await api("/api/user/register", freeJar, {
+    method: "POST",
+    body: JSON.stringify({ name: "Free Series User", phone: "01088880010", password: "FreeSeriesPass1!" }),
+  });
+  assert.equal(freeReg.response.status, 201);
+  const free = await api("/api/portfolio/series", freeJar);
+  assert.equal(free.response.status, 403, "free user series read is VIP-gated");
+
+  const { jar } = await registerVipUser("01088880011", "Series User");
+  const buy = await api("/api/portfolio/transactions", jar, addTxInit("COMI", "buy", 10, 10, { tradeDate: "2026-09-01" }));
+  assert.equal(buy.response.status, 201);
+  const read = await api("/api/portfolio/series?range=1M", jar);
+  assert.equal(read.response.status, 200);
+  const body = read.body as Record<string, unknown>;
+  assert.equal(body.status, "ok");
+  assert.equal(body.range, "1M");
+  const to = cairoTodayForTest();
+  assert.equal(body.to, to);
+  /* This harness has no approved display source: fail closed — no rows, no
+   * benchmark, honest gaps, but the exact cash line. */
+  assert.equal(body.hasPriceHistory, false, "no stored history may be claimed");
+  assert.equal(body.benchmark, null, "no benchmark without approved history");
+  assert.deepEqual(body.missingSymbols, ["COMI"]);
+  assert.equal(body.basis, "partial", "held asset without any closes → partial");
+  const points = body.points as Array<Record<string, unknown>>;
+  assert.ok(points.length >= 30, "monthly window has daily points");
+  for (const point of points) {
+    near(Number(point.cash), -100, 0.01, "cash line is exact (0 − 100 buy)");
+    assert.equal(point.value, null, "never an invented total");
+    assert.equal(point.heldSymbols, 1);
+  }
+  assert.equal(body.dailyChangePct, null, "no valued points → no change claim");
+});
+
+test("the portfolio series folds stored closes into exact values with the EGX30 benchmark", async () => {
+  const { MarketDataService, setMarketDataServiceForTest, resetMarketDataServiceForTest } = await import("../lib/market-data/service");
+  const { setMarketHistoryReadRepositoryForTest } = await import("../lib/market-data/history");
+
+  /* A minimal, explicitly-approved synthetic history provider so the
+   * commercial re-display gate passes exactly as it does in production
+   * with an approved source. Reset in finally — no leakage to other tests. */
+  const fakeProvider = {
+    id: "synthetic-history",
+    name: "Synthetic History",
+    descriptor: () => ({
+      id: "synthetic-history", name: "Synthetic History", state: "configured" as const,
+      note: "test-only", coverage: ["stock"] as const, externalDisplayConfirmed: true,
+    }),
+    canServe: () => true,
+    getQuotes: async () => ({ quotes: [] }),
+    getDailyOhlc: async () => [],
+  };
+  setMarketDataServiceForTest(new MarketDataService([fakeProvider as never], []));
+  try {
+    const to = cairoTodayForTest();
+    const now = new Date();
+    const closes: Record<string, number> = {};
+    for (let offset = 5; offset >= 0; offset -= 1) closes[daysBefore(offset, now)] = 10 + (5 - offset);
+    /* offsets 5→0: closes 10,11,12,13,14,15 across the last six days (incl.
+     * today, as the daily snapshot job would have stored it). */
+    const rows = Object.entries(closes).map(([date, close], index) => ({
+      instrumentId: "stock:egx:COMI",
+      sourceId: "synthetic-history",
+      sourceName: "Synthetic History",
+      tradingDate: date,
+      open: close, high: close, low: close, close,
+      volume: null,
+      currency: "EGP",
+      delayedMinutes: 0,
+      asOf: new Date(Date.now() - index),
+    }));
+    const benchmarkRows = Object.keys(closes).map((date, index) => ({
+      instrumentId: "egx:EGX30",
+      sourceId: "synthetic-history",
+      sourceName: "Synthetic History",
+      tradingDate: date,
+      open: 3000 + index, high: 3000 + index, low: 3000 + index, close: 3000 + index,
+      volume: null,
+      currency: "EGP",
+      delayedMinutes: 0,
+      asOf: new Date(Date.now() - index),
+    }));
+    const allRows = [...rows, ...benchmarkRows];
+    setMarketHistoryReadRepositoryForTest({
+      async list(instrumentIds: string[], fromDate?: string) {
+        return allRows
+          .filter((row) => instrumentIds.includes(row.instrumentId) && (!fromDate || row.tradingDate >= fromDate))
+          .sort((a, b) => a.tradingDate.localeCompare(b.tradingDate));
+      },
+    });
+
+    const { jar } = await registerVipUser("01099990010", "Series Data User");
+    const buyDay = daysBefore(4, now);
+    const buy = await api("/api/portfolio/transactions", jar, addTxInit("COMI", "buy", 10, 10, { tradeDate: buyDay }));
+    assert.equal(buy.response.status, 201);
+
+    const read = await api("/api/portfolio/series?range=1M", jar);
+    assert.equal(read.response.status, 200);
+    const body = read.body as Record<string, unknown>;
+    assert.equal(body.basis, "full", "every holding day has a stored close");
+    assert.equal(body.hasPriceHistory, true);
+    assert.deepEqual(body.missingSymbols, []);
+    const points = body.points as Array<Record<string, unknown>>;
+    const byDate = new Map(points.map((point) => [point.date, point]));
+    /* Cash: 0 − 100 (buy). Last close = 15 → total 50; previous 14 → 40. */
+    near(Number(byDate.get(to)?.cash), -100, 0.01, "cash after the buy");
+    near(Number(byDate.get(to)?.heldValue), 150, 0.01, "10 shares × 15");
+    near(Number(byDate.get(to)?.value), 50, 0.01, "−100 cash + 150 held");
+    near(Number(byDate.get(daysBefore(1, now))?.value), -100 + 140, 0.01, "previous day total");
+    near(Number(body.dailyChangePct), ((50 - 40) / 40) * 100, 0.05, "change between the last two valued points");
+    /* The buy day itself (a stored close exists for it too): −100 + 10·11. */
+    near(Number(byDate.get(buyDay)?.value), -100 + 110, 0.01, "buy day total");
+
+    const benchmark = body.benchmark as { symbol: string; points: Array<{ date: string; close: number }>; source: { id: string; name: string } | null } | null;
+    assert.ok(benchmark, "EGX30 benchmark present when stored rows exist");
+    assert.equal(benchmark.symbol, "EGX30");
+    assert.equal(benchmark.points.length, 6);
+    assert.equal(benchmark.points[benchmark.points.length - 1].date, to);
+    assert.ok(benchmark.source, "benchmark carries its source attribution");
+    assert.equal(benchmark.source.id, "synthetic-history");
+  } finally {
+    setMarketHistoryReadRepositoryForTest(pgMemHistorySeam);
+    resetMarketDataServiceForTest();
+  }
+});
+
+test("series data is isolated between users", async () => {
+  const alice = await registerVipUser("01099990011", "Series Alice");
+  const bob = await registerVipUser("01099990012", "Series Bob");
+  const buy = await api("/api/portfolio/transactions", alice.jar, addTxInit("COMI", "buy", 50, 20, { tradeDate: "2026-09-10" }));
+  assert.equal(buy.response.status, 201);
+
+  const bobRead = await api("/api/portfolio/series?range=3M", bob.jar);
+  assert.equal(bobRead.response.status, 200);
+  const bobBody = bobRead.body as Record<string, unknown>;
+  assert.deepEqual(bobBody.missingSymbols, [], "bob holds nothing");
+  assert.equal(bobBody.basis, "cash-only");
+  const bobPoints = bobBody.points as Array<Record<string, unknown>>;
+  for (const point of bobPoints) {
+    near(Number(point.cash), 0, 0.01, "bob's cash is never affected by alice's trades");
+    assert.equal(point.heldSymbols, 0);
+  }
 });

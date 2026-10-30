@@ -1,3 +1,10 @@
+/* Shared design system: one source of truth for tokens + ui primitives,
+ * loaded by BOTH entries (index + admin) at page start. (Imported from JS,
+ * not <link>: Vite 7 drops shared linked CSS when multiple HTML entries
+ * reference the same file.) */
+import "../tokens.css";
+import "../ui.css";
+
 export {};
 
 /*

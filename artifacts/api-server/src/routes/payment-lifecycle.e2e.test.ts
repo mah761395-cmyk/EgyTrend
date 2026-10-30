@@ -361,27 +361,47 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
   assert.equal(anonymousProbe.response.status, 403);
 
   /* With no licensed market provider configured, the API must be transparent:
-   * no Yahoo/TradingView/other unlicensed fallback and no fabricated price. */
+   * no Yahoo/TradingView/other unlicensed fallback and no fabricated price.
+   * The openly-licensed daily FX reference feed (open.er-api.com) is the only
+   * enabled provider here, but it is a third-party free endpoint: in
+   * environments where it is unreachable (offline CI, runner egress limits)
+   * the board has no verified snapshot and MUST fail closed with a clear
+   * unavailable state — never with invented rows. Both outcomes are asserted;
+   * neither may fabricate data. */
   const markets = await api("/api/markets", {});
-  assert.equal(markets.response.status, 200);
-  assert.equal(markets.body?.status, "ok");
-  const marketPayload = markets.body?.markets as Record<string, unknown[]>;
-  /* The only enabled provider is the openly-licensed daily FX reference feed.
-   * It must be the sole source of these rows: every rate carries its provider
-   * name, its end-of-day classification and the provider's own timestamp, and
-   * nothing else is invented for indices, commodities or crypto. */
-  assert.ok(marketPayload.eg.length > 0, "reference FX rates are served");
-  for (const raw of marketPayload.eg as Array<Record<string, unknown>>) {
-    assert.equal(raw.source, "ExchangeRate-API");
-    assert.equal(raw.freshness, "end-of-day");
-    assert.ok(Number.isFinite(raw.asOf) && (raw.asOf as number) > 0, "every rate carries a provider timestamp");
-    assert.equal(raw.flat, true, "no change direction is invented for a daily reference rate");
+  if (markets.response.status === 200) {
+    assert.equal(markets.body?.status, "ok");
+    const marketPayload = markets.body?.markets as Record<string, unknown[]>;
+    /* The only enabled provider is the openly-licensed daily FX reference
+     * feed, which serves the board's `fx` section (the pre-M1 shape put it
+     * in `eg` — the audit caught the stale pin failing on CI, where the
+     * feed is reachable and the 200 branch actually runs). Every rate must
+     * carry its provider name, its end-of-day classification and the
+     * provider's own timestamp; nothing is invented for the keyed sections
+     * (Egypt index, global indices, commodities, crypto), which stay
+     * explicitly empty + unavailable rather than silently green. */
+    const fxRows = marketPayload.fx as Array<Record<string, unknown>>;
+    assert.ok(fxRows.length > 0, "reference FX rates are served");
+    for (const raw of fxRows) {
+      assert.equal(raw.source, "ExchangeRate-API");
+      assert.equal(raw.freshness, "end-of-day");
+      assert.ok(Number.isFinite(raw.asOf) && (raw.asOf as number) > 0, "every rate carries a provider timestamp");
+      assert.equal(raw.flat, true, "no change direction is invented for a daily reference rate");
+    }
+    assert.deepEqual(marketPayload.eg, []);
+    assert.deepEqual(marketPayload.gl, []);
+    assert.deepEqual(marketPayload.cm, []);
+    assert.deepEqual(marketPayload.cr, []);
+    const sections = (markets.body?.freshness as { sections?: Record<string, { unavailable?: boolean }> }).sections ?? {};
+    assert.equal(sections.fx?.unavailable, false, "the FX reference section is available");
+    assert.equal(sections.eg?.unavailable, true, "the Egypt index section is honestly unavailable without its licensed provider");
+    assert.equal(sections.cm?.unavailable, true);
+  } else {
+    /* Reference feed unreachable from this environment: fail closed. */
+    assert.equal(markets.response.status, 503, `unlicensed-board must fail closed when the reference feed is unreachable, got ${markets.response.status}`);
+    assert.equal(markets.body?.status, "error", "unavailable state is explicit, not a silent empty board");
+    assert.equal(markets.body?.markets, undefined, "no market payload is served when the board is unavailable");
   }
-  assert.deepEqual(marketPayload.gl, []);
-  assert.deepEqual(marketPayload.cm, []);
-  assert.deepEqual(marketPayload.cr, []);
-  assert.equal((markets.body?.freshness as { sections?: Record<string, { unavailable?: boolean }> }).sections?.eg?.unavailable, false);
-  assert.equal((markets.body?.freshness as { sections?: Record<string, { unavailable?: boolean }> }).sections?.cm?.unavailable, true);
 
   /* Historical chart reads are also fail-closed. With no currently-approved
    * external-display provider, old/missing DB rows cannot become a fabricated

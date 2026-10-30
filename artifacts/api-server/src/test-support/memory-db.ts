@@ -244,6 +244,22 @@ export async function createMemoryDatabase(): Promise<{
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CHECK (starting_cash >= 0)
     );
+    CREATE TABLE portfolio_cash_events (
+      id text PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES app_users(id),
+      kind text NOT NULL,
+      amount numeric(18, 6) NOT NULL,
+      instrument_id text,
+      symbol text,
+      trade_date date NOT NULL,
+      note text,
+      archived_at timestamp,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CHECK (kind IN ('deposit', 'withdrawal', 'dividend')),
+      CHECK (amount > 0)
+    );
+    CREATE INDEX portfolio_cash_events_user_date_idx ON portfolio_cash_events(user_id, trade_date);
     CREATE TABLE user_price_alerts (
       id text PRIMARY KEY,
       user_id integer NOT NULL REFERENCES app_users(id),

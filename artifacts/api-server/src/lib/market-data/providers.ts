@@ -234,12 +234,26 @@ const LEGACY_FEEDS_DISABLED_ENV = "LEGACY_MARKET_FEEDS_DISABLED";
 const YAHOO_CHART_SYMBOLS: Record<string, string> = {
   "index:SPX": "^GSPC",
   "index:NASDAQ": "^IXIC",
+  "index:DJI": "^DJI",
+  "index:FCHI": "^FCHI",
   "index:DAX": "^GDAXI",
   "index:FTSE100": "^FTSE",
+  "index:N225": "^N225",
+  "index:DXY": "DX-Y.NYB",
   "commodity:XAU": "GC=F",
   "commodity:BRENT": "BZ=F",
+  "commodity:WTI": "CL=F",
+  "commodity:NATGAS": "NG=F",
   "commodity:XAG": "SI=F",
   "commodity:COPPER": "HG=F",
+  "commodity:WHEAT": "ZW=F",
+  /* International spot pairs: Yahoo publishes a market timestamp, so these
+   * rows carry source time (timeBasis "source"), unlike the once-a-day
+   * Egyptian reference pairs from ExchangeRate-API. */
+  "fx:EUR-USD": "EURUSD=X",
+  "fx:GBP-USD": "GBPUSD=X",
+  "fx:USD-JPY": "USDJPY=X",
+  "fx:AUD-USD": "AUDUSD=X",
 };
 
 type YahooChartPayload = {
@@ -1300,8 +1314,14 @@ function coinId(instrument: MarketInstrument): string | undefined {
   const ids: Record<string, string> = {
     "crypto:BTC": "bitcoin",
     "crypto:ETH": "ethereum",
-    "crypto:SOL": "solana",
     "crypto:XRP": "ripple",
+    "crypto:BNB": "binancecoin",
+    "crypto:SOL": "solana",
+    "crypto:DOGE": "dogecoin",
+    "crypto:ADA": "cardano",
+    "crypto:AVAX": "avalanche-2",
+    "crypto:LINK": "chainlink",
+    "crypto:TON": "the-open-network",
   };
   return ids[instrument.id];
 }

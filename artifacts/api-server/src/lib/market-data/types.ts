@@ -5,7 +5,7 @@
  * A quote is only created after a backend provider has returned a valid value.
  */
 
-export type MarketSection = "eg" | "gl" | "cm" | "cr";
+export type MarketSection = "eg" | "gl" | "cm" | "cr" | "fx";
 export type InstrumentKind =
   | "index"
   | "equity"

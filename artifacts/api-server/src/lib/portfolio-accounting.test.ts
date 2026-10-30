@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attachMarketValue, computePortfolio, quoteVerified, round6, type PortfolioTxInput } from "./portfolio-accounting";
+import { attachMarketValue, cashBalanceOn, cashEventDelta, computePortfolio, quoteVerified, round6, type PortfolioTxInput } from "./portfolio-accounting";
 
 let seq = 0;
 function tx(partial: Partial<PortfolioTxInput> & Pick<PortfolioTxInput, "symbol" | "side" | "quantity" | "price" | "tradeDate">): PortfolioTxInput {
@@ -230,4 +230,58 @@ test("totalBuyOutlay accumulates across symbols for a portfolio-wide denominator
   near(c.totalBuyOutlay, 2030);
   // HLDI avg = (1000+10)/50 = 20.2 → sold cost = 20·20.2 = 404
   near(c.costBasisSold, 404);
+});
+
+/* ═══════════ Cash events (pure) ═══════════ */
+
+test("cashEventDelta signs money in/out correctly and rejects garbage", () => {
+
+  assert.equal(cashEventDelta("deposit", 100), 100);
+  assert.equal(cashEventDelta("dividend", 100), 100);
+  assert.equal(cashEventDelta("withdrawal", 100), -100);
+  assert.equal(cashEventDelta("deposit", 0), 0);
+  assert.equal(cashEventDelta("deposit", -5), 0);
+  assert.equal(cashEventDelta("deposit", Number.NaN), 0);
+});
+
+test("cashBalanceOn folds trades and events up to the given date (inclusive)", () => {
+
+  const trades = [
+    { side: "buy" as const, quantity: 100, price: 10, fees: 10, tradeDate: "2026-01-05" },
+    { side: "sell" as const, quantity: 40, price: 13, fees: 5, tradeDate: "2026-02-01" },
+  ];
+  const events = [
+    { id: "e1", kind: "deposit" as const, amount: 5000, tradeDate: "2026-01-01", createdAtMs: 1 },
+    { id: "e2", kind: "withdrawal" as const, amount: 800, tradeDate: "2026-02-10", createdAtMs: 2 },
+  ];
+  /* Before anything: just starting cash. */
+  near(cashBalanceOn(1000, trades, events, "2025-12-31"), 1000);
+  /* After the deposit, before the buy: 1000 + 5000. */
+  near(cashBalanceOn(1000, trades, events, "2026-01-03"), 6000);
+  /* On the buy date (inclusive): 6000 − 1010. */
+  near(cashBalanceOn(1000, trades, events, "2026-01-05"), 4990);
+  /* After the sell: 4990 + (40·13 − 5) = 4990 + 515. */
+  near(cashBalanceOn(1000, trades, events, "2026-02-01"), 5505);
+  /* After the withdrawal: 5505 − 800. */
+  near(cashBalanceOn(1000, trades, events, "2026-02-10"), 4705);
+  /* A later date is the same (nothing after). */
+  near(cashBalanceOn(1000, trades, events, "2027-01-01"), 4705);
+});
+
+test("cashBalanceOn is stable with unsorted input and never throws on bad rows", () => {
+
+  const a = cashBalanceOn(
+    1000,
+    [
+      { side: "sell", quantity: 40, price: 13, fees: 5, tradeDate: "2026-02-01" },
+      { side: "buy", quantity: 100, price: 10, fees: 10, tradeDate: "2026-01-05" },
+    ],
+    [
+      { id: "e2", kind: "withdrawal", amount: 800, tradeDate: "2026-02-10", createdAtMs: 2 },
+      { id: "e1", kind: "deposit", amount: 5000, tradeDate: "2026-01-01", createdAtMs: 1 },
+    ],
+    "2026-02-10",
+  );
+  near(a, 4705);
+  near(cashBalanceOn(NaN, [], [], "2026-01-01"), 0);
 });
