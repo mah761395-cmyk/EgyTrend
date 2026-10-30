@@ -416,3 +416,50 @@ test("tokens: green accent, glass and reduced-motion live in the single token fi
   assert.match(tokensCss, /@media \(prefers-reduced-motion:\s*reduce\)/, "global reduced-motion rule");
   assert.match(tokensCss, /animation-iteration-count:1 !important/, "animations stop (not hide) under reduced motion");
 });
+
+/* ── STEP 5 — contrast + states (empty/loading/error are never void) ── */
+
+function wcagLum(hex) {
+  const h = hex.replace("#", "");
+  const f = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2];
+}
+function wcagContrast(a, b) {
+  const la = wcagLum(a), lb = wcagLum(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+test("contrast: every text token hits ≥4.5:1 on the surfaces it renders on", () => {
+  const get = (name) => {
+    const m = tokensCss.match(new RegExp(`--${name}:(#[0-9A-Fa-f]{6})`));
+    assert.ok(m, `tokens.css defines --${name} as hex`);
+    return m[1];
+  };
+  const surfaces = { ink: get("ink"), s1: get("s1"), s2: get("s2"), s3: get("s3") };
+  for (const t of ["t1", "t2", "t3", "t4", "t5"]) {
+    for (const [sname, hex] of Object.entries(surfaces)) {
+      const ratio = wcagContrast(get(t), hex);
+      assert.ok(ratio >= 4.5, `--${t} on --${sname} is ${ratio.toFixed(2)}:1 (need 4.5)`);
+    }
+  }
+});
+
+test("states: loading shows a spinner/skeleton, errors name themselves + offer retry, empties explain", () => {
+  // loading indicators
+  assert.match(html, /class="sp sp-g"/, "opps loading spinner (static ring stays visible without motion)");
+  assert.match(html, /function showSkeletons\(/, "news feed skeleton rows");
+  assert.match(html, /function marketSkeletonRows\(/, "markets skeleton rows");
+  assert.match(html, /calculator-skeleton/, "calculators skeleton");
+  assert.match(html, /vloading\.v-skeleton/, "VIP loading skeleton");
+  // clear error messages + retry, no silent failures
+  assert.match(html, /تعذّر تحميل الأخبار — حاول مرة أخرى/, "news error message names the failure");
+  assert.match(html, /fetchMarketsData\(true\)"[^>]*>↻ إعادة المحاولة/, "markets retry button");
+  assert.match(html, /تعذر تحميل الفرص/, "opps error message");
+  assert.match(html, /defe|تعذر التحديث — لا توجد بيانات بديلة/, "opps failed-refresh notice is explicit");
+  assert.match(html, /بيانات الأسواق غير متاحة حاليًا/, "ticker honest unavailable line");
+  // empty states explain what to do
+  assert.match(html, /لا توجد أخبار مطابقة للفلتر/, "news empty state");
+  assert.match(html, /قائمة المتابعة فارغة/, "watchlist empty state explains how to add");
+  assert.match(html, /لا توجد فرص في هذه الفئة/, "opps empty state");
+});

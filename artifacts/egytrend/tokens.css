@@ -27,8 +27,11 @@
   --au:#F59E0B;--au2:#D97706;--aud:rgba(245,158,11,.11);
   /* ── VIP gold (VIP surfaces only) ── */
   --vip:#E3B75B;--vip2:#B98427;--vipd:rgba(227,183,91,.12);
+  /* ── Text (t4/t5 brightened 2026-10-30: every token must hit
+     ≥4.5:1 on the darkest common surface s3 #17243A — t4 5.00:1,
+     t5 4.56:1; hierarchy preserved t1>t2>t3>t4>t5) ── */
   /* ── Text ── */
-  --t1:#E8EEF8;--t2:#C6D2E3;--t3:#93A1B8;--t4:#6F7E97;--t5:#526079;
+  --t1:#E8EEF8;--t2:#C6D2E3;--t3:#93A1B8;--t4:#8393AE;--t5:#7C8CA6;
   /* ── Typography ── */
   --sans:'Cairo',sans-serif;--mono:'IBM Plex Mono',monospace;
   /* ── Radius (scale from actual usage) ── */
