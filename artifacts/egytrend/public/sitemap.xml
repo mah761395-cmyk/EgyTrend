@@ -1,18 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Public, indexable pages only. /admin and /vip are intentionally absent
+     (admin is noindex + robots-disallowed; vip is a server-gated SPA section
+     and robots-disallowed). URLs must stay on the live domain — see the
+     [OG-DOMAIN] note in index.html; when the domain changes, update both
+     files together (canonical block + this sitemap). -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://egytrend.com/</loc>
-    <changefreq>hourly</changefreq>
-    <priority>1.0</priority>
+    <loc>https://egy-trend.vercel.app/</loc>
+    <lastmod>2026-10-30</lastmod>
   </url>
   <url>
-    <loc>https://egytrend.com/privacy.html</loc>
-    <changefreq>yearly</changefreq>
-    <priority>0.3</priority>
+    <loc>https://egy-trend.vercel.app/privacy.html</loc>
+    <lastmod>2026-09-30</lastmod>
   </url>
   <url>
-    <loc>https://egytrend.com/terms.html</loc>
-    <changefreq>yearly</changefreq>
-    <priority>0.3</priority>
+    <loc>https://egy-trend.vercel.app/terms.html</loc>
+    <lastmod>2026-09-30</lastmod>
   </url>
 </urlset>

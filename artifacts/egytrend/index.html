@@ -6,7 +6,9 @@
 <meta name="theme-color" content="#070B14"/>
 <!-- [OG-DOMAIN] كل الروابط المرتبطة بالنطاق في الكتلة التالية (description..og:locale).
      النطاق الحالي مؤقّت: https://egy-trend.vercel.app — عند ربط نطاق خاص،
-     استبدل النطاق هنا فقط (4 مواضع: canonical, og:title/url, og:image, robots.txt). -->
+     استبدل النطاق هنا وفي المواضع المرتبطة (canonical, og:title/url, og:image,
+     robots.txt, sitemap.xml, وروابط admin.html). -->
+<meta name="robots" content="index,follow"/>
 <meta name="description" content="البورصة المصرية، الذهب، الدولار، الكريبتو وأهم الأخبار في شاشة واحدة بالعربي — مع المصدر ووقت التحديث وحالة البيانات، وأدوات تعليمية بلا توصيات أو وعود بالأرباح."/>
 <link rel="canonical" href="https://egy-trend.vercel.app/"/>
 <meta property="og:type" content="website"/>
@@ -15,7 +17,10 @@
 <meta property="og:description" content="البورصة المصرية، الذهب، الدولار، الكريبتو وأهم الأخبار في شاشة واحدة بالعربي — مع المصدر ووقت التحديث وحالة البيانات، وأدوات تعليمية بلا توصيات أو وعود بالأرباح."/>
 <meta property="og:url" content="https://egy-trend.vercel.app/"/>
 <!-- og:image متوقفة مؤقتًا: https://egy-trend.vercel.app/opengraph.jpg يعيد HTTP 500 في الإنتاج
-     (خلل serving لملفات الثابتات الثنائية — انظر تقرير Landing 2026-10-28). أعد التفعيل بسطر:
+     (خلل serving لملفات الثابتات الثنائية — انظر تقرير Landing 2026-10-28).
+     أعيد التحقق 2026-10-30: opengraph.jpg + favicon.ico + favicon.svg ما زالوا 500 في
+     الإنتاج بينما نفس الملفات في build سليم (200 محليًا) — الخلل في طبقة خدمة Vercel
+     وليس في الملفات. أعد التفعيل بسطر:
      <meta property="og:image" content="https://egy-trend.vercel.app/opengraph.jpg"/> -->
 <meta property="og:locale" content="ar_EG"/>
 <meta name="twitter:card" content="summary"/>
