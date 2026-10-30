@@ -596,6 +596,88 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .n-icon{font-size:17px;}
 .nb-badge{position:absolute;top:-7px;right:-12px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--dn);color:#fff;font-size:9.5px;font-weight:800;line-height:17px;text-align:center;font-family:var(--mono);box-shadow:0 0 0 2px var(--bg);display:flex;align-items:center;justify-content:center;}
 .n-label{font-size:8.5px;font-weight:700;}
+/* Small VIP badge under a nav label (portfolio). Same visual language as
+   the other nav items; gold matches the site's VIP accents. */
+.n-vip-chip{display:block;margin-top:2px;font-size:6px;font-weight:900;letter-spacing:.6px;line-height:1;padding:1.5px 4px;border-radius:4px;background:linear-gradient(135deg,#fbbf24,#d97706);color:#1a1205;text-align:center;}
+.n-btn.active .n-vip-chip{background:linear-gradient(135deg,#34d399,#059669);color:#04150d;}
+.bnav-grid{grid-template-columns:repeat(7,1fr);}
+@media (max-width:380px){.n-label{font-size:7.5px;}}
+
+/* ─── PORTFOLIO PAGE (first-class) ───────────────────────────────────────── */
+.pfp-page{padding-bottom:8px;}
+.pfp-hero{background:linear-gradient(150deg,rgba(16,185,129,.10),rgba(59,130,246,.07) 55%,rgba(7,14,26,0));border:1px solid var(--b1);border-radius:16px;padding:14px 14px 12px;margin-bottom:10px;position:relative;overflow:hidden;}
+.pfp-hero::after{content:"";position:absolute;inset:0;background:radial-gradient(600px 120px at 85% -20%,rgba(16,185,129,.12),transparent 70%);pointer-events:none;}
+.pfp-hero-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+.pfp-hero-title{display:flex;align-items:center;gap:8px;color:var(--t1);font-size:14px;font-weight:900;}
+.pfp-hero-title .et-icon{width:19px;height:19px;color:var(--g);}
+.pfp-hero-total{font-family:var(--mono);font-size:21px;font-weight:900;letter-spacing:.2px;margin-top:8px;}
+.pfp-hero-total.dim{color:var(--t4);font-size:15px;}
+.pfp-hero-sub{color:var(--t5);font-size:9px;margin-top:5px;line-height:1.6;}
+.pfp-chg{font-family:var(--mono);font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap;}
+.pfp-chg.up{color:var(--g);background:var(--gd);}
+.pfp-chg.dn{color:var(--dn);background:var(--dnd);}
+.pfp-chg.flat{color:var(--t4);background:var(--s2);}
+.pfp-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:10px;}
+@media (max-width:560px){.pfp-cards{grid-template-columns:repeat(2,1fr);}}
+.pfp-card{background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:9px 10px;}
+.pfp-card-l{color:var(--t5);font-size:8.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pfp-card-v{font-family:var(--mono);font-size:13px;font-weight:900;margin-top:3px;}
+.pfp-card-h{color:var(--t5);font-size:7.8px;margin-top:2px;line-height:1.5;}
+.pfp-sec{background:var(--s1);border:1px solid var(--b1);border-radius:14px;margin-bottom:10px;overflow:hidden;}
+.pfp-sec-h{display:flex;align-items:center;gap:8px;padding:11px 12px;border-bottom:1px solid var(--b1);flex-wrap:wrap;}
+.pfp-sec-t{color:var(--t1);font-size:12.5px;font-weight:900;display:flex;align-items:center;gap:6px;}
+.pfp-sec-t .et-icon{width:16px;height:16px;color:var(--g);}
+.pfp-sec-s{color:var(--t5);font-size:8.5px;line-height:1.5;}
+.pfp-sec-b{padding:11px 12px;}
+.pfp-ranges{display:flex;gap:4px;flex-wrap:wrap;}
+.pfp-range{background:var(--s2);border:1px solid var(--b1);color:var(--t4);border-radius:8px;padding:3.5px 9px;font-size:9.5px;font-weight:800;cursor:pointer;font-family:var(--mono);transition:all .15s;}
+.pfp-range:hover{color:var(--t1);border-color:var(--b2);}
+.pfp-range.on{background:var(--gd);border-color:rgba(16,185,129,.4);color:var(--g);}
+.pfp-chart-wrap{position:relative;}
+.pfp-chart-wrap svg{display:block;width:100%;height:auto;}
+.pfp-tooltip{position:absolute;pointer-events:none;background:rgba(3,7,18,.97);border:1px solid var(--b2);border-radius:9px;padding:6px 9px;font-size:9.5px;line-height:1.6;color:var(--t2);white-space:nowrap;transform:translate(-50%,-108%);z-index:5;display:none;box-shadow:0 6px 18px rgba(0,0,0,.45);}
+.pfp-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;color:var(--t5);font-size:8.8px;}
+.pfp-legend span{display:inline-flex;align-items:center;gap:5px;}
+.pfp-legend i{width:14px;height:3px;border-radius:2px;display:inline-block;}
+.pfp-note{color:var(--au);background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.22);border-radius:10px;padding:8px 10px;font-size:9.5px;line-height:1.7;margin-top:9px;}
+.pfp-note.danger{color:var(--dn);background:var(--dnd);border-color:rgba(248,113,113,.25);}
+.pfp-note.info{color:var(--t4);background:var(--s2);border-color:var(--b1);}
+.pfp-form{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;align-items:end;}
+@media (max-width:560px){.pfp-form{grid-template-columns:repeat(2,1fr);}}
+.pfp-field label{display:block;color:var(--t5);font-size:8.5px;font-weight:700;margin-bottom:4px;}
+.pfp-field input,.pfp-field select{width:100%;background:var(--s2);border:1px solid var(--b1);border-radius:9px;color:var(--t1);font-size:12px;padding:8px 9px;font-family:var(--sans);outline:none;}
+.pfp-field input:focus,.pfp-field select:focus{border-color:rgba(16,185,129,.5);}
+.pfp-rows{margin-top:10px;}
+.pfp-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px dashed var(--b1);flex-wrap:wrap;}
+.pfp-row:last-child{border-bottom:none;}
+.pfp-row-ic{width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+.pfp-row-main{flex:1;min-width:120px;}
+.pfp-row-t{color:var(--t2);font-size:10.5px;font-weight:700;}
+.pfp-row-d{color:var(--t5);font-size:8.5px;margin-top:1px;}
+.pfp-row-v{font-family:var(--mono);font-size:12px;font-weight:900;white-space:nowrap;}
+.pfp-row-x{background:none;border:1px solid var(--b1);color:var(--t5);border-radius:8px;padding:4px 8px;font-size:9px;cursor:pointer;font-family:var(--sans);}
+.pfp-row-x:hover{color:var(--dn);border-color:rgba(248,113,113,.4);}
+.pfp-alert{display:flex;gap:9px;align-items:flex-start;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25);border-radius:10px;padding:9px 10px;margin-bottom:7px;font-size:10px;line-height:1.7;color:var(--t2);}
+.pfp-alert.high{background:var(--dnd);border-color:rgba(248,113,113,.3);color:var(--t1);}
+.pfp-alert-ic{font-size:15px;line-height:1.3;}
+/* Intro / upsell (non-VIP) — professional, not a teaser. */
+.pfp-intro{max-width:640px;margin:0 auto;}
+.pfp-intro-hero{text-align:center;padding:22px 14px 16px;}
+.pfp-intro-hero .em{font-size:38px;}
+.pfp-intro-hero h2{color:var(--t1);font-size:18px;font-weight:900;margin-top:10px;}
+.pfp-intro-hero p{color:var(--t4);font-size:12px;line-height:1.9;margin-top:8px;}
+.pfp-feats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:14px;}
+@media (max-width:480px){.pfp-feats{grid-template-columns:1fr;}}
+.pfp-feat{background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:11px;display:flex;gap:9px;align-items:flex-start;}
+.pfp-feat-ic{width:30px;height:30px;border-radius:9px;background:var(--gd);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
+.pfp-feat-t{color:var(--t1);font-size:11px;font-weight:800;}
+.pfp-feat-d{color:var(--t5);font-size:9px;line-height:1.65;margin-top:2px;}
+.pfp-cta{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:16px;}
+.pfp-steps{display:grid;gap:7px;margin-top:12px;}
+.pfp-step{display:flex;gap:10px;align-items:center;background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:9px 11px;}
+.pfp-step-n{width:22px;height:22px;border-radius:50%;background:var(--gd);color:var(--g);font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:var(--mono);}
+.pfp-step-t{color:var(--t2);font-size:10.5px;font-weight:700;}
+.pfp-step-d{color:var(--t5);font-size:8.8px;margin-top:1px;line-height:1.55;}
 
 /* ─── UTILS ─── */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:11px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--sans);border:none;transition:all .2s;}
@@ -1810,6 +1892,11 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
     </div>
   </div>
 
+  <!-- PORTFOLIO (first-class page; the server-side VIP gate is authoritative) -->
+  <div id="page-portfolio" class="page hidden pfp-page">
+    <div class="pfp-host" id="pfp-host"></div>
+  </div>
+
   <!-- PROFILE -->
   <div id="page-profile" class="page hidden prof-page">
     <div style="text-align:center;margin-bottom:6px;">
@@ -1858,6 +1945,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       <button class="n-btn" type="button" onclick="goNav('markets')" id="nb-markets"><span class="n-icon"><svg class="et-icon"><use href="#i-chart"></use></svg></span><span class="n-label">الأسواق</span></button>
       <button class="n-btn" type="button" onclick="goNav('vip')" id="nb-vip"><span class="n-icon nav-vip-icon"><svg class="et-icon"><use href="#i-star"></use></svg></span><span class="n-label">VIP</span></button>
       <button class="n-btn" type="button" onclick="goNav('opps')" id="nb-opps"><span class="n-icon" style="position:relative;"><svg class="et-icon"><use href="#i-bulb"></use></svg><span id="nb-opps-badge" class="nb-badge" style="display:none;">0</span></span><span class="n-label">فرص</span></button>
+      <button class="n-btn" type="button" onclick="goNav('portfolio')" id="nb-portfolio"><span class="n-icon"><svg class="et-icon"><use href="#i-card"></use></svg></span><span class="n-label">المحفظة</span><span class="n-vip-chip">VIP</span></button>
       <button class="n-btn" type="button" onclick="goNav('calculators')" id="nb-calculators"><span class="n-icon"><svg class="et-icon"><use href="#i-calculator"></use></svg></span><span class="n-label">الحاسبات</span></button>
       <button class="n-btn" type="button" onclick="goNav('profile')" id="nb-profile"><span class="n-icon"><svg class="et-icon"><use href="#i-user"></use></svg></span><span class="n-label">حسابي</span></button>
     </div>
@@ -2351,6 +2439,12 @@ function setCurrentUser(user){
   /* Only a fresh server response seeds the UI hint. Server endpoints still
    * verify hasVip() themselves; this merely keeps expiry labels coherent. */
   U={...user,exp:user.vipExpiresAt||user.exp||null};
+  /* The first-class portfolio page switches views (intro ↔ dashboard)
+   * immediately when the entitlement state changes. */
+  try{
+    const page=document.getElementById("page-portfolio");
+    if(page&&!page.classList.contains("hidden")&&typeof renderPortfolioPage==="function")renderPortfolioPage();
+  }catch(_){/* page script not ready yet */}
 }
 /* ─── Single source of truth for (re)validating auth state ─────────────────
  * Every protected feature re-asks the server instead of trusting the cached
@@ -2405,7 +2499,7 @@ let portfolioState={loaded:false,loading:false,error:"",marketAvailable:false};
 /* Server-derived portfolio truth beyond the positions array: the accounting
  * summary (cash, realized/unrealized P/L, fees), the trade ledger and the
  * user's cash settings. All computed server-side; the client only renders. */
-let portfolioData={summary:null,transactions:[],settings:{startingCash:0},marketAvailable:false,legacyPositions:false};
+let portfolioData={summary:null,transactions:[],cashEvents:[],settings:{startingCash:0},marketAvailable:false,legacyPositions:false};
 let portTxFilter={symbol:"",side:"all",from:"",to:""};
 let portTxEditId=null;
 let portReport={status:"idle",data:null,from:"",to:"",range:"month"};
@@ -3211,8 +3305,8 @@ function showGuestLanding(){
 
 /* ═══════════════════ NAVIGATION ═══════════════════ */
 function goNav(id,options={}){
-  const target=["home","markets","vip","opps","profile","calculators"].includes(id)?id:"home";
-  ["home","markets","vip","opps","profile","calculators"].forEach(n=>{
+  const target=["home","markets","vip","opps","profile","calculators","portfolio"].includes(id)?id:"home";
+  ["home","markets","vip","opps","profile","calculators","portfolio"].forEach(n=>{
     document.getElementById(`page-${n}`).classList.toggle("hidden",n!==target);
     document.getElementById(`nb-${n}`)?.classList.toggle("active",n===target);
   });
@@ -3222,6 +3316,7 @@ function goNav(id,options={}){
   if(target==="home") clearNotifs();
   if(target==="opps") loadOpps();
   if(target==="calculators")renderCalculatorsPage();
+  if(target==="portfolio")renderPortfolioPage();
   if(options.syncUrl!==false&&window.history&&window.history.pushState){
     const wanted=target==="calculators"?"/calculators":"/";
     if(window.location.pathname!==wanted)window.history.pushState({nav:target},"",wanted);
@@ -6802,9 +6897,12 @@ async function loadServerPortfolio(force=false){
         unrealizedPnl:n(s.unrealizedPnl),unrealizedPnlPriced:n(s.unrealizedPnlPriced),
         realizedPnl:n(s.realizedPnl),totalFees:n(s.totalFees),buyCount:n(s.buyCount),sellCount:n(s.sellCount),
         topConcentrationPct:n(s.topConcentrationPct),
+        cashEventsIn:n(s.cashEventsIn)??0,
+        cashEventsOut:n(s.cashEventsOut)??0,
         missingPriceSymbols:Array.isArray(s.missingPriceSymbols)?s.missingPriceSymbols.map(String).slice(0,50):[],
       }:null,
       transactions:Array.isArray(j.transactions)?j.transactions.slice(0,200):[],
+      cashEvents:Array.isArray(j.cashEvents)?j.cashEvents.slice(0,200):[],
       settings:{startingCash:n((j.settings||{}).startingCash)??0},
       marketAvailable:j.marketAvailable===true,
       legacyPositions:j.legacyPositions===true,
@@ -7730,6 +7828,470 @@ function vBuildPort(b){
   if(!(priceAlertsState.loaded||priceAlertsState.loading)&&U&&U.plan!=="admin")void loadServerPriceAlerts();
   vaBindCharts(b);
   if(portfolio.some(p=>p.qty>0)&&portHistory.status==="idle")void ensurePortfolioHistory();
+}
+
+/* ══════════════ PORTFOLIO — first-class page (nav item) ══════════════
+ * The server-side VIP gate (requireVipFeature) is the only real protection;
+ * the client view is UX: not logged in / non-VIP see a professional intro
+ * with a clear upsell, VIP users land straight in the dashboard. */
+let pfpSeries={range:"1M",status:"idle",data:null,error:"",seq:0};
+const PFP_RANGES=["1D","1W","1M","3M","6M","1Y","ALL"];
+const PFP_RANGE_LABELS={ "1D":"يوم","1W":"أسبوع","1M":"شهر","3M":"3 أشهر","6M":"6 أشهر","1Y":"سنة","ALL":"الكل" };
+
+function pfpVisible(){
+  const page=document.getElementById("page-portfolio");
+  return Boolean(page)&&!page.classList.contains("hidden");
+}
+function pfpHost(){return document.getElementById("pfp-host");}
+
+function renderPortfolioPage(){
+  const host=pfpHost();
+  if(!host)return;
+  host.dataset.rendered="1";
+  if(!U){
+    host.innerHTML=pfpIntro({loggedOut:true});
+    return;
+  }
+  const vip=U.plan==="vip"||U.plan==="admin";
+  if(!vip){
+    host.innerHTML=pfpIntro({loggedOut:false});
+    return;
+  }
+  pfpRenderDashboard();
+}
+
+function pfpIntro({loggedOut}){
+  const cta=loggedOut
+    ?`<button class="btn btn-au" style="padding:11px 22px;font-size:13px;" onclick="openAuthModal('login')">🔐 سجّل الدخول للوصول إلى محفظتك</button>
+      <button class="btn btn-ghost" style="padding:11px 18px;font-size:12.5px;" onclick="openAuthModal('register')">إنشاء حساب جديد</button>`
+    :`<button class="btn btn-au" style="padding:11px 22px;font-size:13px;" onclick="openSub()">⭐ فعّل اشتراك VIP</button>
+      <button class="btn btn-ghost" style="padding:11px 18px;font-size:12.5px;" onclick="openMySubscription()">📋 حالة اشتراكي</button>`;
+  return `<div class="pfp-intro">
+    <div class="pfp-intro-hero">
+      <div class="em">💼</div>
+      <h2>محفظة استثمارية بمستوى المؤسسات</h2>
+      <p>سجّل صفقاتك وبياناتك النقدية، ودَع الخادم يحسب كل شيء: متوسط التكلفة، الربح المحقّق وغير المحقّق، السيولة، التوزيع على الأصول والقطاعات، ومقارنة أداء محفظتك بمؤشر EGX30 — بأرقام من مصادر موثّقة فقط، وبيانات محفوظة باسمك في الخادم ومفصولة تمامًا عن أي مستخدم آخر.</p>
+    </div>
+    <div class="pfp-feats">
+      <div class="pfp-feat"><div class="pfp-feat-ic">📊</div><div><div class="pfp-feat-t">لوحة قيمة حيّة</div><div class="pfp-feat-d">قيمة المحفظة، العائد، التغير اليومي، والسيولة النقدية — مع مصدر كل سعر ووقته، وبدون أي سعر مخترع أو قديم معروض كأنه حي.</div></div></div>
+      <div class="pfp-feat"><div class="pfp-feat-ic">📈</div><div><div class="pfp-feat-t">رسوم زمنية فعلية</div><div class="pfp-feat-d">قيمة محفظتك عبر الوقت (يوم إلى الكل) مبنية من سجلّ صفقاتك وإغلاقات السوق المسجّلة، مع مقارنة EGX30 عندما تتوفر نقاط مشتركة.</div></div></div>
+      <div class="pfp-feat"><div class="pfp-feat-ic">🧾</div><div><div class="pfp-feat-t">سجلّ صفقات كامل</div><div class="pfp-feat-d">شراء وبيع متكرر لنفس الأصل، عمولات لكل صفقة، بيع جزئي يحسب الربح المحقّق، وإمكانية التعديل والحذف مع إعادة تحقق كاملة من السلسلة.</div></div></div>
+      <div class="pfp-feat"><div class="pfp-feat-ic">💸</div><div><div class="pfp-feat-t">نقد وتوزيعات</div><div class="pfp-feat-d">إيداع وسحب نقدية مسجّلة بالتاريخ، وتوزيعات أرباح — كلها تدخل في السيولة الحقيقية لمحفظتك.</div></div></div>
+      <div class="pfp-feat"><div class="pfp-feat-ic">🧭</div><div><div class="pfp-feat-t">تحليل تركيز ومخاطر</div><div class="pfp-feat-d">توزيع القيمة على الأصول والقطاعات، أكبر المراكز، الأفضل والأسوأ أداءً، وتنبيهات عند تركيز مرتفع في سهم أو قطاع.</div></div></div>
+      <div class="pfp-feat"><div class="pfp-feat-ic">🔒</div><div><div class="pfp-feat-t">عزل كامل في الخادم</div><div class="pfp-feat-d">التحقق من الاشتراك يتم على الخادم في كل طلب، وبيانات محفظتك لا تُعرض ولا تُسجَّل في أي سياق يخص مستخدمًا آخر.</div></div></div>
+    </div>
+    <div class="pfp-cta">${cta}</div>
+    <div class="pfp-note info" style="text-align:center;margin-top:14px;">الخدمات معلوماتية وليست توصيات استثمارية؛ الأرقام تُحتسب من بياناتك ومن الأسعار الموثّقة المتاحة، ونُعلن دائمًا عن أي نقص بدل اختلاقه.</div>
+  </div>`;
+}
+
+function pfpRenderDashboard(){
+  const host=pfpHost();
+  if(!host)return;
+  const err=portfolioState.error;
+  const shell=(body)=>`
+    <div class="pfp-hero" id="pfp-hero">${pfpHeroHtml()}</div>
+    <div class="pfp-cards" id="pfp-kpis">${pfpKpiStripHtml()}</div>
+    ${body}`;
+  if(err==="login_required"&&!portfolio.length){
+    host.innerHTML=shell(`<div class="pfp-sec"><div class="pfp-sec-b" style="text-align:center;padding:26px 14px;">${authGateHtml("login",loadServerPortfolio.bind(null,true))}</div></div>`);
+    return;
+  }
+  if(err==="vip_required"&&!portfolio.length){
+    host.innerHTML=shell(`<div class="pfp-sec"><div class="pfp-sec-b" style="text-align:center;padding:22px 14px;">${authGateHtml("vip",null)}</div></div>`);
+    return;
+  }
+  const hasTrades=(portfolioData.transactions||[]).length>0;
+  const isEmpty=!portfolio.length&&!hasTrades;
+  let body="";
+  if(err&&portfolio.length){
+    body+=`<div class="pfp-note ${err==="server_error"?"info":"danger"}">${err==="server_error"?"⚠️ تعذّر التحقق من الخادم الآن — آخر بياناتك المعروفة معروضة أدناه ولم تُعدَّل أو تُحذف.":"⚠️ تعذّر مزامنة محفظتك الآن — آخر بياناتك المعروفة معروضة أدناه ولم تُعدَّل أو تُحذف."}</div>`;
+  }
+  if(isEmpty){
+    body+=pfpOnboardingHtml();
+  } else {
+    body+=`
+    <div class="pfp-sec">
+      <div class="pfp-sec-h">
+        <div class="pfp-sec-t"><svg class="et-icon"><use href="#i-pulse"></use></svg> قيمة المحفظة عبر الوقت</div>
+        <div class="pfp-ranges" id="pfp-ranges">
+          ${PFP_RANGES.map(r=>`<button class="pfp-range ${r===pfpSeries.range?"on":""}" type="button" onclick="pfpSetRange('${r}')">${PFP_RANGE_LABELS[r]}</button>`).join("")}
+        </div>
+      </div>
+      <div class="pfp-sec-b">
+        <div class="pfp-chart-wrap" id="pfp-chart">${pfpSeries.status==="loading"?'<div style="padding:26px;text-align:center;color:var(--t5);font-size:11px;">جارٍ تحميل السلسلة من الخادم...</div>':""}</div>
+        <div id="pfp-chart-notes"></div>
+      </div>
+    </div>
+    <div class="pfp-sec">
+      <div class="pfp-sec-h"><div class="pfp-sec-t"><svg class="et-icon"><use href="#i-card"></use></svg> النقد: إيداع وسحب وتوزيعات</div><div class="pfp-sec-s">تُحتسب الحركات في السيولة الفعلية بتاريخها، ولا يُسمح بسحب يتجاوز رصيد ذلك التاريخ</div></div>
+      <div class="pfp-sec-b" id="pfp-cash">${pfpCashHtml()}</div>
+    </div>
+    <div id="pfp-alerts-sec">${pfpConcentrationAlertsHtml()}</div>`;
+  }
+  host.innerHTML=shell(body);
+  const vBody=document.createElement("div");
+  vBody.id="port-page-body";
+  if(!isEmpty)vBody.style.marginTop="10px";
+  host.appendChild(vBody);
+  vBuildPort(vBody);
+  /* Series load is decoupled from the tab (the page drives it). */
+  if(!isEmpty&&pfpSeries.status==="idle")pfpLoadSeries(pfpSeries.range,true);
+}
+
+function pfpHeroHtml(){
+  const s=portfolioData.summary;
+  const total=s?nOrNull(s.totalValue):null;
+  const totalPriced=s?nOrNull(s.totalValuePriced):null;
+  const daily=pfpSeries.data&&pfpSeries.data.dailyChangePct;
+  let chg="";
+  if(typeof daily==="number"){
+    const up=daily>0,down=daily<0;
+    chg=`<span class="pfp-chg ${up?"up":down?"dn":"flat"}" title="التغير منذ آخر قيمة مسجّلة">${up?"▲":down?"▼":"•"} ${Math.abs(daily).toFixed(1)}%</span>`;
+  } else {
+    chg=`<span class="pfp-chg flat" title="يتطلب نقطتي إغلاق مسجّلتين">التغير اليومي: —</span>`;
+  }
+  const srcLine=heroSourceLine();
+  const totalHtml=total!==null
+    ?`<div class="pfp-hero-total" style="color:${totalValueColor(total)};">${portMoney(total)}</div>`
+    :`<div class="pfp-hero-total dim">${totalPriced!==null?portMoney(totalPriced)+" + بلا سعر":"—"} <span style="font-size:9px;color:var(--t5);font-weight:700;">${totalPriced!==null?"(الجزء المسعّر فقط)":"يلزم سعر موثّق لكل مركز"}</span></div>`;
+  return `<div class="pfp-hero-top">
+      <div class="pfp-hero-title"><svg class="et-icon"><use href="#i-card"></use></svg> محفظتي</div>
+      ${chg}
+    </div>
+    ${totalHtml}
+    <div class="pfp-hero-sub">${srcLine} · بيانات محفوظة في الخادم ومفصولة عن أي مستخدم آخر</div>`;
+}
+function nOrNull(v){const x=Number(v);return Number.isFinite(x)?x:null;}
+function totalValueColor(total){
+  const s=portfolioData.summary;
+  const pnl=s?nOrNull(s.realizedPnl):null;
+  const un=s?nOrNull(s.unrealizedPnl):null;
+  const t=(pnl??0)+(un??0);
+  return t>0?"var(--g)":t<0?"var(--dn)":"var(--t1)";
+}
+function heroSourceLine(){
+  const rows=portfolio.filter(p=>p.market&&p.market.source);
+  if(!rows.length)return "لا توجد مراكز قائمة بسعر سوق الآن";
+  const sources=[...new Set(rows.map(r=>r.market.source))].slice(0,3).join(" · ");
+  const asOf=rows.map(r=>r.market.asOf).filter(Boolean).sort().pop();
+  return `مصدر الأسعار: ${sanitize(sources)}${asOf?` · ${cairoTimestampLabel(asOf)}`:""}`;
+}
+
+function pfpKpiStripHtml(){
+  const s=portfolioData.summary;
+  const held=portfolio.filter(p=>Number(p.quantity)>0);
+  const totalAssets=held.length;
+  const realized=s?nOrNull(s.realizedPnl):null;
+  const unrealized=s?nOrNull(s.unrealizedPnl):null;
+  const totalPnl=(realized!==null&&unrealized!==null)?realized+unrealized:null;
+  const cash=s?nOrNull(s.cash):null;
+  const eventsIn=s&&Number.isFinite(Number(s.cashEventsIn))?Number(s.cashEventsIn):0;
+  const eventsOut=s&&Number.isFinite(Number(s.cashEventsOut))?Number(s.cashEventsOut):0;
+  const cards=[
+    {l:"السيولة النقدية",v:cash!==null?portMoney(cash):"—",h:(cash!==null&&cash<0)?"أقل من صفر: مشتريات تتجاوز النقد المعلن":(eventsIn||eventsOut)?`منها ${portMoney(eventsIn)} إيداعات/توزيعات و${portMoney(eventsOut)} سحوبات`:"رصيد البداية + مبيعات − مشتريات",c:cash!==null&&cash<0?"var(--dn)":"var(--t1)"},
+    {l:"عدد الأصول",v:String(totalAssets),h:totalAssets?`${totalAssets} مركز قائم بمراكز مسجّلة`:"لا مراكز قائمة حاليًا",c:"var(--t1)"},
+    {l:"إجمالي الربح/الخسارة",v:totalPnl!==null?portSigned(totalPnl):"—",h:totalPnl!==null?"المحقّق + غير المحقّق (شامل العمولات)":"يتطلب سعرًا موثّقًا لكل مركز قائم",c:totalPnl!==null?portPlColor(totalPnl):"var(--t4)"},
+    {l:"عائد التكلفة المنصرفة",v:portPct(portReturnPct()),h:"(المحقّق + غير المحقّق) ÷ إجمالي ما صُرف على الشراء",c:portPlColor(portReturnPct())},
+  ];
+  return cards.map(c=>`<div class="pfp-card"><div class="pfp-card-l">${c.l}</div><div class="pfp-card-v" style="color:${c.c};">${c.v}</div><div class="pfp-card-h">${sanitize(c.h)}</div></div>`).join("");
+}
+
+function pfpOnboardingHtml(){
+  const steps=[
+    {t:"سجّل أول عملية شراء",d:"الكمية والسعر والتاريخ والعمولة — وسيُشتق متوسط التكلفة والقيمة تلقائيًا من الخادم."},
+    {t:"حدّث رصيدك النقدي",d:"أضف رصيد البداية وإيداعاتك وسحوباتك لتعكس السيولة الحقيقية."},
+    {t:"تابع القيمة والأداء",d:"لوحات ورسوم من بياناتك الفعلية؛ وستكتمل السلاسل الزمنية مع تراكب إغلاقات السوق المسجّلة."},
+  ];
+  return `<div class="pfp-sec"><div class="pfp-sec-h"><div class="pfp-sec-t"><svg class="et-icon"><use href="#i-spark"></use></svg> ابدأ محفظتك في ثلاث خطوات</div></div>
+    <div class="pfp-sec-b">
+      <div class="pfp-steps">${steps.map((s,i)=>`<div class="pfp-step"><div class="pfp-step-n">${i+1}</div><div><div class="pfp-step-t">${s.t}</div><div class="pfp-step-d">${s.d}</div></div></div>`).join("")}</div>
+      <div style="text-align:center;margin-top:12px;"><button class="btn btn-au" style="padding:9px 18px;font-size:12px;" onclick="portAddAssetFocus()">＋ سجّل أول صفقة الآن</button></div>
+    </div></div>`;
+}
+
+/* ── Cash management (deposits / withdrawals / dividends) ──────────────── */
+function pfpCashHtml(){
+  const events=(portfolioData.cashEvents||[]);
+  const kinds=[
+    {v:"deposit",l:"إيداع نقد",ic:"⬇️"},
+    {v:"withdrawal",l:"سحب نقد",ic:"⬆️"},
+    {v:"dividend",l:"توزيعات أرباح",ic:"🎁"},
+  ];
+  const today=cairoTodayStr();
+  return `<div class="pfp-form">
+      <div class="pfp-field"><label for="pfp-cash-kind">النوع</label>
+        <select id="pfp-cash-kind">${kinds.map(k=>`<option value="${k.v}">${k.ic} ${k.l}</option>`).join("")}</select></div>
+      <div class="pfp-field"><label for="pfp-cash-amount">المبلغ (ج.م)</label>
+        <input id="pfp-cash-amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+      <div class="pfp-field"><label for="pfp-cash-date">التاريخ</label>
+        <input id="pfp-cash-date" type="date" max="${today}" value="${today}"></div>
+      <div class="pfp-field" id="pfp-cash-symbol-wrap" style="display:none;"><label for="pfp-cash-symbol">السهم (اختياري للتوزيع)</label>
+        <input id="pfp-cash-symbol" type="text" placeholder="COMI" maxlength="16"></div>
+    </div>
+    <div id="pfp-cash-msg"></div>
+    <div style="margin-top:9px;"><button class="btn btn-au" style="padding:8px 16px;font-size:11.5px;" onclick="pfpSubmitCash()">＋ تسجيل الحركة</button></div>
+    <div class="pfp-rows" id="pfp-cash-rows">${events.length?events.map(pfpCashRowHtml).join(""):`<div style="color:var(--t5);font-size:10px;padding:6px 0;">لا حركات نقد مسجّلة بعد — الرصيد الحالي مبني من رصيد البداية وصفقاتك فقط.</div>`}</div>`;
+}
+function cairoTodayStr(){
+  try{
+    return new Intl.DateTimeFormat("en-CA",{timeZone:"Africa/Cairo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  }catch{return new Date().toISOString().slice(0,10);}
+}
+function pfpCashRowHtml(e){
+  const kindMeta={deposit:{l:"إيداع نقد",ic:"⬇️",c:"var(--g)"},withdrawal:{l:"سحب نقد",ic:"⬆️",c:"var(--dn)"},dividend:{l:"توزيعات",ic:"🎁",c:"var(--au)"}}[e.kind]||{l:sanitize(String(e.kind)),ic:"•",c:"var(--t4)"};
+  const sign=e.kind==="withdrawal"?"−":"＋";
+  return `<div class="pfp-row">
+    <div class="pfp-row-ic" style="background:var(--s2);">${kindMeta.ic}</div>
+    <div class="pfp-row-main"><div class="pfp-row-t">${kindMeta.l}${e.symbol?` — ${sanitize(String(e.symbol))}`:""}${e.note?` <span style="color:var(--t5);font-weight:400;">· ${sanitize(String(e.note))}</span>`:""}</div>
+    <div class="pfp-row-d">${sanitize(String(e.tradeDate||""))}</div></div>
+    <div class="pfp-row-v" style="color:${kindMeta.c};">${sign} ${portMoney(Number(e.amount)||0)}</div>
+    <button class="pfp-row-x" type="button" onclick="pfpDeleteCash('${sanitize(String(e.id))}')" title="إزالة الحركة (تُحذف أرشيفيًا مع الحفاظ على السجل)">✕</button>
+  </div>`;
+}
+async function pfpSubmitCash(){
+  const kind=String(document.getElementById("pfp-cash-kind")?.value||"deposit");
+  const amount=Number(document.getElementById("pfp-cash-amount")?.value);
+  const date=String(document.getElementById("pfp-cash-date")?.value||"");
+  const symbol=document.getElementById("pfp-cash-symbol")?.value?.trim().toUpperCase()||"";
+  const msg=document.getElementById("pfp-cash-msg");
+  if(!Number.isFinite(amount)||amount<=0){
+    if(msg)msg.innerHTML=`<div class="pfp-note danger">أدخل مبلغًا موجبًا صحيحًا.</div>`;
+    return;
+  }
+  if(msg)msg.innerHTML="";
+  const body={kind,amount,tradeDate:date};
+  if(kind==="dividend"&&symbol)body.symbol=symbol;
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
+  let r,j;
+  try{
+    r=await fetch("/api/portfolio/cash",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:ctrl.signal});
+    j=await r.json().catch(()=>null);
+  }catch{
+    if(msg)msg.innerHTML=`<div class="pfp-note danger">تعذّر الاتصال بالخادم — أعد المحاولة.</div>`;
+    return;
+  }finally{clearTimeout(timer);}
+  if(r.status===400&&j&&j.code==="insufficient_cash"){
+    if(msg)msg.innerHTML=`<div class="pfp-note danger">⚠️ السحب يتجاوز الرصيد المعروف بتاريخ ${sanitize(String(j.tradeDate||date))}: المتاح ${portMoney(Number(j.cashAvailable)||0)} ج.م فقط.</div>`;
+    return;
+  }
+  if(!r.ok||!j||j.status!=="ok"){
+    if(msg)msg.innerHTML=`<div class="pfp-note danger">${sanitize(j?.message||"تعذّر تسجيل الحركة.")}</div>`;
+    return;
+  }
+  showToast("✅ سُجّلت الحركة في الخادم");
+  await loadServerPortfolio(true);
+  pfpRenderDashboard();
+}
+async function pfpDeleteCash(id){
+  if(!id||!/^[a-z0-9-]{20,80}$/i.test(id))return;
+  if(!confirm("إزالة هذه الحركة من السيولة؟ (تُحفظ في أرشيف الخادم ولا تُحذف نهائيًا)"))return;
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
+  let r;
+  try{
+    r=await fetch(`/api/portfolio/cash/${encodeURIComponent(id)}`,{method:"DELETE",credentials:"same-origin",signal:ctrl.signal});
+  }catch{
+    showToast("تعذّر الاتصال بالخادم");
+    return;
+  }finally{clearTimeout(timer);}
+  if(r.ok){
+    showToast("✅ أُزيلت الحركة");
+    await loadServerPortfolio(true);
+    pfpRenderDashboard();
+  } else {
+    showToast("تعذّرت إزالة الحركة");
+  }
+}
+
+/* ── Concentration alerts (informational, server-derived weights) ──────── */
+function pfpConcentrationAlertsHtml(){
+  const s=portfolioData.summary;
+  const held=portfolio.filter(p=>Number(p.quantity)>0&&p.weightPct!==null&&p.weightPct!==undefined&&Number.isFinite(Number(p.weightPct)));
+  if(!held.length)return"";
+  const alerts=[];
+  const top=held.slice().sort((a,b)=>Number(b.weightPct)-Number(a.weightPct))[0];
+  if(top){
+    const w=Number(top.weightPct);
+    if(w>=50)alerts.push({high:true,ic:"🔴",t:`تركيز مرتفع في ${top.sym}`,d:`سهم واحد يمثّل ${w.toFixed(1)}% من قيمة المحفظة — أي تقلب فيه يحرّك المحفظة بأكملها. التنويع يقلّل هذا الحذر.`});
+    else if(w>=35)alerts.push({high:false,ic:"🟠",t:`تركيز ملحوظ في ${top.sym}`,d:`${w.toFixed(1)}% من المحفظة في سهم واحد — راقب حجمه مقارنة بأهدافك الشخصية.`});
+  }
+  /* Sector aggregation from server weights. */
+  const bySector={};
+  held.forEach(p=>{
+    const key=p.sector?String(p.sector):"غير مصنّف";
+    bySector[key]=(bySector[key]||0)+Number(p.weightPct);
+  });
+  const topSector=Object.entries(bySector).sort((a,b)=>b[1]-a[1])[0];
+  if(topSector&&topSector[1]>=60)alerts.push({high:false,ic:"🟡",t:`تخصص قطاعي: ${topSector[0]}`,d:`${topSector[1].toFixed(1)}% من المحفظة في قطاع واحد — أحداث القطاع الواحد تؤثر على معظم مراكزك معًا.`});
+  if(!alerts.length&&s&&Number.isFinite(Number(s.topConcentrationPct))){
+    return `<div class="pfp-sec"><div class="pfp-sec-h"><div class="pfp-sec-t"><svg class="et-icon"><use href="#i-pulse"></use></svg> الرصد والتحليل</div></div>
+    <div class="pfp-sec-b"><div class="pfp-note info">✅ لا يوجد تركيز مرتفع حاليًا: أعلى وزن فردي ${Number(s.topConcentrationPct).toFixed(1)}% وأعلى قطاع دون عتبة التنبيه. هذه ملاحظات وصفية على بياناتك، وليست توصية استثمارية.</div></div></div>`;
+  }
+  if(!alerts.length)return"";
+  return `<div class="pfp-sec"><div class="pfp-sec-h"><div class="pfp-sec-t"><svg class="et-icon"><use href="#i-alert"></use></svg> تنبيهات التركيز</div><div class="pfp-sec-s">عتبات وصفية (50% سهم / 60% قطاع) — معلوماتية وليست توصية</div></div>
+    <div class="pfp-sec-b">${alerts.map(a=>`<div class="pfp-alert ${a.high?"high":""}"><div class="pfp-alert-ic">${a.ic}</div><div><strong>${sanitize(a.t)}</strong><br>${sanitize(a.d)}</div></div>`).join("")}</div></div>`;
+}
+
+/* ── Value-over-time chart (SVG, real stored closes, honest gaps) ───────── */
+function pfpSetRange(range){
+  if(!PFP_RANGES.includes(range))range="1M";
+  pfpSeries.range=range;
+  const rangesEl=document.getElementById("pfp-ranges");
+  if(rangesEl)[...rangesEl.querySelectorAll(".pfp-range")].forEach(b=>b.classList.toggle("on",b.textContent===PFP_RANGE_LABELS[range]));
+  pfpLoadSeries(range,true);
+}
+async function pfpLoadSeries(range,force){
+  const seq=++pfpSeries.seq;
+  if(!force&&pfpSeries.status==="loading")return;
+  pfpSeries={range,status:"loading",data:pfpSeries.data,error:"",seq};
+  const wrap=document.getElementById("pfp-chart");
+  const notes=document.getElementById("pfp-chart-notes");
+  if(wrap)wrap.innerHTML='<div style="padding:26px;text-align:center;color:var(--t5);font-size:11px;">جارٍ تحميل السلسلة من الخادم...</div>';
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
+  let r,j;
+  try{
+    r=await fetch(`/api/portfolio/series?range=${encodeURIComponent(range)}`,{credentials:"same-origin",cache:"no-store",signal:ctrl.signal});
+    j=await r.json().catch(()=>null);
+  }catch{
+    r=null;j=null;
+  }finally{clearTimeout(timer);}
+  if(seq!==pfpSeries.seq)return; /* a newer request superseded this one */
+  if(!r||!r.ok||!j||j.status!=="ok"){
+    pfpSeries={range,status:"error",data:pfpSeries.data,error:"تعذّر تحميل السلسلة — أعد المحاولة.",seq};
+    if(wrap)wrap.innerHTML=`<div class="pfp-note danger" style="margin-top:0;">${pfpSeries.error} <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="pfpLoadSeries('${range}',true)">↻ إعادة المحاولة</button></div>`;
+    return;
+  }
+  pfpSeries={range,status:"ready",data:j,error:"",seq};
+  if(wrap){
+    wrap.innerHTML=pfpLineChartSvg(j);
+    pfpBindChartHover(wrap,j);
+  }
+  if(notes)notes.innerHTML=pfpChartNotesHtml(j);
+}
+function pfpChartNotesHtml(d){
+  const notes=[];
+  if(d.missingSymbols&&d.missingSymbols.length){
+    notes.push(`<div class="pfp-note">⚠️ بلا تاريخ إغلاق مسجّل في هذه الفترة: ${d.missingSymbols.slice(0,6).map(sanitize).join(" · ")} — الأيام الناقصة تُترك فراغًا صادقًا بدل اختلاق أرقام.</div>`);
+  }
+  if(d.basis==="cash-only"){
+    notes.push(`<div class="pfp-note info">📌 لا توجد مراكز قائمة في هذه الفترة: السلسلة تعرض خط النقد فقط (رصيد البداية + الصفقات + حركات النقد).</div>`);
+  } else if(!d.hasPriceHistory){
+    notes.push(`<div class="pfp-note info">📌 لا تتوفر بعد إغلاقات يومية مسجّلة في الخادم لهذه الأصول — ستكتمل السلاسل الزمنية مع تراكب البيانات اليومية (لا نرسم أبدًا من أسعار تقديرية).</div>`);
+  }
+  if(d.benchmark&&d.benchmark.points&&d.benchmark.points.length>=2){
+    const src=d.benchmark.source?` · المصدر: ${sanitize(String(d.benchmark.source.name))}`:"";
+    notes.push(`<div class="pfp-note info">📊 EGX30 مقيّس على 100 عند أول نقطة مشتركة للمقارنة النسبية${src}. هو مرجع عام للمقارنة، وليس سعرًا مرخّصًا فوريًا.</div>`);
+  }
+  return notes.join("");
+}
+function pfpChartGeom(d){
+  const points=d.points||[];
+  const W=640,H=230,PL=52,PR=12,PT=14,PB=26;
+  const iw=W-PL-PR,ih=H-PT-PB;
+  let min=Infinity,max=-Infinity;
+  points.forEach(p=>{
+    if(typeof p.cash==="number"){min=Math.min(min,p.cash);max=Math.max(max,p.cash);}
+    if(typeof p.value==="number"){min=Math.min(min,p.value);max=Math.max(max,p.value);}
+  });
+  if(!Number.isFinite(min)){min=0;max=1;}
+  if(min===max){min-=1;max+=1;}
+  const pad=(max-min)*0.08;
+  min-=pad;max+=pad;
+  /* Benchmark normalization: 100 at the first valued portfolio point at/after
+   * the first stored benchmark close — a shared window, never extrapolated. */
+  let benchPts=[];
+  const bench=d.benchmark&&Array.isArray(d.benchmark.points)?d.benchmark.points:[];
+  if(bench.length>=2&&points.length){
+    const firstB=bench[0].date;
+    const lastD=points[points.length-1].date;
+    const firstValued=points.find(p=>typeof p.value==="number"&&p.value!==0&&p.date>=firstB&&p.date<=lastD);
+    if(firstValued){
+      benchPts=bench
+        .filter(b=>b.date>=firstValued.date&&b.date<=lastD)
+        .map(b=>({date:b.date,v:100*(b.close/firstValued.value)}));
+    }
+  }
+  let cMin=min,cMax=max;
+  if(benchPts.length){
+    benchPts.forEach(b=>{cMin=Math.min(cMin,b.v);cMax=Math.max(cMax,b.v);});
+    const bp=(cMax-cMin)*0.08;cMin-=bp;cMax+=bp;
+  }
+  return {points,W,H,PL,PR,PT,PB,iw,ih,cMin,cMax,benchPts,n:points.length};
+}
+function pfpLineChartSvg(d){
+  const g=pfpChartGeom(d);
+  const points=g.points;
+  if(!points.length)return'<div style="padding:26px;text-align:center;color:var(--t5);font-size:11px;">لا توجد نقاط في هذه الفترة.</div>';
+  const x=i=>g.PL+(g.n===1?g.iw/2:(i/(g.n-1))*g.iw);
+  const cp=v=>g.PT+g.ih-((v-g.cMin)/(g.cMax-g.cMin))*g.ih;
+  const xOf=date=>{const idx=points.findIndex(p=>p.date===date);return idx<0?null:x(idx);};
+  /* Value line: segments broken at gaps (value null = honest missing day). */
+  const valSegs=[];let seg=[];
+  points.forEach((p,i)=>{
+    if(typeof p.value==="number")seg.push({x:x(i),y:cp(p.value)});
+    else{if(seg.length)valSegs.push(seg);seg=[];}
+  });
+  if(seg.length)valSegs.push(seg);
+  const cashPts=points.map((p,i)=>({x:x(i),y:cp(p.cash)})).filter(pt=>Number.isFinite(pt.y));
+  const benchSegs=[];let bseg=[];
+  g.benchPts.forEach(b=>{const px=xOf(b.date);if(px===null){if(bseg.length){benchSegs.push(bseg);bseg=[];}return;}bseg.push({x:px,y:cp(b.v)});});
+  if(bseg.length)benchSegs.push(bseg);
+  const pathFrom=(pts,close)=>pts.map((pt,i)=>`${i?"L":"M"}${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(" ")+(close&&pts.length>1?` L${pts[pts.length-1].x.toFixed(1)},${(g.PT+g.ih).toFixed(1)} L${pts[0].x.toFixed(1)},${(g.PT+g.ih).toFixed(1)} Z`:"");
+  const ticks=[];
+  for(let t=0;t<=3;t++){const v=g.cMin+(g.cMax-g.cMin)*(t/3);ticks.push({v,yy:cp(v)});}
+  const xIdx=[0,Math.floor((g.n-1)/4),Math.floor((g.n-1)/2),Math.floor(3*(g.n-1)/4),g.n-1].filter((v,i,a)=>a.indexOf(v)===i);
+  const xLabels=xIdx.map(i=>({xx:x(i),label:fmtDayShort(points[i].date)}));
+  const fmtMoney=v=>Math.abs(v)>=1e6?(v/1e6).toFixed(2)+"م":Math.abs(v)>=1e4?(v/1e3).toFixed(0)+"أ":v.toFixed(0);
+  const grid=ticks.map(t=>`<line x1="${g.PL}" x2="${g.W-g.PR}" y1="${t.yy.toFixed(1)}" y2="${t.yy.toFixed(1)}" stroke="rgba(148,163,184,.10)" stroke-width="1"/><text x="${g.PL-6}" y="${(t.yy+3).toFixed(1)}" text-anchor="end" font-size="8.5" fill="rgba(148,163,184,.75)" font-family="var(--mono)">${fmtMoney(t.v)}</text>`).join("");
+  const xgrid=xLabels.map(l=>`<text x="${l.xx.toFixed(1)}" y="${g.H-8}" text-anchor="middle" font-size="8.5" fill="rgba(148,163,184,.75)">${l.label}</text>`).join("");
+  const area=valSegs.filter(s=>s.length>1).map(s=>`<path d="${pathFrom(s,true)}" fill="rgba(16,185,129,.10)" stroke="none"/>`).join("");
+  const valuePaths=valSegs.map(s=>`<path d="${pathFrom(s,false)}" fill="none" stroke="#10b981" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`).join("");
+  const cashPath=cashPts.length>1?`<path d="${pathFrom(cashPts,false)}" fill="none" stroke="rgba(148,163,184,.65)" stroke-width="1.4" stroke-dasharray="5 4"/>`:"";
+  const benchPaths=benchSegs.map(s=>`<path d="${pathFrom(s,false)}" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-dasharray="6 3" opacity=".9"/>`).join("");
+  const lastSeg=valSegs[valSegs.length-1];
+  const dot=lastSeg&&lastSeg.length?`<circle cx="${lastSeg[lastSeg.length-1].x.toFixed(1)}" cy="${lastSeg[lastSeg.length-1].y.toFixed(1)}" r="3.4" fill="#10b981" stroke="#07140f" stroke-width="1.5"/>`:"";
+  const legend=`<div class="pfp-legend">
+      <span><i style="background:#10b981;"></i> قيمة المحفظة</span>
+      <span><i style="background:rgba(148,163,184,.8);"></i> النقد</span>
+      ${g.benchPts.length?`<span><i style="background:#fbbf24;"></i> EGX30 (مقياس 100)</span>`:""}
+    </div>`;
+  return `<svg viewBox="0 0 ${g.W} ${g.H}" role="img" aria-label="منحنى قيمة المحفظة عبر الوقت">${grid}${xgrid}${area}${cashPath}${benchPaths}${valuePaths}${dot}</svg>${legend}<div class="pfp-tooltip" id="pfp-tip"></div>`;
+}
+function fmtDayShort(date){
+  const m=String(date||"").slice(5,7),d=String(date||"").slice(8,10);
+  return `${d}/${m}`;
+}
+function pfpBindChartHover(wrap,d){
+  const tip=document.getElementById("pfp-tip");
+  const svg=wrap.querySelector("svg");
+  if(!svg||!tip)return;
+  const g=pfpChartGeom(d);
+  const points=g.points;
+  if(!points.length)return;
+  const cp=v=>g.PT+g.ih-((v-g.cMin)/(g.cMax-g.cMin))*g.ih;
+  const move=(evt)=>{
+    const rect=svg.getBoundingClientRect();
+    const cx=(evt.touches?evt.touches[0].clientX:evt.clientX)-rect.left;
+    const px=cx*(g.W/rect.width);
+    let idx=Math.round(((px-g.PL)/g.iw)*(g.n-1));
+    idx=Math.max(0,Math.min(g.n-1,idx));
+    const p=points[idx];
+    const valLine=typeof p.value==="number"?`<div>القيمة: <strong style="font-family:var(--mono);">${portMoney(p.value)}</strong></div>`:`<div>القيمة: <span style="color:var(--au);">فراغ (سعر ناقص)</span></div>`;
+    tip.innerHTML=`<div style="color:var(--t5);font-weight:700;">${sanitize(String(p.date))}</div>${valLine}<div>النقد: <span style="font-family:var(--mono);">${portMoney(Number(p.cash)||0)}</span></div>`;
+    const scale=rect.width/g.W;
+    const xx=(g.PL+(g.n===1?g.iw/2:(idx/(g.n-1))*g.iw))*scale;
+    const v=(typeof p.value==="number")?p.value:p.cash;
+    const yy=cp(v)*scale;
+    tip.style.display="block";
+    tip.style.left=Math.max(70,Math.min(rect.width-70,xx))+"px";
+    tip.style.top=Math.max(44,yy)+"px";
+  };
+  const leave=()=>{tip.style.display="none";};
+  svg.addEventListener("mousemove",move);
+  svg.addEventListener("mouseleave",leave);
+  svg.addEventListener("touchstart",move,{passive:true});
+  svg.addEventListener("touchmove",move,{passive:true});
+  svg.addEventListener("touchend",leave);
 }
 
 /* ── Targeted re-renders (no full tab rebuild → no lost input focus) ─────── */
