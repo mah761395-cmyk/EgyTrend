@@ -77,6 +77,21 @@ before(async () => {
   memory = await createMemoryDatabase();
   (globalThis as typeof globalThis & { __egytrendTestDatabase?: typeof memory.db }).__egytrendTestDatabase = memory.db;
 
+  /* pg-mem cannot run the history repository's window-function query; this
+   * plain-select equivalent carries the same contract (same table, same
+   * rows). The market history route must stay honest in both engines: an
+   * empty store yields an explicit empty state, never a fabricated chart. */
+  const { setMarketHistoryReadRepositoryForTest } = await import("../lib/market-data/history");
+  const { marketDailyOhlcTable } = await import("@workspace/db/schema");
+  setMarketHistoryReadRepositoryForTest({
+    async list(instrumentIds: string[], fromDate?: string) {
+      const rows = await memory.db.select().from(marketDailyOhlcTable);
+      return rows
+        .filter((row) => instrumentIds.includes(row.instrumentId) && (!fromDate || row.tradingDate >= fromDate))
+        .sort((a, b) => a.tradingDate.localeCompare(b.tradingDate));
+    },
+  });
+
   await memory.db.insert(subscriptionPlansTable).values({
     key: "synthetic-vip",
     nameAr: "باقة اختبار معزولة",
@@ -112,6 +127,8 @@ before(async () => {
 });
 
 after(async () => {
+  const { setMarketHistoryReadRepositoryForTest } = await import("../lib/market-data/history");
+  setMarketHistoryReadRepositoryForTest(null);
   if (server) {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
