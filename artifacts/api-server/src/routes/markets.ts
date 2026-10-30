@@ -223,7 +223,12 @@ function marketService(): MarketDataService {
 
 /** Rows are redisplayed only while their source still has an explicit active
  * customer-display approval. A stored price does not preserve a lapsed right. */
-function activeHistoryRedisplaySources(): ReadonlySet<string> {
+/**
+ * Sources currently licensed for re-displaying stored history. Exported so
+ * the portfolio value-series endpoint applies the same commercial gate as
+ * the market history and sparklines endpoints.
+ */
+export function activeHistoryRedisplaySources(): ReadonlySet<string> {
   const historyCapable = marketService().historySourceIds();
   return new Set(marketService().descriptors()
     .filter((descriptor) => descriptor.state === "configured"

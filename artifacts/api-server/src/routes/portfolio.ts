@@ -17,8 +17,20 @@ import {
   type TradeSide,
 } from "../lib/portfolio-accounting";
 import { EGX_STOCKS } from "../lib/market-data/catalog";
+import {
+  resolveMarketHistoryReadRepository,
+  selectOneSource,
+  sourceMeta,
+  type StoredMarketOhlc,
+} from "../lib/market-data/history";
+import {
+  buildPortfolioSeries,
+  parsePortfolioSeriesRange,
+  seriesWindow,
+  type HeldSymbol,
+} from "../lib/portfolio-series";
 import { currentAppOwner, requireVipFeature } from "../lib/userAuth";
-import { getStocksSnapshot, type StockQuote } from "./markets";
+import { activeHistoryRedisplaySources, getStocksSnapshot, type StockQuote } from "./markets";
 import { logger } from "../lib/logger";
 import { withTimeout } from "../lib/with-timeout";
 
@@ -698,6 +710,109 @@ router.delete("/portfolio/cash/:id", requireVipFeature("portfolio"), async (req:
   } catch (error) {
     logger.error({ err: error }, "portfolio cash event delete failed");
     res.status(500).json({ status: "error", message: "تعذر حذف حركة النقد حاليًا" });
+  }
+});
+
+/* ═══════════ Value-over-time series (charts, real stored closes) ═════════ */
+
+/* EGX30 reference index from the instrument catalog — the comparison
+ * benchmark. Only used when the stored history actually contains its rows. */
+const BENCHMARK_INSTRUMENT_ID = "egx:EGX30";
+
+router.get("/portfolio/series", requireVipFeature("portfolio"), async (req: Request, res: Response) => {
+  const user = await currentAppOwner(req);
+  if (!user) {
+    res.status(401).json({ status: "error", message: "login required" });
+    return;
+  }
+  const range = parsePortfolioSeriesRange(req.query["range"]);
+  const to = cairoToday();
+  try {
+    const { transactions, legacyRows, startingCash, cashEvents } = await loadUserLedger(user.sub);
+    const computation = computePortfolio(transactions, startingCash);
+
+    /* Symbols held today (ledger + legacy), with their catalog instrument
+     * ids for the history store. */
+    const held: HeldSymbol[] = [];
+    const heldInstrumentIds = new Set<string>();
+    for (const symbol of computation.symbolOrder) {
+      const ledger = computation.bySymbol.get(symbol)!;
+      if (ledger.quantity <= 0) continue;
+      const catalog = canonicalInstrument(symbol);
+      if (catalog) {
+        held.push({ symbol: symbol.toUpperCase(), quantityNow: ledger.quantity, legacy: false });
+        heldInstrumentIds.add(catalog.id);
+      } else {
+        held.push({ symbol: symbol.toUpperCase(), quantityNow: ledger.quantity, legacy: true });
+      }
+    }
+    for (const row of legacyRows) {
+      const symbol = row.symbol.toUpperCase();
+      if (computation.bySymbol.has(symbol)) continue; // the ledger owns this symbol
+      held.push({ symbol, quantityNow: row.quantity, legacy: true });
+      if (row.instrumentId) heldInstrumentIds.add(row.instrumentId);
+    }
+
+    const earliestActivity =
+      transactions.length || cashEvents.length
+        ? [...transactions, ...cashEvents].map((item) => item.tradeDate).sort()[0] ?? null
+        : null;
+
+    /* One batched read from the licensed stored-history store. An empty
+     * approval set means no redistribution right: fail closed, no query. */
+    const allowed = activeHistoryRedisplaySources();
+    const fromDate = range === "ALL" ? undefined : seriesWindow(range, to, earliestActivity).from;
+    let closes: Map<string, Map<string, number>> = new Map();
+    let benchmark: { symbol: string; points: Array<{ date: string; close: number }>; source: { id: string; name: string; asOf: number; delayedMinutes?: number } | null } | null = null;
+    if (allowed.size > 0) {
+      const repository = resolveMarketHistoryReadRepository();
+      const [heldRows, benchmarkRows] = await Promise.all([
+        heldInstrumentIds.size ? repository.list([...heldInstrumentIds], fromDate) : Promise.resolve([] as StoredMarketOhlc[]),
+        repository.list([BENCHMARK_INSTRUMENT_ID], fromDate),
+      ]);
+      const idToSymbol = new Map<string, string>();
+      for (const entry of held) {
+        const catalog = canonicalInstrument(entry.symbol);
+        if (catalog) idToSymbol.set(catalog.id, entry.symbol);
+      }
+      for (const row of legacyRows) {
+        if (row.instrumentId) idToSymbol.set(row.instrumentId, row.symbol.toUpperCase());
+      }
+      const byInstrument = new Map<string, StoredMarketOhlc[]>();
+      for (const row of heldRows) {
+        const list = byInstrument.get(row.instrumentId) ?? [];
+        list.push(row);
+        byInstrument.set(row.instrumentId, list);
+      }
+      for (const [instrumentId, rows] of byInstrument) {
+        const symbol = idToSymbol.get(instrumentId);
+        if (!symbol) continue;
+        const sourceRows = selectOneSource(rows, allowed);
+        let dayCloses = closes.get(symbol);
+        if (!dayCloses) {
+          dayCloses = new Map<string, number>();
+          closes.set(symbol, dayCloses);
+        }
+        for (const bar of sourceRows) dayCloses.set(bar.tradingDate, bar.close);
+      }
+      const benchmarkSourceRows = selectOneSource(benchmarkRows, allowed);
+      if (benchmarkSourceRows.length) {
+        benchmark = {
+          symbol: "EGX30",
+          points: benchmarkSourceRows.map((row) => ({ date: row.tradingDate, close: row.close })),
+          source: sourceMeta(benchmarkSourceRows) ?? null,
+        };
+      }
+    }
+
+    res.json({
+      status: "ok",
+      ...buildPortfolioSeries({ range, to, startingCash, trades: transactions, cashEvents, held, closes, earliestActivity }),
+      benchmark,
+    });
+  } catch (error) {
+    logger.error({ err: error }, "portfolio series read failed");
+    res.status(500).json({ status: "error", message: "تعذّر تحميل سلسلة قيمة المحفظة حاليًا", debugMsg: error instanceof Error ? `${error.name}: ${error.message}` : String(error) });
   }
 });
 
