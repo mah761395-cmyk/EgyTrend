@@ -2771,7 +2771,7 @@ function buildTicker(){
       <span style="color:var(--ink4);font-size:7px;">◆</span>
       <span style="color:var(--t4);font-weight:600;">${sanitize(t.n)}</span>
       <span style="color:var(--t2);font-weight:700;">${sanitize(unavailable?"غير متاح حاليًا":t.v)}</span>
-      <span style="color:${unavailable?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${unavailable?"—":(t.up?"▲":"▼")+sanitize(t.c)}</span>
+      <span style="color:${(unavailable||t.flat)?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${(unavailable||t.flat)?"—":(t.up?"▲":"▼")+sanitize(t.c)}</span>
     </span>`;
   }).join("");
 }
@@ -2787,7 +2787,7 @@ function buildMarketStrip(){
     return `<div class="ms-item">
       <div class="ms-n">${sanitize(t.n)}</div>
       <div class="ms-v">${sanitize(unavailable?"غير متاح حاليًا":t.v)}</div>
-      <div class="ms-c" style="color:${unavailable?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${unavailable?"—":(t.up?"▲":"▼")+sanitize(t.c)}</div>
+      <div class="ms-c" style="color:${(unavailable||t.flat)?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${(unavailable||t.flat)?"—":(t.up?"▲":"▼")+sanitize(t.c)}</div>
     </div>`;
   }).join("");
 }
@@ -3126,7 +3126,7 @@ function buildMarkets(){
       return `<div class="mc clickable${wl.includes(m.n)?" wl":""}" onclick="openMarketDetail('${key}',${idx})">
         <div class="mc-hdr"><div class="mc-name">${sanitize(m.n)}</div><button class="wl-btn" onclick='event.stopPropagation();toggleWL(${safeJsArg(m.n)})'>${wl.includes(m.n)?"⭐":"☆"}</button></div>
         <div class="mc-val">${sanitize(unavailable?"غير متاح حاليًا":m.v)}</div>
-        <div class="mc-chg" style="color:${unavailable?"var(--t5)":m.up?"var(--up)":"var(--dn)"};">${unavailable?"—":(m.up?"▲":"▼")+" "+sanitize(m.c)}</div>
+        <div class="mc-chg" style="color:${(unavailable||m.flat)?"var(--t5)":m.up?"var(--up)":"var(--dn)"};">${(unavailable||m.flat)?"—":(m.up?"▲":"▼")+" "+sanitize(m.c)}</div>
         ${sparklineMarkup(m.instrumentId)}
         <div class="mc-sub">${sanitize(m.s||"")}</div>
         <div style="color:var(--t5);font-size:8px;margin-top:3px;">المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")} · وقت المصدر: ${sanitize(cairoTimestampLabel(m.asOf))} · ${sanitize(marketStateLabel({...marketFreshness,delayedMinutes:secMeta.delayedMinutes,freshness:secMeta.freshness}))}</div>
@@ -3434,12 +3434,12 @@ function openMarketDetail(sec,idx){
   const color=SEC_COL[sec]||"var(--g)";
   openAssetDetail({
     instrumentId:m.instrumentId,title:m.n,subtitle:ctx.en,icon:ctx.icon,category:ctx.cat,color,watchName:m.n,up:m.up,
-    price:unavailable?"غير متاح حاليًا":m.v,change:unavailable?"—":`${m.up?"▲":"▼"} ${m.c||"—"}`,
+    price:unavailable?"غير متاح حاليًا":m.v,change:(unavailable||m.flat)?"—":`${m.up?"▲":"▼"} ${m.c||"—"}`,
     source:m.source||secMeta.sources||"غير متاح",freshness:`وقت المصدر: ${cairoTimestampLabel(m.asOf)} · ${marketAgeLabel(marketFreshness)} · ${marketStateLabel(unavailable?{...marketFreshness,unavailable:true}:marketFreshness)}`,
     description:ctx.desc,
     stats:[
       {label:"آخر سعر",value:unavailable?"غير متاح":m.v,style:`color:${color};font-family:var(--mono);font-size:13px;`},
-      {label:"التغيير",value:unavailable?"—":`${m.up?"▲":"▼"} ${m.c||"—"}`,style:`color:${m.up?"var(--up)":"var(--dn)"};font-family:var(--mono);font-size:13px;`},
+      {label:"التغيير",value:(unavailable||m.flat)?"—":`${m.up?"▲":"▼"} ${m.c||"—"}`,style:`color:${(unavailable||m.flat)?"var(--t5)":m.up?"var(--up)":"var(--dn)"};font-family:var(--mono);font-size:13px;`},
       {label:"نوع الأصل",value:ctx.cat},{label:"أوقات التداول",value:ctx.trading,style:"font-size:10px;"},
     ],
     refresh:async()=>{await fetchMarketsData(true);openMarketDetail(sec,idx);},
@@ -3543,7 +3543,7 @@ function openEgx(name){
   const m=liveMarkets.eg.find(x=>x.n===name);
   document.getElementById("egx-name").textContent=name;
   document.getElementById("egx-val").textContent=m?.v||"";
-  document.getElementById("egx-chg").innerHTML=`<span style="color:${m?.up?"var(--up)":"var(--dn)"};">${m?.up?"▲":"▼"} ${sanitize(m?.c||"")}</span>`;
+  document.getElementById("egx-chg").innerHTML=`<span style="color:${(m&&m.flat)?"var(--t5)":m?.up?"var(--up)":"var(--dn)"};">${(m&&m.flat)?"—":`${m?.up?"▲":"▼"} ${sanitize(m?.c||"")}`}</span>`;
   curStocks=[...liveStocks];
   document.querySelectorAll(".sort-btn").forEach((b,i)=>b.classList.toggle("active",i===0));
   renderStocks();document.getElementById("egx-page").classList.add("open");
@@ -3923,7 +3923,7 @@ function vBuildHome(b){
         <div class="vstat" style="cursor:default;">
           <div class="vstat-l" style="font-weight:800;color:var(--t2);">${sanitize(m.n)}</div>
           <div class="vstat-n" style="font-size:14px;">${sanitize(m.v)}</div>
-          <div class="vstat-sub" style="color:${m.up?"var(--g)":"var(--dn)"};">${m.up?"▲":"▼"} ${sanitize(m.c)}</div>
+          <div class="vstat-sub" style="color:${m.flat?"var(--t4)":m.up?"var(--g)":"var(--dn)"};">${m.flat?"—":`${m.up?"▲":"▼"} ${sanitize(m.c)}`}</div>
         </div>`).join("")}
     </div>
 
@@ -4113,7 +4113,7 @@ function vBuildMkts(b){
           <div class="vstat"${m.clickable?` onclick='openEgx(${safeJsArg(m.n)})'`:""} style="${m.clickable?"cursor:pointer;":""}">
             <div class="vstat-l" style="font-weight:800;color:var(--t2);">${sanitize(m.n)}</div>
             <div class="vstat-n" style="font-size:15px;">${sanitize(m.v)}</div>
-            <div class="vstat-sub" style="color:${m.up?"var(--g)":"var(--dn)"};">${m.up?"▲":"▼"} ${sanitize(m.c)}</div>
+            <div class="vstat-sub" style="color:${m.flat?"var(--t4)":m.up?"var(--g)":"var(--dn)"};">${m.flat?"—":`${m.up?"▲":"▼"} ${sanitize(m.c)}`}</div>
           </div>`).join("")}
       </div>`).join("")}
 
