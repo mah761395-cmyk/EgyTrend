@@ -12,11 +12,6 @@
       "reviewedAt": "2026-10-27T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed (official economy category). Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Feed verified live 2026-10-27: 30 items, all dated, economy-titled. Twenty carry the publisher's own image URLs inside the feed; images are shown only when the feed itself includes them."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.341Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "masrawy": {
@@ -32,11 +27,6 @@
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.330Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "amwal": {
@@ -52,11 +42,6 @@
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.332Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "elwatan": {
@@ -72,11 +57,6 @@
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.336Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "shorouk": {
@@ -92,11 +72,6 @@
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.337Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "almasryalyoum": {
@@ -126,11 +101,6 @@
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.338Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "skynews": {
@@ -190,11 +160,6 @@
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.340Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "cnbc": {
@@ -210,11 +175,6 @@
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.346Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "yahoo": {
@@ -244,11 +204,6 @@
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.342Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "investing": {
@@ -264,11 +219,6 @@
       "reviewedAt": "2026-10-27T00:00:00.000Z",
       "evidence": "Publisher-provided public RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Verified live 2026-10-27: 10 items, dated, ten carry the feed's own image URLs. Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.351Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "ft": {
@@ -299,11 +249,6 @@
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.365Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "cointelegraph": {
@@ -319,11 +264,6 @@
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.361Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "mubasher": {
@@ -339,11 +279,6 @@
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.353Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "argaam": {
@@ -387,11 +322,6 @@
       "reviewedAt": "2026-10-27T00:00:00.000Z",
       "evidence": "Aggregator-provided syndication feed (Google News wrapper over asharq.com). Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Verified live 2026-10-27: 100 items returned within the 2-day query window. Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.354Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "almal": {
@@ -407,11 +337,6 @@
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.357Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "dostor": {
@@ -427,11 +352,6 @@
       "reviewedAt": "2026-10-27T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Switched from the Google News aggregation wrapper to the paper's own feed (verified live 2026-10-27: 30 items, direct publisher links, dated). Items that carry an image URL in the feed show it."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.360Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "dailynews-eg": {
@@ -447,11 +367,6 @@
       "reviewedAt": "2026-10-27T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Verified live 2026-10-27: 10 items, dated, ten carry the feed's own image URLs. Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.368Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "cnnar": {
@@ -481,11 +396,6 @@
       "reviewedAt": "2026-10-27T00:00:00.000Z",
       "evidence": "Aggregator-provided syndication feed (Google News wrapper over zawya.com, same treatment as the other approved wrapper sources). Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Verified live 2026-10-27: 100 items returned; Egypt-finance focused query. Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.363Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   },
   "enterprise": {
@@ -515,11 +425,6 @@
       "reviewedAt": "2026-10-23T00:00:00.000Z",
       "evidence": "Publisher-provided RSS syndication feed. Display is limited to the headline, the publisher excerpt carried in the feed, the source name, the publish time and a link back to the original article. Article bodies are never stored or reproduced, and the operator can disable any source instantly from the admin panel.",
       "note": "Headline + feed excerpt + attribution + link-back only."
-    },
-    "health": {
-      "lastAttemptAt": "2026-10-30T22:56:20.364Z",
-      "lastError": "fetch failed",
-      "consecutiveFailures": 12
     }
   }
 }
