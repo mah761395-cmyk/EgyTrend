@@ -61,22 +61,26 @@ jobs:
           # receiver is unreachable from the auditing sandbox).
           pnpm run test 2>&1 | tee /tmp/ci-test-output.log
           if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+            set +e
             {
               echo "## CI test failure summary (temporary audit diagnostic)"
               echo
+              echo "total log lines: $(wc -l < /tmp/ci-test-output.log)"
               echo '```'
-              grep -E "^(not ok|ok) [0-9]+ - " /tmp/ci-test-output.log | grep "^not ok" | head -20
+              echo "──── not-ok lines ────"
+              grep -E "^not ok" /tmp/ci-test-output.log | head -20 || echo "(none)"
               echo "──── per-workspace totals ────"
-              grep -B1 -E "^# (tests|pass|fail)" /tmp/ci-test-output.log | grep -E "test: #|# (tests|pass|fail)" | tail -12
+              grep -E "test: # (tests|pass|fail)" /tmp/ci-test-output.log | tail -12 || echo "(none)"
               echo "──── tail of log ────"
-              tail -30 /tmp/ci-test-output.log
+              tail -40 /tmp/ci-test-output.log
               echo '```'
             } > /tmp/ci-failure-comment.md
             curl -sS -X POST \
               -H "Authorization: Bearer ${GITHUB_TOKEN}" \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${{ github.event.pull_request.number }}/comments" \
-              -d @/tmp/ci-failure-comment.md -o /dev/null || true
+              -d @/tmp/ci-failure-comment.md -o /dev/null
+            echo "curl exit: $?"
             exit 1
           fi
 
