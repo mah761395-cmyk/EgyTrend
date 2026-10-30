@@ -965,6 +965,10 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .opp-card:active{background:var(--s1);}
 .opp-card.featured{border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.03);}
 .opp-card.vip-locked{opacity:.7;}
+/* TASK M: terminal signal cards (realized/expired/cancelled) stay visible as
+ * history but read as results, not as live entries. */
+.opp-card.dimmed{opacity:.72;}
+.opp-card.dimmed:hover{border-color:var(--b1);}
 .opp-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px;}
 .opp-badges{display:flex;gap:5px;flex-wrap:wrap;}
 .opp-type-badge{border-radius:6px;padding:2px 8px;font-size:9.5px;font-weight:800;letter-spacing:.3px;}
@@ -3524,15 +3528,67 @@ function normalizeOpportunity(raw){
   if(!/^[a-z0-9_-]{1,50}$/i.test(id)||!title||!summary)return null;
   const type=Object.prototype.hasOwnProperty.call(OPP_TYPES,String(o.type))?String(o.type):"stock";
   const market=Object.prototype.hasOwnProperty.call(OPP_MARKETS,String(o.market))?String(o.market):"egypt";
-  const status=["active","coming","closed"].includes(String(o.status))?String(o.status):"active";
+  /* TASK M: signal cards add three lifecycle states on top of the legacy
+   * three; any other value falls back to "active" exactly as before. */
+  const status=["active","coming","closed","realized","expired","cancelled"].includes(String(o.status))?String(o.status):"active";
   const risk=Math.min(5,Math.max(1,Math.round(Number(o.riskLevel)||3)));
   const text=(v,max)=>v==null?null:String(v).trim().slice(0,max)||null;
+  const num=v=>typeof v==="number"&&Number.isFinite(v)?v:null;
   const details=text(o.details,8000);
-  const autoObservation=/^\[AUTO\]/.test(String(o.sector||""))||o.autoObservation===true||String(o.source||"")==="live";
+  const isSignalCard=/^\[SIGNAL\]/.test(String(o.sector||""));
+  const autoObservation=/^\[(?:AUTO|SIGNAL)\]/.test(String(o.sector||""))||o.autoObservation===true||String(o.source||"")==="live";
   const persistedProvenance=autoObservation?autoObservationProvenance(details):{source:null,sourceAsOf:null};
   const rawSource=text(o.source,160);
   const rawSourceTime=typeof o.sourceAsOf==="number"?o.sourceAsOf:Date.parse(String(o.sourceAsOf||""));
   const sourceAsOf=Number.isFinite(rawSourceTime)&&rawSourceTime>=Date.UTC(2000,0,1)?rawSourceTime:persistedProvenance.sourceAsOf;
+  /* The structured payload is whitelisted field by field: every value that
+   * reaches the DOM was checked here, and a malformed payload simply never
+   * becomes a signal card (the card falls back to its prose fields). */
+  /* A structured payload only counts on a card whose sector carries the
+   * server's [SIGNAL] marker — prose cards can never claim a signal. */
+  let signal=null;
+  const s=o.signal;
+  if(s&&typeof s==="object"&&isSignalCard&&["breakout","rebound","uptrend"].includes(String(s.signalType))){
+    const st=num(s.strength);
+    const stop=num(s.stopLoss);
+    const t1=num(s.targets&&s.targets.t1);
+    const t2=num(s.targets&&s.targets.t2);
+    const el=num(s.entry&&s.entry.low);
+    const eh=num(s.entry&&s.entry.high);
+    if(st!==null&&stop!==null&&t1!==null&&t2!==null&&el!==null&&eh!==null&&el>0&&eh>0&&stop>0){
+      signal={
+        signalType:String(s.signalType),
+        signalTypeAr:text(s.signalTypeAr,80)||"",
+        price:num(s.price),
+        priceAsOf:num(s.priceAsOf),
+        priceTimeBasis:s.priceTimeBasis==="fetch"?"fetch":"source",
+        changePercent:num(s.changePercent),
+        strength:Math.min(100,Math.max(0,st)),
+        strengthLabelAr:text(s.strengthLabelAr,40)||"",
+        factors:Array.isArray(s.factors)?s.factors.slice(0,12).map(f=>f&&typeof f==="object"?{labelAr:text(f.labelAr,300)||"",points:num(f.points)??0}:null).filter(Boolean):[],
+        entryLow:el,entryHigh:eh,
+        entryNoteAr:text(s.entry&&s.entry.noteAr,200)||"",
+        stopLoss:stop,target1:t1,target2:t2,
+        rewardRisk:num(s.rewardRisk),
+        timeframeAr:text(s.timeframeAr,60)||"",
+        scenarioPositiveAr:text(s.scenarioPositiveAr,600)||"",
+        scenarioNegativeAr:text(s.scenarioNegativeAr,600)||"",
+        dataSources:Array.isArray(s.dataSources)?s.dataSources.slice(0,6).map(d=>d&&typeof d==="object"?{name:text(d.name,120)||"غير متاح",asOf:num(d.asOf),basis:d.basis==="fetch"?"fetch":d.basis==="history"?"history":"source"}:null).filter(Boolean):[],
+      };
+    }
+  }
+  let liveUpdate=null;
+  const lu=o.liveUpdate;
+  if(lu&&typeof lu==="object"&&["active","realized","expired"].includes(String(lu.statusNow))){
+    liveUpdate={
+      statusNow:String(lu.statusNow),
+      noteAr:text(lu.noteAr,300)||"",
+      price:num(lu.price),
+      priceAsOf:num(lu.priceAsOf),
+      priceTimeBasis:lu.priceTimeBasis==="fetch"?"fetch":"source",
+    };
+  }
+  const result=["target_hit","stop_hit","expired_by_time"].includes(String(o.result))?String(o.result):null;
   return {
     id,title,summary,type,market,status,riskLevel:risk,
     details,expectedReturn:text(o.expectedReturn,100),
@@ -3542,6 +3598,9 @@ function normalizeOpportunity(raw){
     source:rawSource&&rawSource!=="live"?rawSource:persistedProvenance.source,
     sourceAsOf:Number.isFinite(sourceAsOf)?sourceAsOf:null,
     autoObservation,
+    isSignalCard,signal,liveUpdate,result,
+    realizedAt:num(o.realizedAt),
+    firstPrice:num(o.firstPrice),
   };
 }
 
@@ -3552,6 +3611,42 @@ function opportunitySourceMeta(o){
     ?new Intl.DateTimeFormat("ar-EG",{timeZone:"Africa/Cairo",year:"numeric",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(o.sourceAsOf))
     :"غير متاح";
   return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1);color:var(--t4);font-size:10px;line-height:1.7;">📡 المصدر: ${source}<br/>🕐 وقت المصدر: ${sanitize(time)}</div>`;
+}
+
+/* TASK M: signal-card vocabulary + the source/time line. The label says
+ * exactly what the timestamp IS — a source publish time or a fetch time —
+ * the same rule as the markets board (never a fetch time as "وقت المصدر"). */
+const OPP_STATUS_BADGES={
+  realized:{l:"✅ تحققت",c:"#22c55e",bg:"rgba(34,197,94,.12)"},
+  expired:{l:"⛔ انتهت",c:"#ef4444",bg:"rgba(239,68,68,.12)"},
+  cancelled:{l:"⚫ أُلغيت",c:"#94a3b8",bg:"rgba(148,163,184,.12)"},
+};
+const OPP_RESULT_AR={
+  target_hit:"تحقق الهدف الأول: السعر بلغ الهدف الأول المعلن.",
+  stop_hit:"انتهت عند كسر الوقف: الفكرة ملغاة والخسارة محصورة في قياس الوقف.",
+  expired_by_time:"انتهت نافذة الملاحظة (10 أيام) دون بلوغ هدف أو كسر وقف.",
+};
+function oppFmtTime(ms,basis){
+  if(!Number.isFinite(ms))return "غير متاح";
+  const t=new Intl.DateTimeFormat("ar-EG",{timeZone:"Africa/Cairo",year:"numeric",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(ms));
+  return `${t} (${basis==="fetch"?"وقت الجلب":"وقت المصدر"})`;
+}
+function signalSourceMeta(o){
+  const s=o.signal;
+  if(!s)return "";
+  const lines=[];
+  const hist=s.dataSources.find(d=>d.basis==="history");
+  if(hist)lines.push(`📊 سجل التداول: ${sanitize(hist.name)} — ${oppFmtTime(hist.asOf,"source")}`);
+  if(Number.isFinite(s.priceAsOf))lines.push(`📡 سعر الإشارة: ${oppFmtTime(s.priceAsOf,s.priceTimeBasis)}`);
+  const other=s.dataSources.filter(d=>d.basis==="source");
+  for(const d of other.slice(0,2))lines.push(`📰 ${sanitize(d.name)} — ${oppFmtTime(d.asOf,"source")}`);
+  if(!lines.length)return "";
+  return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1);color:var(--t4);font-size:10px;line-height:1.8;">${lines.join("<br/>")}</div>`;
+}
+function signalStrengthDots(strength){
+  const filled=Math.round(strength/20);
+  const color=strength>=70?"#22c55e":strength>=40?"#f59e0b":"#94a3b8";
+  return `<div class="opp-risk" style="display:flex;gap:3px;">${[1,2,3,4,5].map(i=>`<div style="width:10px;height:10px;border-radius:50%;background:${i<=filled?color:"var(--b2)"};"></div>`).join("")}</div>`;
 }
 
 async function loadOpps(force=false){
@@ -3649,7 +3744,12 @@ function renderOpps(){
   }
   const saved=DB.g("saved_opps",[]);
   const marketNames={egypt:"🇪🇬 مصر",us:"🇺🇸 أمريكا",gulf:"🌙 الخليج",crypto:"₿ كريبتو",global:"🌐 عالمي"};
-  el.innerHTML=list.map(o=>{
+  /* TASK M: the list splits into the live set (everything still open) and
+   * the outcome history — a terminal card is a RESULT, not a live entry. */
+  const isActive=o=>o.status==="active"||o.status==="coming";
+  const live=list.filter(isActive);
+  const history=list.filter(o=>!isActive(o));
+  const cardHtml=o=>{
     const t=OPP_TYPES[o.type]||OPP_TYPES.stock;
     const locked=o.vipOnly&&!isVip;
     const rColor=RISK_COLORS[(o.riskLevel||3)-1]||RISK_COLORS[2];
@@ -3658,41 +3758,68 @@ function renderOpps(){
     const daysLeft=o.deadline?Math.ceil((new Date(o.deadline)-new Date())/(1000*60*60*24)):null;
     const ageHrs=o.createdAt?Math.floor((Date.now()-new Date(o.createdAt))/(1000*3600)):999;
     const isNew=Number.isFinite(ageHrs)&&ageHrs>=0&&ageHrs<48;
-    const sectorClean=String(o.sector||"").replace(/^\[AUTO\]\s*/,"").replace(/^\[AI\]\s*/,"");
+    const sectorClean=String(o.sector||"").replace(/^\[(?:AUTO|AI|SIGNAL)\]\s*/,"");
     const autoObservation=o.autoObservation===true;
+    const isSignal=o.isSignalCard===true&&!!o.signal;
+    const statusBadge=!isActive(o)&&OPP_STATUS_BADGES[o.status]?OPP_STATUS_BADGES[o.status]:null;
     const id=safeJsArg(o.id);
-    return`<div class="opp-card${o.featured&&!autoObservation?" featured":""}${locked?" vip-locked":""}" onclick='openOppDetail(${id})'>
+    const strength=isSignal?`${o.signal.strength}/100 · ${sanitize(o.signal.strengthLabelAr)}`:"";
+    const liveChip=isSignal&&o.liveUpdate&&!locked?`
+      <div style="display:flex;align-items:center;gap:6px;margin-top:8px;padding:7px 9px;background:var(--s1);border:1px solid var(--b1);border-radius:10px;font-size:10.5px;color:var(--t2);flex-wrap:wrap;">
+        <span style="font-weight:800;color:${o.liveUpdate.statusNow==="active"?"#22c55e":o.liveUpdate.statusNow==="realized"?"#22c55e":"#ef4444"};">${o.liveUpdate.statusNow==="active"?"سارية الآن":o.liveUpdate.statusNow==="realized"?"تحققت":"انتهت"}</span>
+        ${Number.isFinite(o.liveUpdate.price)?`<span>السعر الحالي: <b>${Number(o.liveUpdate.price).toLocaleString("en-US")}</b></span>`:""}
+        ${Number.isFinite(o.liveUpdate.priceAsOf)?`<span style="color:var(--t4);">${oppFmtTime(o.liveUpdate.priceAsOf,o.liveUpdate.priceTimeBasis)}</span>`:""}
+      </div>`:"";
+    const signalStrip=isSignal&&!locked?`
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
+        <span class="opp-type-badge" style="color:#c084fc;background:rgba(192,132,252,.12);">⚡ ${sanitize(o.signal.signalTypeAr)}</span>
+        ${Number.isFinite(o.signal.price)?`<span style="font-size:11px;color:var(--t2);">سعر الإشارة: <b>${Number(o.signal.price).toLocaleString("en-US")}</b></span>`:""}
+        <span style="font-size:10.5px;color:var(--t4);">${strength}</span>
+      </div>`:"";
+    return`<div class="opp-card${o.featured&&!autoObservation?" featured":""}${locked?" vip-locked":""}${statusBadge?" dimmed":""}" onclick='openOppDetail(${id})'>
       <div class="opp-top">
         <div class="opp-badges">
           <span class="opp-type-badge" style="color:${t.c};background:${t.bg};">${sanitize(t.l)}</span>
           <span class="opp-market-badge" style="background:var(--s2);color:var(--t3);">${sanitize(marketNames[o.market]||"غير محدد")}</span>
+          ${statusBadge?`<span class="opp-type-badge" style="color:${statusBadge.c};background:${statusBadge.bg};">${statusBadge.l}</span>`:""}
           ${!autoObservation&&isNew?`<span class="opp-type-badge" style="color:#22c55e;background:rgba(34,197,94,.12);">🟢 جديدة</span>`:""}
           ${!autoObservation&&o.featured?`<span class="opp-type-badge" style="color:#f59e0b;background:rgba(245,158,11,.12);">⭐ مميزة</span>`:""}
           ${o.vipOnly?`<span class="opp-type-badge" style="color:#a78bfa;background:rgba(139,92,246,.12);">VIP</span>`:""}
-          ${autoObservation?`<span class="opp-type-badge" style="color:#93c5fd;background:rgba(59,130,246,.12);">لقطة وصفية</span>`:""}
+          ${isSignal?`<span class="opp-type-badge" style="color:#c084fc;background:rgba(192,132,252,.12);">إشارة</span>`:autoObservation?`<span class="opp-type-badge" style="color:#93c5fd;background:rgba(59,130,246,.12);">لقطة وصفية</span>`:""}
         </div>
         ${locked?`<span style="font-size:18px;">🔒</span>`:""}
       </div>
       <div class="opp-title">${sanitize(o.title)}</div>
       ${locked?`<div class="opp-vip-lock" onclick="event.stopPropagation();goNav('vip')"><span style="color:var(--au);font-weight:800;font-size:12px;">⭐ اشترك في VIP لرؤية تفاصيل هذا العنصر</span></div>`:
       `<div class="opp-summary">${sanitize(o.summary)}</div>
+      ${signalStrip}
+      ${liveChip}
       <div class="opp-meta">
-        ${sectorClean?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${sanitize(sectorClean)}</div></div>`:""}
+        ${sectorClean?`<div class="opp-meta-item"><div class="opp-meta-label">${isSignal?"النمط":"القطاع"}</div><div class="opp-meta-val">${sanitize(isSignal?(o.signal.timeframeAr||""):(sectorClean||""))}</div></div>`:""}
+        ${isSignal?`<div class="opp-meta-item">
+          <div class="opp-meta-label">قوة الإشارة</div>
+          <div>${signalStrengthDots(o.signal.strength)}
+          <div style="color:var(--t4);font-size:9px;margin-top:2px;">${strength}</div></div>
+        </div>`:
+        `
         ${!autoObservation&&o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">المدة المعلنة</div><div class="opp-meta-val">${sanitize(o.duration)}</div></div>`:""}
         ${!autoObservation?`<div class="opp-meta-item">
           <div class="opp-meta-label">درجة المخاطرة المعلنة</div>
           <div><div class="opp-risk">${[1,2,3,4,5].map(i=>`<div class="opp-risk-dot" style="background:${i<=(o.riskLevel||3)?rColor:"var(--b2)"};"></div>`).join("")}</div>
           <div style="color:${rColor};font-size:9px;margin-top:2px;">${rLabel}</div></div>
-        </div>`:""}
+        </div>`:""}`}
       </div>
       ${!autoObservation&&daysLeft!==null&&Number.isFinite(daysLeft)?`<div class="opp-deadline">⏰ ${daysLeft<=0?"آخر يوم":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>`:""}
-      ${autoObservation?opportunitySourceMeta(o):""}`}
+      ${isSignal?signalSourceMeta(o):autoObservation?opportunitySourceMeta(o):""}`}
       <div class="opp-actions">
         <button class="btn btn-sm" style="background:var(--s1);border:1px solid var(--b1);color:var(--t3);" onclick='event.stopPropagation();toggleSaveOpp(${id},this)'>${isSaved?"🔖 محفوظة":"📌 حفظ"}</button>
         ${!locked?`<button class="btn btn-g btn-sm" onclick='event.stopPropagation();openOppDetail(${id})'>التفاصيل ←</button>`:""}
       </div>
     </div>`;
-  }).join("");
+  };
+  el.innerHTML=
+    (live.length?live.map(cardHtml).join(""):history.length?`<div class="notif-empty" style="margin-bottom:14px;">💡<br/>لا توجد عناصر سارية في هذه الفئة حالياً</div>`:`<div class="notif-empty">💡<br/>لا توجد عناصر متابعة في هذه الفئة حالياً<br/><div style="font-size:10px;margin-top:6px;">تحقق لاحقاً؛ قناة الدعم ستظهر بعد تفعيلها</div></div>`)+
+    (history.length?`<div style="margin:18px 2px 8px;display:flex;align-items:center;gap:8px;"><span style="color:var(--t3);font-size:12px;font-weight:800;">📜 السجل والنتائج</span><span style="flex:1;border-top:1px dashed var(--b1);"></span><span style="color:var(--t4);font-size:10px;">تُحفظ حتى بعد تحقّقها أو انتهائها</span></div>`+history.map(cardHtml).join(""):"");
 }
 
 function toggleSaveOpp(id,btn){
@@ -3703,6 +3830,52 @@ function toggleSaveOpp(id,btn){
   DB.s("saved_opps",saved);
 }
 
+/* TASK M: the structured body of a signal card — every number below comes
+ * from the server's whitelisted payload; nothing is computed client-side.
+ * The closing line is mandatory: levels are conditions, never a promise. */
+function signalDetailBody(o){
+  const s=o.signal;
+  const lv=(label,val,sub)=>`<div class="opp-meta-item"><div class="opp-meta-label">${label}</div><div class="opp-meta-val" style="font-weight:800;">${val}</div>${sub?`<div style="color:var(--t4);font-size:10px;margin-top:2px;">${sanitize(sub)}</div>`:""}</div>`;
+  const status=!isActiveStatus(o)?OPP_STATUS_BADGES[o.status]:null;
+  const resultBox=(status&&o.result&&OPP_RESULT_AR[o.result])?`
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:13px;margin-bottom:14px;">
+      <div style="color:var(--t1);font-size:12px;font-weight:800;margin-bottom:5px;">${status.l} — النتيجة</div>
+      <div style="color:var(--t2);font-size:12px;line-height:1.8;">${OPP_RESULT_AR[o.result]}</div>
+      ${Number.isFinite(o.realizedAt)?`<div style="color:var(--t4);font-size:10.5px;margin-top:5px;">🕐 ${oppFmtTime(o.realizedAt,"source")}</div>`:""}
+    </div>`:"";
+  const liveBox=o.liveUpdate?`
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:13px;margin-bottom:14px;">
+      <div style="color:var(--t1);font-size:12px;font-weight:800;margin-bottom:5px;">الحالة الآن (قراءة حية غير محفوظة)</div>
+      <div style="color:var(--t2);font-size:12px;line-height:1.8;">
+        ${o.liveUpdate.statusNow==="active"?"النموذج ساري":o.liveUpdate.statusNow==="realized"?"تحقق الهدف":"انتهت الفكرة"}
+        ${Number.isFinite(o.liveUpdate.price)?` — السعر الحالي <b>${Number(o.liveUpdate.price).toLocaleString("en-US")}</b> (${oppFmtTime(o.liveUpdate.priceAsOf,o.liveUpdate.priceTimeBasis)})`:""}
+      </div>
+      ${o.liveUpdate.noteAr?`<div style="color:var(--t4);font-size:11px;margin-top:4px;">${sanitize(o.liveUpdate.noteAr)}</div>`:""}
+    </div>`:"";
+  const factors=s.factors.length?`
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:13px;margin-bottom:14px;">
+      <div style="color:var(--g);font-size:11px;font-weight:700;margin-bottom:8px;">⚖️ العوامل (${s.strength}/100 · ${sanitize(s.strengthLabelAr)})</div>
+      ${s.factors.map(f=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--t2);margin-bottom:6px;line-height:1.6;"><span>${sanitize(f.labelAr)}</span><b style="color:${f.points>=0?"#22c55e":"#ef4444"};white-space:nowrap;">${f.points>=0?"+":""}${f.points}</b></div>`).join("")}
+    </div>`:"";
+  return `${resultBox}${liveBox}${factors}
+  <div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:15px;margin-bottom:14px;">
+    <div style="color:var(--g);font-size:11px;font-weight:700;margin-bottom:10px;">🎯 المستويات (مشتقة من بنية السعر)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
+      ${lv("منطقة الدخول",`${Number(s.entryLow).toLocaleString("en-US")} – ${Number(s.entryHigh).toLocaleString("en-US")}`,s.entryNoteAr)}
+      ${lv("وقف الخسارة",Number(s.stopLoss).toLocaleString("en-US"))}
+      ${lv("الهدف الأول",Number(s.target1).toLocaleString("en-US"))}
+      ${lv("الهدف الثاني",Number(s.target2).toLocaleString("en-US"))}
+      ${lv("العائد للمخاطرة",Number.isFinite(s.rewardRisk)?`${s.rewardRisk} ريسك`:"—")}
+      ${lv("الأفق الزمني",s.timeframeAr||"—")}
+    </div>
+  </div>
+  ${s.scenarioPositiveAr?`<div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:13px;padding:13px;margin-bottom:12px;"><div style="color:#22c55e;font-size:11px;font-weight:700;margin-bottom:5px;">السيناريو الإيجابي (مشروط)</div><div style="color:var(--t2);font-size:12px;line-height:1.8;">${sanitize(s.scenarioPositiveAr)}</div></div>`:""}
+  ${s.scenarioNegativeAr?`<div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:13px;padding:13px;margin-bottom:14px;"><div style="color:#ef4444;font-size:11px;font-weight:700;margin-bottom:5px;">السيناريو السلبي</div><div style="color:var(--t2);font-size:12px;line-height:1.8;">${sanitize(s.scenarioNegativeAr)}</div></div>`:""}
+  <div style="background:var(--s1);border:1px dashed var(--b2);border-radius:13px;padding:11px;margin-bottom:14px;color:var(--t4);font-size:10.5px;line-height:1.8;">⚖️ تنويه: هذه قراءة تحليلية مشروطة بالمستويات الموضحة أعلاه — ليست توصية استثمارية، ولا ضمان لأي نتيجة. تداول الأسهم والكريبتو ينطوي على مخاطر حقيقية.</div>
+  ${signalSourceMeta(o)}`;
+}
+function isActiveStatus(o){return o.status==="active"||o.status==="coming";}
+
 function openOppDetail(id){
   const o=oppsData.find(x=>x.id===id);if(!o)return;
   const isVip=U?.plan==="vip"||U?.plan==="admin";
@@ -3711,6 +3884,7 @@ function openOppDetail(id){
   const rColor=RISK_COLORS[(o.riskLevel||3)-1]||RISK_COLORS[2];
   const rLabel=RISK_LABELS[o.riskLevel||3]||RISK_LABELS[3];
   const autoObservation=o.autoObservation===true;
+  const isSignal=o.isSignalCard===true&&!!o.signal;
   const sectorClean=String(o.sector||"").replace(/^\[(?:AUTO|AI)\]\s*/,"");
   const daysLeft=o.deadline?Math.ceil((new Date(o.deadline)-new Date())/(1000*60*60*24)):null;
   const idArg=safeJsArg(o.id);
@@ -3722,11 +3896,14 @@ function openOppDetail(id){
       <span class="opp-type-badge" style="color:${t.c};background:${t.bg};font-size:11px;padding:3px 10px;">${sanitize(t.l)}</span>
       ${o.vipOnly?`<span class="opp-type-badge" style="color:#a78bfa;background:rgba(139,92,246,.12);font-size:11px;padding:3px 10px;">VIP فقط</span>`:""}
       ${!autoObservation&&o.featured?`<span class="opp-type-badge" style="color:#f59e0b;background:rgba(245,158,11,.12);font-size:11px;padding:3px 10px;">⭐ مميزة</span>`:""}
+      ${isSignal?`<span class="opp-type-badge" style="color:#c084fc;background:rgba(192,132,252,.12);font-size:11px;padding:3px 10px;">⚡ إشارة</span>`:""}
+      ${!isActiveStatus(o)&&OPP_STATUS_BADGES[o.status]?`<span class="opp-type-badge" style="color:${OPP_STATUS_BADGES[o.status].c};background:${OPP_STATUS_BADGES[o.status].bg};font-size:11px;padding:3px 10px;">${OPP_STATUS_BADGES[o.status].l}</span>`:""}
       ${autoObservation?`<span class="opp-type-badge" style="color:#93c5fd;background:rgba(59,130,246,.12);font-size:11px;padding:3px 10px;">لقطة وصفية</span>`:""}
     </div>
     <h2 style="color:var(--t1);font-size:20px;font-weight:900;line-height:1.4;margin-bottom:12px;">${sanitize(o.title)}</h2>
     ${locked?`<div style="text-align:center;padding:30px;background:var(--aud);border-radius:16px;cursor:pointer;" onclick="document.getElementById('opp-detail-ov').remove();goNav('vip')"><div style="font-size:40px;margin-bottom:8px;">⭐</div><div style="color:var(--au);font-weight:800;font-size:15px;">${autoObservation?"هذا العنصر الوصفي لأعضاء VIP فقط":"هذا العنصر لأعضاء VIP فقط"}</div><div style="color:var(--t4);font-size:12px;margin-top:5px;">اشترك الآن للوصول الكامل</div></div>`
-    :`<p style="color:var(--t2);font-size:13.5px;line-height:1.8;margin-bottom:18px;direction:rtl;">${sanitize(o.summary)}</p>
+    :(isSignal?`<p style="color:var(--t2);font-size:13.5px;line-height:1.8;margin-bottom:18px;direction:rtl;">${sanitize(o.summary)}</p>
+    ${signalDetailBody(o)}`:`<p style="color:var(--t2);font-size:13.5px;line-height:1.8;margin-bottom:18px;direction:rtl;">${sanitize(o.summary)}</p>
     ${autoObservation?`${sectorClean?`<div style="display:grid;grid-template-columns:1fr;gap:9px;margin-bottom:10px;"><div class="opp-meta-item"><div class="opp-meta-label">الفئة</div><div class="opp-meta-val">${sanitize(sectorClean)}</div></div></div>`:""}${opportunitySourceMeta(o)}`:`<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px;">
       ${o.sector?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${sanitize(o.sector.replace(/^\[AI\]\s*/,""))}</div></div>`:""}
       ${o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">المدة المعلنة</div><div class="opp-meta-val">${sanitize(o.duration)}</div></div>`:""}
@@ -3737,11 +3914,11 @@ function openOppDetail(id){
       </div>
     </div>
     ${daysLeft!==null&&Number.isFinite(daysLeft)?`<div style="background:var(--dnd);border:1px solid rgba(239,68,68,.2);border-radius:11px;padding:11px;margin-bottom:14px;display:flex;align-items:center;gap:8px;"><span style="font-size:18px;">⏰</span><div><div style="color:var(--dn);font-weight:700;font-size:12.5px;">${daysLeft<=0?"آخر يوم للاكتتاب":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>${o.deadline?`<div style="color:var(--t4);font-size:10.5px;">الموعد النهائي: ${sanitize(o.deadline)}</div>`:""}</div></div>`:""}`}
-    ${o.details?`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:15px;margin-bottom:16px;"><div style="color:var(--g);font-size:11px;font-weight:700;margin-bottom:8px;">📋 تفاصيل إضافية</div><div style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;">${sanitize(o.details)}</div></div>`:""}
+    ${!isSignal&&o.details?`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:15px;margin-bottom:16px;"><div style="color:var(--g);font-size:11px;font-weight:700;margin-bottom:8px;">📋 تفاصيل إضافية</div><div style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;">${sanitize(o.details)}</div></div>`:""}
     <div style="display:flex;gap:8px;margin-top:6px;">
       <button class="btn btn-g btn-full" style="padding:13px;" onclick='toggleSaveOppFromDetail(${idArg},this)'>📌 حفظ الفرصة</button>
       <a class="btn btn-full" href="https://wa.me/201008605139" target="_blank" rel="noopener noreferrer" style="padding:13px;background:rgba(148,163,184,.08);border:1px solid rgba(52,211,153,.2);color:var(--g);text-align:center;justify-content:center;">💬 استفسر على واتساب</a>
-    </div>`}
+    </div>`)}
   </div>`;
   document.body.appendChild(ov);
 }

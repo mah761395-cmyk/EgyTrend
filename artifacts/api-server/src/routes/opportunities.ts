@@ -569,7 +569,10 @@ async function buildLiveOpportunityRows(): Promise<Array<Record<string, unknown>
   return candidates.map((c) => ({
     id: stableOppId(c.title),
     title: c.title, summary: c.summary, details: c.details,
-    type: c.type, market: c.market, expectedReturn: c.expectedReturn,
+      type: c.type, market: c.market,
+      /* Projected return is deprecated: the engine never supplies one, and
+       * re-echoing an absent field would keep the legacy column alive. */
+      expectedReturn: null,
     riskLevel: c.riskLevel, sector: c.sector, duration: c.duration,
     deadline: null, status: "active", featured: c.featured, vipOnly: c.vipOnly,
     createdAt: now, updatedAt: now, source: c.source, sourceAsOf: c.sourceAsOf, autoObservation: true,
