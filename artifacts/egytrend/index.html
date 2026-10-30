@@ -1437,7 +1437,7 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .lnd-vip-gold-feats li::before{content:"✓";color:#E3B75B;font-weight:900;flex:0 0 auto;}
 /* ─── Plans (free + admin plans side by side) ─── */
 .lnd-plans-new{grid-template-columns:1fr;}
-@media (min-width:900px){.lnd-plans-new{grid-template-columns:290px 1fr;}}
+@media (min-width:900px){.lnd-plans-new{grid-template-columns:1fr 290px;}}
 .lnd-plans-new > #lnd-vip-plans{margin-bottom:0;}
 #lnd-vip-plans{display:grid;grid-template-columns:1fr;gap:14px;align-content:stretch;}
 @media (min-width:640px){#lnd-vip-plans{grid-template-columns:repeat(2,1fr);}}
@@ -1761,25 +1761,25 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
     <section id="features" class="lnd-sec" aria-labelledby="lnd-features-title">
       <div class="lnd-sec-head">
         <p class="lnd-kicker2">الأدوات الجوهرية</p>
-        <h2 id="lnd-features-title">كل ما يحتاجه المستثمر، <span class="lnd-hl">في شاشة واحدة.</span></h2>
+        <h2 id="lnd-features-title">كل ما يحتاجه المستثمر <span class="lnd-hl">في شاشة واحدة.</span></h2>
         <p class="lnd-sec-sub">نفس الأرقام الحقيقية التي تراها بعد التسجيل — المصدر ووقت التحديث تحت كل رقم.</p>
       </div>
       <div class="lnd-feat-grid">
         <article class="lnd-feat-card">
-          <div class="lnd-feat-head"><span class="lnd-feat-tag">الأسواق</span><span class="lnd-feat-live" id="feat-mkt-live" role="status"></span></div>
+          <div class="lnd-feat-head"><span class="lnd-feat-tag">01 · الأسواق</span><span class="lnd-feat-live" id="feat-mkt-live" role="status"></span></div>
           <h3>أسواق تتحدّث أمامك</h3>
           <p>EGX والمؤشرات العالمية والسلع والكريبتو والعملات — السعر والتغيّر والمصدر ووقت التحديث.</p>
           <div class="lnd-feat-visual" id="feat-mkt-visual" aria-label="أمثلة من أسعار اللوحة الحالية"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>
         </article>
         <article class="lnd-feat-card">
-          <div class="lnd-feat-head"><span class="lnd-feat-tag">الأخبار</span></div>
+          <div class="lnd-feat-head"><span class="lnd-feat-tag">02 · الأخبار</span></div>
           <h3>أخبار من مصدرها</h3>
           <p>من مصادر معتمدة — بالعربي والإنجليزي، والعنوان مع مصدره ووقت النشر.</p>
           <div class="lnd-feat-visual lnd-feat-news" id="feat-news-list" aria-label="أحدث العناوين من المصادر المعتمدة"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>
         </article>
         <article class="lnd-feat-card">
-          <div class="lnd-feat-head"><span class="lnd-feat-tag lnd-feat-tag-vip">VIP</span></div>
-          <h3>فرص — تُحسب على حسابك أنت</h3>
+          <div class="lnd-feat-head"><span class="lnd-feat-tag">03 · الفرص</span><span class="lnd-feat-tag lnd-feat-tag-vip">VIP</span></div>
+          <h3>فرص مدققة للمستثمر</h3>
           <p>متابعة وصفية من بيانات السوق المتاحة تُقيَّم من الخادم. لا نعرض إشارات حقيقية لزائر غير مسجَّل.</p>
           <div class="lnd-feat-visual lnd-feat-lock">
             <span class="lnd-lock-ic"><svg class="et-icon" aria-hidden="true"><use href="#i-lock"></use></svg></span>
@@ -1789,7 +1789,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
           </div>
         </article>
         <article class="lnd-feat-card">
-          <div class="lnd-feat-head"><span class="lnd-feat-tag">الحاسبات</span></div>
+          <div class="lnd-feat-head"><span class="lnd-feat-tag">04 · الحاسبات</span></div>
           <h3>حاسبات المستثمر</h3>
           <p>تُحسب أمامك بالافتراضات المعلنة — والنتيجة تقديرية وليست توصية.</p>
           <div class="lnd-feat-visual" id="feat-calc-visual">
@@ -1804,12 +1804,12 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
     <section id="principles" class="lnd-sec" aria-labelledby="lnd-principles-title">
       <div class="lnd-sec-head">
         <p class="lnd-kicker2">لماذا تثق بالأرقام؟</p>
-        <h2 id="lnd-principles-title">ثلاثة أشياء لا نساوم عليها.</h2>
+        <h2 id="lnd-principles-title">ثلاثة أشياء لا نتنازل عنها.</h2>
       </div>
       <div class="lnd-principles">
-        <div class="lnd-principle"><span class="lnd-pr-num">01</span><h3>بيانات حقيقية</h3><p>كل رقم من مصدر مرخّص أو معلَن — لا أرقام توضيحية تُقدَّم كحقيقية، ولا «حي» إلا إذا قاله المصدر نفسه.</p></div>
-        <div class="lnd-principle"><span class="lnd-pr-num">02</span><h3>مصدر ووقت</h3><p>تحت كل رقم: من أين جاء ومتى حُدّث بوقت القاهرة. ولو تأخر، يظهر وسام «قد تكون الأرقام متأخرة».</p></div>
-        <div class="lnd-principle"><span class="lnd-pr-num">03</span><h3>وضوح كامل</h3><p>ما لا تتوفر بياناته يُعرض «غير متاح» — لا فراغ خفي، ولا رقم قديم يُقدَّم كجديد، ولا بديل يُخمَّن.</p></div>
+        <div class="lnd-principle"><span class="lnd-pr-num">03</span><h3>وضوح كامل</h3><p>وضوح كامل لما هو متاح وما ليس متاحًا، بدل بيانات غامضة أو غير موثّقة.</p></div>
+        <div class="lnd-principle"><span class="lnd-pr-num">02</span><h3>مصدر ووقت</h3><p>كل رقم يُنسب لمصدره ويُطبع بوقت تحديثه — لا يُقدَّم قديم كجديد.</p></div>
+        <div class="lnd-principle"><span class="lnd-pr-num">01</span><h3>بيانات حقيقية</h3><p>لا أرقام توضيحية تُقدَّم كحقيقية، ولا «حي» إلا إذا قاله المصدر نفسه.</p></div>
       </div>
     </section>
 
@@ -1817,17 +1817,16 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       <div class="lnd-vip-gold">
         <div class="lnd-vip-gold-copy">
           <p class="lnd-vip-gold-kicker">VIP</p>
-          <h2 id="lnd-vip-title">أدوات الكبار. بيانات أدق.</h2>
-          <p>كل ميزة تُفعَّل على حسابك وتتحقق صلاحيتها من الخادم — العيّنات التوضيحية موسومة بوضوح، ولا نتوهم نتيجة ونبيعها كحقيقية.</p>
+          <h2 id="lnd-vip-title">قرارات أدق. أدوات أقوى.</h2>
+          <p>كل ميزة تُفعَّل على حسابك وتُحسب على أسعار المصادر المرخّصة وتتحقق صلاحيتها من الخادم — لا نتوهم نتيجة ونبيعها كحقيقية.</p>
           <a class="lnd-vip-gold-cta" href="#pricing">افتح VIP <svg class="et-icon" aria-hidden="true" style="transform:rotate(180deg)"><use href="#i-arrow"></use></svg></a>
         </div>
         <ul class="lnd-vip-gold-feats">
-          <li>تنبيهات سعرية تُقيَّم من الخادم</li>
-          <li>محلل أخبار ومساعد AI بحدود يومية</li>
+          <li>تنبيهات سعرية بحدود يومية</li>
+          <li>محلل أخبار ومساعد AI</li>
           <li>الحاسبات المتقدمة</li>
-          <li>شارت + MA(20) وRSI(14)</li>
-          <li>المحفظة بحماية ملكية من الخادم</li>
-          <li>Screener بفلاتر كاملة</li>
+          <li>شارت + MA وRSI</li>
+          <li>المحفظة بحماية ملكية</li>
         </ul>
       </div>
     </section>
@@ -1836,9 +1835,10 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       <div class="lnd-sec-head">
         <p class="lnd-kicker2">الأسعار</p>
         <h2 id="lnd-pricing-title">اختر الباقة المناسبة لك.</h2>
-        <p class="lnd-sec-sub">الأسعار وطرق الدفع من المصدر المركزي للمنصة — لا نسخة ثابتة، وأي تعديل من الإدارة يظهر تلقائيًا. السعر القديم مشطوب فقط إذا حدّدته الإدارة.</p>
+        <p class="lnd-sec-sub">أسعار رسمية من مصدر واحد، وطرق دفع موثّقة — لا نسخة ثابتة ولا تخمين، وأي تعديل من الإدارة يظهر تلقائيًا.</p>
       </div>
       <div class="lnd-plans lnd-plans-new">
+        <div id="lnd-vip-plans" class="lnd-vip-plans" role="status" aria-label="جارٍ تحميل الباقات من الخادم"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>
         <div class="lnd-plan lnd-plan-free">
           <div class="lnd-plan-name">مجاني</div>
           <div class="lnd-plan-price"><b>٠</b><span>ج.م — للأبد</span></div>
@@ -1850,7 +1850,6 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
           </ul>
           <button type="button" class="lnd-primary lnd-plan-cta" onclick="openAuthModal('register')">ابدأ مجاناً</button>
         </div>
-        <div id="lnd-vip-plans" class="lnd-vip-plans" role="status" aria-label="جارٍ تحميل الباقات من الخادم"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>
       </div>
       <div id="lnd-pay-methods" class="lnd-pay-methods"></div>
       <div id="lnd-policy" class="lnd-policy"></div>

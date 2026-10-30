@@ -274,7 +274,7 @@ test("four tool cards: real market rows, real headlines, locked VIP, computed ex
   for (const id of ["feat-mkt-visual", "feat-news-list", "feat-calc-visual"])
     assert.ok(html.includes(`id="${id}"`), `card ${id} exists`);
   assert.match(html, /id="feat-mkt-live" role="status"/, "the markets card announces its data state");
-  assert.match(html, /id="lnd-features-title">كل ما يحتاجه المستثمر، <span class="lnd-hl">في شاشة واحدة\.<\/span>/, "the design headline of the cards section");
+  assert.match(html, /id="lnd-features-title">كل ما يحتاجه المستثمر <span class="lnd-hl">في شاشة واحدة\.<\/span>/, "the design headline of the cards section");
   assert.match(html, /<a href="#pricing">شوف الباقات<\/a>/, "the opportunities card links to the real plans section");
   const feat = functionBody("renderFeatCards");
   assert.match(feat, /rowById\("egx:EGX30"\)/, "markets card reuses the hero rows");
@@ -298,10 +298,10 @@ test("three principles pin the honesty contract", () => {
 test("gold VIP card: design gold, gated features, CTA to the real plans", () => {
   const sec = html.slice(html.indexOf('<section id="vip"'), html.indexOf('<section id="pricing"'));
   assert.match(sec, /lnd-vip-gold/, "the gold card exists");
-  assert.match(sec, /id="lnd-vip-title">أدوات الكبار\. بيانات أدق\./, "the design headline");
-  assert.match(sec, /تُفعَّل على حسابك وتتحقق صلاحيتها من الخادم/, "honesty: features are gated server-side");
+  assert.match(sec, /id="lnd-vip-title">قرارات أدق\. أدوات أقوى\./, "the design headline");
+  assert.match(sec, /تُفعَّل على حسابك وتُحسب على أسعار المصادر المرخّصة وتتحقق صلاحيتها من الخادم/, "honesty: features are computed on licensed prices and gated server-side");
   assert.match(sec, /href="#pricing">افتح VIP/, "the CTA anchors to the real plans section");
-  assert.ok(sec.includes("تنبيهات سعرية") && sec.includes("محلل أخبار") && sec.includes("Screener"), "the VIP features are listed");
+  assert.ok(sec.includes("تنبيهات سعرية") && sec.includes("محلل أخبار") && sec.includes("الحاسبات المتقدمة"), "the five VIP features are listed");
   const css = html.match(/\.lnd-vip-gold\{[^}]*\}/)[0];
   assert.match(css, /rgba\(227,183,91/, "gold accent per design (#E3B75B = rgba(227,183,91))");
 });
@@ -311,6 +311,7 @@ test("plans: static 0-EGP free card + server plan cards; strikethrough only from
   assert.match(sec, /class="lnd-plan lnd-plan-free"/, "the free card is static HTML");
   assert.match(sec, /<b>٠<\/b><span>ج\.م — للأبد<\/span>/, "…at 0 EGP forever");
   assert.ok(sec.includes('id="lnd-vip-plans"'), "server plans render into the section");
+  assert.ok(sec.indexOf('id="lnd-vip-plans"') < sec.indexOf('class="lnd-plan lnd-plan-free"'), "per design: VIP plans sit on the right, the free card leftmost");
   assert.ok(sec.includes('id="lnd-pay-methods"') && sec.includes('id="lnd-policy"'), "payment methods + policy block kept");
   const price = functionBody("renderPricing");
   assert.match(price, /fetchSubscriptionConfig/, "plans come only from /api/payments/config");
