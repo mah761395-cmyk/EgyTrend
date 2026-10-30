@@ -4,6 +4,7 @@ import { after, before, test } from "node:test";
 import { and, eq, isNull } from "drizzle-orm";
 import {
   appUsersTable,
+  portfolioCashEventsTable,
   portfolioPositionsTable,
   portfolioSettingsTable,
   portfolioTransactionsTable,
@@ -541,4 +542,155 @@ test("portfolio alert valuation is pure, uses verified quotes only, and never in
   assert.equal(evaluatePortfolioCondition("portfolio_value_below", 1000, 1000.01), false);
   assert.equal(evaluatePortfolioCondition("concentration_above", 45, 45.01), true);
   assert.equal(evaluatePortfolioCondition("concentration_above", 45, 44.99), false);
+});
+
+/* ═══════════ Cash events: deposits / withdrawals / dividends ═══════════ */
+
+test("cash events move the cash line and are listed with their totals", async () => {
+  const { jar } = await registerVipUser("01088880001", "Cash Events User");
+
+  const deposit = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "deposit", amount: 5000, tradeDate: "2026-09-01", note: "تحويل من البنك" }),
+  });
+  assert.equal(deposit.response.status, 201, "deposit accepted");
+  near((deposit.body as { totalCash?: number }).totalCash, 5000, 0.01, "cash after deposit");
+
+  const withdrawal = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "withdrawal", amount: 3000, tradeDate: "2026-09-02" }),
+  });
+  assert.equal(withdrawal.response.status, 201, "withdrawal within balance accepted");
+  near((withdrawal.body as { totalCash?: number }).totalCash, 2000, 0.01, "cash after withdrawal");
+
+  const dividend = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "dividend", amount: 250, tradeDate: "2026-09-03", symbol: "COMI" }),
+  });
+  assert.equal(dividend.response.status, 201, "dividend accepted");
+  near((dividend.body as { totalCash?: number }).totalCash, 2250, 0.01, "cash after dividend");
+  const dividendEvent = (dividend.body as { event: Record<string, unknown> }).event;
+  assert.equal(dividendEvent.symbol, "COMI", "dividend keeps the paying symbol");
+  assert.equal(typeof dividendEvent.instrumentId, "string", "dividend resolves the catalog instrument id");
+
+  const read = await api("/api/portfolio", jar);
+  assert.equal(read.response.status, 200);
+  const summary = summaryOf(read.body);
+  near(summary.cash, 2250, 0.01, "GET summary.cash includes cash events");
+  near(summary.cashEventsIn, 5250, 0.01, "cashEventsIn = deposit + dividend");
+  near(summary.cashEventsOut, 3000, 0.01, "cashEventsOut = withdrawal");
+  const events = (read.body?.cashEvents as Array<Record<string, unknown>>) || [];
+  assert.equal(events.length, 3, "all three events listed");
+  assert.equal(events[0].kind, "dividend", "newest event first");
+  assert.equal(events[0].tradeDate, "2026-09-03");
+  assert.equal(events[0].note === null, true);
+  assert.equal(events[2].note, "تحويل من البنك");
+
+  /* A withdrawal above the known balance is rejected with the exact amount. */
+  const tooBig = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "withdrawal", amount: 999999, tradeDate: "2026-09-04" }),
+  });
+  assert.equal(tooBig.response.status, 400, "over-withdrawal rejected");
+  assert.equal((tooBig.body as { code?: string }).code, "insufficient_cash");
+  near((tooBig.body as { cashAvailable?: number }).cashAvailable, 2250, 0.01, "reported available balance");
+
+  /* Deleting the deposit (soft archive) removes it from the cash line. */
+  const depositId = String((deposit.body as { event: { id: string } }).event.id);
+  const del = await api(`/api/portfolio/cash/${depositId}`, jar, { method: "DELETE" });
+  assert.equal(del.response.status, 200);
+  near((del.body as { totalCash?: number }).totalCash, -2750, 0.01, "cash after removing the deposit");
+  const read2 = await api("/api/portfolio", jar);
+  near(summaryOf(read2.body).cash, -2750, 0.01, "GET cash reflects the archived event");
+  const events2 = (read2.body?.cashEvents as Array<Record<string, unknown>>) || [];
+  assert.equal(events2.length, 2, "archived event no longer listed");
+  const [dbRow] = await memory.db.select().from(portfolioCashEventsTable).where(eq(portfolioCashEventsTable.id, depositId));
+  assert.ok(dbRow.archivedAt, "row is soft-archived, never hard-deleted");
+});
+
+test("withdrawal validation is temporal: it uses the balance as of the event date", async () => {
+  const { jar } = await registerVipUser("01099990001", "Cash Time User");
+  const settings = await api("/api/portfolio/settings", jar, {
+    method: "PUT",
+    body: JSON.stringify({ startingCash: 1000 }),
+  });
+  assert.equal(settings.response.status, 200);
+  const buy = await api("/api/portfolio/transactions", jar, addTxInit("COMI", "buy", 100, 10, { tradeDate: "2026-09-01" }));
+  assert.equal(buy.response.status, 201, "buy accepted (1000 cash exactly)");
+
+  /* Balance as of 2026-09-15 is 0 (the buy used everything) — reject. */
+  const beforeDeposit = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "withdrawal", amount: 500, tradeDate: "2026-09-15" }),
+  });
+  assert.equal(beforeDeposit.response.status, 400);
+  assert.equal((beforeDeposit.body as { code?: string }).code, "insufficient_cash");
+  near((beforeDeposit.body as { cashAvailable?: number }).cashAvailable, 0, 0.01, "zero balance at that date");
+
+  /* A deposit on 09-10 makes 800 available as of 09-15 — accept. */
+  const deposit = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "deposit", amount: 800, tradeDate: "2026-09-10" }),
+  });
+  assert.equal(deposit.response.status, 201);
+  const afterDeposit = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "withdrawal", amount: 500, tradeDate: "2026-09-15" }),
+  });
+  assert.equal(afterDeposit.response.status, 201, "same withdrawal now fits the balance of its date");
+
+  /* Still impossible for an earlier date: the deposit post-dates 09-05. */
+  const earlier = await api("/api/portfolio/cash", jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "withdrawal", amount: 1, tradeDate: "2026-09-05" }),
+  });
+  assert.equal(earlier.response.status, 400, "withdrawal before the deposit is still impossible");
+});
+
+test("cash event input is validated and VIP-gated like the rest of the portfolio", async () => {
+  const { jar } = await registerVipUser("01022220003", "Cash Validation User");
+
+  const badKind = await api("/api/portfolio/cash", jar, { method: "POST", body: JSON.stringify({ kind: "gift", amount: 100 }) });
+  assert.equal(badKind.response.status, 400, "unknown kind rejected");
+  const negative = await api("/api/portfolio/cash", jar, { method: "POST", body: JSON.stringify({ kind: "deposit", amount: -5 }) });
+  assert.equal(negative.response.status, 400, "negative amount rejected");
+  const huge = await api("/api/portfolio/cash", jar, { method: "POST", body: JSON.stringify({ kind: "deposit", amount: 1e12 }) });
+  assert.equal(huge.response.status, 400, "unbounded amount rejected");
+  const future = await api("/api/portfolio/cash", jar, { method: "POST", body: JSON.stringify({ kind: "deposit", amount: 10, tradeDate: "2100-01-01" }) });
+  assert.equal(future.response.status, 400, "future date rejected");
+  const unknownSymbol = await api("/api/portfolio/cash", jar, { method: "POST", body: JSON.stringify({ kind: "dividend", amount: 10, symbol: "NOTREAL" }) });
+  assert.equal(unknownSymbol.response.status, 400, "dividend for a non-catalog symbol rejected");
+  const genericDividend = await api("/api/portfolio/cash", jar, { method: "POST", body: JSON.stringify({ kind: "dividend", amount: 10 }) });
+  assert.equal(genericDividend.response.status, 201, "generic dividend (no symbol) accepted");
+
+  const anonWrite = await api("/api/portfolio/cash", {}, { method: "POST", body: JSON.stringify({ kind: "deposit", amount: 10 }) });
+  assert.equal(anonWrite.response.status, 401, "anonymous cash write rejected");
+  const freeJar: CookieJar = {};
+  const freeReg = await api("/api/user/register", freeJar, {
+    method: "POST",
+    body: JSON.stringify({ name: "Free Cash User", phone: "01000000009", password: "FreeCashPass123!" }),
+  });
+  assert.equal(freeReg.response.status, 201);
+  const freeWrite = await api("/api/portfolio/cash", freeJar, { method: "POST", body: JSON.stringify({ kind: "deposit", amount: 10 }) });
+  assert.equal(freeWrite.response.status, 403, "free user cash write is VIP-gated");
+});
+
+test("cash events are isolated between users", async () => {
+  const alice = await registerVipUser("01088880002", "Cash Alice");
+  const bob = await registerVipUser("01088880003", "Cash Bob");
+  const deposit = await api("/api/portfolio/cash", alice.jar, {
+    method: "POST",
+    body: JSON.stringify({ kind: "deposit", amount: 7777, tradeDate: "2026-09-01" }),
+  });
+  assert.equal(deposit.response.status, 201);
+  const depositId = String((deposit.body as { event: { id: string } }).event.id);
+
+  const bobRead = await api("/api/portfolio", bob.jar);
+  assert.equal(((bobRead.body?.cashEvents as unknown[]) || []).length, 0, "bob sees no cash events");
+  near(summaryOf(bobRead.body).cash, 0, 0.01, "bob's cash is untouched");
+
+  const bobDelete = await api(`/api/portfolio/cash/${depositId}`, bob.jar, { method: "DELETE" });
+  assert.equal(bobDelete.response.status, 404, "bob cannot archive alice's event");
+  const aliceRead = await api("/api/portfolio", alice.jar);
+  near(summaryOf(aliceRead.body).cash, 7777, 0.01, "alice's deposit survived");
 });

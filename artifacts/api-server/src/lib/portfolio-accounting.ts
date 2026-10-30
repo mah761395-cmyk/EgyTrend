@@ -376,3 +376,53 @@ export function quoteVerified(quote: QuoteLike | null | undefined): quote is Quo
   const { price, source } = quote;
   return typeof price === "number" && Number.isFinite(price) && price > 0 && typeof source === "string" && source.trim().length > 0;
 }
+
+/* ═══════════════════ Cash events (deposits / withdrawals / dividends) ═════ */
+
+export type CashEventKind = "deposit" | "withdrawal" | "dividend";
+
+/**
+ * One dated cash movement that is not a trade. `createdAtMs` + `id` provide
+ * the same stable ordering as the trade ledger for same-date events.
+ */
+export type CashEventLike = {
+  id: string;
+  kind: CashEventKind;
+  amount: number;
+  tradeDate: string;
+  createdAtMs: number;
+};
+
+/** Signed cash delta for one event: money in is positive, out is negative. */
+export function cashEventDelta(kind: CashEventKind, amount: number): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return kind === "withdrawal" ? -amount : amount;
+}
+
+function tradeCashDelta(trade: { side: TradeSide; quantity: number; price: number; fees: number }): number {
+  if (trade.side === "buy") return -(trade.quantity * trade.price + trade.fees);
+  return trade.quantity * trade.price - trade.fees;
+}
+
+/**
+ * Cash balance after applying every trade and cash event dated on or before
+ * `onDate` (lexicographic YYYY-MM-DD comparison). An event being recorded
+ * now always sorts after existing same-date items because its createdAtMs is
+ * the latest, so this also answers "how much cash was available when the
+ * user records a withdrawal for date D". Never throws.
+ */
+export function cashBalanceOn(
+  startingCash: number,
+  trades: Array<{ side: TradeSide; quantity: number; price: number; fees: number; tradeDate: string }>,
+  cashEvents: CashEventLike[],
+  onDate: string,
+): number {
+  let balance = Number.isFinite(startingCash) ? startingCash : 0;
+  for (const trade of trades) {
+    if (trade.tradeDate <= onDate) balance += tradeCashDelta(trade);
+  }
+  for (const event of cashEvents) {
+    if (event.tradeDate <= onDate) balance += cashEventDelta(event.kind, event.amount);
+  }
+  return round6(balance);
+}

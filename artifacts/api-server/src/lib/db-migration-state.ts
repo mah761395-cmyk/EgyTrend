@@ -57,6 +57,7 @@ export const MIGRATION_IDS: readonly string[] = [
   "0021_ai_usage_metering",
   "0022_db_backups",
   "0023_opportunity_signals",
+  "0024_portfolio_cash_events",
 ];
 
 /** Set once the boot runner has checked the database. */
