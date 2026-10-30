@@ -276,18 +276,30 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .tv-block-t{color:var(--t2);font-weight:800;font-size:11px;}
 .tv-block-n{color:var(--t5);font-size:9px;line-height:1.5;padding:0 2px 6px;}
 .tv-block .tradingview-widget-container{width:100%;}
-.mc{background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:12px 12px;cursor:pointer;transition:all .2s;position:relative;}
+.mc{background:linear-gradient(180deg,rgba(255,255,255,.03),transparent 45%),var(--s1);border:1px solid var(--hairline);border-radius:var(--r16);padding:12px 12px 10px;cursor:pointer;transition:border-color var(--t-fast),background-color var(--t-fast);position:relative;min-width:0;}
+.mc:hover{border-color:var(--b1);background-color:var(--s2);}
+.mc.wl{border-color:rgba(227,183,91,.38);background:linear-gradient(150deg,rgba(227,183,91,.08),transparent 55%),var(--s1);}
+.mc.clickable .mc-name::after{content:" ←";color:var(--g);font-size:8px;font-weight:600;margin-inline-start:2px;}
 .mc:hover{border-color:rgba(16,185,129,.22);background:var(--s2);}
-.mc.wl{border-color:rgba(245,158,11,.28);background:var(--aud);}
-.mc.clickable .mc-sub::after{content:" ←";color:var(--g);}
-.mc-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:3px;}
-.mc-name{color:var(--t3);font-size:10.5px;font-weight:600;}
+.mc-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px;gap:6px;}
+.mc-name{color:var(--t2);font-size:11px;font-weight:800;display:flex;align-items:center;min-width:0;}
+.mc-desc{color:var(--t3);font-size:8.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
 .wl-btn{background:none;border:none;cursor:pointer;font-size:13px;transition:transform .15s;color:var(--t4);}
 .wl-btn:hover{transform:scale(1.2);}
 .mc.wl .wl-btn{color:var(--au);}
-.mc-val{color:var(--t1);font-weight:800;font-size:15px;font-family:var(--mono);}
-.mc-chg{font-size:11px;font-weight:700;margin-top:2px;font-family:var(--mono);}
-.mc-sub{color:var(--t5);font-size:9.5px;margin-top:1px;}
+.mc-val{color:var(--t1);font-weight:800;font-size:15.5px;font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.2px;line-height:1.25;overflow-wrap:anywhere;}
+.mc-val.missing{color:var(--t3);font-size:11px;font-weight:700;font-family:var(--sans);letter-spacing:0;}
+.mc-chg{font-size:11px;font-weight:800;margin-top:2px;font-family:var(--mono);font-variant-numeric:tabular-nums;}
+.mc-chg.up{color:var(--up);}
+.mc-chg.dn{color:var(--dn);}
+.mc-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:8px;padding-top:7px;border-top:1px solid var(--hairline);font-size:8.5px;line-height:1.5;}
+.mc-src{color:var(--t3);font-weight:600;min-width:0;}
+.mc-time{color:var(--t3);font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;}
+.mc-state{margin-inline-start:auto;font-size:8px;font-weight:800;padding:1.5px 7px;border-radius:var(--r-full);border:1px solid transparent;white-space:nowrap;}
+.mc-state.live{color:var(--gl);background:rgba(16,185,129,.12);border-color:var(--gb);}
+.mc-state.closed{color:var(--t2);background:var(--s2);border-color:var(--b1);}
+.mc-state.stale{color:var(--dn);background:rgba(248,113,113,.10);border-color:rgba(248,113,113,.3);}
+.mc-state.off{color:var(--t3);border-color:var(--b1);}
 .mc-loading{color:var(--t5);font-size:11px;animation:pulse .8s infinite;font-family:var(--mono);}
 .cal-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--b1);}
 .cal-row:last-child{border-bottom:none;}
@@ -308,10 +320,10 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .mkt-search-item .si-val{font-family:var(--mono);font-size:10.5px;color:var(--t2);white-space:nowrap;text-align:left;}
 .mkt-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:7px;margin-bottom:14px;scrollbar-width:none;}
 .mkt-tabs::-webkit-scrollbar{display:none;}
-.mkt-tab{flex:0 0 auto;display:flex;align-items:center;gap:5px;background:var(--s1);border:1px solid var(--b1);color:var(--t4);border-radius:var(--r10);padding:8px 12px;font-size:11.5px;font-weight:800;font-family:var(--sans);cursor:pointer;white-space:nowrap;transition:all .15s;}
+.mkt-tab{flex:0 0 auto;display:flex;align-items:center;gap:5px;background:var(--s1);border:1px solid var(--b1);color:var(--t3);border-radius:var(--r10);padding:8px 12px;font-size:11.5px;font-weight:800;font-family:var(--sans);cursor:pointer;white-space:nowrap;transition:all .15s;}
 .mkt-tab .tab-ic{width:13px;height:13px;}
 .mkt-tab:hover{color:var(--t2);border-color:var(--b2);}
-.mkt-tab.on{background:rgba(16,185,129,.1);border-color:var(--gb2);color:var(--g);}
+.mkt-tab.on{background:rgba(16,185,129,.1);border-color:var(--gb2);color:var(--gl);}
 .mkt-tab .tab-count{font-size:9px;font-family:var(--mono);background:var(--s2);border-radius:var(--r8);padding:1px 5px;min-width:14px;text-align:center;}
 .mkt-tab-pane{display:none;}
 .mkt-tab-pane.on{display:block;}
@@ -880,7 +892,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
   .mc-name{font-size:11.5px;}
   .mc-val{font-size:18px;}
   .mc-chg{font-size:12px;}
-  .mc-sub{font-size:10.5px;}
+  .mc-meta{font-size:9.5px;}.mc-val{font-size:17px;}
   .mkt-tab{padding:9px 15px;font-size:12px;}
   .mkt-hub-search input{font-size:13px;padding-top:11px;padding-bottom:11px;}
   .mkt-stbl-row{grid-template-columns:1.9fr 1.1fr 1fr 1fr;padding:10px 14px;}
@@ -5311,11 +5323,12 @@ function buildTicker(){
   const items=[...src,...src,...src];
   el.innerHTML=items.map(t=>{
     const unavailable=t.source==="غير متاح"||t.v==="غير متاح حاليًا";
+    const hasChange=!unavailable&&t.c&&t.c!=="—";
     return `<span class="ti">
       <span style="color:var(--ink4);font-size:7px;">◆</span>
-      <span style="color:var(--t4);font-weight:600;">${sanitize(t.n)}</span>
-      <span style="color:var(--t2);font-weight:700;">${sanitize(unavailable?"غير متاح حاليًا":t.v)}</span>
-      <span style="color:${unavailable||t.flat?"var(--t5)":t.up?"var(--up)":"var(--dn)"};">${unavailable||t.flat?"—":ltrChange((t.up?"▲ ":"▼ ")+sanitize(t.c))}</span>
+      <span style="color:var(--t3);font-weight:600;">${sanitize(t.n)}</span>
+      <span style="color:var(--t2);font-weight:700;font-variant-numeric:tabular-nums;">${sanitize(unavailable?"غير متاح حاليًا":t.v)}</span>
+      ${hasChange?`<span style="color:${t.up?"var(--up)":"var(--dn)"};">${ltrChange((t.up?"▲ ":"▼ ")+sanitize(t.c))}</span>`:""}
     </span>`;
   }).join("");
 }
@@ -5787,7 +5800,7 @@ function marketSkeletonRows(key){
     <div class="mc-hdr"><div class="mc-name">${sanitize(m.n)}</div></div>
     <div class="sk" style="height:21px;width:72%;margin:11px 0 8px;"></div>
     <div class="sk" style="height:10px;width:45%;margin-bottom:8px;"></div>
-    <div class="mc-sub">جارٍ التحقق من المصدر…</div>
+    <div class="mc-meta"><span class="sk" style="height:9px;width:60%;"></span><span class="mc-state off">جارٍ التحقق</span></div>
   </div>`).join("");
 }
 /* ═══ TradingView quote table (display only) ═══════════════════════════════
@@ -6259,7 +6272,7 @@ function buildMarkets(){
   const dataBadge=document.getElementById("mkt-data-badge");
   if(dataBadge){
     dataBadge.textContent=marketFreshness.loading?"جارٍ التحقق":marketFreshness.unavailable?"غير متاح":marketFreshness.stale?"متأخر":"بيانات متاحة";
-    dataBadge.style.color=marketFreshness.unavailable?"var(--dn)":marketFreshness.stale?"var(--au)":"var(--t4)";
+    dataBadge.style.color=marketFreshness.unavailable?"var(--dn)":marketFreshness.stale?"var(--au)":"var(--t3)";
   }
   /* name -> {sec,idx} for the global search and the watchlist tab. A lookup
      index only — it never contributes a price. */
@@ -6272,31 +6285,31 @@ function buildMarkets(){
     el.innerHTML=liveMarkets[key].map((m,idx)=>{
       mktBoardLookup.set(m.n,{sec:key,idx});
       const unavailable=secMeta.unavailable===true||m.source==="غير متاح"||m.v==="غير متاح حاليًا";
+      /* Change row only when the server actually supplied a change: a "—"
+         from the source (EOD FX) is not a number and is never displayed. */
+      const hasChange=!unavailable&&m.c&&m.c!=="—";
+      const asOf=Number(m.asOf);
+      /* The server classifies every row against its own market session
+         (live / closed showing the real close / genuinely stale), so the
+         UI only displays that verdict — no wall-clock guessing here. */
+      const rowState=String(m.state||"").toLowerCase();
+      const stateChip=unavailable
+        ? `<span class="mc-state off">غير متاح</span>`
+        : rowState==="stale"
+          ? `<span class="mc-state stale">⚠️ بيانات قديمة</span>`
+          : rowState==="live"
+            ? `<span class="mc-state live">مباشر</span>`
+            : `<span class="mc-state closed">${sanitize(m.stateLabel||"إغلاق السوق")}</span>`;
+      /* The server marks whether asOf is the source's publish time or the
+         server's fetch time; a fetch time must never wear the label of a
+         source publish time. */
+      const timePart=asOf?`<span class="mc-time">${m.timeBasis==="fetch"?"وقت الجلب":"وقت المصدر"} ${sanitize(cairoTimestampLabel(asOf))}</span>`:"";
       return `<div class="mc clickable${wl.includes(m.n)?" wl":""}" onclick="openMarketDetail('${key}',${idx})">
-        <div class="mc-hdr"><div class="mc-name">${sanitize(m.n)}</div><button class="wl-btn" onclick='event.stopPropagation();toggleWL(${safeJsArg(m.n)})'>${wl.includes(m.n)?"⭐":"☆"}</button></div>
-        <div class="mc-val">${sanitize(unavailable?"غير متاح حاليًا":m.v)}</div>
-        <div class="mc-chg" style="color:${unavailable||m.flat?"var(--t5)":m.up?"var(--up)":"var(--dn)"};">${unavailable||m.flat?"—":ltrChange((m.up?"▲ ":"▼ ")+sanitize(m.c))}</div>
-        ${sparklineMarkup(m.instrumentId)}
-        <div class="mc-sub">${sanitize(m.s||"")}</div>
-        ${(()=>{
-          const asOf=Number(m.asOf);
-          /* The server classifies every row against its own market session
-             (live / closed showing the real close / genuinely stale), so the
-             UI only displays that verdict — no wall-clock guessing here. */
-          const rowState=String(m.state||"").toLowerCase();
-          const stateBadge=unavailable
-            ? "<span style='color:var(--t5)'>غير متاح</span>"
-            : rowState==="stale"
-              ? "<b style='color:var(--dn)'>⚠️ بيانات قديمة</b>"
-              : rowState==="closed"
-                ? `<span style="color:var(--t4)">${sanitize(m.stateLabel||"إغلاق السوق")}</span>`
-                : "<span style='color:var(--up)'>مباشر</span>";
-          /* The server marks whether asOf is the source's publish time or the
-             server's fetch time; a fetch time must never wear the label of a
-             source publish time. */
-          const timeWord=m.timeBasis==="fetch"?"وقت الجلب":"وقت المصدر";
-          return `<div style="color:var(--t5);font-size:8px;margin-top:3px;">المصدر: ${sanitize(m.source||secMeta.sources||"غير متاح")} · ${timeWord}: ${sanitize(cairoTimestampLabel(asOf))} · ${stateBadge}</div>`;
-        })()}
+        <div class="mc-hdr"><div class="mc-name">${sanitize(m.n)}${m.s?`<span class="mc-desc">${sanitize(m.s)}</span>`:""}</div><button class="wl-btn" onclick='event.stopPropagation();toggleWL(${safeJsArg(m.n)})'>${wl.includes(m.n)?"⭐":"☆"}</button></div>
+        <div class="mc-val${unavailable?" missing":""}">${sanitize(unavailable?"غير متاح حاليًا":m.v)}</div>
+        ${hasChange?`<div class="mc-chg ${m.up?"up":"dn"}">${ltrChange((m.up?"▲ ":"▼ ")+sanitize(m.c))}</div>`:""}
+        ${unavailable?"":sparklineMarkup(m.instrumentId)}
+        <div class="mc-meta"><span class="mc-src">${sanitize(m.source||secMeta.sources||"غير متاح")}</span>${timePart}${stateChip}</div>
       </div>`;
     }).join("");
     ensureTvQuotes(key,el,liveTv?.[key]);

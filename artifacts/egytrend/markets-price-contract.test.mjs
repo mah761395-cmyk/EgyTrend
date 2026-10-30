@@ -2,8 +2,9 @@
  * Contract test for the market price chain honesty (TASK M — M1/M2).
  *
  * Pins the client+server halves of the fixes verified against production:
- *  - the board derives a change from the provider's previousClose instead of
- *    rendering "—" when the provider publishes no explicit changePercent,
+ *  - the board derives a change from the provider's previousClose; when the
+ *    provider publishes no explicit changePercent (server sends "—"/flat),
+ *    the client shows NO change at all — never a dash, never a direction,
  *  - the daily FX change comes only from the platform's own previously
  *    verified reading of the same provider, and only when its reference day
  *    advanced (never a same-day 0.00%, never a third-party number),
@@ -117,8 +118,9 @@ test("client: no market-data API endpoint or credential exists in browser code",
   assert.ok(html.includes("s3.tradingview.com"), "display-only TradingView widgets remain (vendor-attributed frames)");
 });
 
-test("client: the change column renders \"—\" (flat) whenever the server says flat", () => {
+test("client: flat rows render no change at all — never a dash, never a direction", () => {
   const boardIdx = html.indexOf("function buildMarkets(");
-  const board = html.slice(boardIdx, boardIdx + 5_000);
-  assert.ok(board.includes('unavailable||m.flat?"—"'), "flat rows must render a dash, never a direction");
+  const board = html.slice(boardIdx, boardIdx + 6_000);
+  assert.ok(board.includes('const hasChange=!unavailable&&m.c&&m.c!=="—"'), "the server's '—'/flat change is excluded from display");
+  assert.ok(!board.includes('unavailable||m.flat?"—"'), "the dash placeholder is gone from the card template");
 });
