@@ -69,6 +69,36 @@ export const LSE_SESSION: SessionDef = {
   closeMin: 16 * 60 + 30,
 };
 
+export const TOKYO_SESSION: SessionDef = {
+  id: "tokyo",
+  tz: "Asia/Tokyo",
+  days: [1, 2, 3, 4, 5],
+  openMin: 9 * 60,
+  closeMin: 15 * 60,
+};
+
+export const EPARIS_SESSION: SessionDef = {
+  id: "eparis",
+  tz: "Europe/Paris",
+  days: [1, 2, 3, 4, 5],
+  openMin: 9 * 60,
+  closeMin: 17 * 60 + 30,
+};
+
+/**
+ * International FX spot, approximated 24/5 (trading resumes Sunday evening
+ * UTC, a daily pause is not modelled — same approximation class as CMX).
+ * Used only for the live-session spot pairs served by Yahoo; the once-a-day
+ * Egyptian reference pairs stay session-less and keep the "تحديث يومي" label.
+ */
+export const FX24_SESSION: SessionDef = {
+  id: "fx24",
+  tz: "UTC",
+  days: [0, 1, 2, 3, 4, 5],
+  openMin: 0,
+  closeMin: 24 * 60,
+};
+
 /**
  * CME Globex approximated: a session opens Sunday–Thursday 18:00 UTC and
  * closes the next day 17:00 UTC (so the last session of the week ends
@@ -276,11 +306,26 @@ export function classifyQuote(input: ClassifyInput, def: SessionDef, now: number
  */
 export function sessionForInstrument(instrument: MarketInstrument | string): SessionDef | undefined {
   const id = typeof instrument === "string" ? instrument : instrument.id;
-  if (id.startsWith("fx:")) return undefined;
+  /* The once-a-day Egyptian reference pairs (ExchangeRate-API) publish no
+   * intraday session: they keep the "تحديث يومي" end-of-day label. The
+   * international spot pairs are live-session instruments (Yahoo market
+   * time), so they get the 24/5 FX session instead. */
+  if (id.startsWith("fx:")) {
+    const sessionless = ["fx:USD-EGP", "fx:EUR-EGP", "fx:GBP-EGP", "fx:SAR-EGP"];
+    return sessionless.includes(id) ? undefined : FX24_SESSION;
+  }
   if (id.startsWith("egx:") || id.startsWith("stock:egx:")) return EGX_SESSION;
-  if (id === "index:SPX" || id === "index:NASDAQ" || id.startsWith("stock:us:")) return US_SESSION;
+  if (
+    id === "index:SPX" || id === "index:NASDAQ" || id === "index:DJI"
+    || id.startsWith("stock:us:")
+  ) {
+    return US_SESSION;
+  }
   if (id === "index:DAX") return XETRA_SESSION;
   if (id === "index:FTSE100") return LSE_SESSION;
+  if (id === "index:N225") return TOKYO_SESSION;
+  if (id === "index:FCHI") return EPARIS_SESSION;
+  if (id === "index:DXY") return FX24_SESSION;
   if (id.startsWith("commodity:")) return CMX_SESSION;
   if (id.startsWith("crypto:")) return CRYPTO_SESSION;
   if (typeof instrument === "object" && instrument.section === "gl" && instrument.kind === "equity") {

@@ -213,7 +213,9 @@ test("board payload: timeBasis tells source publish time apart from server fetch
   try {
     const { data } = await getMarketsSnapshot();
     const egx = data.markets.eg.find((row) => row.id === "egx:EGX30");
-    const usd = data.markets.eg.find((row) => row.id === "fx:USD-EGP");
+    /* The EGP reference pairs live in their own forex section now; the
+     * timeBasis contract for them is unchanged. */
+    const usd = data.markets.fx.find((row) => row.id === "fx:USD-EGP");
     const spx = data.markets.gl.find((row) => row.id === "index:SPX");
 
     assert.equal(egx?.timeBasis, "fetch", "the scraped index has no publish time — asOf is the fetch time");

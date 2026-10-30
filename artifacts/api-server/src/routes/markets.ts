@@ -95,7 +95,7 @@ export type MarketsPayload = {
     cacheTtlSeconds: number;
     sections: Record<MarketSection, SectionFreshness>;
   };
-  markets: { eg: Quote[]; gl: Quote[]; cm: Quote[]; cr: Quote[] };
+  markets: { eg: Quote[]; gl: Quote[]; cm: Quote[]; cr: Quote[]; fx: Quote[] };
   ticker: Quote[];
   /** TradingView widget symbols per section. They are display-only: the widget
    * renders inside TradingView's own frame and never becomes a platform quote. */
@@ -324,8 +324,8 @@ function sectionMeta(rows: Quote[], snapshot: QuoteSnapshot): SectionFreshness {
 
 function toMarketsPayload(snapshot: QuoteSnapshot): MarketsPayload {
   const quotes = quoteByInstrument(snapshot);
-  const sections: Record<MarketSection, Quote[]> = { eg: [], gl: [], cm: [], cr: [] };
-  const unpricedTv: Record<MarketSection, TvSymbol[]> = { eg: [], gl: [], cm: [], cr: [] };
+  const sections: Record<MarketSection, Quote[]> = { eg: [], gl: [], cm: [], cr: [], fx: [] };
+  const unpricedTv: Record<MarketSection, TvSymbol[]> = { eg: [], gl: [], cm: [], cr: [], fx: [] };
   for (const instrument of MARKET_INSTRUMENTS) {
     const quote = quotes.get(instrument.id);
     if (quote) { sections[instrument.section].push(toDisplayQuote(instrument, quote)); continue; }
@@ -338,14 +338,16 @@ function toMarketsPayload(snapshot: QuoteSnapshot): MarketsPayload {
     gl: sectionMeta(sections.gl, snapshot),
     cm: sectionMeta(sections.cm, snapshot),
     cr: sectionMeta(sections.cr, snapshot),
+    fx: sectionMeta(sections.fx, snapshot),
   };
   /* The strip repeats its rows three times for the marquee, so a one-row
    * ticker looks like the same price looped. When index/commodity providers
    * are unlicensed, fall back to every priced FX pair so the strip still
-   * carries several real, sourced values instead of one duplicated row. */
+   * carries several real, sourced values instead of one duplicated row.
+   * The Egyptian pairs come first (catalog order), then international spot. */
   const egTicker = [
     ...sections.eg.filter((row) => row.id === "egx:EGX30"),
-    ...sections.eg.filter((row) => row.n.includes("/")),
+    ...sections.fx.filter((row) => row.n.includes("/")),
   ];
   const ticker = [
     ...egTicker.slice(0, 5),
@@ -359,7 +361,7 @@ function toMarketsPayload(snapshot: QuoteSnapshot): MarketsPayload {
     ts: snapshot.fetchedAt,
     sources: {
       indices: freshness.gl.sources,
-      forex: [...new Set(sections.eg.filter((row) => row.n.includes("/")).map((row) => row.source).filter(Boolean))].join(" + ") || "غير متاح",
+      forex: freshness.fx.sources,
       commodities: freshness.cm.sources,
       crypto: freshness.cr.sources,
     },
@@ -368,7 +370,7 @@ function toMarketsPayload(snapshot: QuoteSnapshot): MarketsPayload {
       /* Stale is now session-aware: it is true only when a displayed row's
        * own source quote is genuinely old for its market's session — not
        * merely because the market closed and a correct final close is shown. */
-      stale: snapshot.stale || [...sections.eg, ...sections.gl, ...sections.cm, ...sections.cr].some((row) => row.state === "stale"),
+      stale: snapshot.stale || [...sections.eg, ...sections.gl, ...sections.cm, ...sections.cr, ...sections.fx].some((row) => row.state === "stale"),
       cacheTtlSeconds: MARKETS_TTL_SECONDS,
       sections: freshness,
     },
