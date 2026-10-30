@@ -124,3 +124,20 @@ test("client: flat rows render no change at all — never a dash, never a direct
   assert.ok(board.includes('const hasChange=!unavailable&&m.c&&m.c!=="—"'), "the server's '—'/flat change is excluded from display");
   assert.ok(!board.includes('unavailable||m.flat?"—"'), "the dash placeholder is gone from the card template");
 });
+
+test("client: the admin panel obeys the same flat contract — no direction arrow on EOD dashes", () => {
+  /* admin.html renders the same board rows (ticker, strip, cards, modals, home stats).
+     An unguarded `(t.up?"▲":"▼")+t.c` prints a direction arrow next to the EOD "—"
+     dash — exactly the fake-direction the contract forbids (shipped regression,
+     fixed 2026-10-31 after launch). Pin the guard on every board renderer. */
+  const admin = readFileSync(join(here, "admin.html"), "utf8");
+  const guardedTick = '(unavailable||t.flat)?"—":(t.up?"▲":"▼")+sanitize(t.c)';
+  const guardedCard = '(unavailable||m.flat)?"—":(m.up?"▲":"▼")+" "+sanitize(m.c)';
+  assert.ok(admin.includes(guardedTick), "admin ticker/strip must guard on t.flat before printing an arrow");
+  assert.ok(admin.includes(guardedCard), "admin market cards must guard on m.flat before printing an arrow");
+  assert.ok(admin.includes('change:(unavailable||m.flat)?"—"'), "admin detail modal must guard on m.flat");
+  assert.ok(admin.includes('m.flat?"var(--t4)":m.up?"var(--g)"'), "admin home market stats must guard on m.flat");
+  /* The old unguarded renderers must be gone for good. */
+  assert.ok(!admin.includes('${unavailable?"—":(t.up?"▲":"▼")+sanitize(t.c)}'), "unguarded ticker renderer must not come back");
+  assert.ok(!admin.includes('${unavailable?"—":(m.up?"▲":"▼")+" "+sanitize(m.c)}'), "unguarded card renderer must not come back");
+});
