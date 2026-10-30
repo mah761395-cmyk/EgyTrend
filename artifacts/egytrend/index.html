@@ -112,13 +112,23 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .sk{background:linear-gradient(90deg,var(--ink3) 25%,var(--ink4) 50%,var(--ink3) 75%);background-size:600px 100%;animation:shimmer 1.4s ease infinite;border-radius:var(--r8);}
 
 /* Layout */
-#app{max-width:430px;margin:0 auto;min-height:100vh;background:var(--ink);position:relative;}
+#app{max-width:430px;margin:0 auto;min-height:100vh;background:var(--ink) radial-gradient(520px 210px at 50% -70px,rgba(16,185,129,.09),transparent 70%);background-repeat:no-repeat;position:relative;}
 .page{padding-bottom:88px;min-height:calc(100vh - 60px);}
 .hidden{display:none!important;}
 
 /* ─── HEADER ─── */
 #hdr{position:sticky;top:0;z-index:100;background:var(--glass-hdr);backdrop-filter:blur(22px);border-bottom:1px solid var(--b1);}
-.hdr-row{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;}
+.hdr-row{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.hdr-left{display:flex;align-items:center;gap:9px;min-width:0;}
+/* Shell market-status badge: displays the server's real verdict for the
+   same board state the landing badge reads (marketFreshness + row state).
+   Presentation only — no data is fetched or computed here. */
+.hdr-mkt-badge{display:inline-flex;align-items:center;gap:5px;background:var(--s1);border:1px solid var(--b1);border-radius:var(--r-full);padding:3px 9px;font-size:9.5px;font-weight:700;color:var(--t3);white-space:nowrap;max-width:118px;overflow:hidden;}
+.hdr-mkt-badge i{width:6px;height:6px;border-radius:50%;background:var(--t5);flex:0 0 auto;}
+.hdr-mkt-badge.live i{background:var(--up);box-shadow:0 0 8px var(--gb);animation:pulse 2s ease infinite;}
+.hdr-mkt-badge.closed i{background:var(--t3);box-shadow:none;}
+.hdr-mkt-badge.stale i{background:var(--au);box-shadow:none;}
+.hdr-mkt-badge.down i{background:var(--dn);box-shadow:none;}
 .logo{display:flex;align-items:center;gap:9px;cursor:pointer;}
 .logo-mark{width:36px;height:36px;background:linear-gradient(135deg,#04160a,#07220f);border:1.5px solid rgba(16,185,129,.32);border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 18px rgba(16,185,129,.1);}
 .logo-name{font-size:18px;font-weight:900;background:linear-gradient(90deg,var(--g),var(--gl));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
@@ -147,6 +157,9 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 #tick-wrap::before{left:0;background:linear-gradient(90deg,var(--ink2),transparent);}
 #tick-wrap::after{right:0;background:linear-gradient(270deg,var(--ink2),transparent);}
 #tick-inner{display:flex;white-space:nowrap;animation:ticker 60s linear infinite;}
+/* App reduced-motion accommodation (tokens.css stops all animation):
+   the ticker stops as a readable wrapped line instead of a frozen scroll. */
+@media (prefers-reduced-motion:reduce){#tick-inner{animation:none;flex-wrap:wrap;white-space:normal;row-gap:3px;}}
 #tick-inner:hover{animation-play-state:paused;}
 .ti{display:inline-flex;align-items:center;gap:5px;padding:0 18px;font-family:var(--mono);font-size:11px;cursor:pointer;}
 
@@ -644,7 +657,7 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .prof-btn.out{background:var(--dnd);border:1px solid rgba(239,68,68,.15);color:var(--dn);}
 
 /* ─── BOTTOM NAV ─── */
-#bnav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:rgba(3,7,18,.98);backdrop-filter:blur(22px);border-top:1px solid var(--b1);padding:7px 0 15px;z-index:200;}
+#bnav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:var(--glass-hdr);backdrop-filter:blur(var(--blur-hdr));border-top:1px solid var(--hairline);padding:7px 0 15px;z-index:200;}
 .bnav-grid{display:grid;grid-template-columns:repeat(6,1fr);}
 .n-btn{background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;color:var(--t5);transition:color .18s;font-family:var(--sans);}
 .n-btn.active{color:var(--g);}
@@ -2028,9 +2041,12 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
 <div id="main" style="display:none;">
   <div id="hdr">
     <div class="hdr-row">
-      <div class="logo" onclick="goNav('home')">
-        <div class="logo-mark"><svg class="et-icon"><use href="#i-logo"></use></svg></div>
-        <div><div class="logo-name">EgyTrend</div><div class="logo-sub">MARKET PULSE</div></div>
+      <div class="hdr-left">
+        <div class="logo" onclick="goNav('home')">
+          <div class="logo-mark"><svg class="et-icon"><use href="#i-logo"></use></svg></div>
+          <div><div class="logo-name">EgyTrend</div><div class="logo-sub">MARKET PULSE</div></div>
+        </div>
+        <span id="hdr-mkt-badge" class="hdr-mkt-badge" role="status" aria-live="polite"></span>
       </div>
       <div class="hdr-acts">
         <button class="ibtn" type="button" onclick="toggleSearch()" aria-label="بحث"><svg class="et-icon"><use href="#i-search"></use></svg></button>
@@ -6220,7 +6236,26 @@ async function openCompareModal(){
   }
 }
 
+/* Shell market badge: mirrors the landing badge's verdict from the same
+   shared board state (marketFreshness + row.state from the server). */
+function renderHdrMktBadge(){
+  const b=document.getElementById("hdr-mkt-badge");if(!b)return;
+  const mf=marketFreshness;
+  const rows=[];for(const k of ["eg","gl","cm","cr","fx"]){for(const r of liveMarkets?.[k]||[]){if(r)rows.push(r);}}
+  const priced=rows.filter(r=>r&&typeof r.v==="string"&&r.v!==""&&!/غير متاح/.test(r.v));
+  const anyLive=rows.some(r=>r&&r.state==="live");
+  let cls="",txt="الأسواق";
+  if(mf&&mf.loading===true&&!Number(mf.fetchedAt)){txt="جارِ التحقق";cls="stale";}
+  else if(!mf||!Number(mf.fetchedAt)||mf.unavailable===true||!priced.length){txt="غير متاح";cls="down";}
+  else if(mf.stale===true){txt="متأخر";cls="stale";}
+  else if(anyLive){txt="مباشر";cls="live";}
+  else{txt="مغلق الآن";cls="closed";}
+  b.className="hdr-mkt-badge"+(cls?" "+cls:"");
+  b.innerHTML="<i></i>"+txt;
+}
+
 function buildMarkets(){
+  renderHdrMktBadge();
   const dataBadge=document.getElementById("mkt-data-badge");
   if(dataBadge){
     dataBadge.textContent=marketFreshness.loading?"جارٍ التحقق":marketFreshness.unavailable?"غير متاح":marketFreshness.stale?"متأخر":"بيانات متاحة";
