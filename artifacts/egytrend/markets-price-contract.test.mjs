@@ -131,6 +131,14 @@ test("client: the admin panel obeys the same flat contract — no direction arro
      dash — exactly the fake-direction the contract forbids (shipped regression,
      fixed 2026-10-31 after launch). Pin the guard on every board renderer. */
   const admin = readFileSync(join(here, "admin.html"), "utf8");
+  /* Root cause of the shipped regression: the admin normalizer rebuilt every
+     row WITHOUT the flat flag, so no renderer guard could ever fire. The
+     normalizer must carry the same fields as the public client. */
+  const normIdx = admin.indexOf("function normalizeMarketRows(");
+  assert.ok(normIdx !== -1, "admin must normalize market rows");
+  const norm = admin.slice(normIdx, normIdx + 2_000);
+  assert.ok(norm.includes("flat:m.flat===true"), "admin normalizer must carry the flat flag (without it every renderer guard is dead)");
+  assert.ok(norm.includes("timeBasis:String(m.timeBasis") && norm.includes("refTime:finiteNumber(m.refTime"), "admin normalizer must keep the honest time fields");
   const guardedTick = '(unavailable||t.flat)?"—":(t.up?"▲":"▼")+sanitize(t.c)';
   const guardedCard = '(unavailable||m.flat)?"—":(m.up?"▲":"▼")+" "+sanitize(m.c)';
   assert.ok(admin.includes(guardedTick), "admin ticker/strip must guard on t.flat before printing an arrow");
