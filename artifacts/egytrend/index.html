@@ -87,7 +87,7 @@
 <title>EgyTrend — متابعة البورصة المصرية والذهب والدولار لحظة بلحظة</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 :root{
   /* Core brand tokens: kept explicit so every product surface reads as one system. */
@@ -1253,10 +1253,16 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .sk{background:linear-gradient(90deg,#151F32 25%,#23334F 45%,#151F32 65%);background-size:600px 100%;}.ob-skeleton{display:grid;gap:9px;}.sk-line{display:block;height:10px;width:100%;border-radius:999px;}.sk-line.md{width:72%;}.sk-line.lg{width:44%;height:13px;}.ticker-skeleton{display:flex;align-items:center;gap:14px;padding:0 17px;min-width:260px;}.ticker-skeleton .sk{width:68px;height:10px;border-radius:999px;display:block;}.market-strip-skeleton{width:100%;display:flex;gap:1px;background:var(--b1);}.market-strip-skeleton .sk{height:53px;flex:1;min-width:78px;border-radius:0;}
 
 /* ══ Guest landing — multi-section (palette: #0A1128 bg · #101A3B cards · #24305E/#2F3F7A borders · #EAF0FF/#B9C4E6 text · #34D399 green · #F5C451 gold) ══ */
-#landing{min-height:100vh;color:#EAF0FF;background:radial-gradient(900px 480px at 82% -12%,rgba(52,211,153,.10),transparent 65%),radial-gradient(640px 520px at -12% 40%,rgba(96,165,250,.06),transparent 70%),#0A1128;}
+#landing{min-height:100vh;color:#E8EEF8;background:#070B14;}
 #landing[hidden]{display:none!important}
 #landing .lnd-main,#landing .lnd-footer{max-width:1180px;}
-.lnd-nav{position:sticky;top:0;z-index:60;background:rgba(10,17,40,.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid #24305E;}
+.lnd-nav{position:sticky;top:0;z-index:60;background:rgba(14,21,36,.62);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,.08);}
+.lnd-mkt-badge{display:none;align-items:center;gap:6px;white-space:nowrap;font-size:10.5px;font-weight:800;color:#93A1B8;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:5px 11px;}
+.lnd-mkt-badge.live{color:#34D399;background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.40);}
+.lnd-mkt-badge.closed{color:#E3B75B;background:rgba(227,183,91,.06);border-color:rgba(227,183,91,.35);}
+.lnd-mkt-badge.down{color:#F87171;background:rgba(248,113,113,.06);border-color:rgba(248,113,113,.35);}
+.lnd-mkt-badge i{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;animation:lndPulse 2s ease-in-out infinite;}
+@keyframes lndPulse{0%,100%{opacity:1}50%{opacity:.35}}
 .lnd-nav-inner{max-width:1180px;margin:0 auto;height:64px;display:flex;align-items:center;gap:14px;padding:0 20px;}
 .lnd-brand{display:flex;align-items:center;gap:10px;color:#EAF0FF;text-decoration:none;}
 .lnd-brand-mark{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(52,211,153,.18),rgba(52,211,153,.03));border:1px solid rgba(52,211,153,.4);color:#34D399;box-shadow:0 0 22px rgba(52,211,153,.12);}
@@ -1264,16 +1270,16 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .lnd-brand strong{display:block;font-size:16.5px;font-weight:900;line-height:1.1;}
 .lnd-brand small{display:block;font-size:8.5px;font-weight:700;color:#B9C4E6;letter-spacing:.4px;margin-top:2px;}
 .lnd-links{display:none;align-items:center;gap:2px;margin-inline-start:6px;}
-.lnd-links a{color:#B9C4E6;text-decoration:none;font-size:12.5px;font-weight:700;padding:8px 12px;border-radius:10px;transition:background .15s,color .15s;}
+.lnd-links a{color:#C7D2E4;text-decoration:none;font-size:12.5px;font-weight:700;padding:10px 12px;border-radius:10px;transition:background .15s,color .15s;}
 .lnd-links a:hover{color:#EAF0FF;background:rgba(47,63,122,.38);}
 .lnd-links a:focus-visible{outline:2px solid #34D399;outline-offset:2px;}
 .lnd-nav-actions{margin-inline-start:auto;display:flex;align-items:center;gap:8px;}
-.lnd-login{border:1px solid #2F3F7A;background:rgba(12,21,51,.7);color:#C9D4F2;border-radius:11px;padding:0 14px;min-height:40px;font:800 12px var(--sans);cursor:pointer;transition:border-color .15s,color .15s;}
+.lnd-login{border:1px solid rgba(255,255,255,.14);background:rgba(14,21,36,.6);color:#C7D2E4;border-radius:11px;padding:0 14px;min-height:44px;font:800 12px var(--sans);cursor:pointer;transition:border-color .15s,color .15s;}
 .lnd-login:hover{border-color:#34D399;color:#EAF0FF;}
-.lnd-cta{border:0;border-radius:11px;padding:0 15px;min-height:40px;background:linear-gradient(135deg,#0E9F6E,#34D399);color:#04121F;font:900 12px var(--sans);cursor:pointer;box-shadow:0 8px 22px rgba(52,211,153,.22);transition:filter .15s;}
+.lnd-cta{border:0;border-radius:11px;padding:0 15px;min-height:44px;background:linear-gradient(135deg,#0E9F6E,#34D399);color:#04121F;font:900 12px var(--sans);cursor:pointer;box-shadow:0 8px 22px rgba(52,211,153,.22);transition:filter .15s;}
 .lnd-cta:hover{filter:brightness(1.07);}
 .lnd-login:focus-visible,.lnd-cta:focus-visible,.lnd-burger:focus-visible{outline:2px solid #34D399;outline-offset:2px;}
-.lnd-burger{display:inline-grid;place-items:center;width:40px;height:40px;border-radius:11px;border:1px solid #2F3F7A;background:rgba(12,21,51,.7);color:#C9D4F2;cursor:pointer;}
+.lnd-burger{display:inline-grid;place-items:center;width:44px;height:44px;border-radius:11px;border:1px solid rgba(255,255,255,.14);background:rgba(14,21,36,.6);color:#C7D2E4;cursor:pointer;}
 .lnd-burger svg{display:block;}
 .lnd-menu{max-width:1180px;border-top:1px solid #24305E;background:rgba(10,17,40,.97);margin:0 auto;padding:12px 20px 18px;display:grid;gap:7px;}
 .lnd-menu[hidden]{display:none;}
@@ -1283,12 +1289,24 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .lnd-menu-acts .lnd-login,.lnd-menu-acts .lnd-cta{flex:1;min-height:44px;display:inline-flex;align-items:center;justify-content:center;}
 @media (min-width:900px){.lnd-links{display:flex;}.lnd-burger{display:none;}.lnd-menu{display:none!important;}}
 .lnd-main{margin:0 auto;padding:0 20px;}
-.lnd-hero{display:grid;grid-template-columns:1fr;gap:34px;padding:40px 0 26px;align-items:center;}
+.lnd-hero{display:grid;grid-template-columns:1fr;gap:34px;padding:40px 0 26px;align-items:center;position:relative;}
+.lnd-hero-copy,.lnd-visual{position:relative;z-index:1;}
+/* ── Animated light beams (transform-only, 18-28s; off under reduced motion) ── */
+.lnd-bg{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;}
+.lnd-bg-ray{position:absolute;border-radius:50%;filter:blur(70px);will-change:transform;}
+.lnd-bg-ray.r1{width:64vw;height:64vw;top:-38vw;right:-14vw;background:radial-gradient(closest-side,rgba(16,185,129,.17),rgba(16,185,129,.05) 45%,transparent 72%);animation:lndRayA 24s ease-in-out infinite;}
+.lnd-bg-ray.r2{width:52vw;height:52vw;top:-30vw;left:-16vw;background:radial-gradient(closest-side,rgba(56,189,248,.13),rgba(56,189,248,.04) 45%,transparent 72%);animation:lndRayB 28s ease-in-out infinite;}
+.lnd-bg-ray.r3{width:30vw;height:30vw;top:6vw;left:34vw;background:radial-gradient(closest-side,rgba(16,185,129,.10),transparent 70%);animation:lndRayC 18s ease-in-out infinite;}
+@keyframes lndRayA{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(-4vw,3vw,0) scale(1.10)}}
+@keyframes lndRayB{0%,100%{transform:translate3d(0,0,0) scale(1.05)}50%{transform:translate3d(5vw,-2vw,0) scale(.97)}}
+@keyframes lndRayC{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(-3vw,-2.5vw,0)}}
+.lnd-bg-lines{position:absolute;right:0;bottom:0;left:0;width:100%;height:62%;}
+@media (prefers-reduced-motion:reduce){.lnd-bg-ray{animation:none}.lnd-mkt-badge i{animation:none}}
 .lnd-badge{display:inline-flex;align-items:center;gap:7px;background:rgba(52,211,153,.10);border:1px solid rgba(52,211,153,.35);color:#34D399;font-size:11px;font-weight:800;border-radius:999px;padding:6px 13px;margin:0 0 16px;}
 .lnd-badge .et-icon{font-size:13px;}
-.lnd-hero-copy h1{font-size:clamp(31px,8.2vw,52px);line-height:1.34;letter-spacing:-.5px;font-weight:900;margin:0;color:#EAF0FF;}
-.lnd-hero-copy h1 em{font-style:normal;color:#34D399;}
-.lnd-lede{max-width:560px;color:#B9C4E6;font-size:14.5px;line-height:2.05;margin:16px 0 22px;}
+.lnd-hero-copy h1{font-size:clamp(34px,7.2vw,76px);line-height:1.24;letter-spacing:-1px;font-weight:900;margin:0;color:#E8EEF8;}
+.lnd-hero-copy h1 em{font-style:normal;font-family:"Amiri",serif;font-weight:700;color:#34D399;}
+.lnd-lede{max-width:600px;color:#93A1B8;font-size:15.5px;line-height:2.0;margin:18px 0 26px;}
 .lnd-actions{display:flex;gap:10px;flex-wrap:wrap;}
 .lnd-primary{border:0;border-radius:14px;padding:13px 22px;min-height:48px;background:linear-gradient(135deg,#0E9F6E,#34D399);color:#04121F;font:900 14.5px var(--sans);cursor:pointer;box-shadow:0 14px 34px rgba(52,211,153,.25);display:inline-flex;align-items:center;gap:8px;transition:transform .18s,box-shadow .18s;}
 .lnd-primary .et-icon{transform:rotate(180deg);}
@@ -1301,24 +1319,30 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .lnd-trust .et-icon{font-size:14px;color:#34D399;flex:0 0 auto;}
 .lnd-visual{position:relative;background:linear-gradient(150deg,rgba(16,26,59,.92),rgba(12,21,51,.78));border:1px solid #24305E;border-radius:24px;padding:16px 14px 18px;box-shadow:0 26px 70px rgba(3,7,18,.55);overflow:hidden;}
 .lnd-visual::after{content:"";position:absolute;width:200px;height:200px;left:-60px;bottom:-90px;border-radius:50%;background:rgba(52,211,153,.09);filter:blur(38px);pointer-events:none;}
-.lnd-mock-status{position:relative;z-index:1;display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;}
-.lnd-chip{display:inline-flex;align-items:center;gap:6px;font-size:9.5px;font-weight:800;color:#B9C4E6;background:rgba(12,21,51,.85);border:1px solid #24305E;border-radius:999px;padding:5px 10px;}
+.lnd-visual{min-width:0;}
+.lnd-board{background:rgba(14,21,36,.62);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:18px;box-shadow:0 30px 80px rgba(0,0,0,.35);}
+.lnd-board-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:13px;}
+.lnd-board-title{display:block;color:#E8EEF8;font-weight:900;font-size:15px;}
+.lnd-board-sub{display:block;color:#93A1B8;font-size:10.5px;font-weight:600;margin-top:3px;}
+.lnd-board-foot{margin-top:12px;padding-top:11px;border-top:1px solid rgba(255,255,255,.06);color:#93A1B8;font-size:9.5px;line-height:1.7;}
+.lnd-mock-status{position:relative;z-index:1;display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;}
+.lnd-chip{display:inline-flex;align-items:center;gap:6px;font-size:9.5px;font-weight:800;color:#C7D2E4;background:rgba(14,21,36,.85);border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:5px 10px;}
 .lnd-chip-live{color:#34D399;border-color:rgba(52,211,153,.42);}
 .lnd-chip-live i{width:6px;height:6px;border-radius:50%;background:#34D399;box-shadow:0 0 0 4px rgba(52,211,153,.15);display:inline-block;}
 .lnd-retry{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;color:#B9C4E6;background:transparent;border:1px dashed #3A4A7E;border-radius:999px;padding:4px 11px;cursor:pointer;}
 .lnd-retry:hover:not(:disabled){color:#fff;border-color:#5B6FB5;}
 .lnd-retry:disabled{opacity:.5;cursor:default;}
-.lnd-mock-grid{position:relative;z-index:1;display:grid;grid-template-columns:1fr;gap:10px;}
-.lnd-mock-card{background:#101A3B;border:1px solid #24305E;border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px;min-width:0;}
+.lnd-mock-grid{position:relative;z-index:1;display:grid;grid-template-columns:1fr;gap:9px;}
+.lnd-mock-card{background:rgba(7,11,20,.55);border:1px solid rgba(255,255,255,.07);border-radius:16px;padding:13px 14px;display:flex;align-items:center;gap:12px;min-width:0;}
 .lnd-mock-card .m-id{min-width:0;flex:1 1 auto;}
-.m-name{font-size:11.5px;font-weight:800;color:#C9D4F2;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-.m-sub{font-size:9px;color:#8FA0C9;font-weight:700;margin-top:2px;}
-.m-val{font-family:var(--mono);font-size:15.5px;font-weight:700;color:#EAF0FF;direction:ltr;text-align:left;white-space:nowrap;margin-top:4px;}
+.m-name{font-size:12.5px;font-weight:800;color:#E8EEF8;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+.m-sub{font-size:9.5px;color:#93A1B8;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.m-val{font-family:var(--mono);font-size:15px;font-weight:700;color:#E8EEF8;direction:ltr;text-align:left;white-space:nowrap;margin-top:5px;overflow:hidden;text-overflow:ellipsis;}
 .m-delta{font-family:var(--mono);font-size:10px;font-weight:700;border-radius:8px;padding:3px 8px;direction:ltr;white-space:nowrap;}
 .m-delta.up{color:#34D399;background:rgba(52,211,153,.12);}
 .m-delta.down{color:#F87171;background:rgba(248,113,113,.12);}
 .m-delta.flat{color:#B9C4E6;background:rgba(47,63,122,.30);}
-.m-src{font-size:8.5px;color:#8FA0C9;margin-top:6px;display:flex;gap:4px;align-items:center;flex-wrap:wrap;line-height:1.6;}
+.m-src{font-size:9px;color:#93A1B8;margin-top:6px;display:flex;gap:4px;align-items:center;flex-wrap:wrap;line-height:1.6;}
 .m-src .et-icon{font-size:10px;color:#34D399;}
 .m-spark{flex:0 0 auto;margin-inline-start:auto;}
 .m-spark svg{display:block;width:96px;height:27px;}
@@ -1327,14 +1351,16 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .lnd-mock-summary .s-ic .et-icon{font-size:19px;}
 .lnd-mock-summary b{font-size:12.5px;color:#EAF0FF;display:block;line-height:1.5;}
 .lnd-mock-summary small{font-size:9.5px;color:#B9C4E6;display:block;margin-top:3px;line-height:1.7;}
-.lnd-skel-card{background:#101A3B;border:1px solid #24305E;border-radius:16px;padding:16px 14px;display:grid;gap:8px;}
+.lnd-skel-card{background:rgba(7,11,20,.55);border:1px solid rgba(255,255,255,.07);border-radius:16px;padding:16px 14px;display:grid;gap:8px;}
 .lnd-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:4px 0 26px;}
 .lnd-stats[hidden]{display:none;}
-.lnd-stat{background:rgba(12,21,51,.62);border:1px solid #24305E;border-radius:16px;padding:15px 12px;text-align:center;}
+.lnd-stat{background:rgba(14,21,36,.62);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:15px 12px;text-align:center;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
 .lnd-stat b{display:block;font-family:var(--mono);font-size:20px;font-weight:800;color:#34D399;line-height:1.3;}
-.lnd-stat span{display:block;font-size:10px;color:#B9C4E6;font-weight:700;margin-top:5px;line-height:1.6;}
+.lnd-stat span{display:block;font-size:10px;color:#93A1B8;font-weight:700;margin-top:5px;line-height:1.6;}
 @media (min-width:760px){.lnd-stats{grid-template-columns:repeat(4,1fr);}}
-@media (min-width:680px){.lnd-nav-inner{padding:0 34px;}.lnd-main{padding:0 34px;}.lnd-hero{padding:64px 0 34px;gap:54px;grid-template-columns:minmax(0,1.02fr) minmax(340px,.98fr);}.lnd-hero-copy h1{font-size:clamp(40px,5.1vw,58px);}.lnd-lede{font-size:15px;}}
+@media (min-width:560px){.lnd-mkt-badge{display:inline-flex;}}
+@media (min-width:680px){.lnd-nav-inner{padding:0 34px;}.lnd-main{padding:0 34px;}.lnd-hero{padding:64px 0 34px;gap:54px;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);}.lnd-hero-copy h1{font-size:clamp(44px,5.2vw,76px);}.lnd-lede{font-size:15.5px;}}
+@media (max-width:520px){.lnd-h1-br{display:none;}}
 @media (min-width:1024px){.lnd-nav-inner,.lnd-menu{max-width:1240px;}.lnd-main,.lnd-footer{max-width:1240px;}}
 #landing #features,#landing .landing-how,#landing .landing-features,#landing #vip,#landing #calculator,#landing #pricing,#landing #faq{scroll-margin-top:84px;}
 /* Retained pre-upgrade sections (features / how-it-works) keep their original
@@ -1550,6 +1576,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
         <a href="#pricing">الأسعار</a>
         <a href="#faq">FAQ</a>
       </nav>
+      <span class="lnd-mkt-badge" id="lnd-mkt-badge" role="status" aria-label="حالة الأسواق الآن">الأسواق</span>
       <div class="lnd-nav-actions">
         <button type="button" class="lnd-login" onclick="openAuthModal('login')">تسجيل الدخول</button>
         <button type="button" class="lnd-cta" onclick="openAuthModal('register')">ابدأ مجاناً</button>
@@ -1573,23 +1600,42 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
 
   <main class="lnd-main">
     <section class="lnd-hero" aria-labelledby="landing-title">
+      <div class="lnd-bg" aria-hidden="true">
+        <span class="lnd-bg-ray r1"></span>
+        <span class="lnd-bg-ray r2"></span>
+        <span class="lnd-bg-ray r3"></span>
+        <svg class="lnd-bg-lines" viewBox="0 0 1440 620" preserveAspectRatio="none">
+          <path d="M-20 470 C 320 380 720 500 1460 330" fill="none" stroke="rgba(147,161,184,.08)" stroke-width="1"/>
+          <path d="M-20 520 C 420 430 860 560 1460 400" fill="none" stroke="rgba(52,211,153,.07)" stroke-width="1"/>
+          <path d="M-20 380 C 500 300 900 420 1460 260" fill="none" stroke="rgba(147,161,184,.05)" stroke-width="1"/>
+        </svg>
+      </div>
       <div class="lnd-hero-copy">
-        <p class="lnd-badge"><svg class="et-icon" aria-hidden="true"><use href="#i-pulse"></use></svg> البورصة المصرية بالعربي</p>
-        <h1 id="landing-title">بدل ما تلف على <em>5 مواقع</em>، كل سوقك في شاشة واحدة.</h1>
-        <p class="lnd-lede">من EGX إلى الذهب، من الدولار إلى الكريبتو، مع أهم الأخبار والملخصات المختصرة — كل حاجة مرتبة بالعربي في مكان واحد، وكل رقم يظهر مع مصدره ووقت تحديثه.</p>
+        <p class="lnd-badge"><svg class="et-icon" aria-hidden="true"><use href="#i-pulse"></use></svg> بيانات حقيقية — كل رقم بمصدر ووقت</p>
+        <h1 id="landing-title">أسواقك كلها في مكان واحد،<br class="lnd-h1-br"> <em>وبالعربي.</em></h1>
+        <p class="lnd-lede">من EGX إلى الذهب، من الدولار إلى الكريبتو — كل سوقك في شاشة واحدة بالعربي: السعر، والتغيّر اليومي، والمصدر، ووقت التحديث. لا أرقام بلا مصدر، ولا «حي» إلا إذا كان المصدر هو من قالها.</p>
         <div class="lnd-actions">
           <button type="button" class="lnd-primary" onclick="openAuthModal('register')">ابدأ مجاناً <svg class="et-icon" aria-hidden="true"><use href="#i-arrow"></use></svg></button>
-          <a class="lnd-secondary" href="#calculator">جرّب الحاسبة الآن</a>
+          <button type="button" class="lnd-secondary" onclick="openAuthModal('register')">جرّب VIP ٧ أيام مجاناً</button>
         </div>
         <p class="lnd-trust"><svg class="et-icon" aria-hidden="true"><use href="#i-check"></use></svg> سجّل بسهولة • بدون بطاقة بنكية • بدون التزام</p>
       </div>
-      <div class="lnd-visual" aria-label="نموذج من شاشة EgyTrend ببيانات حية">
-        <div class="lnd-mock-status" id="lnd-mock-status" role="status"><span class="lnd-chip">جارِ جلب الأسعار الحية…</span></div>
-        <div class="lnd-mock-grid" id="lnd-mock-grid">
-          <div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>
-          <div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line md"></span></div>
-          <div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line md"></span></div>
-          <div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line"></span></div>
+      <div class="lnd-visual" aria-label="نظرة على السوق — آخر قيم متاحة">
+        <div class="lnd-board">
+          <div class="lnd-board-top">
+            <div>
+              <span class="lnd-board-title">نظرة على السوق</span>
+              <span class="lnd-board-sub">آخر قيم متاحة — تحت كل أصل: المصدر ووقت التحديث</span>
+            </div>
+            <div class="lnd-mock-status" id="lnd-mock-status" role="status"><span class="lnd-chip">جارِ جلب الأسعار الحية…</span></div>
+          </div>
+          <div class="lnd-board-grid" id="lnd-mock-grid">
+            <div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>
+            <div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line md"></span></div>
+            <div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line md"></span></div>
+            <div class="lnd-skel-card" aria-hidden="true"><span class="sk sk-line lg"></span><span class="sk sk-line"></span></div>
+          </div>
+          <div class="lnd-board-foot">الأسعار للاطلاع العام وليست توصية استثمارية — كل سعر يظهر مع مصدره ووقت تحديثه.</div>
         </div>
       </div>
     </section>
@@ -3084,7 +3130,7 @@ function showGuestLanding(){
    * server's `id` field is renamed in normalizeMarketRows) — matching on
    * `id` here would silently never find a row. */
   function rowById(id){
-    for(const k of ["eg","gl","cm","cr"]){
+    for(const k of ["eg","gl","cm","cr","fx"]){
       const r=(liveMarkets?.[k]||[]).find(x=>x&&x.instrumentId===id);
       if(r)return r;
     }
@@ -3106,7 +3152,7 @@ function showGuestLanding(){
 
   function cardHtml(r,sub){
     const d=deltaCls(r);
-    const spark=r&&r.instrumentId==="egx:EGX30"?sparklineMarkup(r.instrumentId):"";
+    const spark=r&&["egx:EGX30","fx:USD-EGP","commodity:XAU","crypto:BTC"].includes(r.instrumentId)?sparklineMarkup(r.instrumentId):"";
     return `<div class="lnd-mock-card">
       <div class="m-id">
         <div class="m-name"><span>${esc(r.n)}</span>${r.c&&r.c!=="—"&&!/غير متاح/.test(r.c)?`<span class="m-delta ${d}" dir="ltr">${esc(r.c)}</span>`:""}</div>
@@ -3174,17 +3220,35 @@ function showGuestLanding(){
    *            (honest message + retry button + real feature card),
    *   loading — the normal first-load window: keep the skeleton. After 20s
    *            with nothing, treat as failed instead of spinning forever. */
+  /* Header badge: the market state, from the same live state the board uses —
+   * never a fixed label. live only when the source marks a row live. */
+  function renderLndMktBadge(){
+    const b=document.getElementById("lnd-mkt-badge");if(!b)return;
+    const mf=marketFreshness;
+    const rows=[];for(const k of ["eg","gl","cm","cr","fx"]){for(const r of liveMarkets?.[k]||[]){if(r)rows.push(r);}}
+    const priced=rows.filter(isReal);
+    const anyLive=rows.some(rowIsLive);
+    let cls="",txt="الأسواق",dot=false;
+    if(!mf||!Number(mf.fetchedAt)){txt=mf&&mf.loading===true?"الأسواق · جارِ التحميل":"الأسواق · غير متاح";cls="down";}
+    else if(!priced.length){txt="الأسواق · غير متاح";cls="down";}
+    else if(anyLive){txt="الأسواق · تحديث مباشر";cls="live";dot=true;}
+    else{txt="الأسواق · إغلاق السوق";cls="closed";}
+    b.className="lnd-mkt-badge"+(cls?" "+cls:"");
+    b.innerHTML=(dot?"<i></i>":"")+txt;
+  }
+
   function renderHero(){
     const grid=$("lnd-mock-grid");if(!grid)return;
     if(landingEl()?.hidden)return;
-    const egx=rowById("egx:EGX30"),usd=rowById("fx:USD-EGP"),eur=rowById("fx:EUR-EGP");
-    const defs=[[egx,"EGX30","مؤشر السوق المصري الرئيسي"],[usd,"USD/EGP","دولار أمريكي / جنيه"],[eur,"EUR/EGP","يورو / جنيه"]];
+    renderLndMktBadge();
+    const egx=rowById("egx:EGX30"),usd=rowById("fx:USD-EGP"),xau=rowById("commodity:XAU"),btc=rowById("crypto:BTC");
+    const defs=[[egx,"EGX30","مؤشر السوق المصري الرئيسي"],[usd,"USD/EGP","دولار أمريكي / جنيه"],[xau,"XAU","ذهب — أونصة"],[btc,"BTC","بيتكوين"]];
     const reals=defs.filter(d=>isReal(d[0]));
     const anyReal=reals.length>0;
     const mf=marketFreshness;
 
     // Sparkline for the index: request it once from the shared licensed endpoint.
-    if(egx&&isReal(egx)&&!window.__lndSparkRequested){window.__lndSparkRequested=true;try{scheduleSparklines(["egx:EGX30"]);}catch(_){}}
+    if(!window.__lndSparkRequested){window.__lndSparkRequested=true;try{scheduleSparklines(["egx:EGX30","fx:USD-EGP","commodity:XAU","crypto:BTC"]);}catch(_){}}
 
     const status=$("lnd-mock-status");
     const heroStart=window.__lndHeroStartAt||(window.__lndHeroStartAt=Date.now());
@@ -3215,7 +3279,7 @@ function showGuestLanding(){
       status.innerHTML=`<span class="lnd-chip${anyLive?" lnd-chip-live":""}">${anyLive?"<i></i>بيانات حية":"آخر أسعار موثقة"}</span>`+
         (lastReal>0?`<span class="lnd-chip">آخر تحديث ${esc(fmtCairoFull(lastReal))}</span>`:"")+
         (anyStale?`<span class="lnd-chip">قد تكون الأرقام متأخرة</span>`:"")+
-        (reals.length<3?`<span class="lnd-chip">بعض الأسعار غير متاحة حاليًا</span>`:"");
+        (reals.length<defs.length?`<span class="lnd-chip">بعض الأسعار غير متاحة حاليًا</span>`:"");
     }
     grid.innerHTML=defs.map(d=>isReal(d[0])?cardHtml(d[0],d[2]):missingCardHtml((d[0]&&d[0].n)||d[1],d[2])).join("")+FEATURE_CARD;
   }
@@ -3267,7 +3331,7 @@ function showGuestLanding(){
     //    fetch/build time), with the date when that moment is not today.
     //    Hidden while the three hero rows have no verified price.
     const heroAsOf=()=>{
-      const rows=["egx:EGX30","fx:USD-EGP","fx:EUR-EGP"].map(rowById).filter(isReal);
+      const rows=["egx:EGX30","fx:USD-EGP","commodity:XAU","crypto:BTC"].map(rowById).filter(isReal);
       if(!rows.length)return 0;
       return Number(Math.max(0,...rows.map(r=>Number(r.asOf)||0)))||0;
     };
