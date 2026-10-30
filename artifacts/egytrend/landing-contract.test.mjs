@@ -192,7 +192,7 @@ test("hero: new title with Amiri accent, 76px on desktop, four real assets in th
   assert.match(html, /display=swap/, "font swap");
   const emCss = html.match(/\.lnd-hero-copy h1 em\{[^}]*\}/)[0];
   assert.match(emCss, /font-family:"Amiri",serif/, "accent word in Amiri");
-  assert.match(emCss, /color:#34D399/, "accent colour per design");
+  assert.match(emCss, /color:var\(--gl\)/, "accent colour per design (tokenised)");
   const h1 = html.match(/\.lnd-hero-copy h1\{[^}]*\}/)[0];
   assert.match(h1, /clamp\(34px,7\.2vw,76px\)/, "76px cap on desktop, fluid on mobile");
   const hero = functionBody("renderHero");
@@ -202,11 +202,11 @@ test("hero: new title with Amiri accent, 76px on desktop, four real assets in th
   assert.match(hero, /rowById\("fx:USD-EGP"\)/, "USD/EGP is a hero asset");
   assert.match(html, /class="lnd-board"/, "the board panel exists");
   const boardCss = html.match(/\.lnd-board\{[^}]*\}/)[0];
-  assert.match(boardCss, /background:rgba\(14,21,36,\.62\)/, "glass background per design");
+  assert.match(boardCss, /background:var\(--glass\)/, "glass background per design (tokenised)");
   assert.match(boardCss, /backdrop-filter:blur\(16px\)/, "16px blur per design");
-  assert.match(boardCss, /border-radius:24px/, "24px radius per design");
+  assert.match(boardCss, /border-radius:var\(--r24\)/, "24px radius per design (tokenised)");
   const navCss = html.match(/\.lnd-nav\{[^}]*\}/)[0];
-  assert.match(navCss, /background:rgba\(14,21,36,\.62\);backdrop-filter:blur\(16px\)/, "glass header per design");
+  assert.match(navCss, /background:var\(--glass\);backdrop-filter:blur\(16px\)/, "glass header per design (tokenised)");
 });
 
 test("server half: count24h is counted before the presentation cap", () => {
@@ -334,7 +334,7 @@ test("green trial card: real email → real registration, no fake trial promise"
   assert.match(fn, /window\.__lndTrialEmail/, "the email is passed to the flow");
   assert.ok(!/alert\(|confirm\(/.test(fn), "no blocking dialogs");
   const css = html.match(/\.lnd-trial\{[^}]*\}/)[0];
-  assert.match(css, /#34D399,#0E9F6E/, "green gradient per design");
+  assert.match(css, /var\(--gl\),#0E9F6E/, "green gradient per design (tokenised)");
   const trialCss = html.slice(html.indexOf(".lnd-trial-row input{"), html.indexOf("/* ─── Footer rebuild"));
   assert.match(trialCss, /\.lnd-trial-row input\{[^}]*min-height:50px/, "input is a 44px+ touch target");
   assert.match(trialCss, /\.lnd-trial-btn\{min-height:50px/, "the button is a 44px+ touch target");
@@ -348,4 +348,71 @@ test("footer: brand + real platform/resources/contact columns, disclaimer kept",
   assert.match(foot, /وليست توصية استثمارية/, "the financial disclaimer is kept");
   for (const col of ["المنصة", "موارد", "تواصل"]) assert.ok(foot.includes(`<b>${col}</b>`), `column ${col}`);
   assert.ok(html.includes('id="lnd-mobbar"'), "the mobile quick bar is still present");
+});
+
+/* ────────────────────────────────────────────────────────────────
+   STEP 1 — design tokens (single source of truth for ALL pages)
+   ──────────────────────────────────────────────────────────────── */
+
+const tokensCss = readFileSync(join(here, "tokens.css"), "utf8");
+const uiCss = readFileSync(join(here, "ui.css"), "utf8");
+const chartRuntime = readFileSync(join(here, "src", "chart-runtime.ts"), "utf8");
+const adminHtml = readFileSync(join(here, "admin.html"), "utf8");
+
+function styleBlocks(page) {
+  return [...page.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]);
+}
+
+test("tokens: both files exist and are the single :root source loaded by BOTH entries", () => {
+  const defined = new Set([...tokensCss.matchAll(/--[a-z0-9-]+(?=:)/g)].map((m) => m[0]));
+  assert.ok(defined.size >= 60, `tokens.css defines the full palette (${defined.size} custom properties)`);
+  for (const name of ["--ink", "--s1", "--b1", "--t1", "--t3", "--g", "--g2", "--gl", "--vip", "--up", "--dn", "--glass", "--hairline", "--r16", "--sh-1", "--t-fast", "--sans", "--mono"])
+    assert.ok(defined.has(name), `tokens.css defines ${name}`);
+  // exactly one :root, in tokens.css only
+  assert.equal((tokensCss.match(/:root/g) || []).length, 1, "tokens.css owns the single :root");
+  assert.equal((uiCss.match(/:root/g) || []).length, 0, "ui.css adds no :root of its own");
+  // both pages load them via the shared JS bridge (Vite 7 drops shared linked CSS
+  // across multiple HTML entries, so the imports live in the entry module)
+  assert.match(chartRuntime, /import "\.\.\/tokens\.css"/, "chart-runtime imports tokens.css");
+  assert.match(chartRuntime, /import "\.\.\/ui\.css"/, "chart-runtime imports ui.css");
+  for (const [name, page] of [["index.html", html], ["admin.html", adminHtml]]) {
+    assert.equal((page.match(/<link[^>]*tokens\.css/g) || []).length, 0, `${name}: no dangling <link> (would be dropped by Vite)`);
+    assert.match(page, /<script type="module" src="\/src\/chart-runtime\.ts">/, `${name} loads the shared CSS bridge`);
+  }
+});
+
+test("tokens: no page defines :root of its own anymore (no duplication)", () => {
+  for (const [name, page] of [["index.html", html], ["admin.html", adminHtml]]) {
+    assert.equal((styleBlocks(page).join("\n").match(/:root/g) || []).length, 0, `${name}: :root lives only in tokens.css`);
+  }
+});
+
+test("tokens: every var() used is defined in tokens.css (no undefined custom properties)", () => {
+  const defined = new Set([...tokensCss.matchAll(/--[a-z0-9-]+(?=:)/g)].map((m) => m[0]));
+  const used = new Set();
+  for (const page of [html, adminHtml, uiCss]) {
+    const blocks = page === uiCss ? [uiCss] : styleBlocks(page);
+    for (const m of blocks.join("\n").matchAll(/var\(\s*(--[a-z0-9-]+)/g)) used.add(m[1]);
+  }
+  const missing = [...used].filter((u) => !defined.has(u));
+  assert.deepEqual(missing, [], `undefined custom properties: ${missing.join(", ")}`);
+});
+
+test("tokens: the var(--bg) bug is gone and unified colours use the app tokens", () => {
+  for (const [name, page] of [["index.html", html], ["admin.html", adminHtml]]) {
+    assert.ok(!/var\(--bg\)/.test(page), `${name}: no var(--bg) (undefined variable bug)`);
+    // divergent colours now reference tokens, not raw hex
+    const css = styleBlocks(page).join("\n").toUpperCase();
+    for (const gone of ["#EAF0FF", "#F5C451", "#24305E", "#04121F", "#B9C4E6", "#C9D4F2", "#C7D2E4", "#8FA0C9", "#2F3F7A"])
+      assert.ok(!css.includes(gone), `${name}: ${gone} unified into tokens.css`);
+  }
+});
+
+test("tokens: green accent, glass and reduced-motion live in the single token file", () => {
+  assert.match(tokensCss, /--gl:#34D399/, "#34D399 registered as --gl");
+  assert.match(tokensCss, /--glass:rgba\(14,21,36,\.62\)/, "landing glass value tokenised");
+  assert.match(tokensCss, /--glass-hdr:rgba\(3,7,18,\.96\)/, "header glass tokenised");
+  assert.match(tokensCss, /--hairline:rgba\(255,255,255,\.08\)/, "hairline tokenised");
+  assert.match(tokensCss, /@media \(prefers-reduced-motion:\s*reduce\)/, "global reduced-motion rule");
+  assert.match(tokensCss, /animation-iteration-count:1 !important/, "animations stop (not hide) under reduced motion");
 });

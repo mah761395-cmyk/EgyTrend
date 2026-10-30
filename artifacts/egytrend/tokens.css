@@ -1,0 +1,67 @@
+/* ============================================================
+   EgyTrend — Design Tokens (single source of truth)
+   Values extracted from the approved landing design (2026-10-30).
+   Linked by index.html and admin.html; no other surface may
+   define brand values. Components: ui.css.
+   ============================================================ */
+:root{
+  /* ── Surfaces (backgrounds) ── */
+  --ink:#070B14;            /* page background */
+  --ink2:#0E1524;--ink3:#111B2D;--ink4:#17243A;
+  --s1:#0E1524;--s2:#121C2D;--s3:#17243A;
+  /* ── Borders + glass ── */
+  --b1:#1C2740;--b2:#2A3955;
+  --hairline:rgba(255,255,255,.08);
+  --hairline-strong:rgba(255,255,255,.14);
+  --glass:rgba(14,21,36,.62);
+  --glass-hdr:rgba(3,7,18,.96);
+  /* ── Brand greens ── */
+  --g:#10B981;--g2:#059669;--gl:#34D399;
+  --gd:rgba(16,185,129,.12);--gd2:rgba(16,185,129,.055);
+  --gb:rgba(16,185,129,.3);--gb2:rgba(16,185,129,.42);
+  --up:#10B981;--upd:rgba(16,185,129,.10);
+  --dn:#F87171;--dnd:rgba(248,113,113,.10);
+  --nu:#93A1B8;--nud:rgba(147,161,184,.10);
+  --bl:#60A5FA;--bld:rgba(96,165,250,.10);--bl-d:rgba(59,130,246,.15);
+  --pu:#A78BFA;--pud:rgba(167,139,250,.10);
+  --au:#F59E0B;--au2:#D97706;--aud:rgba(245,158,11,.11);
+  /* ── VIP gold (VIP surfaces only) ── */
+  --vip:#E3B75B;--vip2:#B98427;--vipd:rgba(227,183,91,.12);
+  /* ── Text ── */
+  --t1:#E8EEF8;--t2:#C6D2E3;--t3:#93A1B8;--t4:#6F7E97;--t5:#526079;
+  /* ── Typography ── */
+  --sans:'Cairo',sans-serif;--mono:'IBM Plex Mono',monospace;
+  /* ── Radius (scale from actual usage) ── */
+  --r8:8px;--r10:10px;--r12:12px;--r14:14px;--r16:16px;--r18:18px;--r22:22px;--r24:24px;--r-full:999px;
+  /* ── Spacing ── */
+  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px;--sp-7:32px;--sp-8:40px;
+  /* ── Elevation / glow ── */
+  --sh-1:0 10px 28px rgba(0,0,0,.45);
+  --sh-2:0 14px 38px rgba(0,0,0,.55);
+  --sh-3:0 30px 80px rgba(0,0,0,.35);
+  --sh-4:0 24px 70px rgba(0,0,0,.30);
+  --sh-glow:0 0 22px rgba(16,185,129,.4);
+  --sh-glow-sm:0 0 8px rgba(16,185,129,.4);
+  --sh-glow-md:0 18px 50px rgba(16,185,129,.10);
+  --sh-glow-lg:0 14px 34px rgba(52,211,153,.25);
+  --sh-gold:0 12px 30px rgba(227,183,91,.22);
+  /* ── Glass / motion / focus ── */
+  --blur-glass:16px;--blur-hdr:22px;
+  --t-fast:150ms;
+  --focus:0 0 0 2px rgba(16,185,129,.45);
+  /* ── Legacy aliases (referenced by a few older rules; were silently
+     undefined — now mapped onto the real system instead of a raw hex) ── */
+  --s0:var(--ink);--red:var(--dn);
+}
+
+/* Global reduced-motion: stop ALL movement, but never hide state.
+   Loading indicators (pulse dots, shimmer skeletons, spinners) keep
+   their static base styles, so they stay visible without motion. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+    scroll-behavior:auto !important;
+  }
+}
