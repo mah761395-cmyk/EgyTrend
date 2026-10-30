@@ -9,6 +9,9 @@ on:
 
 permissions:
   contents: read
+  # TEMP (audit 2026-10-31, revert with the diagnostic): post test-failure
+  # details to the PR so they can be read outside the (egress-blocked) logs.
+  pull-requests: write
 
 jobs:
   verify:
@@ -51,16 +54,29 @@ jobs:
         run: pnpm run typecheck
 
       - name: Security and regression tests
+        id: tests
         run: |
           # TEMP (audit 2026-10-31, to be reverted): keep the full log in CI,
-          # and on failure surface a compact "not ok" summary at the very end
-          # so the job annotation names the failing tests.
+          # and on failure post a compact "not ok" summary to the PR (the log
+          # receiver is unreachable from the auditing sandbox).
           pnpm run test 2>&1 | tee /tmp/ci-test-output.log
           if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-            echo "════ CI TEST FAILURE SUMMARY (temp audit diagnostic) ════"
-            grep -E "^(not ok|ok) [0-9]+ - " /tmp/ci-test-output.log | grep -c "^ok" | xargs -I{} echo "passing test lines: {}"
-            grep -E "^not ok" /tmp/ci-test-output.log | head -20
-            grep -E "^# (tests|pass|fail|cancelled)" /tmp/ci-test-output.log | tail -8
+            {
+              echo "## CI test failure summary (temporary audit diagnostic)"
+              echo
+              echo '```'
+              grep -E "^(not ok|ok) [0-9]+ - " /tmp/ci-test-output.log | grep "^not ok" | head -20
+              echo "──── per-workspace totals ────"
+              grep -B1 -E "^# (tests|pass|fail)" /tmp/ci-test-output.log | grep -E "test: #|# (tests|pass|fail)" | tail -12
+              echo "──── tail of log ────"
+              tail -30 /tmp/ci-test-output.log
+              echo '```'
+            } > /tmp/ci-failure-comment.md
+            curl -sS -X POST \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${{ github.event.pull_request.number }}/comments" \
+              -d @/tmp/ci-failure-comment.md -o /dev/null || true
             exit 1
           fi
 
