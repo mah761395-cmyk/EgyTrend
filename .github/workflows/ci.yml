@@ -56,33 +56,24 @@ jobs:
       - name: Security and regression tests
         id: tests
         run: |
-          # TEMP (audit 2026-10-31, to be reverted): keep the full log in CI,
-          # and on failure post a compact "not ok" summary to the PR (the log
-          # receiver is unreachable from the auditing sandbox).
-          pnpm run test 2>&1 | tee /tmp/ci-test-output.log
-          if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-            set +e
-            {
-              echo "## CI test failure summary (temporary audit diagnostic)"
-              echo
-              echo "total log lines: $(wc -l < /tmp/ci-test-output.log)"
-              echo '```'
-              echo "──── not-ok lines ────"
-              grep -E "^not ok" /tmp/ci-test-output.log | head -20 || echo "(none)"
-              echo "──── per-workspace totals ────"
-              grep -E "test: # (tests|pass|fail)" /tmp/ci-test-output.log | tail -12 || echo "(none)"
-              echo "──── tail of log ────"
-              tail -40 /tmp/ci-test-output.log
-              echo '```'
-            } > /tmp/ci-failure-comment.md
-            curl -sS -X POST \
-              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${{ github.event.pull_request.number }}/comments" \
-              -d @/tmp/ci-failure-comment.md -o /dev/null
-            echo "curl exit: $?"
+          # TEMP DIAGNOSTIC BRANCH ONLY (audit 2026-10-31): capture the test
+          # output to a file, then surface a failure summary as a job
+          # annotation (readable via the check-runs API from the sandbox).
+          set +e
+          pnpm run test > /tmp/ci-test-output.log 2>&1
+          RC=$?
+          cat /tmp/ci-test-output.log
+          if [ "$RC" -ne 0 ]; then
+            N=$(wc -l < /tmp/ci-test-output.log)
+            echo "::error file=.github/workflows/ci.yml::DIAG: pnpm test exit=$RC log_lines=$N"
+            grep -E "^not ok" /tmp/ci-test-output.log | head -6 | while IFS= read -r l; do
+              echo "::error file=.github/workflows/ci.yml::DIAG notok: ${l:0:300}"
+            done
+            echo "::error file=.github/workflows/ci.yml::DIAG totals: $(grep -E 'test: # (tests|pass|fail)' /tmp/ci-test-output.log | tail -12 | tr '\n' '|')"
+            echo "::error file=.github/workflows/ci.yml::DIAG lastline: $(tail -1 /tmp/ci-test-output.log | cut -c1-300)"
             exit 1
           fi
+          exit 0
 
       - name: Production build
         run: pnpm run build
