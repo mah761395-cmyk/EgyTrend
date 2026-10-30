@@ -294,6 +294,77 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .mc-loading{color:var(--t5);font-size:11px;animation:pulse .8s infinite;font-family:var(--mono);}
 .cal-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--b1);}
 .cal-row:last-child{border-bottom:none;}
+/* ─── MARKETS HUB: search / tabs / movers / tables ─── */
+.mkt-hub-search{position:relative;margin-bottom:10px;}
+.mkt-hub-search input{width:100%;background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:10px 12px 10px 36px;color:var(--t1);font-size:12.5px;font-family:var(--sans);outline:none;transition:border-color .15s;box-sizing:border-box;}
+.mkt-hub-search input::placeholder{color:var(--t5);}
+.mkt-hub-search input:focus{border-color:rgba(16,185,129,.45);}
+.mkt-hub-search .search-ic{position:absolute;top:15px;left:12px;width:15px;height:15px;color:var(--t5);pointer-events:none;}
+.mkt-search-drop{position:absolute;top:calc(100% + 6px);right:0;left:0;z-index:400;background:var(--s1);border:1px solid var(--b2);border-radius:12px;max-height:56vh;overflow-y:auto;box-shadow:0 14px 38px rgba(0,0,0,.55);}
+.mkt-search-grp{padding:8px 12px 3px;color:var(--t5);font-size:9px;font-weight:800;letter-spacing:.6px;position:sticky;top:0;background:var(--s1);}
+.mkt-search-item{display:flex;align-items:center;gap:9px;padding:8px 12px;cursor:pointer;}
+.mkt-search-item:hover{background:var(--s2);}
+.mkt-search-item .si-ic{width:20px;text-align:center;font-size:13px;flex:0 0 auto;}
+.mkt-search-item .si-main{flex:1;min-width:0;display:flex;flex-direction:column;}
+.mkt-search-item .si-name{color:var(--t1);font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mkt-search-item .si-sub{color:var(--t5);font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mkt-search-item .si-val{font-family:var(--mono);font-size:10.5px;color:var(--t2);white-space:nowrap;text-align:left;}
+.mkt-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:7px;margin-bottom:14px;scrollbar-width:none;}
+.mkt-tabs::-webkit-scrollbar{display:none;}
+.mkt-tab{flex:0 0 auto;display:flex;align-items:center;gap:5px;background:var(--s1);border:1px solid var(--b1);color:var(--t4);border-radius:10px;padding:8px 12px;font-size:11.5px;font-weight:800;font-family:var(--sans);cursor:pointer;white-space:nowrap;transition:all .15s;}
+.mkt-tab .tab-ic{width:13px;height:13px;}
+.mkt-tab:hover{color:var(--t2);border-color:var(--b2);}
+.mkt-tab.on{background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.42);color:var(--g);}
+.mkt-tab .tab-count{font-size:9px;font-family:var(--mono);background:var(--s2);border-radius:8px;padding:1px 5px;min-width:14px;text-align:center;}
+.mkt-tab-pane{display:none;}
+.mkt-tab-pane.on{display:block;}
+.mkt-movers{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
+.mkt-mover-box{background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:10px 11px;}
+.mkt-mover-h{font-size:10.5px;font-weight:800;margin-bottom:6px;}
+.mkt-mover{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:5.5px 3px;border-bottom:1px solid var(--b1);cursor:pointer;border-radius:6px;}
+.mkt-mover:last-child{border-bottom:none;}
+.mkt-mover:hover{background:var(--s2);}
+.mkt-mover .mm-sym{color:var(--t1);font-size:11px;font-weight:800;font-family:var(--mono);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mkt-mover .mm-price{color:var(--t5);font-size:9px;font-family:var(--mono);}
+.mkt-mover .mm-pct{font-size:10.5px;font-weight:700;font-family:var(--mono);}
+.mkt-stbl-wrap{margin-bottom:18px;}
+.mkt-stbl-h{display:flex;align-items:flex-end;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+.mkt-stbl-title{color:var(--t1);font-size:13px;font-weight:800;}
+.mkt-stbl-sub{color:var(--t5);font-size:9.5px;margin-top:2px;}
+.mkt-stbl-tools{display:flex;gap:6px;}
+.mkt-stbl-tools input{background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:6px 9px;color:var(--t1);font-size:11px;width:118px;outline:none;font-family:var(--sans);box-sizing:border-box;}
+.mkt-stbl-tools input:focus{border-color:rgba(16,185,129,.45);}
+.mkt-stbl-tools select{background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:6px 8px;color:var(--t2);font-size:10.5px;outline:none;font-family:var(--sans);}
+.mkt-sector-pills{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;}
+.mkt-sector-pill{background:var(--s1);border:1px solid var(--b1);border-radius:16px;padding:3.5px 10px;font-size:10px;font-weight:700;color:var(--t3);cursor:pointer;transition:all .15s;font-family:var(--sans);}
+.mkt-sector-pill:hover{border-color:var(--b2);color:var(--t1);}
+.mkt-sector-pill.on{background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.42);color:var(--g);}
+.mkt-sector-pill .sp-pct{font-family:var(--mono);font-size:9px;margin-right:4px;}
+.mkt-stbl{background:var(--s1);border:1px solid var(--b1);border-radius:13px;overflow:hidden;}
+.mkt-stbl-row{display:grid;grid-template-columns:1.6fr .95fr .85fr .95fr;gap:8px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--b1);cursor:pointer;}
+.mkt-stbl-row:last-child{border-bottom:none;}
+.mkt-stbl-row:hover{background:var(--s2);}
+.mkt-stbl-row.head{cursor:default;background:var(--s2);}
+.mkt-stbl-row.head:hover{background:var(--s2);}
+.mkt-stbl-row.head div{color:var(--t5);font-size:9px;font-weight:800;}
+.mkt-sr-sym{color:var(--t1);font-size:11.5px;font-weight:800;font-family:var(--mono);}
+.mkt-sr-name{color:var(--t4);font-size:9.5px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mkt-sr-price{color:var(--t1);font-size:11.5px;font-family:var(--mono);text-align:left;}
+.mkt-sr-chg{font-size:11px;font-weight:700;font-family:var(--mono);text-align:left;}
+.mkt-sr-vol{color:var(--t5);font-size:10px;font-family:var(--mono);text-align:left;}
+.mkt-empty{padding:22px 14px;text-align:center;color:var(--t5);font-size:11px;line-height:1.8;}
+.mkt-ind-card{background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:18px 16px;max-width:540px;}
+/* ─── Compare (2-4 assets) ─── */
+.mkt-compare-bar{display:flex;align-items:center;gap:8px;background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.4);border-radius:11px;padding:7px 10px;margin-bottom:10px;}
+.mkt-compare-bar .cb-name{flex:1;min-width:0;font-size:11px;font-weight:800;color:#7dd3fc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mkt-compare-btn{background:rgba(56,189,248,.15);border:1px solid rgba(56,189,248,.45);color:#7dd3fc;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:800;cursor:pointer;font-family:var(--sans);transition:all .15s;}
+.mkt-compare-btn:hover{background:rgba(56,189,248,.25);}
+.mkt-compare-btn:disabled{opacity:.5;cursor:default;}
+.mkt-compare-x{background:none;border:none;color:var(--t4);cursor:pointer;font-size:12px;padding:2px 4px;}
+.mkt-compare-x:hover{color:var(--t1);}
+.mkt-compare-legend{display:flex;flex-wrap:wrap;gap:10px;margin:8px 2px 4px;}
+.mkt-compare-legend span{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--t3);font-weight:700;}
+.mkt-compare-legend i{width:14px;height:3px;border-radius:2px;display:inline-block;}
 /* Market detail overlay */
 .mkt-ov{position:fixed;inset:0;z-index:650;background:#030712;overflow-y:auto;animation:fadeIn .18s ease;}
 .mkt-ov-back{background:none;border:none;color:var(--t3);font-size:14px;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:var(--sans);padding:0;margin-bottom:18px;}
@@ -813,6 +884,12 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
   .mc-val{font-size:18px;}
   .mc-chg{font-size:12px;}
   .mc-sub{font-size:10.5px;}
+  .mkt-tab{padding:9px 15px;font-size:12px;}
+  .mkt-hub-search input{font-size:13px;padding-top:11px;padding-bottom:11px;}
+  .mkt-stbl-row{grid-template-columns:1.9fr 1.1fr 1fr 1fr;padding:10px 14px;}
+  .mkt-movers{grid-template-columns:1fr 1fr;gap:10px;}
+  .mkt-stbl-tools input{width:170px;}
+  .mkt-compare-bar{padding:8px 12px;}
 
   /* VIP & Support — constrained width */
   .vip-page,.sup-page{padding:22px 28px 30px;max-width:1100px;margin:0 auto;}
@@ -1836,14 +1913,81 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       </div>
       <button class="ibtn" type="button" onclick="fetchMarketsData(true)" title="تحديث" aria-label="تحديث الأسواق"><svg class="et-icon"><use href="#i-refresh"></use></svg></button>
     </div>
-    <div class="sec-h"><svg class="et-icon"><use href="#i-chart"></use></svg> الأسواق المصرية</div>
-    <div class="mkt-grid" id="mkt-eg"></div>
-    <div class="sec-h" style="--g:var(--bl);"><svg class="et-icon"><use href="#i-compass"></use></svg> الأسواق العالمية</div>
-    <div class="mkt-grid" id="mkt-gl"></div>
-    <div class="sec-h" style="--g:var(--au);"><svg class="et-icon"><use href="#i-star"></use></svg> السلع والمعادن</div>
-    <div class="mkt-grid" id="mkt-cm"></div>
-    <div class="sec-h" style="--g:var(--pu);">₿ كريبتو</div>
-    <div class="mkt-grid" id="mkt-cr"></div>
+    <!-- Quick search across the board + EGX/US stocks (client-side only) -->
+    <div class="mkt-hub-search">
+      <svg class="et-icon search-ic" aria-hidden="true"><use href="#i-search"></use></svg>
+      <input type="text" id="mkt-hub-search" placeholder="ابحث عن سهم أو مؤشر أو عملة أو سلعة…" autocomplete="off" oninput="mktHubSearch(this.value)" onkeydown="if(event.key==='Escape'){this.value='';closeMktHubSearch();}" onblur="setTimeout(closeMktHubSearch,150)">
+      <div class="mkt-search-drop" id="mkt-hub-search-drop" hidden></div>
+    </div>
+    <!-- Floating compare state (2-4 assets chosen from any detail view) -->
+    <div class="mkt-compare-bar" id="mkt-compare-bar" style="display:none;" role="toolbar" aria-label="قائمة المقارنة"></div>
+    <!-- Category tabs -->
+    <div class="mkt-tabs" id="mkt-tabs" role="tablist">
+      <button class="mkt-tab on" type="button" role="tab" data-mkt-tab="eg" onclick="switchMktTab('eg')"><svg class="et-icon tab-ic" aria-hidden="true"><use href="#i-chart"></use></svg> البورصة المصرية</button>
+      <button class="mkt-tab" type="button" role="tab" data-mkt-tab="gl" onclick="switchMktTab('gl')"><svg class="et-icon tab-ic" aria-hidden="true"><use href="#i-compass"></use></svg> عالمي</button>
+      <button class="mkt-tab" type="button" role="tab" data-mkt-tab="cm" onclick="switchMktTab('cm')"><svg class="et-icon tab-ic" aria-hidden="true"><use href="#i-star"></use></svg> سلع ومعادن</button>
+      <button class="mkt-tab" type="button" role="tab" data-mkt-tab="cr" onclick="switchMktTab('cr')">₿ كريبتو</button>
+      <button class="mkt-tab" type="button" role="tab" data-mkt-tab="fx" onclick="switchMktTab('fx')"><svg class="et-icon tab-ic" aria-hidden="true"><use href="#i-pulse"></use></svg> عملات</button>
+      <button class="mkt-tab" type="button" role="tab" data-mkt-tab="ind" onclick="switchMktTab('ind')"><svg class="et-icon tab-ic" aria-hidden="true"><use href="#i-calendar"></use></svg> مؤشرات</button>
+      <button class="mkt-tab" type="button" role="tab" data-mkt-tab="wl" onclick="switchMktTab('wl')"><svg class="et-icon tab-ic" aria-hidden="true"><use href="#i-star"></use></svg> متابعتي <span class="tab-count" id="mkt-wl-count" hidden></span></button>
+    </div>
+    <!-- Tab panes -->
+    <div class="mkt-tab-pane on" id="mkt-eg-pane">
+      <div class="mkt-grid" id="mkt-eg"></div>
+      <div id="mkt-egx-movers"></div>
+      <div class="mkt-sector-pills" id="mkt-egx-sectors-row"></div>
+      <div class="mkt-stbl-wrap">
+        <div class="mkt-stbl-h">
+          <div>
+            <div class="mkt-stbl-title">الأسهم المدرجة</div>
+            <div class="mkt-stbl-sub" id="mkt-egx-count">جارٍ التحميل...</div>
+          </div>
+          <div class="mkt-stbl-tools">
+            <input type="text" id="mkt-egx-q" placeholder="رمز أو اسم…" oninput="mktEgxTable.q=this.value.trim();renderMktEgxTable()">
+            <select id="mkt-egx-sort" onchange="mktEgxTable.sort=this.value;renderMktEgxTable()" aria-label="ترتيب الأسهم">
+              <option value="cap">أعلى قيمة سوقية</option>
+              <option value="up">أعلى رابحين</option>
+              <option value="dn">أعلى خاسرين</option>
+              <option value="vol">الأكثر تداولًا</option>
+              <option value="name">أبجدي</option>
+            </select>
+          </div>
+        </div>
+        <div class="mkt-stbl" id="mkt-egx-table"></div>
+      </div>
+    </div>
+    <div class="mkt-tab-pane" id="mkt-gl-pane">
+      <div class="mkt-grid" id="mkt-gl"></div>
+      <div class="mkt-stbl-wrap">
+        <div class="mkt-stbl-h">
+          <div>
+            <div class="mkt-stbl-title">الأسهم الأمريكية</div>
+            <div class="mkt-stbl-sub" id="mkt-us-count">جارٍ التحميل...</div>
+          </div>
+          <div class="mkt-stbl-tools">
+            <input type="text" id="mkt-us-q" placeholder="رمز أو اسم أو قطاع…" oninput="mktUsTable.q=this.value.trim();renderMktUsTable()">
+            <select id="mkt-us-sort" onchange="mktUsTable.sort=this.value;renderMktUsTable()" aria-label="ترتيب الأسهم">
+              <option value="chg">الأكثر تغيرًا</option>
+              <option value="up">أعلى رابحين</option>
+              <option value="dn">أعلى خاسرين</option>
+              <option value="name">أبجدي</option>
+            </select>
+          </div>
+        </div>
+        <div class="mkt-stbl" id="mkt-us-table"></div>
+      </div>
+    </div>
+    <div class="mkt-tab-pane" id="mkt-cm-pane"><div class="mkt-grid" id="mkt-cm"></div></div>
+    <div class="mkt-tab-pane" id="mkt-cr-pane"><div class="mkt-grid" id="mkt-cr"></div></div>
+    <div class="mkt-tab-pane" id="mkt-fx-pane"><div class="mkt-grid" id="mkt-fx"></div></div>
+    <div class="mkt-tab-pane" id="mkt-ind-pane">
+      <div class="mkt-ind-card">
+        <div style="font-size:22px;margin-bottom:6px;">📉</div>
+        <div style="color:var(--t1);font-weight:800;font-size:13px;margin-bottom:5px;">مؤشرات اقتصادية (فائدة، تضخم، عوائد سندات)</div>
+        <div style="color:var(--t4);font-size:11.5px;line-height:1.75;">لا تتوفر حاليًا قيم هذه المؤشرات من مصدر مرخّص في المشروع، والمنصة لا تعرض قيمًا تقديرية أو قديمة بوصفها حالية. يتابع <b>التقويم الاقتصادي</b> أدناه قرارات البنوك المركزية والأحداث المؤثرة على الفائدة والتضخم.</div>
+      </div>
+    </div>
+    <div class="mkt-tab-pane" id="mkt-wl-pane"><div id="mkt-wl-list"></div></div>
     <div class="sec-h"><svg class="et-icon"><use href="#i-calendar"></use></svg> التقويم الاقتصادي</div>
     <div style="background:var(--s1);border:1px solid var(--b1);border-radius:15px;padding:13px 14px;" id="cal-wrap"></div>
   </div>
@@ -2344,28 +2488,49 @@ const REMOVED_MARKETS = new Set(["EGX70", "EGX100"]);
 const MARKET_STATIC = {
   eg:[
     {n:"EGX30",  v:"",c:"",up:true,s:"مؤشر رئيسي",clickable:true},
-    {n:"USD/EGP",v:"",c:"",up:true,s:"دولار/جنيه"},
-    {n:"EUR/EGP",v:"",c:"",up:true,s:"يورو/جنيه"},
-    {n:"GBP/EGP",v:"",c:"",up:true,s:"إسترليني/جنيه"},
-    {n:"SAR/EGP",v:"",c:"",up:true,s:"ريال/جنيه"},
+    {n:"EGX70",  v:"",c:"",up:true,s:"مؤشر السبعين"},
+    {n:"EGX100", v:"",c:"",up:true,s:"مؤشر المائة"},
   ],
   gl:[
     {n:"S&P 500",v:"",c:"",up:true,s:"أمريكي"},
     {n:"NASDAQ", v:"",c:"",up:true,s:"تقني"},
+    {n:"Dow Jones 30",v:"",c:"",up:true,s:"أمريكي (صناعي)"},
+    {n:"CAC 40", v:"",c:"",up:true,s:"باريس"},
     {n:"DAX",    v:"",c:"",up:true,s:"ألماني"},
     {n:"FTSE 100",v:"",c:"",up:true,s:"بريطاني"},
+    {n:"Nikkei 225",v:"",c:"",up:true,s:"طوكيو"},
   ],
   cm:[
     {n:"ذهب",     v:"",c:"",up:true,s:"أوقية"},
-    {n:"نفط برنت",v:"",c:"",up:true,s:"برميل"},
     {n:"فضة",     v:"",c:"",up:true,s:"أوقية"},
+    {n:"نفط برنت",v:"",c:"",up:true,s:"برميل"},
+    {n:"نفط خام WTI",v:"",c:"",up:true,s:"برميل (أمريكي)"},
+    {n:"غاز طبيعي",v:"",c:"",up:true,s:"Henry Hub / مليون وحدة"},
     {n:"نحاس",    v:"",c:"",up:true,s:"رطل"},
+    {n:"قمح",    v:"",c:"",up:true,s:"بوشل (CBOT)"},
   ],
   cr:[
     {n:"BTC",v:"",c:"",up:true,s:"بيتكوين"},
     {n:"ETH",v:"",c:"",up:true,s:"إيثريوم"},
-    {n:"SOL",v:"",c:"",up:true,s:"سولانا"},
     {n:"XRP",v:"",c:"",up:true,s:"ريبل"},
+    {n:"BNB",v:"",c:"",up:true,s:"بينانس كوين"},
+    {n:"SOL",v:"",c:"",up:true,s:"سولانا"},
+    {n:"DOGE",v:"",c:"",up:true,s:"دوج كوين"},
+    {n:"ADA",v:"",c:"",up:true,s:"كاردانو"},
+    {n:"AVAX",v:"",c:"",up:true,s:"أفالانش"},
+    {n:"LINK",v:"",c:"",up:true,s:"تشين لينك"},
+    {n:"TON",v:"",c:"",up:true,s:"تون كوين"},
+  ],
+  fx:[
+    {n:"USD/EGP",v:"",c:"",up:true,s:"دولار/جنيه"},
+    {n:"EUR/EGP",v:"",c:"",up:true,s:"يورو/جنيه"},
+    {n:"GBP/EGP",v:"",c:"",up:true,s:"إسترليني/جنيه"},
+    {n:"SAR/EGP",v:"",c:"",up:true,s:"ريال/جنيه"},
+    {n:"EUR/USD",v:"",c:"",up:true,s:"يورو/دولار"},
+    {n:"GBP/USD",v:"",c:"",up:true,s:"إسترليني/دولار"},
+    {n:"USD/JPY",v:"",c:"",up:true,s:"دولار/ين"},
+    {n:"AUD/USD",v:"",c:"",up:true,s:"دولار أسترالي/دولار"},
+    {n:"مؤشر الدولار",v:"",c:"",up:true,s:"DXY / ICE"},
   ],
 };
 
@@ -2380,7 +2545,7 @@ function markMarketsUnavailable(){
     marketFreshness={...marketFreshness,stale:true,loading:false};
   }else{
     const sections={};
-    ["eg","gl","cm","cr"].forEach(key=>{sections[key]={sources:"غير متاح",unavailable:true};liveMarkets[key]=unavailableMarketRows(key);});
+    ["eg","gl","cm","cr","fx"].forEach(key=>{sections[key]={sources:"غير متاح",unavailable:true};liveMarkets[key]=unavailableMarketRows(key);});
     marketFreshness={fetchedAt:0,stale:true,unavailable:true,loading:false,sections};
     liveTicks=[];
   }
@@ -4333,6 +4498,9 @@ async function fetchStocksData(){
      screener once (P/E, coupon yield, dividends columns fill in) but can
      never break or delay the price table. */
   fetchScreenerExtras();
+  /* Markets hub: the EGX tab and watchlist read these rows. */
+  renderMktEgTab();
+  renderMktWatchlist();
 }
 
 /* Priced, source-backed rows for the EGX screener. noData rows (curated
@@ -4435,6 +4603,8 @@ async function fetchUsStocksData(){
     else{usStocksFreshness={fetchedAt:0,stale:true,source:"غير متاح",unavailable:true,loading:false};usStocks=[];}
   }
   if(scrMarket==="us")renderScrResults();
+  /* Markets hub: the global tab's US table reads these rows. */
+  renderMktUsTable();
 }
 
 /* ─── Helpers for stocks ─── */
@@ -4772,7 +4942,7 @@ async function fetchMarketsData(force){
      * server did not price stays visible as an explicit "غير متاح" card
      * instead of disappearing, and any new server row is appended. No value
      * is ever synthesised here. */
-    ["eg","gl","cm","cr"].forEach(k=>{
+    ["eg","gl","cm","cr","fx"].forEach(k=>{
       const rows=normalizeMarketRows(d.markets[k]);
       const base=MARKET_STATIC[k]||[];
       const byName=new Map(rows.map(r=>[r.n,r]));
@@ -4782,7 +4952,7 @@ async function fetchMarketsData(force){
     });
 
     // TradingView display symbols cover exactly the rows no provider priced.
-    liveTv = d.tv && typeof d.tv==="object" ? d.tv : {eg:[],gl:[],cm:[],cr:[]};
+    liveTv = d.tv && typeof d.tv==="object" ? d.tv : {eg:[],gl:[],cm:[],cr:[],fx:[]};
 
     // Update ticker only with rows the server actually supplied.
     liveTicks=normalizeMarketRows(d.ticker);
@@ -5253,6 +5423,23 @@ const MKT_TV_SYMS={
   "ETH":"BINANCE:ETHUSDT",
   "SOL":"BINANCE:SOLUSDT",
   "XRP":"BINANCE:XRPUSDT",
+  "BNB":"BINANCE:BNBUSDT",
+  "DOGE":"BINANCE:DOGEUSDT",
+  "ADA":"BINANCE:ADAUSDT",
+  "AVAX":"BINANCE:AVAXUSDT",
+  "LINK":"BINANCE:LINKUSDT",
+  "TON":"BINANCE:TONUSDT",
+  "Dow Jones 30":"FOREX:US30",
+  "CAC 40":"FOREX:FR40",
+  "Nikkei 225":"FOREX:JP225",
+  "مؤشر الدولار":"TVC:USDX",
+  "نفط خام WTI":"TVC:USOIL",
+  "غاز طبيعي":"TVC:NATGAS",
+  "قمح":"TVC:WHEAT",
+  "EUR/USD":"FX_IDC:EURUSD",
+  "GBP/USD":"FX_IDC:GBPUSD",
+  "USD/JPY":"FX_IDC:USDJPY",
+  "AUD/USD":"FX_IDC:AUDUSD",
 };
 function loadTvMiniChart(containerId,tvSymbol){
   const container=document.getElementById(containerId);
@@ -5292,8 +5479,27 @@ const MKT_CTX={
   "ETH":{icon:"Ξ",en:"Ethereum",desc:"الإيثريوم — منصة العقود الذكية الأولى عالمياً. تُشغّل معظم تطبيقات DeFi والـ NFT والـ Web3.",cat:"كريبتو",trading:"24/7"},
   "SOL":{icon:"◎",en:"Solana",desc:"سولانا — شبكة بلوكتشين فائقة السرعة برسوم منخفضة جداً. منافس قوي للإيثريوم في NFTs وتطبيقات DeFi.",cat:"كريبتو",trading:"24/7"},
   "XRP":{icon:"◈",en:"XRP / Ripple",desc:"ريبل XRP — عملة مصممة لتسريع التحويلات المصرفية الدولية. تستخدمها بنوك عالمية كبرى.",cat:"كريبتو",trading:"24/7"},
+  "BNB":{icon:"🔶",en:"BNB",desc:"بينانس كوين — عملة منصة بينانس، من أكبر العملات من حيث القيمة السوقية.",cat:"كريبتو",trading:"24/7"},
+  "DOGE":{icon:"🐕",en:"Dogecoin",desc:"دوج كوين — العملة الأكثر تداولًا تفاعليًا في السوق، متقلبة جدًا.",cat:"كريبتو",trading:"24/7"},
+  "ADA":{icon:"🔵",en:"Cardano (ADA)",desc:"كاردانو — شبكة عقود ذكية تركز على البحث الأكاديمي والتطوير الموثق.",cat:"كريبتو",trading:"24/7"},
+  "AVAX":{icon:"🔺",en:"Avalanche (AVAX)",desc:"أفالانش — شبكة بلوكتشين تركز على السرعة وتقسيم الشبكات الفرعية.",cat:"كريبتو",trading:"24/7"},
+  "LINK":{icon:"⬡",en:"Chainlink (LINK)",desc:"تشين لينك — بروتوكول بيانات خارج السلسلة (oracles) الأكثر انتشارًا.",cat:"كريبتو",trading:"24/7"},
+  "TON":{icon:"💎",en:"Toncoin (TON)",desc:"تون كوين — عملة شبكة تيليجرام (TON)، من العملات الكبرى في القيمة السوقية.",cat:"كريبتو",trading:"24/7"},
+  "EGX70":{icon:"🇪🇬",en:"EGX70 Index",desc:"مؤشر EGX70 — يعكس أداء 70 شركة متوسطة، إضافة إلى الـ 30 الكبرى ليشكل نطاق EGX100 مع EGX30.",cat:"مؤشر",trading:"الأحد–الخميس 10:00–15:30"},
+  "EGX100":{icon:"🇪🇬",en:"EGX100 Index",desc:"مؤشر EGX100 — يضم 100 شركة من الأكبر على البورصة المصرية، الصورة الأشمل للسوق.",cat:"مؤشر",trading:"الأحد–الخميس 10:00–15:30"},
+  "Dow Jones 30":{icon:"🇺🇸",en:"Dow Jones Industrial Average",desc:"داو جونز الصناعي — 30 من أكبر الشركات الأمريكية، من أقدم المؤشرات في العالم (1896).",cat:"مؤشر",trading:"الاثنين–الجمعة 9:30–16:00 ET"},
+  "CAC 40":{icon:"🇫🇷",en:"CAC 40",desc:"مؤشر بورصة باريس — أكبر 40 شركة فرنسية، مقياس أداء الاقتصاد الفرنسي.",cat:"مؤشر",trading:"9:00–17:30 CET"},
+  "Nikkei 225":{icon:"🇯🇵",en:"Nikkei 225",desc:"مؤشر طوكيو — 225 شركة يابانية، أحد أقدم المؤشرات الآسيوية ومقياس الاقتصاد الياباني.",cat:"مؤشر",trading:"الاثنين–الجمعة 9:00–15:00 JST"},
+  "نفط خام WTI":{icon:"⛽",en:"WTI Crude Oil",desc:"النفط الخام الأمريكي (WTI) — المرجع الأمريكي لأسعار النفط. يتحرك بالتوازي مع نفط برنت مع فارق بسيط.",cat:"سلعة",trading:"24/5"},
+  "غاز طبيعي":{icon:"🔥",en:"Natural Gas (Henry Hub)",desc:"الغاز الطبيعي الأمريكي (Henry Hub) — المرجع العالمي لتسعير الغاز، حساس للمناخ والمخزون.",cat:"سلعة",trading:"24/5"},
+  "قمح":{icon:"🌾",en:"Wheat (CBOT)",desc:"عقود القمح الآجلة (CBOT) — مقياس أسعار الحبوب العالمية وحساس للمناخ والطلب.",cat:"سلعة",trading:"24/5"},
+  "EUR/USD":{icon:"💶",en:"Euro / US Dollar",desc:"الأهم أزواج العملات العالمية — يعكس قوة اليورو مقابل الدولار، محرك أساسي لأسواق النقد.",cat:"فوركس",trading:"24/5"},
+  "GBP/USD":{icon:"💷",en:"British Pound / US Dollar",desc:"الجنيه الإسترليني مقابل الدولار — من أنشط أزواج العملات تداولًا عالميًا.",cat:"فوركس",trading:"24/5"},
+  "USD/JPY":{icon:"💴",en:"US Dollar / Japanese Yen",desc:"الدولار مقابل الين الياباني — مؤشر شهية المخاطرة وتدفقات الأموال الآسيوية.",cat:"فوركس",trading:"24/5"},
+  "AUD/USD":{icon:"🇦🇺",en:"Australian Dollar / US Dollar",desc:"الدولار الأسترالي مقابل الدولار — مرتبط بدورات السلع والاقتصاد الصيني.",cat:"فوركس",trading:"24/5"},
+  "مؤشر الدولار":{icon:"💵",en:"US Dollar Index (DXY)",desc:"مؤشر ICE لقوة الدولار مقابل سلة من أكبر العملات (يورو، ين، إسترليني، وغيرها). ارتفاعه يعني دولارًا أقوى.",cat:"فوركس",trading:"24/5"},
 };
-const SEC_COL={eg:"var(--g)",gl:"var(--bl)",cm:"var(--au)",cr:"var(--pu)"};
+const SEC_COL={eg:"var(--g)",gl:"var(--bl)",cm:"var(--au)",cr:"var(--pu)",fx:"#38bdf8"};
 
 function marketSkeletonRows(key){
   return (MARKET_STATIC[key]||[]).map(m=>`<div class="mc" aria-label="جارٍ تحميل ${sanitize(m.n)}">
@@ -5330,18 +5536,441 @@ function ensureTvQuotes(key,gridEl,groups){
   block.querySelector(".tradingview-widget-container").appendChild(script);
   tvBuiltSigs[key]=signature;
 }
+/* ═══════════ MARKETS HUB — tabs, global search, movers, sectors, tables,
+ * watchlist ═══════════
+ * Presentation/filters only. Every price, change and timestamp is the
+ * server's; a row the server did not price is never filled in here. */
+const MKT_HUB_TABS=["eg","gl","cm","cr","fx","ind","wl"];
+let mktActiveTab="eg";
+let mktBoardLookup=new Map(); // name -> {sec,idx}, rebuilt on every board render
+let mktEgxTable={q:"",sector:"all",sort:"cap"};
+let mktUsTable={q:"",sort:"chg"};
+
+function switchMktTab(tab){
+  mktActiveTab=MKT_HUB_TABS.includes(tab)?tab:"eg";
+  document.querySelectorAll("#mkt-tabs .mkt-tab").forEach(b=>b.classList.toggle("on",b.dataset.mktTab===mktActiveTab));
+  document.querySelectorAll(".mkt-tab-pane").forEach(p=>p.classList.toggle("on",p.id==="mkt-"+mktActiveTab+"-pane"));
+  if(mktActiveTab==="eg"){
+    if(!liveStocks.length&&!egxStocksFreshness.loading)fetchStocksData();
+    renderMktEgTab();
+  }else if(mktActiveTab==="gl"){
+    if(!usStocks.length&&!usStocksFreshness.loading)fetchUsStocksData();
+    renderMktGlTab();
+  }else if(mktActiveTab==="wl"){
+    if(wl.length&&!liveStocks.length&&!egxStocksFreshness.loading)fetchStocksData();
+    renderMktWatchlist();
+  }
+}
+
+function renderMktTabContent(){
+  renderMktEgTab();
+  renderMktGlTab();
+  renderMktWatchlist();
+}
+
+/* Priced EGX rows with a real day change — the only rows that may feed a
+ * rank. No change value = out of the ranking, never zero. */
+function mktPricedEgx(){
+  return liveStocks.filter(s=>s.noData!==true&&typeof s.price==="number"&&s.price>0&&typeof s.chgPct==="number"&&Number.isFinite(s.chgPct));
+}
+
+function renderMktMovers(){
+  const el=document.getElementById("mkt-egx-movers");
+  if(!el)return;
+  const priced=mktPricedEgx();
+  if(!priced.length){
+    el.innerHTML=egxStocksFreshness.loading?"":'';
+    return;
+  }
+  const chip=s=>`<div class="mkt-mover" onclick='openStockDetail(${safeJsArg(s.sym)})'><span class="mm-sym">${sanitize(s.sym)}${wl.includes(s.sym)?" ⭐":""}</span><span class="mm-price">${s.price.toFixed(2)} ج</span><span class="mm-pct" style="color:${s.chgPct>=0?"var(--up)":"var(--dn)"}">${s.chgPct>=0?"+":""}${s.chgPct.toFixed(2)}%</span></div>`;
+  const winners=[...priced].sort((a,b)=>b.chgPct-a.chgPct).slice(0,5);
+  const losers=[...priced].sort((a,b)=>a.chgPct-b.chgPct).slice(0,5);
+  el.innerHTML=`<div class="mkt-movers">
+    <div class="mkt-mover-box"><div class="mkt-mover-h" style="color:var(--up)">📈 أعلى الرابحين اليوم</div>${winners.map(chip).join("")}</div>
+    <div class="mkt-mover-box"><div class="mkt-mover-h" style="color:var(--dn)">📉 أعلى الخاسرين اليوم</div>${losers.map(chip).join("")}</div>
+  </div>`;
+}
+
+/* Sector pills: the day's average change per sector, top 4 + bottom 4.
+ * Selecting a pill filters the listed-stocks table below. */
+function renderMktSectors(){
+  const el=document.getElementById("mkt-egx-sectors-row");
+  if(!el)return;
+  const bySector=new Map();
+  for(const s of mktPricedEgx()){
+    const sec=String(s.sector||"").trim()||"غير مصنف";
+    const arr=bySector.get(sec)||[];
+    arr.push(s.chgPct);
+    bySector.set(sec,arr);
+  }
+  const rows=[...bySector.entries()]
+    .filter(([sec,vals])=>sec!=="غير مصنف"&&vals.length>=2)
+    .map(([sec,vals])=>({sec,pct:vals.reduce((a,b)=>a+b,0)/vals.length}))
+    .sort((a,b)=>b.pct-a.pct);
+  const shown=[...rows.slice(0,4),...rows.slice(-4).reverse()].filter((r,i,arr)=>arr.findIndex(x=>x.sec===r.sec)===i);
+  if(!shown.length){el.innerHTML="";return;}
+  el.innerHTML=`<button class="mkt-sector-pill${mktEgxTable.sector==="all"?" on":""}" type="button" onclick="mktEgxTable.sector='all';renderMktEgxTable()">الكل</button>`+shown.map(r=>
+    `<button class="mkt-sector-pill${mktEgxTable.sector===r.sec?" on":""}" type="button" onclick='mktEgxTable.sector=${JSON.stringify(r.sec)};renderMktEgxTable()'>${sanitize(r.sec)}<span class="sp-pct" style="color:${r.pct>=0?"var(--up)":"var(--dn)"}">${r.pct>=0?"+":""}${r.pct.toFixed(1)}%</span></button>`
+  ).join("");
+}
+
+function renderMktEgTab(){
+  renderMktMovers();
+  renderMktSectors();
+  renderMktEgxTable();
+}
+
+/* The listed-stocks table: the scanner's full Egypt list, filtered and
+ * ranked client-side. Rows the source could not price stay visible, marked. */
+function renderMktEgxTable(){
+  const el=document.getElementById("mkt-egx-table");
+  const count=document.getElementById("mkt-egx-count");
+  if(!el)return;
+  const fresh=egxStocksFreshness;
+  const q=mktEgxTable.q.trim().toLowerCase();
+  let rows=liveStocks.filter(s=>{
+    if(mktEgxTable.sector!=="all"&&String(s.sector||"")!==mktEgxTable.sector)return false;
+    if(q&&!(String(s.sym).toLowerCase().includes(q)||String(s.name||"").includes(mktEgxTable.q.trim())))return false;
+    return true;
+  });
+  const priced=s=>s.noData!==true&&typeof s.price==="number"&&s.price>0;
+  rows=[...rows].sort((a,b)=>{
+    switch(mktEgxTable.sort){
+      case "up":return (priced(b)?b.chgPct:-1e9)-(priced(a)?a.chgPct:-1e9);
+      case "dn":return (priced(a)?a.chgPct:1e9)-(priced(b)?b.chgPct:1e9);
+      case "vol":return ((priced(b)?(b.vol||0):0))-((priced(a)?(a.vol||0):0));
+      case "name":return String(a.sym).localeCompare(String(b.sym));
+      default:return ((priced(b)?(b.mktCapM||0):0))-((priced(a)?(a.mktCapM||0):0));
+    }
+  });
+  if(count){
+    if(fresh.loading&&!liveStocks.length)count.textContent="جارٍ التحميل...";
+    else if(fresh.unavailable)count.textContent="غير متاح حاليًا · المصدر: "+sanitize(fresh.source||"غير متاح");
+    else count.textContent=`${rows.length} من ${liveStocks.length} سهم · ${marketAgeLabel(fresh)} · المصدر: ${sanitize(fresh.source||"غير متاح")}`;
+  }
+  if(fresh.loading&&!liveStocks.length){el.innerHTML=`<div class="mkt-empty">⏳ جارٍ تحميل الأسهم المدرجة من المصدر...</div>`;return;}
+  if(!rows.length){el.innerHTML=`<div class="mkt-empty">📋 لا توجد أسهم مطابقة</div>`;return;}
+  const capped=rows.slice(0,60);
+  el.innerHTML=`<div class="mkt-stbl-row head"><div>السهم</div><div style="text-align:left;">السعر (ج)</div><div style="text-align:left;">التغيير</div><div style="text-align:left;">الحجم</div></div>`+capped.map(s=>{
+    const noData=s.noData===true;
+    const up=stockChangeUp(s.chgPct);
+    return`<div class="mkt-stbl-row" onclick='openStockDetail(${safeJsArg(s.sym)})'>
+      <div style="min-width:0;"><div class="mkt-sr-sym">${sanitize(s.sym)}${wl.includes(s.sym)?" ⭐":""}</div><div class="mkt-sr-name">${sanitize(s.name)}${noData?' <span style="color:var(--au);">· لا بيانات من المصدر</span>':""}</div></div>
+      <div class="mkt-sr-price" ${noData?'style="color:var(--t5)"':""}>${noData?"—":s.price.toFixed(2)}</div>
+      <div class="mkt-sr-chg" style="color:${up===null?"var(--t5)":up?"var(--up)":"var(--dn)"}">${stockChangeText(s.chgPct)}</div>
+      <div class="mkt-sr-vol">${noData?"—":fmtVol(s.vol)}</div>
+    </div>`;
+  }).join("")+(rows.length>capped.length?`<div class="mkt-empty" style="padding:11px;font-size:10px;">+ ${rows.length-capped.length} أخرى — السكربنر الكامل (VIP) يعرضها كلها بفلاتر أوسع</div>`:"");
+}
+
+function renderMktGlTab(){
+  renderMktUsTable();
+}
+
+/* The curated US list: same honest contract (missing field = —). */
+function renderMktUsTable(){
+  const el=document.getElementById("mkt-us-table");
+  const count=document.getElementById("mkt-us-count");
+  if(!el)return;
+  const fresh=usStocksFreshness;
+  const q=mktUsTable.q.trim().toLowerCase();
+  let rows=usStocks.filter(s=>!q||(String(s.sym).toLowerCase().includes(q)||String(s.name||"").toLowerCase().includes(q)||String(s.sector||"").toLowerCase().includes(q)));
+  const num=(s,k)=>typeof s[k]==="number"&&Number.isFinite(s[k])?s[k]:null;
+  rows=[...rows].sort((a,b)=>{
+    switch(mktUsTable.sort){
+      case "up":return (num(b,"chgPct")??-1e9)-(num(a,"chgPct")??-1e9);
+      case "dn":return (num(a,"chgPct")??1e9)-(num(b,"chgPct")??1e9);
+      case "name":return String(a.sym).localeCompare(String(b.sym));
+      default:return Math.abs(num(b,"chgPct")??0)-Math.abs(num(a,"chgPct")??0);
+    }
+  });
+  if(count){
+    if(fresh.loading&&!usStocks.length)count.textContent="جارٍ التحميل...";
+    else if(fresh.unavailable)count.textContent="غير متاح حاليًا · المصدر: "+sanitize(fresh.source||"غير متاح");
+    else count.textContent=`${rows.length} سهم · ${marketAgeLabel(fresh)} · المصدر: ${sanitize(fresh.source||"غير متاح")}`;
+  }
+  if(fresh.loading&&!usStocks.length){el.innerHTML=`<div class="mkt-empty">⏳ جارٍ تحميل الأسهم الأمريكية من المصدر...</div>`;return;}
+  if(!rows.length){el.innerHTML=`<div class="mkt-empty">📋 لا توجد أسهم مطابقة</div>`;return;}
+  const capped=rows.slice(0,60);
+  el.innerHTML=`<div class="mkt-stbl-row head"><div>السهم</div><div style="text-align:left;">السعر ($)</div><div style="text-align:left;">التغيير</div><div style="text-align:left;">الحجم</div></div>`+capped.map(s=>{
+    const up=stockChangeUp(s.chgPct);
+    return`<div class="mkt-stbl-row" onclick='openStockDetail(${safeJsArg(s.sym)})'>
+      <div style="min-width:0;"><div class="mkt-sr-sym">${sanitize(s.sym)}</div><div class="mkt-sr-name">${sanitize(s.name)} · ${sanitize(s.sector||"")}</div></div>
+      <div class="mkt-sr-price" ${typeof s.price!=="number"?'style="color:var(--t5)"':""}>${typeof s.price==="number"?s.price.toFixed(2):"—"}</div>
+      <div class="mkt-sr-chg" style="color:${up===null?"var(--t5)":up?"var(--up)":"var(--dn)"}">${stockChangeText(s.chgPct)}</div>
+      <div class="mkt-sr-vol">${fmtVol(s.vol)}</div>
+    </div>`;
+  }).join("")+(rows.length>capped.length?`<div class="mkt-empty" style="padding:11px;font-size:10px;">+ ${rows.length-capped.length} أخرى</div>`:"");
+}
+
+/* The watchlist tab: watched names resolved against the board and the stock
+ * lists (the wl store itself is just names — no prices in localStorage). */
+function renderMktWatchlist(){
+  const el=document.getElementById("mkt-wl-list");
+  const badge=document.getElementById("mkt-wl-count");
+  if(badge){badge.textContent=wl.length?String(wl.length):"";badge.hidden=!wl.length;}
+  if(!el)return;
+  if(!wl.length){
+    el.innerHTML=`<div class="mkt-empty" style="padding:34px 14px;"><div style="font-size:30px;margin-bottom:8px;">⭐</div>قائمة المتابعة فارغة<br><span style="font-size:10px;">اضغط ☆ على أي أصل — مؤشر، سهم، عملة أو سلعة — لإضافته هنا وتتابعه بسعره وتغيّره ومصدره.</span></div>`;
+    return;
+  }
+  const boardRows=[],stockRows=[],missing=[];
+  for(const name of wl){
+    const loc=mktBoardLookup.get(name);
+    if(loc){
+      const m=liveMarkets[loc.sec]?.[loc.idx];
+      if(m)boardRows.push({m,loc});
+      continue;
+    }
+    const st=liveStocks.find(s=>s.sym===name)||usStocks.find(s=>s.sym===name);
+    if(st)stockRows.push(st);
+    else missing.push(name);
+  }
+  let html="";
+  if(boardRows.length){
+    html+=`<div class="mkt-stbl-title" style="margin-bottom:6px;">من المؤشرات والأصول</div><div class="mkt-stbl">`+boardRows.map(({m,loc})=>{
+      const unavailable=m.source==="غير متاح"||m.v==="غير متاح حاليًا";
+      return`<div class="mkt-stbl-row" onclick="openMarketDetail('${loc.sec}',${loc.idx})">
+        <div style="min-width:0;"><div class="mkt-sr-sym">${sanitize(m.n)}</div><div class="mkt-sr-name">${sanitize(m.s||"")}</div></div>
+        <div class="mkt-sr-price" ${unavailable?'style="color:var(--t5)"':""}>${unavailable?"—":sanitize(m.v)}</div>
+        <div class="mkt-sr-chg" style="color:${unavailable||m.flat?"var(--t5)":m.up?"var(--up)":"var(--dn)"}">${unavailable||m.flat?"—":(m.up?"▲ ":"▼ ")+sanitize(m.c)}</div>
+        <div class="mkt-sr-vol">${unavailable?"":sanitize(m.source||"")}</div>
+      </div>`;
+    }).join("")+`</div>`;
+  }
+  if(stockRows.length){
+    html+=`<div class="mkt-stbl-title" style="margin:10px 0 6px;">من الأسهم</div><div class="mkt-stbl">`+stockRows.map(s=>{
+      const up=stockChangeUp(s.chgPct);
+      const isEgx=liveStocks.some(x=>x.sym===s.sym);
+      const cur=isEgx?" ج":"";
+      return`<div class="mkt-stbl-row" onclick='openStockDetail(${safeJsArg(s.sym)})'>
+        <div style="min-width:0;"><div class="mkt-sr-sym">${sanitize(s.sym)}</div><div class="mkt-sr-name">${sanitize(s.name)} · ${sanitize(s.sector||"")}</div></div>
+        <div class="mkt-sr-price" ${typeof s.price!=="number"?'style="color:var(--t5)"':""}>${typeof s.price==="number"?s.price.toFixed(2)+cur:"—"}</div>
+        <div class="mkt-sr-chg" style="color:${up===null?"var(--t5)":up?"var(--up)":"var(--dn)"}">${stockChangeText(s.chgPct)}</div>
+        <div class="mkt-sr-vol">${sanitize(s.source||"")}</div>
+      </div>`;
+    }).join("")+`</div>`;
+  }
+  if(missing.length){
+    html+=`<div class="mkt-empty" style="padding:12px;">بعض الأسماء لم تعد في بيانات المصدر الحالية: ${missing.map(sanitize).join(" · ")}</div>`;
+  }
+  if(!boardRows.length&&!stockRows.length&&!missing.length){
+    html=`<div class="mkt-empty">⏳ جارٍ تحميل البيانات...</div>`;
+  }
+  el.innerHTML=html;
+}
+
+/* ── Global search ──
+ * Client-side over data the page already loaded (board + EGX scan + US list):
+ * no extra server request, no results invented. */
+function mktSecIcon(sec){return {eg:"🇪🇬",gl:"🌐",cm:"🥇",cr:"₿",fx:"💱"}[sec]||"📊";}
+function mktHubSearch(q){
+  const drop=document.getElementById("mkt-hub-search-drop");
+  if(!drop)return;
+  q=(q||"").trim();
+  if(!q){drop.hidden=true;return;}
+  const ql=q.toLowerCase();
+  const groups=[];
+  const boardMatches=[];
+  for(const [name,loc] of mktBoardLookup){
+    const m=liveMarkets[loc.sec]?.[loc.idx];
+    if(!m)continue;
+    const sub=String(m.s||"");
+    if(name.toLowerCase().includes(ql)||sub.toLowerCase().includes(ql)){
+      boardMatches.push({name,loc,m,sub});
+      if(boardMatches.length>=12)break;
+    }
+  }
+  if(boardMatches.length)groups.push({t:"الأسواق والمؤشرات",items:boardMatches.map(x=>({
+    ic:mktSecIcon(x.loc.sec),name:x.name,sub:x.sub,
+    val:x.m.source==="غير متاح"||x.m.v==="غير متاح حاليًا"?"غير متاح":x.m.v,
+    chg:(x.m.source==="غير متاح"||x.m.flat)?"":(x.m.up?"▲ ":"▼ ")+x.m.c,
+    click:`openMarketDetail('${x.loc.sec}',${x.loc.idx})`,
+  }))});
+  const egxMatches=liveStocks.filter(s=>s.noData!==true&&(String(s.sym).toLowerCase().includes(ql)||String(s.name||"").includes(q)||String(s.sector||"").includes(q))).slice(0,8);
+  if(egxMatches.length)groups.push({t:"أسهم EGX",items:egxMatches.map(s=>({
+    ic:"🇪🇬",name:`${s.sym} · ${s.name}`,sub:s.sector||"",val:typeof s.price==="number"?s.price.toFixed(2)+" ج":"—",
+    chg:stockChangeText(s.chgPct),click:`openStockDetail(${safeJsArg(s.sym)})`,
+  }))});
+  const usMatches=usStocks.filter(s=>(String(s.sym).toLowerCase().includes(ql)||String(s.name||"").toLowerCase().includes(ql)||String(s.sector||"").toLowerCase().includes(ql))).slice(0,8);
+  if(usMatches.length)groups.push({t:"أسهم أمريكية",items:usMatches.map(s=>({
+    ic:"🌐",name:`${s.sym} · ${s.name}`,sub:s.sector||"",val:typeof s.price==="number"?s.price.toFixed(2)+" $":"—",
+    chg:stockChangeText(s.chgPct),click:`openStockDetail(${safeJsArg(s.sym)})`,
+  }))});
+  if(!groups.length){
+    drop.innerHTML=`<div class="mkt-empty">لا نتائج عن «${sanitize(q)}»</div>`;
+    drop.hidden=false;
+    return;
+  }
+  drop.innerHTML=groups.map(g=>`<div class="mkt-search-grp">${g.t}</div>`+g.items.map(it=>
+    `<div class="mkt-search-item" onmousedown="event.preventDefault();${it.click};closeMktHubSearch();"><span class="si-ic">${it.ic}</span><span class="si-main"><span class="si-name">${sanitize(it.name)}</span>${it.sub?`<span class="si-sub">${sanitize(it.sub)}</span>`:""}</span><span class="si-val">${sanitize(it.val)}${it.chg?` · ${sanitize(it.chg)}`:""}</span></div>`
+  ).join("")).join("");
+  drop.hidden=false;
+}
+function closeMktHubSearch(){
+  const d=document.getElementById("mkt-hub-search-drop");
+  if(d)d.hidden=true;
+}
+
+/* ═════════ Asset comparison (2-4) ═════════
+ * Added from any detail view (board row or stock). The chart is the
+ * stored-daily-closes sparkline series (last 31 days, one batched request)
+ * normalised to 100 per asset; an asset without enough stored history is
+ * named and omitted, never replaced with an estimate. */
+const MKT_COMPARE_COLORS=["#10b981","#38bdf8","#fbbf24","#f472b6"];
+let mktCompare=[]; // canonical instrument ids, max 4
+
+function mktCompareToggle(instrumentId){
+  if(!instrumentId)return;
+  const i=mktCompare.indexOf(instrumentId);
+  if(i>=0){
+    mktCompare.splice(i,1);
+  }else{
+    if(mktCompare.length>=4){showToast("أقصى عدد للمقارنة 4 أصول — أزل أحدًا أولًا");return;}
+    mktCompare.push(instrumentId);
+  }
+  renderCompareBar();
+}
+
+function mktCompareLabel(instrumentId){
+  for(const rows of Object.values(liveMarkets)){
+    for(const m of rows||[]){if(m.instrumentId===instrumentId)return m.n;}
+  }
+  const s=liveStocks.find(x=>x.instrumentId===instrumentId)||usStocks.find(x=>x.instrumentId===instrumentId);
+  if(s)return `${s.sym} · ${s.name}`;
+  return instrumentId;
+}
+
+function renderCompareBar(){
+  const bar=document.getElementById("mkt-compare-bar");
+  if(!bar)return;
+  if(!mktCompare.length){bar.style.display="none";return;}
+  bar.style.display="flex";
+  bar.innerHTML=`<span class="cb-name">⚖️ ${mktCompare.map(mktCompareLabel).map(sanitize).join(" · ")}</span>
+    <button class="mkt-compare-btn" type="button" ${mktCompare.length>=2?"":"disabled"} onclick="openCompareModal()">${mktCompare.length>=2?"قارن الآن":"اختر "+(2-mktCompare.length)+" على الأقل"}</button>
+    <button class="mkt-compare-x" type="button" title="مسح قائمة المقارنة" onclick="mktCompare=[];renderCompareBar();">✕</button>`;
+}
+
+function mktCompareRowForId(instrumentId){
+  for(const [sec,rows] of Object.entries(liveMarkets)){
+    for(const m of rows||[]){
+      if(m.instrumentId===instrumentId){
+        const unavailable=m.source==="غير متاح"||m.v==="غير متاح حاليًا";
+        return {
+          title:m.n,price:unavailable?"غير متاح":m.v,
+          change:unavailable||m.flat?"—":(m.up?"▲ ":"▼ ")+(m.c||"—"),
+          up:m.up,flat:m.flat,
+          source:m.source||"غير متاح",
+          time:m.asOf?`${m.timeBasis==="fetch"?"وقت الجلب":"وقت المصدر"}: ${cairoTimestampLabel(m.asOf)}`:"",
+        };
+      }
+    }
+  }
+  const s=liveStocks.find(x=>x.instrumentId===instrumentId)||usStocks.find(x=>x.instrumentId===instrumentId);
+  if(s){
+    const up=stockChangeUp(s.chgPct);
+    return {
+      title:`${s.sym} · ${s.name}`,
+      price:typeof s.price==="number"?(s.price.toFixed(2)+(liveStocks.some(x=>x.instrumentId===s.instrumentId)?" ج":"")):"غير متاح",
+      change:up===null?"—":`${up?"▲ ":"▼ "}${stockChangeText(s.chgPct)}`,
+      up,flat:up===null,
+      source:s.source||(liveStocks.some(x=>x.instrumentId===s.instrumentId)?egxStocksFreshness.source:usStocksFreshness.source)||"غير متاح",
+      time:s.ts?`وقت المصدر: ${cairoTimestampLabel(s.ts)}`:"",
+    };
+  }
+  return null;
+}
+
+function mktCompareChartSvg(series){
+  const entries=series.filter(e=>e.available&&e.points.length>=2);
+  if(!entries.length)return `<div class="mkt-empty" style="padding:26px;">لا يتوفر سجل يومي مرخّص كافٍ (أقل من نقطتين في آخر 31 يومًا) لأصول هذه المقارنة — لا نرسم من بيانات تقديرية.</div>`;
+  const dates=[...new Set(entries.flatMap(e=>e.points.map(p=>p.time)))].sort();
+  const W=700,H=270,PL=48,PR=14,PT=16,PB=28;
+  const iw=W-PL-PR,ih=H-PT-PB;
+  const xOf=t=>{const i=dates.indexOf(t);return i<0?null:PL+(dates.length===1?0:(i/(dates.length-1))*iw);};
+  const norm=entries.map((e,idx)=>({
+    color:MKT_COMPARE_COLORS[idx%MKT_COMPARE_COLORS.length],
+    label:mktCompareLabel(e.instrumentId),
+    pts:e.points.map(p=>({t:p.time,v:100*p.close/e.points[0].close})),
+  }));
+  const all=norm.flatMap(n=>n.pts.map(p=>p.v));
+  let mn=Math.min(...all),mx=Math.max(...all);
+  if(mx-mn<1e-9){mn-=1;mx+=1;}
+  const pad=(mx-mn)*0.08;mn-=pad;mx+=pad;
+  const yOf=v=>PT+((mx-v)/(mx-mn))*ih;
+  const ticks=[];
+  for(let t=0;t<=3;t++){const v=mn+(mx-mn)*(t/3);ticks.push({v,yy:yOf(v)});}
+  const xIdx=[0,Math.floor((dates.length-1)/4),Math.floor((dates.length-1)/2),Math.floor(3*(dates.length-1)/4),dates.length-1].filter((v,i,a)=>a.indexOf(v)===i);
+  const grid=ticks.map(t=>`<line x1="${PL}" x2="${W-PR}" y1="${t.yy.toFixed(1)}" y2="${t.yy.toFixed(1)}" stroke="rgba(148,163,184,.1)" stroke-width="1"/><text x="${PL-6}" y="${(t.yy+3).toFixed(1)}" text-anchor="end" font-size="8.5" fill="rgba(148,163,184,.75)" font-family="var(--mono)">${t.v.toFixed(0)}</text>`).join("");
+  const xgrid=xIdx.map(i=>`<text x="${xOf(dates[i]).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="8.5" fill="rgba(148,163,184,.75)">${dates[i].slice(8,10)}/${dates[i].slice(5,7)}</text>`).join("");
+  const paths=norm.map(n=>{
+    const pts=n.pts.map(p=>({x:xOf(p.t),y:yOf(p.v)})).filter(p=>p.x!==null);
+    if(!pts.length)return "";
+    return `<path d="${pts.map((p,i)=>`${i?"L":"M"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")}" fill="none" stroke="${n.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }).join("");
+  const dots=norm.map(n=>{
+    const pts=n.pts.map(p=>({x:xOf(p.t),y:yOf(p.v)})).filter(p=>p.x!==null);
+    const last=pts[pts.length-1];
+    return last?`<circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3" fill="${n.color}" stroke="#07140f" stroke-width="1.3"/>`:"";
+  }).join("");
+  const legend=norm.map(n=>`<span><i style="background:${n.color};"></i>${sanitize(n.label)}</span>`).join("");
+  const skipped=series.filter(e=>!(e.available&&e.points.length>=2)).map(e=>mktCompareLabel(e.instrumentId));
+  const skipNote=skipped.length?`<div class="mkt-empty" style="padding:8px 4px;font-size:10px;">بدون سجل كافٍ (لم يُرسم): ${skipped.map(sanitize).join(" · ")}</div>`:"";
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="مقارنة أداء الأصول مقيسة على 100">${grid}${xgrid}${paths}${dots}</svg><div class="mkt-compare-legend">${legend}</div>${skipNote}`;
+}
+
+async function openCompareModal(){
+  if(mktCompare.length<2){showToast("اختر مصدرين على الأقل للمقارنة");return;}
+  document.getElementById("mkt-compare-ov")?.remove();
+  const ov=document.createElement("div");
+  ov.className="mkt-ov";
+  ov.id="mkt-compare-ov";
+  ov.innerHTML=`<div style="max-width:780px;margin:0 auto;padding:20px 14px 30px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="color:var(--t1);font-size:16px;font-weight:800;display:flex;align-items:center;gap:7px;"><svg class="et-icon"><use href="#i-chart"></use></svg> مقارنة الأصول <span style="font-size:10px;color:var(--t5);font-weight:400;">مقيسًا على 100 — آخر 31 يومًا مسجلًا</span></div>
+      <button class="ibtn" type="button" aria-label="إغلاق" onclick="document.getElementById('mkt-compare-ov').remove()"><svg class="et-icon"><use href="#i-close"></use></svg></button>
+    </div>
+    <div id="mkt-compare-chart" style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:10px;color:var(--t5);font-size:11px;">جارٍ تحميل السجل اليومي...</div>
+    <div id="mkt-compare-table" style="margin-top:10px;"></div>
+    <div style="color:var(--t5);font-size:9.5px;margin-top:10px;line-height:1.7;">المنحنى من السجل اليومي المرخّص فقط؛ الأصل بلا سجل كافٍ يُذكر ولا يُرسم، ولا يُستبدل ببيانات تقديرية. الأسعار والتغييرات للاطلاع العام وليست توصية.</div>
+  </div>`;
+  document.body.appendChild(ov);
+  let series=[];
+  try{
+    const d=await fetchJsonWithTimeout(`${MARKET_SPARKLINES_API}?ids=${encodeURIComponent(mktCompare.join(","))}`,15000);
+    if(d?.status==="ok"&&Array.isArray(d.series))series=d.series;
+  }catch{/* empty series -> honest note below */}
+  const chartEl=document.getElementById("mkt-compare-chart");
+  if(chartEl)chartEl.innerHTML=mktCompareChartSvg(series);
+  const tableEl=document.getElementById("mkt-compare-table");
+  if(tableEl){
+    const rows=mktCompare.map(id=>mktCompareRowForId(id)).filter(Boolean);
+    tableEl.innerHTML=rows.length?`<div class="mkt-stbl">${rows.map(r=>`
+      <div class="mkt-stbl-row" style="cursor:default;">
+        <div style="min-width:0;"><div class="mkt-sr-sym">${sanitize(r.title)}</div><div class="mkt-sr-name">${sanitize(r.time)}</div></div>
+        <div class="mkt-sr-price">${sanitize(r.price)}</div>
+        <div class="mkt-sr-chg" style="color:${r.flat?"var(--t5)":r.up?"var(--up)":"var(--dn)"}">${sanitize(r.change)}</div>
+        <div class="mkt-sr-vol" title="المصدر">${sanitize(r.source)}</div>
+      </div>`).join("")}</div>`:"";
+  }
+}
+
 function buildMarkets(){
   const dataBadge=document.getElementById("mkt-data-badge");
   if(dataBadge){
     dataBadge.textContent=marketFreshness.loading?"جارٍ التحقق":marketFreshness.unavailable?"غير متاح":marketFreshness.stale?"متأخر":"بيانات متاحة";
     dataBadge.style.color=marketFreshness.unavailable?"var(--dn)":marketFreshness.stale?"var(--au)":"var(--t4)";
   }
-  const secs={eg:"mkt-eg",gl:"mkt-gl",cm:"mkt-cm",cr:"mkt-cr"};
+  /* name -> {sec,idx} for the global search and the watchlist tab. A lookup
+     index only — it never contributes a price. */
+  mktBoardLookup=new Map();
+  const secs={eg:"mkt-eg",gl:"mkt-gl",cm:"mkt-cm",cr:"mkt-cr",fx:"mkt-fx"};
   Object.entries(secs).forEach(([key,elId])=>{
     const el=document.getElementById(elId);if(!el)return;
     if(marketFreshness.loading){el.innerHTML=marketSkeletonRows(key);return;}
     const secMeta=marketFreshness.sections?.[key]||{sources:"غير متاح",unavailable:true};
     el.innerHTML=liveMarkets[key].map((m,idx)=>{
+      mktBoardLookup.set(m.n,{sec:key,idx});
       const unavailable=secMeta.unavailable===true||m.source==="غير متاح"||m.v==="غير متاح حاليًا";
       return `<div class="mc clickable${wl.includes(m.n)?" wl":""}" onclick="openMarketDetail('${key}',${idx})">
         <div class="mc-hdr"><div class="mc-name">${sanitize(m.n)}</div><button class="wl-btn" onclick='event.stopPropagation();toggleWL(${safeJsArg(m.n)})'>${wl.includes(m.n)?"⭐":"☆"}</button></div>
@@ -5372,6 +6001,9 @@ function buildMarkets(){
     }).join("");
     ensureTvQuotes(key,el,liveTv?.[key]);
   });
+  /* Tab content that depends on the board or the stock lists. */
+  renderMktTabContent();
+  renderCompareBar();
   // Only fetch batched historical closes after the market page is actually visible.
   const marketsPage=document.getElementById("page-markets");
   if(marketsPage&&!marketsPage.classList.contains("hidden")){
@@ -5704,7 +6336,7 @@ function openAssetDetail(spec){
       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:14px;">${detailStatsMarkup(spec.stats||[])}</div>
       <div style="background:var(--s1);border:1px solid var(--b1);border-radius:14px;padding:14px;margin-bottom:14px;"><div style="color:var(--t5);font-size:10px;font-weight:700;margin-bottom:7px;letter-spacing:.5px;">ℹ️ عن هذا الأصل</div><div style="color:var(--t3);font-size:12.5px;line-height:1.75;direction:rtl;">${sanitize(spec.description||"لا تتوفر معلومات وصفية إضافية.")}</div></div>
       <div style="color:var(--t5);font-size:10px;line-height:1.7;margin:0 2px 12px;">الأسعار والسجل للاطلاع العام وليسا توصية شراء أو بيع. لا يظهر الرسم عند غياب سجل OHLC مرخّص كافٍ.</div>
-      <div style="display:flex;gap:8px;"><button id="wl-toggle-btn" class="btn btn-sm" style="flex:1;background:var(--s1);border:1px solid var(--b1);color:var(--t3);padding:11px;font-size:12px;" onclick='toggleWLDetail(${safeJsArg(spec.watchName)})'>${inWL?"⭐ في المفضلة":"☆ أضف للمفضلة"}</button><button id="mkt-detail-refresh" class="btn btn-sm" style="flex:1;background:${spec.color}18;border:1px solid ${spec.color}35;color:${spec.color};padding:11px;font-size:12px;" onclick="refreshAssetDetail()">↻ تحديث</button></div>
+      <div style="display:flex;gap:8px;"><button id="wl-toggle-btn" class="btn btn-sm" style="flex:1;background:var(--s1);border:1px solid var(--b1);color:var(--t3);padding:11px;font-size:12px;" onclick='toggleWLDetail(${safeJsArg(spec.watchName)})'>${inWL?"⭐ في المفضلة":"☆ أضف للمفضلة"}</button><button class="btn btn-sm" style="flex:1;background:${mktCompare.includes(spec.instrumentId)?"rgba(56,189,248,.12)":"var(--s1)"};border:1px solid ${mktCompare.includes(spec.instrumentId)?"rgba(56,189,248,.5)":"var(--b1)"};color:${mktCompare.includes(spec.instrumentId)?"#38bdf8":"var(--t3)"};padding:11px;font-size:12px;" onclick='mktCompareToggle(${JSON.stringify(spec.instrumentId)})'>${mktCompare.includes(spec.instrumentId)?"⚖️ في المقارنة ✓":"⚖️ للمقارنة"}</button><button id="mkt-detail-refresh" class="btn btn-sm" style="flex:1;background:${spec.color}18;border:1px solid ${spec.color}35;color:${spec.color};padding:11px;font-size:12px;" onclick="refreshAssetDetail()">↻ تحديث</button></div>
     </div>`;
   document.body.appendChild(ov);
   loadAssetChart();
@@ -6188,7 +6820,7 @@ function vBuildHome(b){
   const evs=(liveCalendar||[]).slice(0,4);
   const st=portStats();
   const prefs=DB.g("vip_mkt_pref",["eg","gl","cm","cr"]);
-  const mktOrder=["eg","gl","cm","cr"].sort((a,x)=>(prefs.includes(a)?-1:1)-(prefs.includes(x)?-1:1));
+  const mktOrder=["eg","fx","gl","cm","cr"].sort((a,x)=>(prefs.includes(a)?-1:1)-(prefs.includes(x)?-1:1));
   const mktCards=mktOrder.flatMap(k=>liveMarkets[k].slice(0,k==="eg"?3:2).map(m=>({m,k}))).slice(0,7);
   const newOpps=oppsData.slice(0,3);
 
