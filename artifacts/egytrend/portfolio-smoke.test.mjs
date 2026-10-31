@@ -1,8 +1,9 @@
-/* Runtime smoke test (no browser available in this sandbox):
- * load the whole inline app script under a Proxy-based DOM stub, then invoke
- * the new portfolio render functions with synthetic, honestly-shaped data and
- * assert the produced HTML is sane. Catches runtime errors (undefined vars,
- * bad template refs, typos) that static checks cannot.
+/* Runtime smoke test for the SIMPLE portfolio (no browser in this sandbox):
+ * load the whole inline app script under a Proxy-based DOM stub with
+ * memoized, stateful elements, then render the new portfolio renderer with
+ * synthetic, honestly-shaped data and assert the produced HTML is sane and
+ * honest. Catches runtime errors (undefined vars, bad template refs, typos)
+ * that static checks cannot, and pins the value/price honesty rules.
  */
 import vm from "node:vm";
 import assert from "node:assert/strict";
@@ -13,49 +14,80 @@ const scripts = [...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>
 const app = scripts.find(s => s.length > 100000);
 assert.ok(app, "main inline script found");
 
-function makeEl() {
-  /* textContent/innerHTML keep real state: the app's `sanitize` encodes via
-   * the DOM (span.textContent → span.innerHTML), so the stub must emulate
-   * that round-trip instead of returning "". */
-  const state = { text: null, html: "" };
-  const escapeHtml = v => String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  const handler = {
-    get(t, prop) {
-      if (prop === Symbol.toPrimitive) return () => "";
-      if (prop === "textContent") return state.text ?? "";
-      if (prop === "innerHTML") return state.text !== null ? escapeHtml(state.text) : state.html;
-      if (prop === "value" || prop === "id") return "";
-      if (prop === "classList") return { add() {}, remove() {}, toggle() {}, contains: () => false };
-      if (prop === "style") return new Proxy({}, { get: () => "", set: () => true });
-      if (prop === "dataset") return {};
-      if (prop === "querySelectorAll" || prop === "children" || prop === "childNodes") return [];
-      if (prop === "clientWidth" || prop === "offsetWidth" || prop === "offsetHeight") return 100;
-      if (prop === "getBoundingClientRect") return () => ({ left: 0, top: 0, width: 100, height: 100 });
-      if (prop === "querySelector") return () => makeEl();
-      if (prop === "getAttribute" || prop === "getContext") return () => null;
-      if (prop === "addEventListener" || prop === "removeEventListener" || prop === "focus" || prop === "blur" || prop === "click" || prop === "scrollIntoView" || prop === "append" || prop === "appendChild" || prop === "remove" || prop === "select" || prop === "setSelectionRange" || prop === "insertAdjacentHTML" || prop === "closest" || prop === "contains" || prop === "dispatchEvent") return () => {};
-      return makeEl();
-    },
-    set(t, prop, value) {
-      if (prop === "textContent") { state.text = String(value); state.html = ""; return true; }
-      if (prop === "innerHTML") { state.html = String(value); state.text = null; return true; }
-      return true;
-    },
-    apply() { return makeEl(); },
+/* ── stateful DOM stub ─────────────────────────────────────────────────────
+ * Elements are memoized per id so the app's set/get round-trips (sanitize
+ * encodes via textContent→innerHTML; the renderer writes host.innerHTML and
+ * the test reads it back). classList is real Set-backed state. */
+const escapeHtml = v => String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const byId = new Map();
+function makeEl(id = "") {
+  const el = {
+    id,
+    value: "",
+    disabled: false,
+    open: false,
+    readOnly: false,
+    _text: null,
+    _html: "",
+    _classes: new Set(),
+    style: new Proxy({}, { get: (t, p) => t[p] ?? "", set: (t, p, v) => { t[p] = v; return true; } }),
+    dataset: {},
   };
-  return new Proxy(function () {}, handler);
+  el.classList = {
+    add: (...cs) => cs.forEach(c => el._classes.add(c)),
+    remove: (...cs) => cs.forEach(c => el._classes.delete(c)),
+    toggle: c => { el._classes.has(c) ? el._classes.delete(c) : el._classes.add(c); },
+    contains: c => el._classes.has(c),
+  };
+  Object.defineProperties(el, {
+    textContent: {
+      get() { return el._text ?? ""; },
+      set(v) { el._text = String(v); el._html = ""; },
+    },
+    innerHTML: {
+      get() { return el._text !== null ? escapeHtml(el._text) : el._html; },
+      set(v) { el._html = String(v); el._text = null; },
+    },
+  });
+  for (const fn of ["focus", "blur", "click", "select", "scrollIntoView", "appendChild", "append", "remove",
+    "setSelectionRange", "insertAdjacentHTML", "dispatchEvent", "addEventListener", "removeEventListener",
+    "getBoundingClientRect"]) {
+    el[fn] = () => (fn === "getBoundingClientRect" ? { left: 0, top: 0, width: 100, height: 100 } : undefined);
+  }
+  el.querySelector = () => makeEl();
+  el.querySelectorAll = () => [];
+  el.getAttribute = () => null;
+  el.contains = () => false;
+  el.closest = () => null;
+  el.children = [];
+  el.clientWidth = 100;
+  el.offsetWidth = 100;
+  el.offsetHeight = 100;
+  return el;
+}
+function el(id) {
+  if (!byId.has(id)) byId.set(id, makeEl(id));
+  return byId.get(id);
 }
 
-const documentStub = new Proxy({}, {
-  get(t, prop) {
-    if (prop === "getElementById" || prop === "createElement" || prop === "querySelector" || prop === "createTextNode") return () => makeEl();
-    if (prop === "querySelectorAll" || prop === "getElementsByClassName" || prop === "getElementsByName" || prop === "elements") return () => [];
-    if (prop === "addEventListener" || prop === "removeEventListener" || prop === "write" || prop === "cookie") return () => {};
-    if (prop === "body" || prop === "documentElement" || prop === "head" || prop === "activeElement") return makeEl();
-    return makeEl();
-  },
-  set() { return true; },
-});
+const documentStub = {
+  getElementById: id => el(String(id)),
+  createElement: tag => makeEl(tag),
+  createTextNode: t => makeEl(),
+  querySelector: () => makeEl(),
+  querySelectorAll: () => [],
+  getElementsByClassName: () => [],
+  getElementsByName: () => [],
+  elements: [],
+  body: makeEl("body"),
+  documentElement: makeEl("html"),
+  head: makeEl("head"),
+  activeElement: makeEl("active"),
+  addEventListener() {},
+  removeEventListener() {},
+  write() {},
+  cookie: "",
+};
 
 const sandbox = {
   document: documentStub,
@@ -64,14 +96,20 @@ const sandbox = {
   localStorage: { getItem: () => null, setItem() {}, removeItem() {}, clear() {} },
   fetch: () => new Promise(() => {}),
   AbortController,
-  setTimeout, clearTimeout, setInterval, clearInterval,
+  /* Timers are inert: the app's boot polling must never keep this test
+   * process (or its event loop) alive; init code awaiting a timer simply
+   * parks, which is fine for a render-level smoke test. */
+  setTimeout: () => 0,
+  clearTimeout: () => {},
+  setInterval: () => 0,
+  clearInterval: () => {},
   console,
   URL, URLSearchParams, Headers, Request, Response,
-  crypto: { getRandomValues: (a) => a, randomUUID: () => "smoke-uuid", subtle: {} },
+  crypto: { getRandomValues: (a) => a, randomUUID: () => "smoke-uuid-000000000000", subtle: {} },
   matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }),
   alert() {}, confirm: () => false, prompt: () => null,
   requestAnimationFrame: () => 0, cancelAnimationFrame() {},
-  Image: function () { return makeEl(); },
+  Image: function () { return makeEl("img"); },
   performance: { now: () => Date.now() },
   MutationObserver: class { observe() {} unobserve() {} disconnect() {} takeRecords() { return []; } },
   ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
@@ -86,38 +124,44 @@ sandbox.globalThis = sandbox;
 const ctx = vm.createContext(sandbox);
 let topLevelError = null;
 try {
-  vm.runInContext(app, ctx, { timeout: 15000 });
+  vm.runInContext(app, ctx, { timeout: 20000 });
 } catch (e) {
   topLevelError = e; // function declarations are hoisted; init-code throws are acceptable
 }
 
-/* ── seed honest synthetic state ─────────────────────────────────────────── */
+/* ── seed honest synthetic state ───────────────────────────────────────────
+ * COMI = ledger-derived (trades) row, fully priced.
+ * HLDI = positions-table row (uuid id), fully priced in scenario 1.
+ * ETBS = fully closed symbol (trade history only, qty 0). */
 const ts = Date.parse("2026-10-28T12:30:00Z");
 vm.runInContext(`
   U = { sub: 7, plan: "vip", name: "Smoke" };
+  vipTab = "home";
   portfolio = [
-    { id: "pos:" + "a".repeat(30), sym: "COMI", name: "المصرية للإسمنت", sector: "مواد بناء", qty: 140, price: 12.05, instrumentId: "egx:COMI",
+    { id: "pos:comi", sym: "COMI", name: "المصرية للإسمنت", sector: "مواد بناء", qty: 140, price: 12.05, instrumentId: "egx:COMI",
       market: { price: 13.4, source: "tv", asOf: ${ts}, delayedMinutes: 15, freshness: "delayed" },
       closed: false, legacy: false, costBasis: 1687, realizedPnl: 172, totalFees: 15, buyCount: 2, sellCount: 1,
       marketValue: 1876, unrealizedPnl: 189, unrealizedPnlPct: 11.18, weightPct: 52.3 },
-    { id: "pos:" + "b".repeat(30), sym: "HLDI", name: "حديد مصر", sector: "صناعات", qty: 60, price: 20.2, instrumentId: "egx:HLDI",
+    { id: "11111111-2222-3333-4444-555555555555", sym: "HLDI", name: "حديد مصر", sector: "صناعات", qty: 60, price: 20.2, instrumentId: "egx:HLDI",
       market: { price: 21.1, source: "tv", asOf: ${ts}, delayedMinutes: 15, freshness: "delayed" },
-      closed: false, legacy: false, costBasis: 1212, realizedPnl: 0, totalFees: 0, buyCount: 1, sellCount: 0,
+      closed: false, legacy: true, costBasis: 1212, realizedPnl: 0, totalFees: 0, buyCount: 1, sellCount: 0,
       marketValue: 1266, unrealizedPnl: 54, unrealizedPnlPct: 4.46, weightPct: 33.8 },
-    { id: "pos:" + "c".repeat(30), sym: "ETBS", name: "إيچيبت للتأمين", sector: "تأمين", qty: 0, price: 0, instrumentId: "egx:ETBS",
+    { id: "pos:etbs", sym: "ETBS", name: "إيچيبت للتأمين", sector: "تأمين", qty: 0, price: 0, instrumentId: "egx:ETBS",
       market: null,
       closed: true, legacy: false, costBasis: 0, realizedPnl: -310, totalFees: 8, buyCount: 1, sellCount: 1,
       marketValue: null, unrealizedPnl: null, unrealizedPnlPct: null, weightPct: null },
   ];
   portfolioData = {
     summary: { cash: 412, investedCost: 2899, totalBuyOutlay: 3622, costBasisSold: 723,
-      pricedMarketValue: 1876, marketValue: 2065, totalValue: 2477, totalValuePriced: 2288,
-      unrealizedPnl: 189, unrealizedPnlPriced: 189, realizedPnl: -138, totalFees: 23,
-      buyCount: 4, sellCount: 2, topConcentrationPct: 52.3, missingPriceSymbols: ["HLDI"] },
+      pricedMarketValue: 3142, marketValue: 3142, totalValue: 3554, totalValuePriced: 3554,
+      unrealizedPnl: 243, unrealizedPnlPriced: 243, realizedPnl: -138, totalFees: 23,
+      buyCount: 4, sellCount: 2, topConcentrationPct: 52.8, missingPriceSymbols: [], cashEventsIn: 412, cashEventsOut: 0 },
     transactions: [
       { id: "tx1", symbol: "COMI", side: "buy", quantity: 100, price: 10, fees: 10, tradeDate: "2026-09-01", note: null, realizedPnl: null, heldAfter: 100, createdAt: "2026-09-01T09:00:00Z", updatedAt: "2026-09-01T09:00:00Z" },
-      { id: "tx2", symbol: "COMI", side: "buy", quantity: 100, price: 14, fees: 0, tradeDate: "2026-09-05", note: null, realizedPnl: null, heldAfter: 200, createdAt: "2026-09-05T09:00:00Z", updatedAt: "2026-09-05T09:00:00Z" },
-      { id: "tx3", symbol: "COMI", side: "sell", quantity: 60, price: 15, fees: 5, tradeDate: "2026-09-10", note: null, realizedPnl: 172, heldAfter: 140, createdAt: "2026-09-10T09:00:00Z", updatedAt: "2026-09-10T09:00:00Z" },
+      { id: "tx2", symbol: "COMI", side: "sell", quantity: 60, price: 15, fees: 5, tradeDate: "2026-09-10", note: null, realizedPnl: 172, heldAfter: 140, createdAt: "2026-09-10T09:00:00Z", updatedAt: "2026-09-10T09:00:00Z" },
+    ],
+    cashEvents: [
+      { id: "c111111111111111111111", kind: "deposit", amount: 412, tradeDate: "2026-10-15", note: null, symbol: null },
     ],
     settings: { startingCash: 0 }, marketAvailable: true, legacyPositions: false,
   };
@@ -126,57 +170,42 @@ vm.runInContext(`
     { sym: "COMI", name: "المصرية للإسمنت", sector: "مواد بناء", price: 13.4, source: "tv", ts: ${ts}, noData: false },
     { sym: "HLDI", name: "حديد مصر", sector: "صناعات", price: 21.1, source: "tv", ts: ${ts}, noData: false },
   ];
-  portHistory = Object.assign({}, PF_HISTORY_INIT, { status: "unavailable", reason: "insufficient_history", missing: [] });
-  VA_SERIES_CACHE.set("egx:ETBS", { available: true, points: [
-    { time: "2026-09-01", t: ${Date.parse("2026-09-01T00:00:00Z")}, close: 10.0 },
-    { time: "2026-09-10", t: ${Date.parse("2026-09-10T00:00:00Z")}, close: 9.5 },
-    { time: "2026-09-20", t: ${Date.parse("2026-09-20T00:00:00Z")}, close: 9.2 },
-  ], source: "tv", asOf: ${ts} });
-  portPosDetail = "ETBS";
 `, ctx);
+
+const host = el("pfp-host");
 
 /* ── scenario 1: every held position fully priced ───────────────────────── */
-const full = vm.runInContext(`
-  (function () {
-    const out = {};
-    const st = portStats();
-    out.returnPct = portReturnPct();
-    out.kpis = portKpis(st);
-    out.analytics = portAnalyticsBody();
-    out.table = portPositionsTable();
-    out.rows = portPosRows().map(p => p.sym);
-    return out;
-  })()
-`, ctx);
+vm.runInContext(`nfpRender(document.getElementById("pfp-host"))`, ctx);
+const full = host.innerHTML;
 
-assert.equal(typeof full.returnPct, "number", "return % computed when all inputs present");
-const expectedReturn = ((-138 + 189) / 3622) * 100;
-assert.ok(Math.abs(full.returnPct - expectedReturn) < 1e-6, `return % ≈ ${expectedReturn.toFixed(4)} got ${full.returnPct}`);
+assert.ok(full.includes("محفظتي"), "hero title rendered");
+const money = vm.runInContext(`vaFmt(3554,0)`, ctx);
+assert.ok(full.includes(money), `hero shows the server's totalValue number (${money})`);
+assert.ok(full.includes("ج.م"), "explicit ج.م unit next to the total");
+assert.ok(full.includes("nfp-pl") && full.includes("▲"), "P/L line with up arrow for a positive server P/L");
+assert.ok(full.includes("+243 ج.م"), "P/L uses the server's unrealizedPnl (243)");
+assert.ok(full.includes("nfp-chip"), "summary chips rendered");
+assert.ok(full.includes("nfp-add-card") && full.includes("nfp-cash-card"), "add-stock + cash cards rendered");
+assert.ok(full.includes("nfp-alloc-bar"), "allocation bar rendered");
+assert.ok(full.includes("nfp-table"), "assets table rendered");
+assert.ok(full.includes("سجل الصفقات"), "trade log section rendered (transactions exist)");
+assert.ok(!full.includes("أهلًا! محفظتك جاهزة"), "no empty state with data present");
 
-assert.ok(full.kpis.includes("تكلفة المراكز القائمة"), "cost card rendered");
-assert.ok(full.kpis.includes("العائد على التكلفة المنصرفة"), "return card rendered");
-
-assert.ok(full.analytics.includes("توزيع المحفظة حسب القطاع"), "sector donut card");
-assert.ok(full.analytics.includes("التكلفة مقابل القيمة السوقية"), "cost-vs-market card");
-assert.ok(full.analytics.includes("COMI") && full.analytics.includes("HLDI"), "cost-vs-market lists both priced assets");
-assert.ok(full.analytics.includes("تطور قيمة المحفظة"), "history card present (honest empty state)");
-
-assert.ok(full.table.includes("port-pos-search"), "table search input");
-assert.ok(full.table.includes("portPosSortToggle"), "sort toggles");
-assert.ok(full.table.includes("التكلفة المتبقية") && full.table.includes("القيمة الحالية") && full.table.includes("التحديث"), "required columns");
-assert.ok(full.table.includes("portAddAssetFocus"), "add-asset button in table header");
-assert.ok(full.table.includes("سجل عمليات هذا الأصل"), "detail panel with trade history present");
-assert.ok(full.table.includes("الإغلاق اليومي") || full.table.includes("لا يتوفر سجل إغلاق يومي"), "detail performance section (licensed or honest note)");
-assert.ok(full.table.includes("مغلق"), "closed chip for the fully-sold symbol");
-/* vm realm arrays have foreign prototypes → normalize before deepEqual */
-assert.deepEqual(JSON.parse(JSON.stringify(full.rows)), ["COMI", "HLDI"], "default filter 'held' excludes the closed symbol; priced rows first");
-const allRows = vm.runInContext(`
-  (function () { portPosFilter = "all"; const r = portPosRows().map(p => p.sym); portPosFilter = "held"; return r; })()
-`, ctx);
-assert.deepEqual(JSON.parse(JSON.stringify(allRows)), ["COMI", "HLDI", "ETBS"], "filter 'all' keeps the closed symbol, sorted last (no price)");
+/* COMI ledger row: flagged + trade-log button, no edit/delete buttons */
+assert.ok(full.includes("المصرية للإسمنت"), "COMI name rendered");
+assert.ok(full.includes("من سجل الصفقات"), "ledger row flagged as built from trades");
+assert.ok(full.includes("nfpOpenTxLog()"), "ledger row exposes the trade log");
+/* HLDI table row: real quote with source + time, value, weight, P/L, edit+delete */
+assert.ok(full.includes("حديد مصر"), "HLDI name rendered");
+assert.ok(full.includes("21.10"), "HLDI verified price rendered");
+assert.ok(full.includes("nfpEditStart("), "table-stored row has the edit button");
+assert.ok(full.includes("nfpDeletePos("), "table-stored row has the delete button");
+assert.ok(full.includes("ن.م") || full.includes("ج"), "money units present");
+/* Closed symbol: kept for its realized result, shown as مغلق */
+assert.ok(full.includes("مغلق"), "closed symbol marked مغلق");
 
 /* ── scenario 2: one held position without a verified quote ─────────────── */
-const partial = vm.runInContext(`
+vm.runInContext(`
   (function () {
     const hldi = portfolio.find(p => p.sym === "HLDI");
     hldi.market = null;
@@ -184,31 +213,83 @@ const partial = vm.runInContext(`
     hldi.unrealizedPnl = null;
     hldi.unrealizedPnlPct = null;
     hldi.weightPct = null;
-    portfolioData.summary.unrealizedPnl = null;
+    portfolioData.summary.marketValue = null;
     portfolioData.summary.totalValue = null;
+    portfolioData.summary.unrealizedPnl = null;
+    portfolioData.summary.pricedMarketValue = 1876;
+    portfolioData.summary.totalValuePriced = 2288;
     portfolioData.summary.missingPriceSymbols = ["HLDI"];
-    const out = {};
-    const st = portStats();
-    out.returnPct = portReturnPct();
-    out.kpis = portKpis(st);
-    out.analytics = portAnalyticsBody();
-    out.table = portPositionsTable();
-    return out;
   })()
 `, ctx);
+vm.runInContext(`nfpRender(document.getElementById("pfp-host"))`, ctx);
+const partial = host.innerHTML;
+const partialMoney = vm.runInContext(`vaFmt(2288,0)`, ctx);
+assert.ok(partial.includes(partialMoney), `partial state shows the server's priced part (${partialMoney})`);
+assert.ok(partial.includes("+ بلا سعر"), "partial state explicitly labelled «+ بلا سعر»");
+assert.ok(partial.includes("HLDI"), "the unpriced symbol is named in the hero");
+assert.ok(partial.includes("الربح/الخسارة يظهر عندما يتوفر سعر موثّق"), "NO P/L figure while a held position is unpriced");
+assert.ok(partial.includes("— بلا سعر"), "unpriced row says بلا سعر instead of a price");
+/* the unpriced row must not carry the old quote value */
+assert.ok(!partial.includes(">21.10<"), "no stale price left in the unpriced row");
 
-assert.equal(partial.returnPct, null, "return % is null (not a partial fabricated %) while a held position lacks a verified price");
-assert.ok(partial.kpis.includes("HLDI"), "KPI footer flags the missing-price symbol");
-assert.ok(partial.analytics.includes("مستبعَد"), "allocation excludes the unpriced position with an explicit note");
-const hldiRow = (partial.table.split(">HLDI<")[1] || partial.table.split("HLDI")[1]) || "";
-assert.ok(hldiRow.includes("—"), "unpriced row shows — instead of a price/value");
-assert.ok(!partial.table.includes("12.05 ج × 60"), "no invented value for the unpriced row");
+/* ── scenario 3: empty portfolio → friendly onboarding + the forms ──────── */
+vm.runInContext(`
+  portfolio = [];
+  portfolioData = { summary: { cash: 0, investedCost: 0, pricedMarketValue: 0, marketValue: 0, totalValue: 0,
+    totalValuePriced: 0, unrealizedPnl: null, realizedPnl: 0, totalFees: 0, missingPriceSymbols: [] },
+    transactions: [], cashEvents: [], settings: { startingCash: 0 }, marketAvailable: true, legacyPositions: false };
+  portfolioState = { loaded: true, loading: false, error: "", marketAvailable: true };
+`, ctx);
+vm.runInContext(`nfpRender(document.getElementById("pfp-host"))`, ctx);
+const empty = host.innerHTML;
+assert.ok(empty.includes("ابدأ في خطوتين"), "empty state explains how to start");
+assert.ok(empty.includes("nfp-sym") && empty.includes("nfp-cash-amt"), "the add + cash forms are present in the empty state");
+assert.ok(!empty.includes("nfp-table"), "no assets table when there are no assets");
+assert.ok(!empty.includes("nfp-alloc-bar"), "no allocation bar when there is nothing to allocate");
 
-/* ── detail panel: per-symbol history + licensed performance ────────────── */
-const detail = vm.runInContext(`portPosDetailPanel()`, ctx);
-assert.ok(detail.includes("سجل عمليات هذا الأصل"), "detail: per-symbol history header");
-assert.ok(detail.includes("الإغلاق اليومي"), "detail: licensed daily line chart rendered from cache");
-assert.ok(detail.includes("لا عمليات مسجّلة لهذا الرمز"), "detail: honest note when the symbol has no recorded trades");
+/* ── scenario 4: stock picker fills the symbol only, never the price ────── */
+vm.runInContext(`
+  portfolio = [
+    { id: "11111111-2222-3333-4444-555555555555", sym: "HLDI", name: "حديد مصر", sector: "صناعات", qty: 60, price: 20.2, instrumentId: "egx:HLDI",
+      market: { price: 21.1, source: "tv", asOf: ${ts}, delayedMinutes: 15, freshness: "delayed" },
+      closed: false, legacy: true, costBasis: 1212, realizedPnl: 0, totalFees: 0, buyCount: 1, sellCount: 0,
+      marketValue: 1266, unrealizedPnl: 54, unrealizedPnlPct: 4.46, weightPct: 100 },
+  ];
+  portfolioState = { loaded: true, loading: false, error: "", marketAvailable: true };
+`, ctx);
+vm.runInContext(`nfpRender(document.getElementById("pfp-host"))`, ctx);
+vm.runInContext(`nfpStockSuggest("comi")`, ctx);
+const suggestBox = el("nfp-suggest");
+assert.ok(suggestBox._classes.has("open"), "suggest box opens with a query");
+assert.ok(suggestBox.innerHTML.includes("COMI"), "candidate from the server list");
+assert.ok(!suggestBox.innerHTML.includes("FAKE"), "no fabricated candidates");
+vm.runInContext(`nfpPickStock("COMI")`, ctx);
+assert.equal(el("nfp-sym").value, "COMI", "picking fills the symbol field");
+assert.equal(el("nfp-cost").value, "", "picking never auto-fills the cost field");
 
-console.log("SMOKE OK — returnPct(full):", full.returnPct.toFixed(3), "| rows:", full.rows.join(","), "| returnPct(partial):", partial.returnPct);
-if (topLevelError) console.log("note: top-level init threw (acceptable under stub DOM):", topLevelError.message.slice(0, 120));
+/* ── scenario 5: add-form validation rejects bad input before any request ─ */
+el("nfp-sym").value = "";
+el("nfp-qty").value = "";
+el("nfp-cost").value = "";
+vm.runInContext(`void nfpAddSubmit()`, ctx);
+const addErr = el("nfp-add-err");
+assert.ok(addErr._text.length > 0, "empty form shows a validation message");
+assert.ok(addErr._text.includes("رمز"), "message points at the symbol field");
+
+el("nfp-sym").value = "COMI";
+el("nfp-qty").value = "0.5";
+el("nfp-cost").value = "10";
+vm.runInContext(`void nfpAddSubmit()`, ctx);
+assert.ok(addErr._text.includes("كمية"), "non-integer quantity rejected");
+
+/* ── scenario 6: the VIP tab entry point renders the same page ──────────── */
+vm.runInContext(`
+  vipTab = "port";
+  vBuildPort(document.getElementById("vip-body"));
+`, ctx);
+const tab = el("vip-body").innerHTML;
+assert.ok(tab.includes("محفظتي"), "VIP tab shows the same hero");
+assert.ok(tab.includes("nfp-add-card"), "VIP tab shows the same add form");
+
+console.log("SMOKE OK — simple portfolio renders honestly in all scenarios");
+if (topLevelError) console.log("note: top-level init threw (acceptable under stub DOM):", String(topLevelError.message).slice(0, 120));

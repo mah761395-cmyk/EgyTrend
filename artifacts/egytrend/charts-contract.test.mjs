@@ -1,14 +1,16 @@
 /**
- * Contract test for the portfolio charts (shared visual-analytics primitives).
+ * Contract test for the shared visual-analytics primitives and the simple
+ * portfolio's allocation bar.
  *
  * The chart builders live in the inline script of index.html, so a build cannot
  * catch a chart that silently invents a value. This test does two things:
  *
  *   1. executes the real analytics functions in a sandbox with a fixture
  *      portfolio, and checks the numbers against an independent calculation;
- *   2. pins the product rules the charts must never break — every card carries
- *      a source/time foot, an incomplete series renders an explicit empty
- *      state, and nothing here grants or edits an entitlement.
+ *   2. pins the product rules the charts must never break — an incomplete
+ *      series renders an explicit empty state, unpriced positions are flagged
+ *      (never silently valued), and nothing here grants or edits an
+ *      entitlement.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -31,8 +33,10 @@ function slice(startMarker, endMarker) {
   return html.slice(start, end);
 }
 
+/* Shared primitives + the simple-portfolio renderers (declarations only —
+ * evaluated, never invoked, except the functions under test). */
 const analyticsSource =
-  slice("VISUAL ANALYTICS — shared chart primitives", "function vBuildPort(b){" );
+  slice("VISUAL ANALYTICS — shared chart primitives", "function cairoTodayStr(){" );
 
 const sanitize = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -56,12 +60,12 @@ const OPP_TYPES = { stock: { l: "أسهم" }, bond: { l: "سندات" }, crypto:
 const factory = new Function(
   "sanitize", "portfolio", "liveStocks", "RISK_COLORS", "RISK_LABELS", "OPP_TYPES",
   "knownStockNumber", "canonicalInstrumentId", "fetchJsonWithTimeout", "MARKET_SPARKLINES_API",
-  "U", "egxStocksFreshness", "document", "safeJsArg",
+  "U", "egxStocksFreshness", "document", "safeJsArg", "ltrChange",
   `${analyticsSource}
   return {
     vaFmt, vaCompact, vaPct, vaDaysLabel, vaCard, vaEmpty,
     vaLineChart, vaDonut, vaSignedBars,
-    pfAllocation, portStats,
+    portStats, nfpAllocHtml,
   };`,
 );
 
@@ -80,23 +84,22 @@ const api = factory(
   { fetchedAt: 0, source: "", loading: false },
   undefined,
   (value) => JSON.stringify(String(value)),
+  (value) => String(value ?? ""),
 );
 
-test("the allocation ring groups verified market values by the server's sector label", () => {
-  const stats = api.portStats();
-  const allocation = api.pfAllocation(stats);
-  const bySector = Object.fromEntries(allocation.slices.map((slice) => [slice.label, slice.value]));
+test("the allocation bar values priced positions at verified quotes and flags cost-drawn rows", () => {
+  const bar = api.nfpAllocHtml(POSITIONS, { cash: 0 });
+  assert.match(bar, /nfp-alloc-bar/, "the bar is drawn");
+  assert.ok(bar.includes("10,000 ج"), "COMI valued at the verified quote (100 × 100)");
+  assert.ok(bar.includes("2,500 ج"), "TMGH valued at the verified quote (50 × 50)");
+  assert.ok(bar.includes("2,000 ج"), "ETEL shown at its recorded cost (200 × 10)");
+  assert.match(bar, /بلا سعر — معروض بالتكلفة/, "the unpriced position is flagged as cost-drawn");
+  assert.match(bar, /nfp-alloc-cost/, "cost-drawn segments get a distinct style");
+  assert.match(bar, /حصة كل جزء من محفظتك \(14,500 ج\.م\)/, "one clearly-labelled base sums all segments");
 
-  /* 100 × 100 = 10,000 بنوك · 50 × 50 = 2,500 عقارات · ETEL has no quote. */
-  assert.deepEqual(bySector, { "بنوك": 10_000, "عقارات": 2_500 });
-  assert.equal(allocation.total, 12_500);
-  assert.equal(allocation.skipped.length, 1, "a position without a verified quote is excluded, not valued at cost");
-  assert.equal(allocation.skipped[0].p.sym, "ETEL");
-
-  /* The ring percentages must sum to 100 and match the values independently. */
-  const ring = api.vaDonut({ slices: allocation.slices, centerLabel: "القيمة", centerValue: "12,500" });
-  const percents = [...ring.matchAll(/<b>(\d+\.\d)%<\/b>/g)].map((match) => Number(match[1]));
-  assert.deepEqual(percents, [80, 20], "the legend percentages follow the verified values");
+  const withCash = api.nfpAllocHtml(POSITIONS, { cash: 500 });
+  assert.match(withCash, /النقدية/, "cash appears as its own segment");
+  assert.match(withCash, /حصة كل جزء من محفظتك \(15,000 ج\.م\)/, "cash is included in the labelled base");
 });
 
 test("profit/loss uses price minus average cost times quantity, before fees", () => {
@@ -158,10 +161,11 @@ test("every analytics card names its source and time, and offers an explicit emp
   assert.match(empty, /va-empty/);
   assert.match(empty, /لا تتوفر بيانات كافية/);
 
-  /* Every portfolio chart card carries a source foot; a card without one
-     would leave the user guessing the provenance. */
-  const portfolioBody = slice("function pfHistoryCard(){", "function vBuildPort(b){");
-  assert.ok((portfolioBody.match(/foot:/g) || []).length >= 3, "each portfolio chart card declares a source foot");
+  /* The simple portfolio names its price source (with time) in the hero and
+     says so explicitly when no source is available. */
+  assert.match(analyticsSource, /heroSourceLine\(\)/, "hero carries the named source line");
+  assert.match(analyticsSource, /لا توجد مراكز قائمة بسعر سوق الآن/, "honest note when no quote source exists");
+  assert.match(analyticsSource, /مصدر الأسعار غير متاح حاليًا/, "honest note when the feed is unavailable");
 });
 
 test("chart code never fabricates values and never grants an entitlement", () => {
@@ -169,9 +173,10 @@ test("chart code never fabricates values and never grants an entitlement", () =>
   assert.ok(!/localStorage/.test(analyticsSource), "chart state is not persisted as entitlement");
   assert.ok(!/\.plan\s*=(?!=)/.test(analyticsSource), "the client never writes a plan");
   assert.ok(!/vipExpiresAt\s*=(?!=)/.test(analyticsSource), "the client never writes an expiry");
-  /* The reconstruction only uses days every position actually has, otherwise a
-   * partial day would draw a portfolio value that never existed. */
-  assert.match(analyticsSource, /filter\(day=>days\.has\(day\)\)/);
-  assert.match(analyticsSource, /لا يُرسم أي خط حتى تصل نقاط إغلاق حقيقية|لن نرسم خطًا من أيام جزئية/);
+  /* While any held position lacks a verified quote the P/L is hidden (not
+   * partially computed) and unpriced segments are flagged, not invented. */
+  assert.match(analyticsSource, /un===null/, "P/L hidden while a position is unpriced");
+  assert.match(analyticsSource, /بلا سعر/, "unpriced states are explicitly labelled");
+  assert.match(analyticsSource, /nfp-alloc-cost/, "cost-drawn allocation segments are styled as such");
 });
 

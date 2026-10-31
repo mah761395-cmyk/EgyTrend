@@ -329,6 +329,13 @@ router.get("/portfolio", requireVipFeature("portfolio"), async (req: Request, re
       .orderBy(desc(portfolioCashEventsTable.tradeDate), desc(portfolioCashEventsTable.createdAt), desc(portfolioCashEventsTable.id))
       .limit(MAX_TX_HISTORY);
 
+    /* The simple model's cost belongs in the same denominator: every held
+     * position counts once — trade-derived ledgers keep ownership of their
+     * symbols, so only simple rows the ledger does not cover are added. */
+    const investedCost = round6(computation.investedCost + legacyRows
+      .filter((row) => !computation.bySymbol.has(row.symbol.toUpperCase()))
+      .reduce((sum, row) => sum + row.quantity * Number(row.averageCost), 0));
+
     res.json({
       status: "ok",
       positions,
@@ -337,7 +344,7 @@ router.get("/portfolio", requireVipFeature("portfolio"), async (req: Request, re
         /* Sums of the non-trade cash movements, for display and audit. */
         cashEventsIn: round6(cashEvents.filter((event) => event.kind !== "withdrawal").reduce((sum, event) => sum + event.amount, 0)),
         cashEventsOut: round6(cashEvents.filter((event) => event.kind === "withdrawal").reduce((sum, event) => sum + event.amount, 0)),
-        investedCost: computation.investedCost,
+        investedCost,
         /* Capital deployed on buys (qty·price + buy fees), all time — the
          * documented denominator of the client-side return-on-cost %. */
         totalBuyOutlay: computation.totalBuyOutlay,

@@ -1,19 +1,26 @@
 /**
- * Contract test for the investor portfolio dashboard (TASK I).
+ * Contract test for the SIMPLE portfolio (rebuilt from scratch, 2026-10-31).
  *
- * The dashboard must stay honest by construction:
- *  - every price shown comes from a verified server quote (price + named
- *    source + asOf); without one the cell/detail shows "—", never stale or
- *    invented,
- *  - the return-% KPI uses the server's totalBuyOutlay denominator and is
- *    hidden (—) whenever any input is missing,
- *  - "إضافة أصل" searches only the server's stock list; picking a candidate
- *    fills the symbol field only — the price field is always the user's real
- *    trade price,
- *  - the asset table offers search / sort / filter and a row detail with the
- *    per-symbol trade history and any available licensed performance,
- *  - allocation can be by asset or by sector; cost-vs-market and all charts
- *    degrade to an explicit empty state, never a drawn estimate.
+ * The page must stay honest and practical by construction:
+ *  - "إضافة سهم" searches only the server's stock list (liveStocks); picking a
+ *    candidate fills the SYMBOL field only — the cost field is always the
+ *    user's real average buy price, never a market quote;
+ *  - adding posts to POST /api/portfolio/positions {symbol, quantity,
+ *    averageCost}; a symbol already held through the trade ledger
+ *    (position id "pos:<SYM>") is refused on the client before hitting the
+ *    server, and the server's 409 message is surfaced verbatim otherwise;
+ *  - editing (PUT) and deleting (DELETE, after confirm()) go through the
+ *    positions API for table-stored rows; ledger-derived rows expose the
+ *    trade log (📋) instead of ✏️/🗑, so no ledger data is ever lost;
+ *  - cash deposits/withdrawals round-trip through POST /api/portfolio/cash;
+ *    the exact server error (e.g. temporal insufficient_cash) is shown;
+ *  - the hero shows the server's totalValue; while any held position lacks a
+ *    verified quote it shows the server's priced part + «بلا سعر» and NO
+ *    P/L figure — never a partial fabricated one;
+ *  - the assets table shows — instead of a price/value/P&L when no verified
+ *    quote exists, and % of portfolio from the server weight when available;
+ *  - nothing in the portfolio block writes portfolio truth to
+ *    localStorage / indexedDB.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -24,11 +31,23 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(here, "index.html"), "utf8");
 
-function functionBody(name) {
-  const start = html.indexOf(`function ${name}(`);
+function functionBody(name, isAsync = false) {
+  const marker = (isAsync ? "async function " : "function ") + name + "(";
+  const start = html.indexOf(marker);
   assert.ok(start !== -1, `index.html must define ${name}`);
+  /* skip the parameter list (it may contain object defaults like {…}) */
+  let i = html.indexOf("(", start);
+  let pd = 0;
+  for (; i < html.length; i += 1) {
+    const ch = html[i];
+    if (ch === "(") pd += 1;
+    else if (ch === ")") {
+      pd -= 1;
+      if (pd === 0) break;
+    }
+  }
   let depth = 0;
-  for (let i = html.indexOf("{", start); i < html.length; i += 1) {
+  for (i = html.indexOf("{", i); i < html.length; i += 1) {
     const ch = html[i];
     if (ch === "{") depth += 1;
     else if (ch === "}") {
@@ -39,86 +58,129 @@ function functionBody(name) {
   throw new Error(`unbalanced braces in ${name}`);
 }
 
-test("return-% KPI: server denominator, null when any input is missing", () => {
-  const body = functionBody("portReturnPct");
-  assert.match(body, /totalBuyOutlay/, "denominator must be the server's totalBuyOutlay");
-  assert.match(body, /outlay>0/, "zero/negative outlay must not yield a %");
-  assert.match(body, /unrealizedPnl===null/, "missing unrealized → null, never a fabricated %");
-});
-
-test("KPI row covers value, cost, return %, cash, realized and unrealized", () => {
-  const body = functionBody("portKpis");
-  assert.match(body, /قيمة المحفظة الإجمالية/, "total value card");
-  assert.match(body, /تكلفة المراكز القائمة/, "held-asset cost card");
-  assert.match(body, /العائد على التكلفة المنصرفة/, "return-% card");
-  assert.match(body, /السيولة النقدية/, "cash card");
-  assert.match(body, /غير المحقّق/, "unrealized card");
-  assert.match(body, /المحقّق/, "realized card");
-});
-
-test("إضافة أصل button opens the trade form's stock search", () => {
-  assert.match(html, /＋ إضافة أصل/, "the add-asset button exists");
-  const focus = functionBody("portAddAssetFocus");
-  assert.match(focus, /port-tx-sec/, "scrolls to the transactions section");
-  assert.match(focus, /ptx-sym/, "focuses the stock search input");
-});
-
-test("stock picker searches only the server stock list; never auto-fills price", () => {
-  const suggest = functionBody("portStockSuggest");
+test("add-asset form: candidates from the server stock list only; price is never auto-filled", () => {
+  const card = functionBody("nfpAddCardHtml");
+  assert.match(card, /id="nfp-sym"/, "symbol input with autocomplete");
+  assert.match(card, /id="nfp-qty"/, "integer quantity input");
+  assert.match(card, /id="nfp-cost"/, "average-cost input (user's real buy price)");
+  assert.match(card, /متوسط سعر الشراء/, "cost field labelled as the user's average buy price");
+  assert.match(card, /nfpAddSubmit/, "submit handler");
+  const suggest = functionBody("nfpStockSuggest");
   assert.match(suggest, /liveStocks/, "candidates come from the server's stock list only");
   assert.doesNotMatch(suggest, /"COMI"|'COMI'/, "no hardcoded/fabricated symbols");
-  const pick = functionBody("portPickStock");
-  assert.match(pick, /ptx-sym/, "picking a candidate fills the symbol field");
-  assert.doesNotMatch(pick, /ptx-price/, "the price field is never auto-filled from a quote");
+  const pick = functionBody("nfpPickStock");
+  assert.match(pick, /nfp-sym/, "picking a candidate fills the symbol field");
+  assert.doesNotMatch(pick, /nfp-cost/, "the cost field is never auto-filled from a quote");
 });
 
-test("asset table: search, filter, sort and the required columns", () => {
-  const table = functionBody("portPositionsTable");
-  assert.match(table, /port-pos-search/, "search input");
-  assert.match(table, /portPosFilter/, "held/closed/all filter");
-  assert.match(table, /portAddAssetFocus/, "add-asset entry point in the table header");
-  const body = functionBody("portPosTableBody");
-  /* the header helper renders onclick="portPosSortToggle('<key>')" */
-  assert.match(body, /portPosSortToggle\('\$\{key\}'\)/, "headers are sort toggles");
-  for (const key of ["sym", "qty", "avg", "price", "cost", "value", "pnl", "updated"]) {
-    assert.ok(body.includes(`th("${key}",`), `sortable column ${key}`);
-  }
-  assert.match(body, /الأصل|الكمية|متوسط التكلفة|آخر سعر|التكلفة المتبقية|القيمة الحالية|ربح\/خسارة|التحديث/, "all required column headers");
-  const sort = functionBody("portPosRows");
-  assert.match(sort, /missA-missB/, "rows without a verified price sort last, never first");
+test("adding posts {symbol, quantity, averageCost} and validates before any request", () => {
+  const body = functionBody("nfpAddSubmit", true);
+  assert.match(body, /\/api\/portfolio\/positions/, "posts to the positions endpoint");
+  assert.match(body, /method:"POST"/);
+  assert.match(body, /JSON\.stringify\(\{symbol:sym,quantity:qty,averageCost:cost\}\)/, "exact payload contract");
+  assert.match(body, /Number\.isInteger\(qty\)/, "quantity must be an integer");
+  assert.match(body, /cost<=0/, "cost must be > 0");
+  assert.match(body, /credentials:"same-origin"/, "session-authenticated fetch");
+  /* A symbol already held through the trade ledger is managed via the trade
+   * log — adding it again would create an orphan row the server would 409. */
+  assert.match(body, /pos:/, "ledger-held symbol (id pos:<SYM>) is refused client-side");
+  assert.match(body, /409/, "server 409 fallback surfaced");
 });
 
-test("asset table shows — instead of a price when no verified quote exists", () => {
-  const body = functionBody("portPosTableBody");
-  assert.match(body, /pr!==null\?pr\.toFixed\(2\):"—"/, "last-price cell guarded by verified quote");
-  assert.match(body, /p\.market\?cairoTimestampLabel\(p\.market\.asOf\):"—"/, "last-updated cell guarded by verified quote");
-  assert.match(body, /لا سعر قديم ولا سعر مخترع/, "the footer states the no-stale/no-invented rule");
+test("editing uses PUT on the positions API; ledger rows are managed via the trade log", () => {
+  const save = functionBody("nfpEditSave", true);
+  assert.match(save, /method:"PUT"/);
+  assert.match(save, /\/api\/portfolio\/positions\/\$\{encodeURIComponent\(id\)\}/, "PUT by id");
+  assert.match(save, /JSON\.stringify\(\{symbol:p\.sym,quantity:qty,averageCost:cost\}\)/, "edit payload keeps the same symbol");
+  const row = functionBody("nfpRowHtml");
+  assert.match(row, /pos:/, "detects ledger-derived rows by id prefix");
+  assert.match(row, /nfpEditStart/, "table-stored rows get the edit button");
+  assert.match(row, /nfpDeletePos/, "table-stored rows get the delete button");
+  assert.match(row, /nfpOpenTxLog/, "ledger rows expose the trade log instead");
 });
 
-test("row detail: per-symbol trade history + licensed performance only", () => {
-  const body = functionBody("portPosDetailPanel");
-  assert.match(body, /portfolioData\.transactions/, "trade history from the server ledger");
-  assert.match(body, /toUpperCase\(\)===p\.sym/, "history filtered to the row's symbol");
-  assert.match(body, /VA_SERIES_CACHE/, "performance only from the cached licensed closes");
-  assert.match(body, /لا يتوفر سجل إغلاق يومي مرخّص/, "honest note when no licensed history");
-  assert.match(body, /بلا سعر موثّق الآن/, "honest note when no verified quote");
-  assert.match(body, /portEditTx|portDelTx/, "trades remain editable/deletable from the detail");
+test("deleting asks for confirmation and soft-archives through the server", () => {
+  const del = functionBody("nfpDeletePos", true);
+  assert.match(del, /confirm\(/, "destructive action asks first");
+  assert.match(del, /method:"DELETE"/);
+  assert.match(del, /\/api\/portfolio\/positions\/\$\{encodeURIComponent\(id\)\}/, "DELETE by id");
 });
 
-test("allocation: by asset and by sector, toggle re-binds charts", () => {
-  const alloc = functionBody("pfAllocation");
-  assert.match(alloc, /byAsset\?row\.p\.sym:/, "asset mode groups by symbol");
-  assert.match(alloc, /row\.p\.sector/, "sector mode groups by catalog sector");
-  const toggle = functionBody("portAllocToggle");
-  assert.match(toggle, /port-analytics/, "re-renders the analytics host");
-  assert.match(toggle, /vaBindCharts/, "re-binds chart interactions after the swap");
+test("cash: server round-trip, exact error surfaced, deletable events", () => {
+  const submit = functionBody("nfpCashSubmit", true);
+  assert.match(submit, /fetch\("\/api\/portfolio\/cash"/, "posts to the server endpoint");
+  assert.match(submit, /method:"POST"/);
+  assert.match(submit, /JSON\.stringify\(\{kind,amount:amt,note:note\|\|null\}\)/, "exact payload (deposit|withdrawal)");
+  assert.match(submit, /j\?\.message/, "the server's exact error text (incl. insufficient_cash) is surfaced");
+  const del = functionBody("nfpDeleteCash", true);
+  assert.match(del, /confirm\(/, "destructive action asks first");
+  assert.match(del, /method:"DELETE"/);
+  assert.match(del, /\/api\/portfolio\/cash\/\$\{encodeURIComponent\(id\)\}/, "soft-delete by id");
+  const card = functionBody("nfpCashCardHtml");
+  assert.match(card, /portfolioData\.cashEvents/, "event list from the server payload");
+  assert.match(card, /s\.cash/, "balance from the server summary, never local math");
 });
 
-test("cost vs market card degrades honestly without priced positions", () => {
-  const body = functionBody("pfCostVsMarketCard");
-  assert.match(body, /لا توجد مراكز مسعّرة/, "explicit empty state");
-  assert.match(body, /pf-cmp-cost/, "cost bar");
-  assert.match(body, /pf-cmp-mv/, "market-value bar");
-  assert.match(body, /row\.p\.price\*row\.p\.qty/, "cost = qty × average cost");
-  assert.match(body, /row\.pr\*row\.p\.qty/, "market = qty × verified price");
+test("hero: server total, honest partial state, P/L only with full verified pricing", () => {
+  const hero = functionBody("nfpHeroHtml");
+  assert.match(hero, /s\.totalValue/, "total from the server summary");
+  assert.match(hero, /s\.totalValuePriced/, "priced part when not everything is priced");
+  assert.match(hero, /\+ بلا سعر/, "partial state labelled, not hidden");
+  assert.match(hero, /s\.unrealizedPnl/, "P/L from the server summary");
+  assert.match(hero, /un===null/, "no P/L figure while any held position is unpriced");
+  assert.match(hero, /missingPriceSymbols/, "the unpriced symbols are named");
+  assert.match(hero, /heroSourceLine\(\)/, "named price source + time line");
+  /* The hero never draws a % or value from client-side price math. */
+  assert.doesNotMatch(hero, /liveStocks/, "hero pricing never reads local quotes directly");
+});
+
+test("table: required columns; — instead of price/value/P&L without a verified quote", () => {
+  const table = functionBody("nfpTableHtml");
+  assert.match(table, /الأصل/, "asset column");
+  assert.match(table, /الكمية/, "quantity column");
+  assert.match(table, /متوسط الشراء/, "average-cost column");
+  assert.match(table, /السعر الحالي/, "current-price column");
+  assert.match(table, /القيمة/, "value column");
+  assert.match(table, /% من المحفظة/, "% of portfolio column");
+  assert.match(table, /ربح\/خسارة/, "P/L column");
+  const row = functionBody("nfpRowHtml");
+  assert.match(row, /— بلا سعر/, "unpriced row says so explicitly");
+  assert.match(row, /p\.marketValue/, "value from the server per-position field");
+  assert.match(row, /p\.weightPct/, "weight from the server when available");
+  assert.match(row, /cairoTimestampLabel\(pr\.asOf\)/, "quote time shown with the price");
+});
+
+test("allocation is a labelled visual aid; unpriced rows are drawn at cost and flagged", () => {
+  const alloc = functionBody("nfpAllocHtml");
+  assert.match(alloc, /nfp-alloc-cost/, "cost-drawn segments get a distinct style");
+  assert.match(alloc, /بلا سعر — معروض بالتكلفة/, "cost-drawn segments are labelled as such");
+  assert.match(alloc, /p\.market/, "priced segments use the verified quote");
+  assert.match(alloc, /p\.price\*p\.qty/, "cost = qty × recorded average cost");
+  assert.match(alloc, /s\.cash/, "cash segment from the server summary");
+});
+
+test("no portfolio truth is persisted to localStorage / indexedDB in the portfolio block", () => {
+  /* The whole simple-portfolio block (renderer + actions) must not write
+   * portfolio data locally — the server owns it. UI-only state (edit id,
+   * busy flags) lives in plain variables. */
+  const start = html.indexOf("PORTFOLIO — the simple portfolio (rebuilt from scratch)");
+  assert.ok(start !== -1, "portfolio block found");
+  const end = html.indexOf("function pfpVisible(");
+  assert.ok(end !== -1 && end > start, "block end found");
+  const block = html.slice(start, end);
+  assert.doesNotMatch(block, /localStorage\.set/, "no localStorage writes");
+  assert.doesNotMatch(block, /DB\.set\(.*portfolio/i, "no indexed-DB portfolio writes");
+});
+
+test("periodic refresh re-fetches from the server only while a portfolio host is visible", () => {
+  const timer = functionBody("nfpEnsureTimer");
+  assert.match(timer, /60000/, "one-minute cadence");
+  assert.match(timer, /nfpVisibleHost\(\)/, "no fetches while the page/tab is hidden");
+  assert.match(timer, /loadServerPortfolio\(true\)/, "forced server refresh, never a local recompute");
+  const hook = html.slice(
+    html.indexOf("async function loadServerPortfolio("),
+    html.indexOf("function portStats("),
+  );
+  assert.match(hook, /pfpVisible\(\)/, "page host re-renders after every server load");
+  assert.match(hook, /nfpRender\(h\)/, "re-render goes through the single renderer");
 });

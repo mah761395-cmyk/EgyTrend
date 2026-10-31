@@ -1,19 +1,20 @@
 /**
- * Contract test for the first-class portfolio page (nav item + professional
- * dashboard).
+ * Contract test for the portfolio entry points (first-class nav page + the
+ * VIP-center «المحفظة» tab) after the simple rebuild.
  *
  * Rules enforced here:
- *  - a visible «المحفظة» nav item with a small VIP badge, harmonized with the
- *    other items, sits next to «فرص» and «الحاسبات» and drives its own page;
- *  - the CLIENT only chooses the view (intro/upsell vs dashboard); the
- *    server-side VIP gate remains the real protection — the page never
+ *  - the visible «المحفظة» nav item (small VIP badge) still drives its own
+ *    page — untouched by the rebuild;
+ *  - both entry points (nav page and VIP tab) render through the SAME
+ *    renderer (nfpRender) so the experience is identical;
+ *  - the CLIENT only chooses the view (intro/upsell vs portfolio); the
+ *    server-side VIP gate remains the real protection — the client never
  *    renders portfolio truth from local storage;
- *  - the value-over-time chart is real: it is fetched from
- *    /api/portfolio/series, days without a full verified price set are drawn
- *    as gaps, and the EGX30 comparison only appears with stored rows;
- *  - cash deposits/withdrawals/dividends round-trip through the server API
- *    with the temporal insufficient_cash error surfaced;
- *  - concentration alerts are explicitly informational, not advice.
+ *  - expired session / lapsed VIP / server errors degrade to the app's
+ *    standard gates with a retry, and previously loaded data is kept on
+ *    screen when the error is a transient network one;
+ *  - data is loaded on demand from /api/portfolio (session cookie,
+ *    cache: no-store).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -24,10 +25,10 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(here, "index.html"), "utf8");
 
-function functionBody(name) {
-  const start = html.indexOf(`function ${name}(`);
+function functionBody(name, isAsync = false) {
+  const marker = (isAsync ? "async function " : "function ") + name + "(";
+  const start = html.indexOf(marker);
   assert.ok(start !== -1, `index.html must define ${name}`);
-  /* skip the parameter list (it may contain object defaults like {…}) */
   let i = html.indexOf("(", start);
   let pd = 0;
   for (; i < html.length; i += 1) {
@@ -61,20 +62,16 @@ test("nav: a «المحفظة» item with a small VIP badge sits next to «فر�
   assert.match(button, /onclick="goNav\('portfolio'\)"/, "nav drives the portfolio page");
   assert.match(button, /n-vip-chip/, "small VIP badge under the label");
   assert.match(button, />VIP</, "badge reads VIP");
-  /* The grid gained a column; the item label is present. */
   assert.match(button, /المحفظة/);
   assert.match(html, /grid-template-columns:repeat\(7,1fr\)/, "bottom nav grid accounts for 7 items");
-  /* Badge parity with the real access rights: the calculators are fully
-     VIP-gated server-side, الفرص is VIP-paywalled in the product (the page
-     is gated for non-VIP and the landing labels it «فرص VIP»), and المحفظة
-     is VIP-gated — all three carry the same small badge. */
+  /* Badge parity with the real access rights: all three VIP surfaces carry
+     the same small badge; free services stay unbadged. */
   const calcButton = html.slice(html.lastIndexOf("<button", calculators), html.indexOf("</button>", calculators));
   assert.match(calcButton, /n-vip-chip/, "calculators nav carries the small VIP badge");
   assert.match(calcButton, />VIP</);
   const oppsButton = html.slice(html.lastIndexOf("<button", opps), html.indexOf("</button>", opps));
   assert.match(oppsButton, /n-vip-chip/, "فرص nav carries the small VIP badge (paid service)");
   assert.match(oppsButton, />VIP</);
-  /* Free services stay unbadged: home, markets and the account page. */
   for (const id of ["nb-home", "nb-markets", "nb-profile"]) {
     const start = html.indexOf(`id="${id}"`);
     assert.ok(start !== -1, `${id} exists`);
@@ -83,16 +80,7 @@ test("nav: a «المحفظة» item with a small VIP badge sits next to «فر�
   }
 });
 
-test("data: the page loads the same licensed stock universe as every other surface", () => {
-  const render = functionBody("renderPortfolioPage");
-  assert.match(
-    render,
-    /if\(!liveStocks\.length&&!egxStocksFreshness\.loading\)fetchStocksData\(\);/,
-    "the licensed scan is loaded on demand so symbol autocomplete/hints work identically on this page and in the VIP center",
-  );
-});
-
-test("page wiring: goNav recognizes portfolio and renders it", () => {
+test("page wiring: goNav recognizes portfolio and renders it into its own host", () => {
   const goNav = functionBody("goNav");
   assert.match(goNav, /"portfolio"/, "portfolio is a known nav target");
   assert.match(goNav, /renderPortfolioPage\(\)/, "navigating renders the page");
@@ -100,79 +88,59 @@ test("page wiring: goNav recognizes portfolio and renders it", () => {
   assert.ok(html.includes('id="pfp-host"'), "page has its render host");
 });
 
-test("entitlement: client view is UX only; non-VIP gets the professional intro + upsell", () => {
+test("entitlement: client view is UX only; both entry points use the same renderer", () => {
   const render = functionBody("renderPortfolioPage");
   assert.match(render, /!U/, "not logged in → intro");
-  assert.match(render, /U\.plan==="vip"||U\.plan==="admin"/, "VIP plan check for the dashboard view");
-  assert.match(render, /pfpIntro\({loggedOut:true}\)/, "logged-out intro");
-  assert.match(render, /pfpIntro\({loggedOut:false}\)/, "non-VIP intro");
+  assert.match(render, /U\.plan==="vip"\|\|U\.plan==="admin"/, "VIP plan check for the portfolio view");
+  assert.match(render, /pfpIntro\(\{loggedOut:true\}\)/, "logged-out intro");
+  assert.match(render, /pfpIntro\(\{loggedOut:false\}\)/, "non-VIP intro");
+  assert.match(render, /nfpRender\(host\)/, "VIP users land in the simple renderer");
+  assert.match(render, /loadServerPortfolio\(\)/, "data is loaded from the server on demand");
+  assert.match(
+    render,
+    /if\(!liveStocks\.length&&!egxStocksFreshness\.loading\)fetchStocksData\(\);/,
+    "the licensed scan is loaded on demand so symbol autocomplete works identically on this page and in the VIP center",
+  );
+  const tab = functionBody("vBuildPort");
+  assert.match(tab, /pfpIntro\(\{loggedOut:true\}\)/, "VIP tab: same logged-out gate");
+  assert.match(tab, /pfpIntro\(\{loggedOut:false\}\)/, "VIP tab: same non-VIP gate");
+  assert.match(tab, /nfpRender\(b\)/, "VIP tab renders through the same renderer as the page");
   const intro = functionBody("pfpIntro");
   assert.match(intro, /openSub\(\)/, "clear VIP upsell CTA");
   assert.match(intro, /openAuthModal\('login'\)/, "login CTA when signed out");
-  assert.match(intro, /pfp-feats/, "feature list describing the real service");
-  /* The intro must not hide the gate behind client-only logic: the real
-   * protection is the API, and the intro copy says data stays server-side. */
   assert.match(intro, /مفصولة تمامًا عن أي مستخدم آخر|الخادم/, "server-side truth mentioned");
 });
 
-test("chart: real series from the server, honest gaps, EGX30 only with stored rows", () => {
-  const load = functionBody("pfpLoadSeries");
-  assert.match(load, /\/api\/portfolio\/series\?range=/, "series comes from the dedicated endpoint");
+test("data: /api/portfolio with the session cookie, never a stale cache", () => {
+  const load = functionBody("loadServerPortfolio", true);
+  assert.match(load, /fetch\("\/api\/portfolio"/, "the dedicated endpoint");
   assert.match(load, /credentials:"same-origin"/, "session-authenticated fetch");
-  assert.match(load, /cache:"no-store"/, "never a stale cached series");
-  const svg = functionBody("pfpLineChartSvg");
-  assert.match(svg, /typeof p\.value==="number"/, "only valued days draw the line");
-  assert.match(svg, /else\{if\(seg\.length\)valSegs\.push\(seg\);seg=\[\];\}/, "null days break the line into honest gaps");
-  const notes = functionBody("pfpChartNotesHtml");
-  assert.match(notes, /بلا تاريخ إغلاق مسجّل/, "missing-history symbols are named");
-  assert.match(notes, /لا نرسم أبدًا من أسعار تقديرية|لا نوزّع بالتساوي|فراغًا صادقًا/, "explicit no-fabrication note");
-  assert.match(notes, /مرجع عام للمقارنة، وليس سعرًا مرخّصًا فوريًا/, "EGX30 license framing");
-  const geom = functionBody("pfpChartGeom");
-  assert.match(geom, /100\*\(b\.close\/firstValued\.value\)/, "benchmark normalized to 100 at the first shared point");
+  assert.match(load, /cache:"no-store"/, "never a stale cached portfolio");
+  assert.match(load, /normalizeServerPortfolio\(j\.positions\)/, "positions pass the same normalizer as everywhere else");
 });
 
-test("cash management: server round-trip with temporal insufficient_cash handling", () => {
-  const submit = functionBody("pfpSubmitCash");
-  assert.match(submit, /fetch\("\/api\/portfolio\/cash"/, "posts to the server endpoint");
-  assert.match(submit, /method:"POST"/);
-  assert.match(submit, /insufficient_cash/, "surfaces the temporal cash error");
-  assert.match(submit, /cashAvailable/, "shows the exact available balance");
-  const del = functionBody("pfpDeleteCash");
-  assert.match(del, /method:"DELETE"/, "soft-delete through the server");
-  assert.match(del, /confirm\(/, "destructive action asks first");
-  assert.match(del, /أرشيف|x/, "tells the user the row is archived, not destroyed");
-  /* Cash truth is server data only. */
-  const host = functionBody("pfpCashHtml");
-  assert.match(host, /portfolioData\.cashEvents/, "lists events from the server payload");
-});
-
-test("dashboard extras: daily change, asset count, total P/L and informational alerts", () => {
-  const strip = functionBody("pfpKpiStripHtml");
-  assert.match(strip, /السيولة النقدية/, "available cash card");
-  assert.match(strip, /عدد الأصول/, "asset count card");
-  assert.match(strip, /إجمالي الربح\/الخسارة/, "combined P/L card");
-  assert.match(strip, /realizedPnl/, "built from server summary fields");
-  const hero = functionBody("pfpHeroHtml");
-  assert.match(hero, /dailyChangePct/, "daily change from the server series");
-  const alerts = functionBody("pfpConcentrationAlertsHtml");
-  assert.match(alerts, /وليست توصية/, "alerts are explicitly not investment advice");
-  assert.match(alerts, /weightPct/, "weights come from the server");
-});
-
-test("the portfolio page never persists portfolio truth to localStorage", () => {
-  /* Scan the whole portfolio-page block: no direct localStorage writes of
-   * portfolio data (UI preferences elsewhere are out of scope). */
-  const start = html.indexOf("PORTFOLIO — first-class page");
-  assert.ok(start !== -1, "portfolio page block found");
-  const end = html.indexOf("function pfpLineChartSvg");
-  const block = html.slice(start, end);
-  assert.doesNotMatch(block, /localStorage\.set/, "no localStorage writes in the page block");
-  assert.doesNotMatch(block, /DB\.set\(.*portfolio/i, "no indexed-DB portfolio writes in the page block");
-});
-
-test("error states: expired session and lapsed VIP degrade to the existing gates", () => {
-  const render = functionBody("pfpRenderDashboard");
+test("error states: expired session, lapsed VIP and server errors degrade to the standard gates with retry", () => {
+  const render = functionBody("nfpRender");
   assert.match(render, /login_required/, "expired session → login gate");
   assert.match(render, /vip_required/, "lapsed VIP → renewal gate");
-  assert.match(render, /authGateHtml/, "reuses the app's single auth-gate renderer");
+  assert.match(render, /authGateHtml\("login"/, "reuses the app's single auth-gate renderer");
+  assert.match(render, /authGateHtml\("vip"/, "VIP gate via the same renderer");
+  assert.match(render, /server_error/, "server error → retry card");
+  assert.match(render, /nfpRetryLoad\(\)/, "explicit retry");
+  /* A transient network error keeps the last known data on screen. */
+  assert.match(render, /آخر بيانات محفظتك المعروفة معروضة أد/, "stale data kept visible under a network error");
+});
+
+test("the portfolio never persists its truth to localStorage", () => {
+  /* Scan the whole simple-portfolio block plus the data loader: no direct
+   * localStorage/indexedDB writes of portfolio data (UI preferences
+   * elsewhere are out of scope). */
+  const start = html.indexOf("PORTFOLIO — the simple portfolio (rebuilt from scratch)");
+  assert.ok(start !== -1, "portfolio block found");
+  const end = html.indexOf("function pfpVisible(");
+  const block = html.slice(start, end);
+  assert.doesNotMatch(block, /localStorage\.set/, "no localStorage writes in the block");
+  assert.doesNotMatch(block, /DB\.set\(/, "no indexed-DB writes in the block");
+  const loader = html.slice(html.indexOf("async function loadServerPortfolio("), html.indexOf("function portStats("));
+  assert.doesNotMatch(loader, /localStorage\.set/, "no localStorage writes in the loader");
 });

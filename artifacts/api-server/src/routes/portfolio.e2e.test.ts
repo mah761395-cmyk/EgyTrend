@@ -880,6 +880,120 @@ test("series data is isolated between users", async () => {
     assert.equal(point.heldSymbols, 0);
   }
 });
+/* ═══════════ Simple positions (the simple portfolio model) ═══════════ */
+
+test("simple positions: add, verify totals, edit, delete, re-add, isolation, persistence", async () => {
+  const { MarketDataService, setMarketDataServiceForTest, resetMarketDataServiceForTest } = await import("../lib/market-data/service");
+
+  /* A synthetic scanner that prices COMI only — every other held symbol
+   * must stay unpriced and degrade honestly. */
+  const fakeScanner = {
+    id: "tradingview-scanner",
+    name: "TradingView Scanner",
+    descriptor: () => ({
+      id: "tradingview-scanner", name: "TradingView Scanner", state: "configured" as const,
+      note: "test-only", coverage: ["stock"] as const, externalDisplayConfirmed: true,
+    }),
+    canServe: () => false,
+    getQuotes: async () => ({ quotes: [] }),
+    getDailyOhlc: async () => [],
+    getEgxFullScan: async () => [
+      { type: "stock", sym: "COMI", description: "CIB", close: 10, change: 0, changeAbs: 0, open: 10, high: 10, low: 10, volume: 1_000, marketCap: 100, sector: "بنوك" },
+    ],
+  };
+  setMarketDataServiceForTest(new MarketDataService([fakeScanner as never], []));
+  try {
+    /* Pre-warm the route-level snapshot so pricing resolves from cache —
+     * the 4s production timeout must never decide a test outcome. */
+    const { getStocksSnapshot } = await import("./markets");
+    const warm = await getStocksSnapshot();
+    assert.ok(Array.isArray(warm) && warm.some((row) => row.sym === "COMI"), "the scan is cached before the requests");
+
+    const { jar, userId } = await registerVipUser("01099990021", "Simple Portfolio User");
+
+    /* 1) Add a stock: symbol + quantity + average buy price. */
+    const add = await api("/api/portfolio/positions", jar, { method: "POST", body: JSON.stringify({ symbol: "COMI", quantity: 100, averageCost: 4 }) });
+    assert.equal(add.response.status, 201, "position added");
+    const addBody = add.body as Record<string, unknown>;
+    assert.ok(typeof addBody.id === "string" && (addBody.id as string).length >= 20, "returns the stored row id");
+    const posId = addBody.id as string;
+
+    /* 2) Totals are computed from the verified quote — exact, never invented. */
+    let pf = (await api("/api/portfolio", jar)).body as Record<string, unknown>;
+    let s = summaryOf(pf);
+    const comi = positionOf(pf, "COMI");
+    assert.ok(comi, "the position is listed");
+    assert.equal(comi.quantity, 100);
+    near(comi.averageCost, 4, 0.001, "average cost preserved");
+    assert.equal(comi.legacy, true, "positions-table rows are flagged legacy model");
+    const market = comi.market as Record<string, unknown>;
+    assert.ok(market && typeof market.source === "string" && (market.source as string).length > 0, "verified quote carries a named source");
+    near(market.price, 10, 0.001, "market price from the verified quote");
+    near(comi.marketValue, 100 * 10, 0.05, "value = qty × verified price");
+    near(comi.unrealizedPnl, 100 * (10 - 4), 0.05, "unrealized P/L = qty × (price − cost)");
+    near(comi.weightPct, 100, 0.05, "single held position weighs 100%");
+    near(s.investedCost, 400, 0.05, "cost basis = qty × average cost");
+    near(s.cash, 0, 0.01, "no cash declared");
+    near(s.totalValue, 1_000, 0.05, "total = cash + market value when every held position is priced");
+    assert.deepEqual(s.missingPriceSymbols, [], "no missing prices in this scenario");
+
+    /* 3) Duplicate add → 409, no orphan row. */
+    const dup = await api("/api/portfolio/positions", jar, { method: "POST", body: JSON.stringify({ symbol: "COMI", quantity: 5, averageCost: 5 }) });
+    assert.equal(dup.response.status, 409, "an active position cannot be added twice");
+
+    /* 4) Input validation. */
+    assert.equal((await api("/api/portfolio/positions", jar, { method: "POST", body: JSON.stringify({ symbol: "COMI", quantity: 0.5, averageCost: 4 }) })).response.status, 400, "fractional quantity rejected");
+    assert.equal((await api("/api/portfolio/positions", jar, { method: "POST", body: JSON.stringify({ symbol: "COMI", quantity: 10, averageCost: 0 }) })).response.status, 400, "zero cost rejected");
+    assert.equal((await api("/api/portfolio/positions", jar, { method: "POST", body: JSON.stringify({ symbol: "ZZZZ", quantity: 10, averageCost: 4 }) })).response.status, 400, "unknown symbol rejected");
+
+    /* 5) Edit quantity + cost → totals update. */
+    const edit = await api(`/api/portfolio/positions/${posId}`, jar, { method: "PUT", body: JSON.stringify({ symbol: "COMI", quantity: 140, averageCost: 5 }) });
+    assert.equal(edit.response.status, 200);
+    pf = (await api("/api/portfolio", jar)).body as Record<string, unknown>;
+    s = summaryOf(pf);
+    const edited = positionOf(pf, "COMI");
+    assert.ok(edited, "the position is still listed after the edit");
+    assert.equal(edited.quantity, 140, "edited quantity stored");
+    near(edited.averageCost, 5, 0.001, "edited cost stored");
+    near(s.investedCost, 700, 0.05, "cost basis re-computed");
+    near(s.totalValue, 1_400, 0.05, "total value re-computed from the verified quote");
+
+    /* 6) Isolation: another user can neither modify nor see the position. */
+    const other = await registerVipUser("01099990022", "Simple Portfolio Other");
+    assert.equal((await api(`/api/portfolio/positions/${posId}`, other.jar, { method: "PUT", body: JSON.stringify({ symbol: "COMI", quantity: 1, averageCost: 1 }) })).response.status, 404, "cannot edit another user's position");
+    assert.equal((await api(`/api/portfolio/positions/${posId}`, other.jar, { method: "DELETE" })).response.status, 404, "cannot delete another user's position");
+    const otherPf = (await api("/api/portfolio", other.jar)).body as Record<string, unknown>;
+    assert.equal(positionOf(otherPf, "COMI"), null, "another user's portfolio does not contain the position");
+
+    /* 7) Delete (soft archive) → totals update; the symbol can be re-added. */
+    const del = await api(`/api/portfolio/positions/${posId}`, jar, { method: "DELETE" });
+    assert.equal(del.response.status, 200);
+    pf = (await api("/api/portfolio", jar)).body as Record<string, unknown>;
+    assert.equal(positionOf(pf, "COMI"), null, "the position is gone after delete");
+    s = summaryOf(pf);
+    near(s.investedCost, 0, 0.01, "cost basis back to zero");
+    const re = await api("/api/portfolio/positions", jar, { method: "POST", body: JSON.stringify({ symbol: "COMI", quantity: 50, averageCost: 6 }) });
+    assert.equal(re.response.status, 200, "re-adding an archived symbol restores the row");
+    assert.equal((re.body as Record<string, unknown>).restored, true, "the archived row is restored, not duplicated");
+
+    /* 8) Persistence: survives logout/login in a fresh session. */
+    const logout = await api("/api/user/logout", jar, { method: "POST" });
+    assert.ok(logout.response.status === 200 || logout.response.status === 204, "logout acknowledged");
+    const freshJar: CookieJar = {};
+    const login = await api("/api/user/login", freshJar, { method: "POST", body: JSON.stringify({ phone: "01099990021", password: "SyntheticUserPass1!" }) });
+    assert.equal(login.response.status, 200, "re-login succeeds");
+    pf = (await api("/api/portfolio", freshJar)).body as Record<string, unknown>;
+    const kept = positionOf(pf, "COMI");
+    assert.ok(kept, "the position persisted across sessions");
+    assert.equal(kept.quantity, 50, "quantity persisted");
+    near(kept.averageCost, 6, 0.001, "cost persisted");
+    const rows = await memory.db.select().from(portfolioPositionsTable).where(eq(portfolioPositionsTable.userId, userId));
+    assert.equal(rows.length, 1, "exactly one position row is stored server-side for this user");
+  } finally {
+    resetMarketDataServiceForTest();
+  }
+});
+
 test("a listed EGX symbol outside the curated catalog is accepted when the licensed scanner prices it", async () => {
   const { MarketDataService, setMarketDataServiceForTest, resetMarketDataServiceForTest } = await import("../lib/market-data/service");
 

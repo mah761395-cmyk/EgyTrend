@@ -761,6 +761,112 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .pfp-step-n{width:22px;height:22px;border-radius:50%;background:var(--gd);color:var(--g);font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:var(--mono);}
 .pfp-step-t{color:var(--t2);font-size:10.5px;font-weight:700;}
 .pfp-step-d{color:var(--t5);font-size:8.8px;margin-top:1px;line-height:1.55;}
+/* ─── PORTFOLIO — simple rebuild (nfp) ─────────────────────────────────────
+ * Scoped to .nfp-* only; reuses the site tokens (no new brand values).
+ * Responsive: two-column action grid on desktop, stacked on mobile; the
+ * assets table converts to labelled cards under 640px. */
+.nfp-hero{background:linear-gradient(150deg,var(--upd),rgba(59,130,246,.07) 55%,rgba(7,14,26,0));border:1px solid var(--b1);border-radius:var(--r16);padding:16px 16px 13px;margin-bottom:12px;position:relative;overflow:hidden;}
+.nfp-hero::after{content:"";position:absolute;inset:0;background:radial-gradient(600px 120px at 85% -20%,var(--gd),transparent 70%);pointer-events:none;}
+.nfp-hero-h{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+.nfp-hero-t{color:var(--t1);font-size:14px;font-weight:900;}
+.nfp-hero-d{color:var(--t5);font-size:9.5px;margin-top:2px;}
+.nfp-refresh{background:var(--s2);border:1px solid var(--b1);border-radius:var(--r-full);color:var(--t3);font:700 10.5px var(--sans);padding:5px 12px;cursor:pointer;transition:all .15s;}
+.nfp-refresh:hover{color:var(--t1);border-color:var(--b2);}
+.nfp-hero-total-wrap{margin-top:10px;position:relative;z-index:1;}
+.nfp-hero-total-label{color:var(--t5);font-size:9.5px;font-weight:700;}
+.nfp-total{font-family:var(--mono);font-size:30px;font-weight:900;letter-spacing:.2px;margin-top:3px;line-height:1.2;}
+.nfp-total.dim{color:var(--t3);font-size:23px;}
+.nfp-partial{font-size:11px;color:var(--au);font-weight:700;font-family:var(--sans);}
+.nfp-total-sub{color:var(--t5);font-size:9px;margin-top:5px;line-height:1.6;}
+.nfp-pl{font-family:var(--mono);font-size:13px;font-weight:800;margin-top:6px;}
+.nfp-pl.muted{color:var(--t5);font-family:var(--sans);font-size:10px;font-weight:600;}
+.nfp-pl-pct{font-size:11px;}
+.nfp-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px;position:relative;z-index:1;}
+.nfp-chip{background:rgba(10,16,28,.55);border:1px solid var(--b1);border-radius:var(--r10);padding:5px 10px;font-size:10px;color:var(--t4);display:inline-flex;gap:6px;align-items:center;}
+.nfp-chip b{color:var(--t1);font-family:var(--mono);font-size:11px;font-weight:800;}
+.nfp-chip-warn{border-color:rgba(245,158,11,.35);}
+.nfp-chip-warn b{color:var(--au);}
+.nfp-src{color:var(--t5);font-size:8.8px;margin-top:9px;line-height:1.7;border-top:1px dashed var(--b1);padding-top:8px;position:relative;z-index:1;}
+.nfp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+@media (max-width:860px){.nfp-grid{grid-template-columns:1fr;}}
+.nfp-card{background:var(--s1);border:1px solid var(--b1);border-radius:var(--r14);padding:14px;margin-bottom:12px;}
+.nfp-grid .nfp-card{margin-bottom:0;}
+.nfp-card-h{display:flex;flex-direction:column;gap:2px;margin-bottom:11px;}
+.nfp-card-h.nfp-table-h{flex-direction:row;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+.nfp-card-t{color:var(--t1);font-size:13px;font-weight:800;}
+.nfp-card-d{color:var(--t5);font-size:9.5px;line-height:1.5;}
+.nfp-field{margin-bottom:9px;}
+.nfp-field label{display:block;color:var(--t4);font-size:10px;font-weight:700;margin-bottom:4px;}
+.nfp-in{width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--b1);border-radius:9px;color:var(--t1);font:600 12px var(--sans);padding:9px 10px;outline:none;transition:border-color .15s;}
+.nfp-in::placeholder{color:var(--t5);}
+.nfp-in:focus{border-color:rgba(16,185,129,.5);}
+.nfp-in-mini{padding:6px 8px;font-size:11.5px;width:86px;min-width:64px;}
+.nfp-2col{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+@media (max-width:420px){.nfp-2col{grid-template-columns:1fr;}}
+.nfp-submit{margin-top:3px;width:100%;justify-content:center;padding:10px 14px;font-size:12.5px;border-radius:10px;}
+.nfp-cash-btn{flex:1;padding:9px 10px;font-size:12px;border-radius:10px;}
+.nfp-note{color:var(--t5);font-size:9px;margin-top:8px;line-height:1.65;}
+.nfp-err{color:var(--dn);background:var(--dnd);border:1px solid rgba(248,113,113,.25);border-radius:9px;padding:7px 10px;font-size:10.5px;line-height:1.6;margin-top:8px;}
+.nfp-hint{color:var(--t5);font-size:9px;margin-top:4px;line-height:1.6;min-height:0;}
+.nfp-cash-bal{font-family:var(--mono);font-size:25px;font-weight:900;color:var(--t1);}
+.nfp-cash-cur{font-size:11px;color:var(--t5);font-weight:700;font-family:var(--sans);}
+.nfp-ev-h{color:var(--t4);font-size:10px;font-weight:800;margin-top:12px;border-top:1px dashed var(--b1);padding-top:9px;}
+.nfp-ev{display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid var(--b1);flex-wrap:wrap;}
+.nfp-ev:last-child{border-bottom:none;}
+.nfp-ev-del{margin-inline-start:auto;background:none;border:1px solid var(--b1);border-radius:7px;color:var(--t5);font-size:9.5px;padding:2px 7px;cursor:pointer;}
+.nfp-ev-del:hover{color:var(--dn);border-color:rgba(248,113,113,.4);}
+.nfp-alloc-bar{display:flex;height:15px;border-radius:8px;overflow:hidden;background:var(--s2);gap:2px;}
+.nfp-alloc-seg{min-width:3px;}
+.nfp-alloc-cost{opacity:.55;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.3) 0 4px,transparent 4px 8px);}
+.nfp-alloc-lgd{display:flex;flex-direction:column;gap:5px;margin-top:10px;}
+.nfp-alloc-lg{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--t3);}
+.nfp-dot{width:9px;height:9px;border-radius:3px;flex-shrink:0;}
+.nfp-alloc-name{color:var(--t2);font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nfp-alloc-val{font-family:var(--mono);color:var(--t1);font-size:10.5px;}
+.nfp-alloc-pct{color:var(--t5);font-size:10px;min-width:44px;text-align:left;direction:ltr;}
+.nfp-addjump{padding:6px 12px;font-size:11px;border-radius:9px;}
+.nfp-table-wrap{overflow-x:auto;margin-top:2px;}
+.nfp-table{width:100%;border-collapse:collapse;font-size:11.5px;min-width:640px;}
+.nfp-table th{color:var(--t5);font-size:9.5px;text-align:right;padding:7px 8px;border-bottom:1px solid var(--b1);white-space:nowrap;font-weight:800;}
+.nfp-table td{padding:10px 8px;border-bottom:1px solid var(--b1);vertical-align:middle;text-align:right;}
+.nfp-row:last-child td{border-bottom:none;}
+.nfp-row-name{color:var(--t1);font-weight:800;font-size:11.5px;}
+.nfp-row-sym{color:var(--t5);font-size:9px;margin-top:2px;}
+.nfp-row-price{font-family:var(--mono);color:var(--t1);font-weight:700;}
+.nfp-row-src{color:var(--t5);font-size:8.5px;margin-top:2px;}
+.nfp-noprice{color:var(--au);font-size:10.5px;font-weight:700;}
+.nfp-dash{color:var(--t5);}
+.nfp-actions{white-space:nowrap;text-align:left!important;}
+.nfp-badge{display:inline-block;background:var(--s2);border:1px solid var(--b1);color:var(--t4);border-radius:6px;padding:1px 6px;font-size:8.5px;font-weight:700;margin-inline-end:5px;vertical-align:middle;}
+.nfp-btn-ghost{background:var(--s2);border:1px solid var(--b1);border-radius:8px;padding:5px 9px;color:var(--t3);font-size:10.5px;cursor:pointer;margin-inline-start:4px;font-family:var(--sans);}
+.nfp-btn-ghost:hover{color:var(--t1);border-color:var(--b2);}
+.nfp-btn-danger{background:var(--dnd);border:none;border-radius:8px;padding:5px 9px;color:var(--dn);font-size:10.5px;cursor:pointer;margin-inline-start:4px;font-family:var(--sans);}
+.nfp-btn-danger:hover{background:rgba(248,113,113,.18);}
+.nfp-btn-au{background:var(--g2);border:none;border-radius:8px;padding:5px 10px;color:#fff;font-size:10.5px;font-weight:800;cursor:pointer;margin-inline-start:4px;font-family:var(--sans);}
+.nfp-btn-au:hover{background:var(--g);}
+.nfp-table-note{color:var(--t5);font-size:8.8px;margin-top:9px;line-height:1.65;}
+.nfp-tx{margin-bottom:12px;background:var(--s1);border:1px solid var(--b1);border-radius:var(--r14);overflow:hidden;}
+.nfp-tx>div{padding:0 14px 14px;}
+.nfp-tx-sum{padding:12px 14px;color:var(--t1);font-size:12.5px;font-weight:800;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.nfp-tx-sum::-webkit-details-marker{display:none;}
+.nfp-tx-sum:hover{background:var(--s2);}
+.nfp-tx-hint{color:var(--t5);font-size:9px;font-weight:600;}
+.nfp-empty{text-align:center;padding:24px 16px;}
+.nfp-empty-em{font-size:36px;}
+.nfp-empty-t{color:var(--t1);font-size:15px;font-weight:900;margin-top:9px;}
+.nfp-empty-d{color:var(--t4);font-size:11px;margin-top:7px;line-height:1.9;max-width:480px;margin-left:auto;margin-right:auto;}
+.nfp-foot{color:var(--t5);font-size:9px;line-height:1.8;padding:4px 6px 14px;text-align:center;}
+.nfp-loading{padding:28px 16px;text-align:center;color:var(--t4);font-size:12px;font-weight:700;}
+@media (max-width:640px){
+  .nfp-table{min-width:0;}
+  .nfp-table,.nfp-table thead,.nfp-table tbody,.nfp-table tr,.nfp-table td{display:block;width:100%;}
+  .nfp-table thead{display:none;}
+  .nfp-table tr{border:1px solid var(--b1);border-radius:11px;margin-bottom:9px;padding:4px 2px;background:var(--s2);}
+  .nfp-table td{border:none;padding:5px 10px;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:right;}
+  .nfp-table td::before{content:attr(data-l);color:var(--t5);font-size:9.5px;font-weight:700;flex-shrink:0;}
+  .nfp-actions{text-align:left!important;}
+  .nfp-actions::before{content:none;}
+}
 
 /* ─── UTILS ─── */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:11px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--sans);border:none;transition:all .2s;}
@@ -2895,16 +3001,8 @@ let portfolioData={summary:null,transactions:[],cashEvents:[],settings:{starting
 let portTxFilter={symbol:"",side:"all",from:"",to:""};
 let portTxEditId=null;
 let portReport={status:"idle",data:null,from:"",to:"",range:"month"};
-let portGlossaryOpen=false;
-let portWhatIfPct=5;
 let portCashEdit=null;
-/* Positions table state (search / filter / sort / open detail) — view state
- * only; every figure still comes from the server-rendered portfolio. */
-let portPosSearch="";
-let portPosFilter="held";
-let portPosSort={key:"value",dir:-1};
-let portPosDetail=null;
-let portAllocMode="sector";
+/* Trade-form prefill (symbol handed over when a surface focuses the form). */
 let portAddAssetPrefill=null;
 let priceAlertsState={loaded:false,loading:false,error:"",items:[]};
 let chatHist=[];
@@ -8001,8 +8099,12 @@ function normalizeServerPortfolio(raw){
     const id=String(p.id||"");const sym=String(p.symbol||"").trim().toUpperCase();
     const qty=Number(p.quantity),price=Number(p.averageCost);
     /* qty 0 = fully closed symbol with trade history (kept for its realized
-     * result); held rows always have qty >= 1. */
-    if(!/^[a-z0-9-]{20,80}$/i.test(id)||!/^[A-Z0-9._-]{1,16}$/.test(sym)||!Number.isInteger(qty)||qty<0||qty>1_000_000_000)return [];
+     * result); held rows always have qty >= 1.
+     * Ids: table rows are uuid-like (20-80 chars); ledger-derived rows use
+     * the server's "pos:<symbol>" id — both must pass, or users who hold
+     * stocks through trades see an empty asset list. */
+    const idOk=/^[a-z0-9-]{20,80}$/i.test(id)||/^pos:[a-z0-9._-]{1,16}$/i.test(id);
+    if(!idOk||!/^[A-Z0-9._-]{1,16}$/.test(sym)||!Number.isInteger(qty)||qty<0||qty>1_000_000_000)return [];
     if(qty>0&&(!Number.isFinite(price)||price<=0))return [];
     const m=p.market&&typeof p.market==="object"?p.market:null;
     const market=m&&Number.isFinite(Number(m.price))&&String(m.source||"").trim()?{
@@ -8074,6 +8176,7 @@ async function loadServerPortfolio(force=false){
   }finally{
     clearTimeout(timer);
     if(vipTab==="port")renderVipTab();
+    if(pfpVisible()){const h=pfpHost();if(h)nfpRender(h);}
     updateStats();
   }
 }
@@ -8091,11 +8194,7 @@ function portStats(){
   const pl=cur===null?null:cur-cost;
   return{cost,cur,pl,plPct:pl===null||!cost?null:(pl/cost*100),rows,allPricesVerified};
 }
-function portNews(sym){
-  const s=liveStocks.find(x=>x.sym===sym||x.sym===sym+".CA");
-  const nm=s?.name||"";
-  return allArts.filter(a=>(nm&&nm.length>2&&a.title.includes(nm))||a.title.toUpperCase().includes(sym)).slice(0,3);
-}
+
 /* ═══════════════════ PORTFOLIO CHARTS ═══════════════════
  * Four charts, each tied to a verified input:
  *   • allocation  → current quantity × last licensed price, grouped by sector
@@ -8104,237 +8203,22 @@ function portNews(sym){
  *   • performance → close-to-close change over the same common window
  * No fee is stored per position, so every figure is labelled as before fees.
  */
-const VA_SERIES_CACHE=new Map();
 const PF_HISTORY_INIT={status:"idle",reason:"",missing:[],points:[],cost:0,source:"",asOf:0,startT:0,endT:0,perAsset:[],benchmark:null,days:0};
 let portHistory={...PF_HISTORY_INIT};
 let portHistorySeq=0;
 function resetPortHistory(){portHistorySeq++;portHistory={...PF_HISTORY_INIT};}
 
-/* Batched, read-only daily closes. The ceiling of 64 ids per request is the
- * server's own contract, so larger portfolios are chunked instead of truncated. */
-async function vaFetchSparklines(ids){
-  const unique=[...new Set((ids||[]).filter(id=>canonicalInstrumentId(id)))];
-  const missing=unique.filter(id=>!VA_SERIES_CACHE.has(id));
-  for(let start=0;start<missing.length;start+=64){
-    const chunk=missing.slice(start,start+64);
-    const query=new URLSearchParams({ids:chunk.join(",")});
-    const data=await fetchJsonWithTimeout(`${MARKET_SPARKLINES_API}?${query.toString()}`,12000);
-    if(data?.status!=="ok"||!Array.isArray(data.series))throw new Error("invalid_sparklines");
-    const returned=new Map(data.series.map(item=>[String(item?.instrumentId||""),item]));
-    chunk.forEach(id=>{
-      const item=returned.get(id);
-      const points=Array.isArray(item?.points)?item.points.flatMap(raw=>{
-        const time=String(raw?.time||""),close=Number(raw?.close);
-        const t=Date.parse(`${time}T00:00:00Z`);
-        return /^\d{4}-\d{2}-\d{2}$/.test(time)&&Number.isFinite(close)&&close>0&&Number.isFinite(t)?[{time,t,close}]:[];
-      }):[];
-      const source=item?.source&&typeof item.source==="object"?item.source:null;
-      VA_SERIES_CACHE.set(id,{
-        available:item?.available===true&&points.length>=2,
-        points,
-        source:source?String(source.name||"").slice(0,120):"",
-        asOf:source?Number(source.asOf)||0:0,
-      });
-    });
-  }
-  return VA_SERIES_CACHE;
-}
-async function ensurePortfolioHistory(force=false){
-  if(!portfolio.length)return;
-  if(portHistory.status==="loading")return;
-  if(!force&&portHistory.status!=="idle")return;
-  const seq=++portHistorySeq;
-  const lacking=portfolio.filter(position=>!canonicalInstrumentId(position.instrumentId));
-  if(lacking.length){
-    portHistory={...PF_HISTORY_INIT,status:"unavailable",reason:"missing_instrument",missing:lacking.map(position=>position.sym)};
-    patchPortAnalytics();
-    return;
-  }
-  portHistory={...PF_HISTORY_INIT,status:"loading"};
-  patchPortAnalytics();
-  try{
-    const ids=[...new Set(portfolio.map(position=>position.instrumentId))];
-    const series=await vaFetchSparklines(ids);
-    const mapped=portfolio.map(position=>({position,series:series.get(position.instrumentId)}));
-    const missing=mapped.filter(item=>!item.series?.available).map(item=>item.position.sym);
-    if(missing.length){
-      portHistory={...PF_HISTORY_INIT,status:"unavailable",reason:"insufficient_history",missing};
-      throw new Error("insufficient_history");
-    }
-    /* Only days where EVERY position has a licensed close are comparable to the
-     * current portfolio; a partial day would draw a value that never existed. */
-    let common=null;
-    mapped.forEach(item=>{
-      const days=new Set(item.series.points.map(point=>point.time));
-      common=common?new Set([...common].filter(day=>days.has(day))):days;
-    });
-    const days=[...(common||[])].sort();
-    if(days.length<2){
-      portHistory={...PF_HISTORY_INIT,status:"unavailable",reason:"insufficient_history",missing:[]};
-      throw new Error("insufficient_history");
-    }
-    const lookup=mapped.map(item=>({position:item.position,byDay:new Map(item.series.points.map(point=>[point.time,point.close]))}));
-    const points=days.map(day=>{
-      let total=0;
-      lookup.forEach(entry=>{total+=(entry.byDay.get(day)||0)*entry.position.qty;});
-      return {t:Date.parse(`${day}T00:00:00Z`),y:total};
-    });
-    const first=days[0],last=days[days.length-1];
-    const perAsset=lookup.map(entry=>{
-      const from=entry.byDay.get(first),to=entry.byDay.get(last);
-      return {sym:entry.position.sym,change:from>0?((to-from)/from)*100:null};
-    }).filter(row=>Number.isFinite(row.change)).sort((a,b)=>b.change-a.change);
-    let benchmark=null;
-    try{
-      const bench=await vaFetchSparklines(["egx:EGX30"]);
-      const index=bench.get("egx:EGX30");
-      const indexDays=new Map(index?.available?index.points.map(point=>[point.time,point.close]):[]);
-      const from=indexDays.get(first),to=indexDays.get(last);
-      if(from>0&&to>0)benchmark={sym:"EGX30",change:((to-from)/from)*100};
-    }catch{ /* the benchmark is optional context, never a reason to hide the chart */ }
-    const cost=portfolio.reduce((sum,position)=>sum+position.price*position.qty,0);
-    const sources=[...new Set(portfolio.map(position=>position.market?.source).filter(Boolean))].slice(0,2);
-    const asOf=Math.max(0,...portfolio.map(position=>Number(position.market?.asOf)||0));
-    portHistory={status:"ready",reason:"",missing:[],points,cost,source:sources.join(" + "),asOf,startT:points[0].t,endT:points[points.length-1].t,perAsset,benchmark,days:days.length};
-  }catch(error){
-    if(portHistory.status!=="unavailable")portHistory={...PF_HISTORY_INIT,status:"unavailable",reason:"error"};
-  }
-  if(seq!==portHistorySeq)return;
-  patchPortAnalytics();
-}
-function patchPortAnalytics(){
-  const host=document.getElementById("port-analytics");
-  if(!host)return;
-  host.innerHTML=portAnalyticsBody();
-  vaBindCharts(host);
-}
-function pfMarketFoot(rows){
-  const priced=(rows||[]).filter(row=>row.p?.market);
-  const sources=[...new Set(priced.map(row=>row.p.market.source))].slice(0,2);
-  const asOf=Math.max(0,...priced.map(row=>Number(row.p.market.asOf)||0));
-  return `<b>المصدر:</b> ${sanitize(sources.join(" + ")||"غير متاح")} · <b>آخر تحديث للسعر:</b> ${sanitize(cairoTimestampLabel(asOf))} · ${priced.length} من ${(rows||[]).length} مركز بسعر موثّق`;
-}
 /* byAsset: group by symbol (كل أصل بذاته). Otherwise by the server catalog
  * sector — a grouping label only, never a valuation input. */
-function pfAllocation(stats,byAsset=false){
-  const rows=stats?.rows||[];
-  const priced=rows.filter(row=>row.pr!==null);
-  const skipped=rows.filter(row=>row.pr===null);
-  const groups=new Map();
-  priced.forEach(row=>{
-    const key=byAsset?row.p.sym:(row.p.sector||"غير مصنّف");
-    groups.set(key,(groups.get(key)||0)+row.pr*row.p.qty);
-  });
-  const slices=[...groups.entries()].sort((a,b)=>b[1]-a[1]).map(([label,value],index)=>({label,value,color:VA_PALETTE[index%VA_PALETTE.length]}));
-  return {slices,skipped,total:slices.reduce((sum,slice)=>sum+slice.value,0)};
-}
-function pfHistoryCard(){
-  const history=portHistory;
-  if(history.status==="idle"||history.status==="loading"){
-    return vaCard({
-      icon:"📈",title:"تطور قيمة المحفظة",sub:"إعادة بناء من الإغلاق اليومي المرخّص",
-      body:`<div class="va-empty"><strong>⏳ جارٍ تحميل السجل اليومي المرخّص…</strong>لا يُرسم أي خط حتى تصل نقاط إغلاق حقيقية.</div>`,
-    });
-  }
-  if(history.status!=="ready"){
-    const copy=history.reason==="missing_instrument"
-      ? {title:"لا يمكن إعادة بناء القيمة تاريخيًا",detail:`الرموز التالية بلا معرّف أداة موثّق لدى الخادم: ${(history.missing||[]).join(" · ")}. أضف المركز من كتالوج الأسهم ليصبح له سجل.`}
-      : history.reason==="insufficient_history"
-      ? {title:"السجل اليومي المرخّص لا يغطي كل مراكز المحفظة",detail:`لا تتوفر نقاط إغلاق مشتركة لكل مركز في نفس الأيام${(history.missing||[]).length?` (ناقص: ${history.missing.join(" · ")})`:""}. لن نرسم خطًا من أيام جزئية أو من سعر اليوم الحالي.`}
-      : {title:"تعذّر تحميل السجل اليومي",detail:"لم يتم استخدام بيانات بديلة أو تقديرية. أعد المحاولة بعد قليل."};
-    return vaCard({
-      icon:"📈",title:"تطور قيمة المحفظة",sub:"إعادة بناء من الإغلاق اليومي المرخّص",
-      body:`<div class="va-empty"><strong>${sanitize(copy.title)}</strong>${sanitize(copy.detail)}${history.reason==="error"?`<div style="margin-top:9px;"><button class="btn btn-ghost" style="padding:6px 12px;font-size:10px;" onclick="ensurePortfolioHistory(true)">↻ إعادة المحاولة</button></div>`:""}</div>`,
-    });
-  }
-  const lastPoint=history.points[history.points.length-1];
-  const diff=lastPoint.y-history.cost;
-  const diffPct=history.cost>0?(diff/history.cost)*100:null;
-  return vaCard({
-    icon:"📈",title:"تطور قيمة المحفظة",
-    sub:`قيمة تقديرية معاد بناؤها من الإغلاق اليومي المرخّص · ${vaDaysLabel(history.days)} مشتركة`,
-    body:`<div class="va-kpis">
-        <div class="va-kpi"><label>القيمة (آخر إغلاق)</label><b>${vaMoney(lastPoint.y,0)}</b></div>
-        <div class="va-kpi"><label>التكلفة المدخلة</label><b>${vaMoney(history.cost,0)}</b></div>
-        <div class="va-kpi"><label>الفرق التقديري</label><b style="color:${vaTone(diff)};">${diff>=0?"+":""}${vaFmt(diff,0)} ج</b></div>
-      </div>
-      ${vaLineChart({
-        series:[
-          {label:"قيمة المحفظة (تقديرية)",color:VA_C.g,points:history.points},
-          {label:"التكلفة",color:VA_C.bl,points:[{t:history.startT,y:history.cost},{t:history.endT,y:history.cost}],dashed:true,width:1.5},
-        ],
-        yFmt:value=>vaCompact(value),
-        ariaLabel:`تطور قيمة المحفظة من ${vaShortDate(history.startT)} إلى ${vaShortDate(history.endT)}`,
-      })}
-      <div class="va-note">الرسم يفترض الكميات الحالية في كل يوم، وليس سجلاً لعملياتك. لا يشمل رسوم وسيط أو توزيعات نقدية.${diffPct!==null?` الفرق التقديري ${vaPct(diffPct,2)} من التكلفة.`:""}</div>`,
-    foot:`<b>المصدر:</b> ${sanitize(history.source||"غير متاح")} · <b>آخر إغلاق:</b> ${sanitize(vaShortDate(history.endT))} · <b>سعر السوق لكل مركز:</b> ${sanitize(cairoTimestampLabel(history.asOf))}`,
-  });
-}
-function pfPnlCard(stats){
-  const rows=(stats?.rows||[]).filter(row=>row.pnlEgp!=null).sort((a,b)=>b.pnlEgp-a.pnlEgp);
-  if(!rows.length){
-    return vaCard({
-      icon:"⚖️",title:"الربح والخسارة لكل أصل",sub:"يحتاج سعر سوق موثّقًا لكل مركز",
-      body:vaEmpty("لا يوجد سعر موثّق كافٍ","لا يمكن حساب ربح أو خسارة من دون سعر سوق حقيقي؛ لن نعرض صفرًا وهميًا."),
-    });
-  }
-  const items=rows.map(row=>({
-    label:row.p.sym,
-    labelFull:`${row.p.sym} — ${row.p.sector||"غير مصنّف"} · ${row.pnlEgp>=0?"ربح":"خسارة"} ${vaFmt(Math.abs(row.pnlEgp),0)} ج (${vaPct(row.pnl,2)})`,
-    value:row.pnlEgp,
-    display:`${row.pnlEgp>=0?"+":""}${vaFmt(row.pnlEgp,0)} ج`,
-    color:row.pnlEgp>=0?VA_C.g:VA_C.r,
-  }));
-  if(stats.pl!=null)items.push({
-    label:"الإجمالي",
-    labelFull:"إجمالي المحفظة",
-    value:stats.pl,
-    display:`${stats.pl>=0?"+":""}${vaFmt(stats.pl,0)} ج`,
-    color:stats.pl>=0?VA_C.g:VA_C.r,
-    total:true,
-  });
-  return vaCard({
-    icon:"⚖️",title:"الربح والخسارة لكل أصل",
-    sub:"(السعر الموثّق − متوسط تكلفتك) × الكمية — لكل مركز",
-    badge:stats.plPct!=null?vaPct(stats.plPct,2):null,
-    body:vaSignedBars(items),
-    foot:`${pfMarketFoot(stats.rows)}<br/><span style="color:var(--t5);">الرسوم غير مسجّلة لكل مركز، فكل الأرقام قبل رسوم الوسيط.</span>`,
-  });
-}
-function pfPerformanceCard(){
-  const history=portHistory;
-  if(history.status!=="ready"){
-    return vaCard({
-      icon:"🏁",title:"مقارنة أداء الأصول",sub:"تغير الإغلاق خلال نافذة مشتركة",
-      body:vaEmpty("المقارنة تحتاج سجلاً يوميًا لكل أصل","تظهر المقارنة عندما تتوفر نقاط إغلاق مشتركة لنفس الأيام، ولن تُستبدل ببيانات تقديرية."),
-    });
-  }
-  const items=history.perAsset.map(row=>({
-    label:row.sym,
-    labelFull:`${row.sym} — تغير الإغلاق ${vaPct(row.change,2)}`,
-    value:row.change,
-    display:vaPct(row.change,2),
-    color:row.change>=0?VA_C.g:VA_C.r,
-  }));
-  if(history.benchmark)items.push({
-    label:"EGX30",
-    labelFull:`مؤشر EGX30 المرجعي — ${vaPct(history.benchmark.change,2)}`,
-    value:history.benchmark.change,
-    display:vaPct(history.benchmark.change,2),
-    color:VA_C.bl,
-  });
-  return vaCard({
-    icon:"🏁",title:"مقارنة أداء الأصول",
-    sub:`تغير سعر الإغلاق من ${vaShortDate(history.startT)} إلى ${vaShortDate(history.endT)}${history.benchmark?" · EGX30 مرجع":""}`,
-    body:vaSignedBars(items),
-    foot:`<b>المصدر:</b> ${sanitize(history.source||"غير متاح")} · <b>آخر إغلاق:</b> ${sanitize(vaShortDate(history.endT))}<br/><span style="color:var(--t5);">تغير سعري فقط بلا توزيعات أو رسوم؛ نافذة موحّدة لكل الأصول لتصبح المقارنة عادلة.</span>`,
-  });
-}
-/* ═══════════════════ PORTFOLIO CENTER (transactions-based) ═══════════════
- * Layout: summary → charts → insights → positions → transactions → reports →
- * alerts → settings → glossary. Every figure comes from the server
- * (portfolioData.summary / positions / transactions); the client renders and
- * does what-if math on verified prices only. No demo data, no invented prices.
+
+
+
+
+/* ═══════════════════ PORTFOLIO (simple model) ═══════════════════
+ * The compact trade ledger shared with the simple portfolio page: the full
+ * trade form + filterable list. Every figure comes from the server
+ * (portfolioData.summary / positions / transactions); the client renders
+ * and never invents prices. No demo data, no invented prices.
  */
 function portNum(v){return Number.isFinite(Number(v))?Number(v):null;}
 function portMoney(v,digits=0){return v===null?"—":ltrChange(vaMoney(v,digits));}
@@ -8347,338 +8231,23 @@ function portPlColor(v){return v===null?"var(--t5)":v>=0?"var(--g)":"var(--dn)";
  * (qty·price + buy fees, all time, from the server's totalBuyOutlay).
  * Realized is fee-net; unrealized is a mark-to-market of what is still held.
  * Null whenever any input is missing — a fabricated % is never shown. */
-function portReturnPct(){
-  const s=portfolioData.summary;
-  if(!s)return null;
-  const outlay=Number(s.totalBuyOutlay);
-  if(!Number.isFinite(outlay)||!(outlay>0))return null;
-  if(s.unrealizedPnl===null||s.unrealizedPnl===undefined||!Number.isFinite(s.realizedPnl))return null;
-  return (s.realizedPnl+s.unrealizedPnl)/outlay*100;
-}
-function portKpis(st){
-  const s=portfolioData.summary;
-  if(!s)return"";
-  const missing=s.missingPriceSymbols||[];
-  const total=s.totalValue;
-  const retPct=portReturnPct();
-  const cards=[
-    {label:"قيمة المحفظة الإجمالية",value:portMoney(total),hint:total===null?"يلزم سعر موثّق لكل مركز قائم":"النقدية + قيمة المراكز بسعر السوق",color:total===null?"var(--t4)":"var(--t1)",big:true},
-    {label:"تكلفة المراكز القائمة",value:portMoney(s.investedCost),hint:"الكمية × متوسط التكلفة لكل مركز قائم (قبل أي ربح/خسارة سوقية)",color:"var(--t1)"},
-    {label:"العائد على التكلفة المنصرفة",value:portPct(retPct),hint:"(المحقّق + غير المحقّق) ÷ إجمالي ما صرفته على الشراء شامل عمولاته",color:portPlColor(retPct)},
-    {label:"السيولة النقدية",value:portMoney(s.cash),hint:s.cash<0?"أقل من صفر: عمليات شراء تتجاوز الرصيد النقدي المعلَن":"رصيد بداية + مبيعات − مشتريات (شامل العمولات)",color:"var(--t1)"},
-    {label:"المستثمر في الأسهم",value:portMoney(s.pricedMarketValue),hint:"قيمة المراكز القائمة بالأسعار الموثّقة",color:"var(--t1)"},
-    {label:"الربح/الخسارة غير المحقّق",value:portSigned(s.unrealizedPnl),hint:s.unrealizedPnl===null?"سعر ناقص لمركز قائم":"فرق السعر الحالي عن متوسط التكلفة للمراكز القائمة",color:portPlColor(s.unrealizedPnl)},
-    {label:"الربح/الخسارة المحقّق",value:portSigned(s.realizedPnl),hint:"أرباح البيوع المنفّذة بعد خصم العمولات",color:portPlColor(s.realizedPnl)},
-    {label:"إجمالي العمولات",value:portMoney(s.totalFees),hint:`من ${s.buyCount??0} عملية شراء و${s.sellCount??0} عملية بيع`,color:"var(--t1)"},
-  ];
-  return `<div class="vbox bl" style="background:linear-gradient(135deg,rgba(59,130,246,.07),rgba(16,185,129,.03));padding:11px 10px;">
-    <div class="port-kpis">
-      ${cards.map(c=>`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:8px 9px;">
-        <div style="color:var(--t5);font-size:8.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${sanitize(c.hint)}">${c.label}</div>
-        <div style="color:${c.color};font-weight:900;font-size:${c.big?"15px":"12.5px"};font-family:var(--mono);margin-top:3px;">${c.value}</div>
-        <div style="color:var(--t5);font-size:7.8px;margin-top:2px;line-height:1.45;">${sanitize(c.hint)}</div>
-      </div>`).join("")}
-    </div>
-    ${missing.length?`<div style="color:var(--au);font-size:9px;margin-top:8px;line-height:1.5;">⚠️ بلا سعر موثّق الآن: ${missing.map(sanitize).join(" · ")} — لن نستخدم سعرًا قديمًا أو مخترعًا في الإجمالي.</div>`:""}
-    <div style="color:var(--t5);font-size:8.5px;margin-top:7px;line-height:1.5;">${st.rows.some(r=>r.pr===null)?"":(st.rows.length?`مصدر الأسعار: ${[...new Set(st.rows.filter(r=>r.p.market).map(r=>r.p.market.source))].map(sanitize).join(" · ")}${st.rows[0].p.market?` · ${cairoTimestampLabel(st.rows[0].p.market.asOf)}`:""}`:"لا توجد مراكز قائمة بالأسهم.")}${portfolioData.legacyPositions?" · بعض المراكز من نموذج قديم (كمية + متوسط تكلفة) وتم دمجها دون عمليات.":""}</div>
-  </div>`;
-}
 
-function portInsights(st){
-  const s=portfolioData.summary;
-  const held=portfolio.filter(p=>p.qty>0);
-  if(!held.length){return `<div class="vbox bl"><div class="vbox-title" style="color:#93c5fd;">🧠 تحليل ذكي للمحفظة</div>${vEmpty("💼","لا توجد مراكز قائمة للتحليل","سجّل أول عملية شراء ليظهر هنا تحليل التركيز والمخاطر والمساعدة والعرقلة.")}</div>`;}
-  const priced=held.filter(p=>p.market&&Number.isFinite(p.market.price)&&p.market.source);
-  /* Concentration: server weights when the total is verifiable, otherwise
-   * weights over the priced base with an explicit partial-data note. */
-  let concentrationRows=priced.map(p=>({sym:p.sym,name:p.name,weight:p.weightPct})).filter(r=>r.weight!==null);
-  let partialNote="";
-  if(!concentrationRows.length){
-    const base=st.rows.reduce((sum,r)=>sum+(r.pr!==null?r.pr*r.p.qty:0),0);
-    if(base>0){
-      concentrationRows=priced.map(p=>({sym:p.sym,name:p.name,weight:(p.market.price*p.qty/base)*100}));
-      partialNote="الحصص محسوبة على المراكز المسعّرة فقط لأن إجمالي المحفظة غير مكتمل.";
-    }
-  }
-  concentrationRows.sort((a,b)=>b.weight-a.weight);
-  const top=concentrationRows.slice(0,5);
-  const topBar=top.length?top.map(r=>{
-    const w=Math.max(r.weight,0.8);
-    return `<div class="row" style="gap:7px;margin-top:5px;">
-      <span style="width:44px;flex-shrink:0;color:var(--t3);font-size:10px;font-family:var(--mono);">${sanitize(r.sym)}</span>
-      <div style="flex:1;background:var(--s2);border-radius:5px;height:11px;overflow:hidden;"><div style="width:${Math.min(w,100).toFixed(1)}%;height:100%;background:linear-gradient(90deg,#3b82f6,#60a5fa);border-radius:5px;"></div></div>
-      <span style="width:46px;flex-shrink:0;text-align:left;color:var(--t2);font-size:9.5px;font-family:var(--mono);">${r.weight.toFixed(1)}%</span>
-    </div>`;}).join(""):"";
-  /* Contributors: unrealized P/L per held symbol (who helps, who hurts). */
-  const contrib=st.rows.filter(r=>r.pnlEgp!==null).sort((a,b)=>b.pnlEgp-a.pnlEgp);
-  const contribHtml=contrib.length?contrib.slice(0,6).map(r=>`<div class="row" style="gap:8px;padding:4px 0;border-bottom:1px solid var(--s2);">
-    <span style="flex:1;color:var(--t2);font-size:11px;font-family:var(--mono);">${sanitize(r.p.sym)}${r.p.name?` <span style="color:var(--t5);font-size:9px;">${sanitize(r.p.name)}</span>`:""}</span>
-    <span style="color:${portPlColor(r.pnlEgp)};font-weight:800;font-size:11px;font-family:var(--mono);">${portSigned(r.pnlEgp)}</span>
-  </div>`).join(""):`<div style="color:var(--t5);font-size:10.5px;padding:6px 0;">لا تتوفر أسعار موثّقة الآن لقياس مساهمة كل سهم.</div>`;
-  /* Risk notes: factual observations from the user's own data, never advice. */
-  const notes=[];
-  if(s&&s.topConcentrationPct!==null){
-    if(s.topConcentrationPct>=40)notes.push(`⚠️ تركيز مرتفع: أكبر سهم يمثل ${s.topConcentrationPct.toFixed(1)}% من قيمة المحفظة — تذبذب سهم واحد يؤثر بقوة على الإجمالي.`);
-    else if(s.topConcentrationPct>=25)notes.push(`🔎 تركيز ملحوظ: أكبر سهم يمثل ${s.topConcentrationPct.toFixed(1)}% من الإجمالي.`);
-  }
-  const sectorVals={};
-  priced.forEach(p=>{const k=p.sector||"غير مصنّف";sectorVals[k]=(sectorVals[k]||0)+p.market.price*p.qty;});
-  const sectorTotal=Object.values(sectorVals).reduce((a,b)=>a+b,0);
-  if(sectorTotal>0){
-    const topSector=Object.entries(sectorVals).sort((a,b)=>b[1]-a[1])[0];
-    const sectorPct=(topSector[1]/sectorTotal)*100;
-    if(sectorPct>=50)notes.push(`🏭 ${sectorPct.toFixed(0)}% من قيمة الأسهم المسعّرة في قطاع واحد (${sanitize(topSector[0])}) — أداء القطاع الواحد سيهيمن على محفظتك.`);
-  }
-  if((s&&s.cash!==null)&&s.cash<0)notes.push(`💸 السيولة النقدية سالبة (${vaMoney(s.cash,0)}) لأن عمليات الشراء المسجّلة تتجاوز رصيد البداية المعلَن — عدّل «رصيد البداية» إذا أردت صورة أصدق.`);
-  if(missingSymbols(s).length)notes.push(`📡 ${missingSymbols(s).length} مركز قائم بلا سعر موثّق الآن؛ لا نستخدم بيانات قديمة أو مخترعة، وستكتمل الأرقام عند توفر الأسعار.`);
-  const noteHtml=notes.length?notes.map(n=>`<div style="font-size:10px;line-height:1.7;color:var(--t3);padding:3px 0;">${n}</div>`).join(""):`<div style="font-size:10px;color:var(--t4);">لا ملاحظات غير اعتيادية على توزيعك الحالي — الاستمرار في المتابعة أفضل من أي قرار متسرع.</div>`;
-  /* What-if: pure math on verified prices — scenario, not prediction. */
-  const whatIfBase=totalValueForWhatIf(s,priced);
-  const whatIf=whatIfBase!==null?`<div style="margin-top:9px;">
-      <div class="row between" style="margin-bottom:4px;"><span style="color:var(--t5);font-size:9px;font-weight:700;">سيناريوهات افتراضية (للعرض فقط — ليست توقعًا)</span>
-      <select id="port-whatif-pct" onchange="portWhatIfChanged(this.value)" style="background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--t2);font-size:10px;padding:2px 6px;"><option value="1" ${portWhatIfPct===1?"selected":""}>±1%</option><option value="5" ${portWhatIfPct===5?"selected":""}>±5%</option><option value="10" ${portWhatIfPct===10?"selected":""}>±10%</option></select></div>
-      ${whatIfRows(priced,whatIfBase,`port-whatif-${portWhatIfPct}`).join("")}
-      <div id="port-whatif-res"></div>
-    </div>`:`<div style="color:var(--t5);font-size:9.5px;margin-top:8px;">السيناريوهات تتطلب سعرًا موثّقًا لكل مركز قائم.</div>`;
-  return `<div class="vbox bl">
-    <div class="vbox-title" style="color:#93c5fd;">🧠 تحليل ذكي للمحفظة</div>
-    <div style="color:var(--t5);font-size:9px;margin-bottom:8px;line-height:1.6;">ملاحظات وصفية من بياناتك الفعلية فقط — بلا توقعات ولا توصيات شراء أو بيع.</div>
-    <div class="row" style="gap:10px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:200px;">
-        <div style="color:var(--t4);font-size:10px;font-weight:800;margin-bottom:2px;">تركيز المراكز (نسبة من الإجمالي)</div>
-        ${topBar||`<div style="color:var(--t5);font-size:10px;">يتطلب سعرًا موثّقًا لكل مركز قائم.${partialNote?` ${partialNote}`:""}</div>`}
-        ${partialNote&&!topBar?``:partialNote?`<div style="color:var(--t5);font-size:8.5px;margin-top:5px;">${partialNote}</div>`:""}
-      </div>
-      <div style="flex:1;min-width:200px;">
-        <div style="color:var(--t4);font-size:10px;font-weight:800;margin-bottom:2px;">من يساعد ومن يعرقل (غير المحقّق)</div>
-        ${contribHtml}
-      </div>
-    </div>
-    <div style="margin-top:10px;background:var(--s1);border:1px solid var(--b1);border-radius:9px;padding:8px 9px;">${noteHtml}</div>
-    ${whatIf}
-  </div>`;
-}
-function missingSymbols(s){return s&&Array.isArray(s.missingPriceSymbols)?s.missingPriceSymbols:[];}
-function totalValueForWhatIf(s,priced){
-  if(s&&s.totalValue!==null)return s.totalValue;
-  return null;
-}
-function whatIfRows(priced,total,pctKey){
-  const pct=portWhatIfPct;
-  return priced.map(p=>{
-    const impact=p.market.price*p.qty*(pct/100);
-    return `<div class="row" style="gap:8px;padding:3px 0;border-bottom:1px solid var(--s2);font-size:10.5px;">
-      <span style="width:44px;flex-shrink:0;color:var(--t3);font-family:var(--mono);">${sanitize(p.sym)}</span>
-      <span style="color:var(--t5);flex:1;">${p.market.price.toFixed(2)} ج × ${p.qty} سهم</span>
-      <span style="color:var(--g);font-family:var(--mono);">+${vaMoney(impact,0)}</span>
-      <span style="color:var(--dn);font-family:var(--mono);">−${vaMoney(impact,0)}</span>
-    </div>`;}).concat(total!==null?[[
-      `<div class="row" style="gap:8px;padding:4px 0;font-size:10.5px;font-weight:800;">
-        <span style="width:44px;flex-shrink:0;">الإجمالي</span>
-        <span style="color:var(--t4);flex:1;">إجمالي المحفظة ${vaMoney(total,0)}</span>
-        <span style="color:var(--g);font-family:var(--mono);">+${vaMoney(priced.reduce((sum,p)=>sum+p.market.price*p.qty*(pct/100),0),0)}</span>
-        <span style="color:var(--dn);font-family:var(--mono);">−${vaMoney(priced.reduce((sum,p)=>sum+p.market.price*p.qty*(pct/100),0),0)}</span>
-      </div>`][0]]:[]);
-}
-function portWhatIfChanged(v){
-  portWhatIfPct=Number(v)||5;
-  /* Re-render only the scenario table to keep the rest of the tab intact. */
-  const s=portfolioData.summary;
-  const held=portfolio.filter(p=>p.qty>0);
-  const priced=held.filter(p=>p.market&&Number.isFinite(p.market.price)&&p.market.source);
-  const st=portStats();
-  const res=document.getElementById("port-whatif-res");
-  const total=totalValueForWhatIf(s,priced);
-  if(res)res.innerHTML=whatIfRows(priced,total,portWhatIfPct).join("");
-  void st;
-}
 
-/* ══ Asset table (TASK I item 4): search / sort / filter, row → detail ══
- * Columns: asset | qty | avg cost | last price | remaining cost | current
- * value | P/L (EGP + %) | last updated.
- *  - "last price" comes only from a verified server quote (finite price +
- *    named source); otherwise the cell shows — (never stale/invented).
- *  - sold quantity never counts as held: closed rows show 0 and their
- *    realized result, with cost/value —.
- *  - a row click opens the detail: per-symbol trade history + any available
- *    licensed daily performance (VA_SERIES_CACHE), never an estimate. */
-function portPosRows(){
-  const all=portfolio;
-  const qRaw=portPosSearch.trim();
-  const q=qRaw.toUpperCase();
-  let list=all;
-  if(qRaw)list=list.filter(p=>p.sym.toUpperCase().includes(q)||(p.name||"").includes(qRaw)||(p.sector||"").includes(qRaw));
-  if(portPosFilter==="held")list=list.filter(p=>p.qty>0);
-  else if(portPosFilter==="closed")list=list.filter(p=>p.qty<=0);
-  const num=p=>{
-    const pr=p.market&&Number.isFinite(p.market.price)?p.market.price:null;
-    switch(portPosSort.key){
-      case "sym":return null;
-      case "qty":return p.qty;
-      case "avg":return p.qty>0?p.price:null;
-      case "price":return pr;
-      case "cost":return p.qty>0?p.price*p.qty:null;
-      case "value":return pr!==null&&p.qty>0?pr*p.qty:null;
-      case "pnl":return p.qty>0?(p.unrealizedPnl!==null?p.unrealizedPnl:(pr!==null?(pr-p.price)*p.qty:null)):(p.realizedPnl?null:null);
-      case "updated":return p.market?Number(p.market.asOf)||0:null;
-      default:return null;
-    }
-  };
-  const isStr=portPosSort.key==="sym";
-  return list.slice().sort((a,b)=>{
-    if(isStr)return a.sym.localeCompare(b.sym)*(portPosSort.dir>=0?1:-1);
-    const va=num(a),vb=num(b);
-    const missA=va===null||!Number.isFinite(va)?1:0;
-    const missB=vb===null||!Number.isFinite(vb)?1:0;
-    if(missA!==missB)return missA-missB; /* unknowns always last */
-    if(missA)return 0;
-    return (va-vb)*(portPosSort.dir>=0?1:-1);
-  });
-}
-function portPosSortToggle(key){
-  if(portPosSort.key===key)portPosSort={key,dir:-(portPosSort.dir||-1)};
-  else portPosSort={key,dir:key==="sym"?1:-1};
-  portRenderPositionsTable();
-}
-function portPosTableBody(){
-  const list=portPosRows();
-  const th=(key,label)=>`<th class="scr-th${portPosSort.key===key?(portPosSort.dir>0?" sort-asc":" sort-desc"):""}" onclick="portPosSortToggle('${key}')">${label}</th>`;
-  const rows=list.map(p=>{
-    const pr=p.market&&Number.isFinite(p.market.price)?p.market.price:null;
-    const mv=(pr!==null&&p.qty>0)?pr*p.qty:null;
-    const upnl=p.unrealizedPnl!==null?p.unrealizedPnl:(pr!==null&&p.qty>0?(pr-p.price)*p.qty:null);
-    const upct=p.unrealizedPnlPct!==null?p.unrealizedPnlPct:(pr!==null&&p.price>0?((pr-p.price)/p.price*100):null);
-    const cost=p.qty>0?p.price*p.qty:0;
-    const isDetail=portPosDetail===p.sym;
-    return `<tr class="scr-tr" onclick="portOpenDetail(${safeJsArg(p.sym)})" style="${isDetail?"background:var(--s1);":""}">
-      <td class="scr-td">
-        <div class="scr-sym">${sanitize(p.sym)}${p.legacy?` <span class="vchip" style="font-size:7.5px;">قديم</span>`:""}${p.closed?` <span class="vchip" style="font-size:7.5px;">مغلق</span>`:""}</div>
-        <div class="scr-sname">${sanitize(p.name||p.sector||"")}</div>
-      </td>
-      <td class="scr-td" style="text-align:left;font-family:var(--mono);">${p.qty>0?p.qty.toLocaleString("en"):"0"}</td>
-      <td class="scr-td" style="text-align:left;font-family:var(--mono);">${p.qty>0?p.price.toFixed(2):"—"}</td>
-      <td class="scr-td" style="text-align:left;font-family:var(--mono);color:${pr!==null?"var(--t1)":"var(--t5)"};">${pr!==null?pr.toFixed(2):"—"}</td>
-      <td class="scr-td" style="text-align:left;font-family:var(--mono);">${p.qty>0?vaFmt(cost,0):"0"}</td>
-      <td class="scr-td" style="text-align:left;font-family:var(--mono);color:${mv!==null?"var(--t1)":"var(--t5)"};">${mv!==null?vaFmt(mv,0):"—"}</td>
-      <td class="scr-td" style="text-align:left;font-family:var(--mono);color:${portPlColor(p.qty>0?upnl:null)};">${p.qty>0?(upnl===null?"—":`${portSigned(upnl)}${upct!==null?` <span style="font-size:8.5px;">(${portPct(upct)})</span>`:""}`):(p.realizedPnl?`${portSigned(p.realizedPnl)} محقّق`:"—")}</td>
-      <td class="scr-td" style="text-align:left;color:var(--t5);font-size:9px;">${p.market?cairoTimestampLabel(p.market.asOf):"—"}</td>
-    </tr>`;
-  }).join("");
-  return `<table class="scr-tbl" style="min-width:640px;">
-    <thead><tr>${th("sym","الأصل")}${th("qty","الكمية")}${th("avg","متوسط التكلفة")}${th("price","آخر سعر")}${th("cost","التكلفة المتبقية")}${th("value","القيمة الحالية")}${th("pnl","ربح/خسارة")}${th("updated","التحديث")}</tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
-  ${list.length?"":`<div class="va-note" style="margin-top:8px;">لا نتائج مطابقة للبحث/الفلتر الحالي.</div>`}
-  ${portPosDetailPanel()}
-  <div style="color:var(--t5);font-size:8.5px;margin-top:9px;line-height:1.6;">اضغط على أي صف لعرض تفاصيل الأصل: سجل عملياته وأداؤه المتاح. «آخر سعر» يظهر فقط إذا كان موثّقًا من الخادم (سعر + مصدر + وقت)، وإلا يظهر «—» — لا سعر قديم ولا سعر مخترع.</div>`;
-}
-function portPosDetailPanel(){
-  if(!portPosDetail)return"";
-  const p=portfolio.find(x=>x.sym===portPosDetail);
-  if(!p)return"";
-  const pr=p.market&&Number.isFinite(p.market.price)?p.market.price:null;
-  const mv=(pr!==null&&p.qty>0)?pr*p.qty:null;
-  const upnl=p.unrealizedPnl!==null?p.unrealizedPnl:(pr!==null&&p.qty>0?(pr-p.price)*p.qty:null);
-  const upct=p.unrealizedPnlPct!==null?p.unrealizedPnlPct:(pr!==null&&p.price>0?((pr-p.price)/p.price*100):null);
-  const txs=(portfolioData.transactions||[]).filter(t=>String(t.symbol||"").toUpperCase()===p.sym);
-  const series=canonicalInstrumentId(p.instrumentId)?VA_SERIES_CACHE.get(p.instrumentId):null;
-  let perf;
-  if(series&&series.available){
-    const pts=series.points.map(pt=>({t:pt.t,y:pt.close}));
-    const change=pts.length>=2&&pts[0].y>0?((pts[pts.length-1].y-pts[0].y)/pts[0].y)*100:null;
-    perf=vaLineChart({series:[{label:"الإغلاق اليومي",color:VA_C.bl,points:pts}],yFmt:value=>vaCompact(value),ariaLabel:`الإغلاق اليومي لـ${p.sym}`})
-      +`<div class="va-note">إغلاق يومي مرخّص (${series.points.length} يوم)${change!==null?` · التغير الكلي ${vaPct(change,2)}`:""} · المصدر: ${sanitize(series.source||"غير متاح")}</div>`;
-  }else{
-    perf=`<div class="va-note">لا يتوفر سجل إغلاق يومي مرخّص لهذا الأصل الآن — لن نرسم أداءً تقديريًا.</div>`;
-    if(canonicalInstrumentId(p.instrumentId)&&portHistory.status==="idle")void ensurePortfolioHistory();
-  }
-  const stat=(label,value,color="var(--t1)")=>`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:6px 8px;min-width:0;"><div style="color:var(--t5);font-size:8px;">${label}</div><div style="color:${color};font-weight:800;font-size:11px;font-family:var(--mono);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${sanitize(String(value))}">${value}</div></div>`;
-  const txRows=txs.length?txs.map(t=>{
-    const isSell=t.side==="sell";
-    return `<div class="row" style="gap:6px;padding:5px 0;border-bottom:1px solid var(--s2);align-items:center;flex-wrap:wrap;">
-      <span style="background:${isSell?"var(--dnd)":"var(--gd)"};border-radius:6px;padding:1px 7px;color:${isSell?"var(--dn)":"var(--g)"};font-weight:800;font-size:9px;">${isSell?"بيع":"شراء"}</span>
-      <span style="color:var(--t2);font-size:10.5px;font-family:var(--mono);">${t.quantity} × ${Number(t.price).toFixed(2)} ج</span>
-      ${Number(t.fees)>0?`<span style="color:var(--t5);font-size:8.5px;">عمولة ${Number(t.fees).toFixed(2)} ج</span>`:""}
-      <span style="color:var(--t5);font-size:9px;">${sanitize(String(t.tradeDate))}</span>
-      ${t.realizedPnl!==null&&t.realizedPnl!==undefined?`<span style="color:${portPlColor(Number(t.realizedPnl))};font-family:var(--mono);font-size:9.5px;">${portSigned(Number(t.realizedPnl))} محقّق</span>`:""}
-      <span class="row" style="gap:3px;margin-left:auto;">
-        <button onclick="event.stopPropagation();portEditTx(${safeJsArg(t.id)})" title="تعديل العملية" style="background:var(--s2);border:1px solid var(--b1);border-radius:6px;padding:2px 7px;color:var(--t3);font-size:9.5px;cursor:pointer;">✎</button>
-        <button onclick="event.stopPropagation();portDelTx(${safeJsArg(t.id)})" title="حذف العملية" style="background:var(--dnd);border:none;border-radius:6px;padding:2px 7px;color:var(--dn);font-size:9.5px;cursor:pointer;">✕</button>
-      </span>
-    </div>`;
-  }).join(""):`<div style="color:var(--t5);font-size:10px;padding:8px 0;">${p.legacy?"هذا مركز قديم (نموذج كمية + متوسط تكلفة) — بلا سجل عمليات، ويُدار بالأرشفة فقط.":"لا عمليات مسجّلة لهذا الرمز."}</div>`;
-  return `<div class="vbox bl" id="port-pos-detail" style="border-color:rgba(59,130,246,.35);margin-top:10px;">
-    <div class="row between" style="margin-bottom:9px;align-items:center;flex-wrap:wrap;gap:7px;">
-      <div class="row" style="gap:7px;align-items:center;flex-wrap:wrap;">
-        <span style="background:var(--bld);border:1px solid rgba(59,130,246,.22);border-radius:7px;padding:3px 10px;color:#93c5fd;font-weight:800;font-size:12px;font-family:var(--mono);">${sanitize(p.sym)}</span>
-        ${p.name?`<span style="color:var(--t3);font-size:11px;">${sanitize(p.name)}</span>`:""}
-        ${p.sector?`<span class="vchip" style="font-size:8.5px;">${sanitize(p.sector)}</span>`:""}
-        ${p.closed?`<span class="vchip" style="font-size:8.5px;">مغلق</span>`:""}
-      </div>
-      <button class="btn btn-ghost" style="padding:5px 10px;font-size:10px;" onclick="portCloseDetail()">✕ إغلاق</button>
-    </div>
-    <div class="port-detail-grid">
-      ${stat("الكمية",p.qty>0?String(p.qty):"0 (مغلق)")}
-      ${stat("متوسط التكلفة",p.qty>0?`${p.price.toFixed(2)} ج`:"—")}
-      ${stat("التكلفة المتبقية",p.qty>0?`${vaFmt(p.price*p.qty,0)} ج`:"0")}
-      ${stat("القيمة الحالية",mv!==null?`${vaFmt(mv,0)} ج`:"—",mv===null?"var(--t5)":"var(--t1)")}
-      ${stat("غير المحقّق",upnl===null?"—":`${portSigned(upnl)}${upct!==null?` (${portPct(upct)})`:""}`,portPlColor(upnl))}
-      ${stat("المحقّق",p.realizedPnl?portSigned(p.realizedPnl):"0")}
-      ${stat("العمولات",`${vaFmt(p.totalFees||0,0)} ج`)}
-      ${stat("العمليات",`${p.buyCount||0} شراء / ${p.sellCount||0} بيع`)}
-    </div>
-    <div style="margin-top:9px;color:var(--t4);font-size:10px;line-height:1.7;">
-      ${pr!==null?`آخر سعر موثّق: <b style="color:var(--t1);font-family:var(--mono);">${pr.toFixed(2)} ج</b> · ${sanitize(p.market.source)} · ${cairoTimestampLabel(p.market.asOf)}`:"بلا سعر موثّق الآن — لم يُستخدم أي سعر قديم أو مخترع في الأرقام أعلاه."}
-    </div>
-    <div style="margin-top:11px;">
-      <div class="row between" style="margin-bottom:4px;align-items:center;">
-        <span style="color:var(--t4);font-size:10px;font-weight:800;">سجل عمليات هذا الأصل (${txs.length})</span>
-        ${!p.legacy?`<button class="btn btn-ghost" style="padding:3px 9px;font-size:9.5px;" onclick="portTxFormInit(${safeJsArg(p.sym)})">＋ عملية جديدة</button>`:""}
-      </div>
-      ${txRows}
-    </div>
-    <div style="margin-top:11px;">
-      <div style="color:var(--t4);font-size:10px;font-weight:800;margin-bottom:3px;">الأداء المتاح (إغلاق يومي مرخّص)</div>
-      ${perf}
-    </div>
-    ${p.legacy?`<div style="margin-top:10px;"><button class="btn btn-ghost" style="padding:5px 11px;font-size:10px;color:var(--dn);border-color:var(--dnd);" onclick="delPort(${safeJsArg(p.id)})">أرشفة هذا المركز</button></div>`:""}
-  </div>`;
-}
-function portOpenDetail(sym){
-  portPosDetail=portPosDetail===sym?null:String(sym).toUpperCase();
-  portRenderPositionsTable();
-}
-function portCloseDetail(){
-  portPosDetail=null;
-  portRenderPositionsTable();
-}
-function portPositionsTable(){
-  const held=portfolio.filter(p=>p.qty>0);
-  const closed=portfolio.filter(p=>p.qty<=0);
-  if(!held.length&&!closed.length)return"";
-  return `<div class="vbox bl">
-    <div class="row between" style="margin-bottom:9px;align-items:center;flex-wrap:wrap;gap:7px;">
-      <div class="vbox-title" style="color:#93c5fd;margin:0;">💼 أصول المحفظة (${held.length} قائم${closed.length?` · ${closed.length} مغلق`:""})</div>
-      <div class="row" style="gap:7px;">
-        <button class="btn btn-au" style="padding:5px 11px;font-size:10.5px;" onclick="portAddAssetFocus()">＋ إضافة أصل</button>
-        <button class="btn btn-ghost" style="padding:4px 10px;font-size:10.5px;" onclick="loadServerPortfolio(true)">↻ تحديث</button>
-      </div>
-    </div>
-    <div class="row" style="gap:7px;margin-bottom:9px;flex-wrap:wrap;">
-      <input class="mini-in" id="port-pos-search" placeholder="بحث: رمز / اسم / قطاع" value="${sanitize(portPosSearch)}" oninput="portPosSearch=this.value;portRenderPositionsTable()" style="flex:1.4;min-width:140px;"/>
-      <select class="mini-in" onchange="portPosFilter=this.value;portRenderPositionsTable()" style="flex:1;min-width:90px;" aria-label="فلتر المراكز">
-        <option value="held" ${portPosFilter==="held"?"selected":""}>قائم</option>
-        <option value="closed" ${portPosFilter==="closed"?"selected":""}>مغلق</option>
-        <option value="all" ${portPosFilter==="all"?"selected":""}>الكل</option>
-      </select>
-    </div>
-    <div class="scr-tbl-wrap"><div id="port-pos-table">${portPosTableBody()}</div></div>
-  </div>`;
-}
-function portRenderPositionsTable(){
-  const host=document.getElementById("port-pos-table");
-  if(host){host.innerHTML=portPosTableBody();vaBindCharts(host);}
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function portFilteredTx(){
   let list=portfolioData.transactions||[];
@@ -8758,241 +8327,469 @@ function portTransactionsSection(){
   </div>`;
 }
 
-function portReportSection(){
-  const ranges=[["day","اليوم"],["week","الأسبوع"],["month","الشهر"],["custom","مخصص"]];
-  let reportBody;
-  if(portReport.status==="loading")reportBody=vLoading("جارٍ إعداد التقرير من سجل العمليات...");
-  else if(portReport.status==="error")reportBody=`<div style="color:var(--dn);font-size:10.5px;">${sanitize(portReport.error||"تعذر إعداد التقرير")}</div>`;
-  else if(portReport.status==="ready"&&portReport.data){
-    const d=portReport.data;
-    const days=d.byDay||[];
-    reportBody=`
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px;">
-        <div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:6px 8px;"><div style="color:var(--t5);font-size:8px;">ربح/خسارة محقّقة</div><div style="color:${portPlColor(d.realizedPnl)};font-weight:800;font-size:11.5px;font-family:var(--mono);">${portSigned(d.realizedPnl)}</div></div>
-        <div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:6px 8px;"><div style="color:var(--t5);font-size:8px;">عمولات الفترة</div><div style="color:var(--t2);font-weight:800;font-size:11.5px;font-family:var(--mono);">${vaMoney(d.fees||0)}</div></div>
-        <div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:6px 8px;"><div style="color:var(--t5);font-size:8px;">عدد العمليات</div><div style="color:var(--t2);font-weight:800;font-size:11.5px;font-family:var(--mono);">${(d.buyCount||0)+(d.sellCount||0)} <span style="color:var(--t5);font-size:8.5px;">(${d.buyCount||0} شراء / ${d.sellCount||0} بيع)</span></div></div>
-      </div>
-      ${days.length?`<div style="max-height:190px;overflow:auto;">${days.map(day=>`<div class="row" style="gap:8px;padding:4px 0;border-bottom:1px solid var(--s2);font-size:10px;">
-        <span style="width:74px;flex-shrink:0;color:var(--t3);font-family:var(--mono);">${sanitize(day.date)}</span>
-        <span style="flex:1;color:var(--t5);">${day.buyCount||0} شراء · ${day.sellCount||0} بيع · عمولة ${vaMoney(day.fees||0)}</span>
-        <span style="color:${portPlColor(day.realizedPnl)};font-family:var(--mono);font-weight:700;">${portSigned(day.realizedPnl)}</span>
-      </div>`).join("")}</div>`:`<div style="color:var(--t5);font-size:10px;padding:6px 0;">لا عمليات في هذه الفترة.</div>`}
-      ${d.allTime?`<div style="color:var(--t5);font-size:8.5px;margin-top:7px;line-height:1.5;">المجموع الكلي (كل الفترات): محقّق ${portSigned(d.allTime.realizedPnl)} · عمولات ${vaMoney(d.allTime.fees||0)} · ${d.allTime.buyCount||0} شراء / ${d.allTime.sellCount||0} بيع.</div>`:""}`;
-  }
-  else reportBody=`<div style="color:var(--t5);font-size:10.5px;padding:8px 0;">اختر فترة ثم «إعداد التقرير» — يلخّص الخادم عملياتك في الفترة: الربح المحقّق والعمولات وعدد العمليات.</div>`;
-  return `<div class="vbox bl">
-    <div class="vbox-title" style="color:#93c5fd;">📊 تقرير الفترة</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;">
-      ${ranges.map(([k,l])=>`<button class="btn ${portReport.range===k?"btn-au":"btn-ghost"}" style="padding:6px 4px;font-size:10.5px;" onclick="portReportSetRange('${k}')">${l}</button>`).join("")}
-    </div>
-    <div class="p-inputs">
-      <input class="mini-in" id="port-rep-from" type="date" value="${sanitize(portReport.from)}" onchange="portReport.range='custom'" style="flex:1;"/>
-      <input class="mini-in" id="port-rep-to" type="date" value="${sanitize(portReport.to)}" onchange="portReport.range='custom'" style="flex:1;"/>
-    </div>
-    <button class="btn btn-bl btn-full" style="margin-top:8px;padding:7px;font-size:11.5px;border-radius:9px;" onclick="portReportApply()">📋 إعداد التقرير</button>
-    <div style="margin-top:8px;">${reportBody}</div>
-    <div style="color:var(--t5);font-size:8.5px;margin-top:8px;line-height:1.6;">التقرير يعتمد على تواريخ عملياتك المسجّلة والربح المحقّق من البيوع والعمولات. لا توجد بيانات توزيعات مرخّصة بعد، لذلك لا نضيف أرقام توزيعات؛ وأي فترة بدون عمليات تُعرض صفرية بلا بيانات مخترعة.</div>
-  </div>`;
-}
 
-function portPortfolioAlertsSection(){
-  const items=(priceAlertsState.items||[]).filter(a=>a.symbol==="PORTFOLIO"||a.symbol==="CONCENTRATION");
-  const list=items.length?`<div style="margin-top:8px;">${items.map(a=>{
-    const unit=a.condition==="concentration_above"?"%":" ج";
-    const label=a.condition==="portfolio_value_above"?"قيمة المحفظة ≥":a.condition==="portfolio_value_below"?"قيمة المحفظة ≤":"حصة أكبر سهم ≥";
-    return `<div class="p-row" style="gap:7px;"><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-family:var(--mono);">${label} ${Number(a.targetValue).toFixed(0)}${unit}</div><div style="color:var(--t5);font-size:9px;margin-top:2px;">${a.status==="triggered"?"تم التحقق ✓":"نشط — يتحقق الخادم دوريًا من أسعار موثّقة"}</div></div>${a.status==="active"?`<button onclick='portAlertDel(${safeJsArg(a.id)})' style="background:none;border:none;color:var(--dn);font-size:14px;cursor:pointer;">✕</button>`:""}</div>`;}).join("")}</div>`
-    :`<div style="color:var(--t5);font-size:10px;margin-top:8px;">لا تنبيهات على قيمة المحفظة أو تركيزها بعد.</div>`;
-  return `<div class="vbox bl">
-    <div class="vbox-title" style="color:#93c5fd;">🔔 تنبيهات المحفظة</div>
-    <div style="color:var(--t5);font-size:9px;margin-bottom:8px;line-height:1.6;">نفس نظام تنبيهات الأسعار الحالي: يتحقق الخادم من قيمة محفظتك (النقدية + قيمة المراكز بأسعار موثّقة) أو حصة أكبر سهم، ويعرّفك عند تحقق الشرط. التنبيه الوصفي لا يعني توصية.</div>
-    <div class="p-inputs" style="flex-wrap:wrap;">
-      <select class="mini-in" id="pfa-cond" style="flex:1.4;min-width:120px;">
-        <option value="portfolio_value_above">قيمة المحفظة ≥</option>
-        <option value="portfolio_value_below">قيمة المحفظة ≤</option>
-        <option value="concentration_above">حصة أكبر سهم ≥</option>
-      </select>
-      <input class="mini-in" id="pfa-target" type="number" min="0" step="1" placeholder="القيمة (ج) أو النسبة (%)" style="flex:1.2;min-width:90px;"/>
-      <button class="add-btn" onclick="portAlertAdd()" title="إضافة تنبيه">＋</button>
-    </div>
-    ${list}
-    <div style="color:var(--t5);font-size:8.5px;margin-top:8px;">لتنبيهات سعر سهم بعينه استخدم لوحة «تنبيهات الأسعار» في تبويب التنبيهات.</div>
-  </div>`;
-}
 
-function portSettingsSection(){
-  const s=portfolioData.settings||{startingCash:0};
-  return `<div class="vbox bl">
-    <div class="vbox-title" style="color:#93c5fd;">⚙️ إعدادات المحفظة</div>
-    <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;">
-      <div style="flex:1;min-width:130px;">
-        <div style="color:var(--t3);font-size:11px;font-weight:700;">رصيد البداية النقدي (بالجنيه)</div>
-        <div style="color:var(--t5);font-size:9px;margin-top:2px;line-height:1.5;">النقدي الحالي = رصيد البداية + ناتج المبيعات − تكلفة المشتريات (شامل العمولات). عدّله ليعكس رصيدك الحقيقي.</div>
-      </div>
-      ${portCashEdit===null?`<button class="btn btn-ghost" style="padding:6px 12px;font-size:11px;" onclick="portCashEdit=Number((portfolioData.settings||{}).startingCash)||0;portRenderSettings()">✎ تعديل</button>`
-        :`<span class="row" style="gap:6px;"><input class="mini-in" id="port-cash-in" type="number" min="0" step="1" value="${sanitize(String(portCashEdit))}" style="width:120px;"/>
-        <button class="btn btn-au" style="padding:6px 12px;font-size:11px;" onclick="portSetCash()">حفظ</button>
-        <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px;" onclick="portCashEdit=null;portRenderSettings()">إلغاء</button></span>`}
-    </div>
-  </div>`;
-}
 
-function portGlossarySection(){
-  const items=[
-    ["متوسط التكلفة","متوسط ما دفعتة فعلًا لكل سهم بعد كل عمليات الشراء (تشمل العمولة). عند البيع يبقى متوسط المراكز المتبقية كما هو، وتُحتسب ربحية البيع من هذا المتوسط."],
-    ["الربح المحقّق","الربح/الخسارة الفعلي من أسهم بعتَها: (سعر البيع − متوسط التكلفة) × الكمية − العمولة. لا يتغير بعد البيع."],
-    ["الربح غير المحقّق","فرق قيمة أسهمك الحالية (بسعر السوق) عن متوسط تكلفتها. يتغير مع السعر وقد يختفي إذا عدت السهم."],
-    ["السيولة النقدية","النقد المتبقي: رصيد البداية + عائدات البيع − إنفاق الشراء. سالبها يعني أن المشتريات تجاوزت الرصيد المعلَن."],
-    ["الحصة / التركيز","نسبة قيمة سهم أو قطاع من إجمالي المحفظة. تركيز مرتفع يعني أن حركة ورقة واحدة تؤثر كثيرًا على إجمالك."],
-    ["التكلفة المستثمرة","قيمة مراكزك القائمة حسب متوسط التكلفة (قبل أي ربح أو خسارة سوقية)."],
-    ["التكلفة المتبقية","الكمية المتبقية × متوسط التكلفة — القيمة التي لا تزال مثبتة في أسهمك دون أي ربح أو خسارة سوقية."],
-    ["العائد على التكلفة المنصرفة","نسبة إجمالي الربح (المحقّق + غير المحقّق) إلى إجمالي ما صرفته على شراء الأسهم (الكمية × السعر + عمولات الشراء) طوال الفترة. يتغير مع الأسعار، ويُخفى (—) عند نقص أي من أرقامه — لا نسبًا مقدَّرة."],
-  ];
-  return `<div class="vbox bl">
-    <button class="btn btn-ghost btn-full" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;font-size:12px;" onclick="portGlossaryToggle()">
-      <span>📖 شرح المؤشرات (للمبتدئين)</span>
-      <span style="font-size:10px;">${portGlossaryOpen?"إخفاء ▲":"عرض ▼"}</span>
-    </button>
-    ${portGlossaryOpen?`<div style="margin-top:9px;">${items.map(([t,d])=>`<div style="padding:7px 0;border-bottom:1px solid var(--s2);"><div style="color:var(--t2);font-size:11px;font-weight:800;">${t}</div><div style="color:var(--t5);font-size:10px;margin-top:3px;line-height:1.7;">${d}</div></div>`).join("")}</div>`:""}
-  </div>`;
-}
 
-function portAnalyticsBody(){
-  const stats=portStats();
-  const byAsset=portAllocMode==="asset";
-  const allocation=pfAllocation(stats,byAsset);
-  const priced=stats.rows.filter(row=>row.pr!==null);
-  const allocationCard=vaCard({
-    icon:"🧭",title:byAsset?"توزيع المحفظة حسب الأصول":"توزيع المحفظة حسب القطاع",
-    sub:"قيمة المركز بالجنيه = الكمية × آخر سعر سوق موثّق",
-    badgeHtml:`<span class="row" style="gap:0;border:1px solid var(--b1);border-radius:8px;overflow:hidden;">
-        <button onclick="portAllocToggle('sector')" style="background:${!byAsset?"var(--bld)":"var(--s1)"};border:none;padding:4px 9px;font-size:9.5px;font-weight:700;cursor:pointer;color:${!byAsset?"#93c5fd":"var(--t4)"};">القطاع</button>
-        <button onclick="portAllocToggle('asset')" style="background:${byAsset?"var(--bld)":"var(--s1)"};border:none;padding:4px 9px;font-size:9.5px;font-weight:700;cursor:pointer;color:${byAsset?"#93c5fd":"var(--t4)"};">الأصل</button>
-      </span>`,
-    body:allocation.slices.length
-      ? `${vaDonut({slices:allocation.slices,centerLabel:"القيمة",centerValue:vaFmt(allocation.total,0),valueFmt:value=>vaMoney(value,0),ariaLabel:byAsset?"توزيع قيمة المحفظة على الأصول":"توزيع قيمة المحفظة على القطاعات"})}
-        ${allocation.skipped.length?`<div class="va-note">⚠️ ${allocation.skipped.length} مركز بلا سعر موثّق مستبعَد من التوزيع: ${sanitize(allocation.skipped.map(row=>row.p.sym).join(" · "))}</div>`:""}`
-      : vaEmpty("لا يوجد مركز بسعر موثّق","التوزيع يحتاج سعر سوق حقيقيًا لكل مركز؛ لا نوزّع بالتساوي ولا بالسعر المدخل يدويًا."),
-    foot:pfMarketFoot(stats.rows),
-  });
-  return `${allocationCard}${pfCostVsMarketCard(stats)}${pfHistoryCard()}${pfPnlCard(stats)}${pfPerformanceCard()}`;
-}
-function portAllocToggle(mode){
-  portAllocMode=mode==="asset"?"asset":"sector";
-  const host=document.getElementById("port-analytics");
-  if(host){host.innerHTML=portAnalyticsBody();vaBindCharts(host);}
-}
+
+
+
+
+
+
 /* Cost basis vs current market value, per held position: two bars per row
  * (cost = qty × average cost; market = qty × last verified price) scaled to
  * the largest of the pair set, so the gap between them is the visible P/L.
  * No verified price → honest empty card, never a drawn estimate. */
-function pfCostVsMarketCard(stats){
-  const rows=(stats?.rows||[]).filter(row=>row.pr!==null);
-  if(!rows.length){
-    return vaCard({
-      icon:"🧮",title:"التكلفة مقابل القيمة السوقية",sub:"لكل مركز قائم",
-      body:vaEmpty("لا توجد مراكز مسعّرة","الرسم يحتاج سعرًا موثّقًا لكل مركز قائم؛ لن نرسم ببيانات تقديرية أو قديمة."),
-    });
-  }
-  const max=Math.max(...rows.map(row=>Math.max(row.p.price*row.p.qty,row.pr*row.p.qty)),1e-9);
-  const totalCost=rows.reduce((sum,row)=>sum+row.p.price*row.p.qty,0);
-  const totalMv=rows.reduce((sum,row)=>sum+row.pr*row.p.qty,0);
-  const body=rows.map(row=>{
-    const cost=row.p.price*row.p.qty,mv=row.pr*row.p.qty,diff=mv-cost;
-    return `<div class="pf-cmp-row" title="${sanitize(row.p.sym)}: تكلفة ${vaFmt(cost,0)} ج · قيمة سوقية ${vaFmt(mv,0)} ج">
-      <div class="va-bar-l" title="${sanitize(row.p.name||row.p.sym)}">${sanitize(row.p.sym)}</div>
-      <div class="pf-cmp-track">
-        <div class="pf-cmp-fill pf-cmp-cost" style="width:${(cost/max*100).toFixed(2)}%"></div>
-        <div class="pf-cmp-fill pf-cmp-mv" style="width:${(mv/max*100).toFixed(2)}%;background:${diff>=0?"rgba(16,185,129,.85)":"rgba(248,113,113,.85)"}"></div>
-      </div>
-      <div class="pf-cmp-v"><span style="color:#60a5fa;">${vaFmt(cost,0)} ج</span><br/><span style="color:${diff>=0?"var(--g)":"var(--dn)"};">${vaFmt(mv,0)} ج (${diff>=0?"+":""}${vaFmt(diff,0)})</span></div>
-    </div>`;
-  }).join("")+`
-    <div class="pf-cmp-row" style="border-top:1px solid var(--b2);margin-top:4px;padding-top:6px;">
-      <div class="va-bar-l" style="font-weight:800;color:var(--t2);">الإجمالي</div>
-      <div></div>
-      <div class="pf-cmp-v"><span style="color:#60a5fa;font-weight:800;">${vaFmt(totalCost,0)} ج</span><br/><span style="color:${totalMv-totalCost>=0?"var(--g)":"var(--dn)"};font-weight:800;">${vaFmt(totalMv,0)} ج (${totalMv-totalCost>=0?"+":""}${vaFmt(totalMv-totalCost,0)})</span></div>
-    </div>
-    <div style="display:flex;gap:12px;margin-top:7px;flex-wrap:wrap;">
-      <span class="va-lg"><i style="background:rgba(96,165,250,.8);"></i>التكلفة (متوسط الشراء × الكمية)</span>
-      <span class="va-lg"><i style="background:rgba(16,185,129,.85);"></i>القيمة السوقية (السعر الموثّق × الكمية)</span>
-    </div>`;
-  return vaCard({
-    icon:"🧮",title:"التكلفة مقابل القيمة السوقية",
-    sub:"شريطان لكل مركز: ما دفعته فيه مقابل قيمته الآن — الفرق هو ربح/خسارة غير المحقّق",
-    body,
-    foot:pfMarketFoot(stats.rows),
-  });
+
+/* ══════════════ PORTFOLIO — the simple portfolio (rebuilt from scratch) ══════════════
+ * A practical portfolio, not an investment calculator: add the stocks you own
+ * (symbol or name, quantity, average buy price), keep your cash balance, and
+ * see the total value, the allocation and the P/L.
+ *
+ * The server is the single source of truth (per-user, persisted across
+ * logouts). The client only renders what the server returns: every price
+ * shown comes from a verified server quote (price + named source + asOf);
+ * without one the row shows «بلا سعر» / «—» — never a stale or invented
+ * value. Positions built from the old trade ledger keep working: they are
+ * managed through the compact trade log below the table. */
+let nfpEditPos=null;
+let nfpBusy={add:false,cash:false};
+let nfpTimer=null;
+/* Plain-money formatters without the house "ج" unit, so a single explicit
+ * "ج.م" can be shown next to the number (portMoney already ends in "ج"). */
+function nfpMoney(v){return v===null||v===undefined?"—":vaFmt(v,0)+" ج.م";}
+function nfpMoneySigned(v){return v===null||v===undefined?"—":ltrChange((v>=0?"+":"")+vaFmt(Math.abs(v),0)+" ج.م");}
+
+function nfpVisibleHost(){
+  if(pfpVisible()){const h=pfpHost();if(h)return h;}
+  if(vipTab==="port"){const b=document.getElementById("vip-body");if(b)return b;}
+  return null;
+}
+function nfpRerenderHost(){const h=nfpVisibleHost();if(h)nfpRender(h);}
+function nfpEnsureTimer(){
+  if(nfpTimer)return;
+  nfpTimer=setInterval(()=>{
+    if(!U||!nfpVisibleHost())return;
+    void loadServerPortfolio(true);
+  },60000);
 }
 function vBuildPort(b){
-  if(!U){
-    b.innerHTML=`<div class="vbox bl"><div class="vbox-title" style="color:#93c5fd;">💼 محفظتي</div><div class="vempty"><div style="font-size:28px;">🔐</div><div style="color:var(--dn);font-weight:700;margin-top:6px;">لم تعد مسجّل الدخول</div><div style="color:var(--t5);font-size:10.5px;margin-top:5px;">انتهت جلسة الدخول أو أصبحت غير صالحة. سجّل الدخول مرة أخرى لمتابعة محفظتك.</div><button class="btn btn-au" style="margin-top:10px;padding:8px 13px;" onclick="openAuthModal('login')">🔐 سجّل الدخول الآن</button><button class="btn btn-ghost" style="margin-top:10px;padding:8px 13px;" onclick="loadServerPortfolio(true)">↻ إعادة المحاولة</button></div></div>`;
+  if(!U){b.innerHTML=pfpIntro({loggedOut:true});return;}
+  if(!(U.plan==="vip"||U.plan==="admin")){b.innerHTML=pfpIntro({loggedOut:false});return;}
+  nfpRender(b);
+  nfpEnsureTimer();
+  if(!portfolioState.loaded&&!portfolioState.loading&&!portfolioState.error)void loadServerPortfolio();
+}
+function nfpAfterMutation(){
+  portfolioState={...portfolioState,error:""};
+  void loadServerPortfolio(true);
+}
+function nfpRefresh(){void loadServerPortfolio(true);}
+function nfpFocusAdd(){
+  const c=document.getElementById("nfp-add-card");
+  if(c)c.scrollIntoView({behavior:"smooth",block:"center"});
+  setTimeout(()=>{const el=document.getElementById("nfp-sym");if(el)el.focus();},350);
+}
+function nfpOpenTxLog(){
+  const d=document.getElementById("nfp-tx-wrap");
+  if(d){d.open=true;d.scrollIntoView({behavior:"smooth",block:"center"});}
+}
+function nfpRender(host){
+  const err=portfolioState.error;
+  if(err==="login_required"){
+    host.innerHTML=authGateHtml("login",()=>{portfolioState={...portfolioState,error:"",loaded:false};void loadServerPortfolio(true);});
     return;
   }
-  if(portfolioState.loading){b.innerHTML=vLoading("جارٍ تحميل محفظتك من الخادم...");return;}
-  let errBanner="";
-  if(portfolioState.error){
-    const errKind=portfolioState.error;
-    const portMsg=errKind==="login_required"?{icon:"🔐",t:"لم تعد مسجّل الدخول",d:"انتهت جلسة الدخول. سجّل الدخول مرة أخرى لمتابعة محفظتك."}
-      :errKind==="vip_required"?{icon:"⭐",t:"اشتراك VIP غير فعّال",d:"يعرض الخادم بيانات المحفظة فقط بعد التحقق من اشتراك VIP فعّال. جدّد الاشتراك للمتابعة."}
-      :errKind==="server_error"?{icon:"⚠️",t:"تعذّر التحقق من الخادم الآن",d:"خطأ مؤقت في الخادم وليس نهاية اشتراكك — أعد المحاولة بعد لحظات."}
-      :{icon:"⚠️",t:errKind,plain:true,d:""};
-    const keepNote=portfolio.length?`<div style="color:var(--t5);font-size:9.5px;margin-top:7px;">⬇️ آخر بيانات محفظتك المعروفة معروضة أدناه — لم يتم تعديلها أو حذفها.</div>`:"";
-    errBanner=`<div class="vbox bl" style="border-color:${errKind==="server_error"?"var(--b1)":"var(--dnd)"}"><div class="vbox-title" style="color:#93c5fd;">💼 محفظتي</div><div class="vempty" style="padding:14px 10px 4px;"><div style="font-size:28px;">${portMsg.icon}</div><div style="color:${errKind==="server_error"?"var(--t1)":"var(--dn)"};font-weight:700;margin-top:6px;">${portMsg.plain?sanitize(errKind==="login_required"||errKind==="vip_required"||errKind==="server_error"?"":errKind)||portMsg.t:portMsg.t}</div><div style="color:var(--t5);font-size:10.5px;margin-top:5px;">${portMsg.plain?"":portMsg.d}</div>${errKind==="login_required"?'<button class="btn btn-au" style="margin-top:10px;padding:8px 13px;" onclick="openAuthModal(\'login\')">🔐 سجّل الدخول الآن</button>':''}${errKind==="vip_required"?'<button class="btn btn-au" style="margin-top:10px;padding:8px 13px;" onclick="openSub()">⭐ جدّد اشتراكك</button>':''}<button class="btn btn-ghost" style="margin-top:10px;padding:8px 13px;" onclick="portfolioState={...portfolioState,error:'',loaded:false};loadServerPortfolio(true)">↻ إعادة المحاولة</button>${keepNote}</div></div>`;
-    if(!portfolio.length){b.innerHTML=errBanner;return;}
+  if(err==="vip_required"){
+    host.innerHTML=authGateHtml("vip",()=>{portfolioState={...portfolioState,error:"",loaded:false};void loadServerPortfolio(true);});
+    return;
   }
-  if(!portfolioState.loaded){b.innerHTML=vLoading("جارٍ تحميل محفظتك من الخادم...");loadServerPortfolio();return;}
-  const st=portStats();
-  const hasTrades=(portfolioData.transactions||[]).length>0;
-  const isEmpty=!portfolio.length&&!hasTrades;
-  b.innerHTML=`
-    ${errBanner}
-    ${portfolioState.loaded?`<div class="vbox bl" style="padding:10px 12px;">
-      <div class="row between" style="align-items:center;flex-wrap:wrap;gap:7px;">
-        <div>
-          <div class="vbox-title" style="color:#93c5fd;margin:0;">💼 محفظتي</div>
-          <div style="color:var(--t5);font-size:8.8px;margin-top:3px;">بياناتك محفوظة في الخادم ومفصولة تمامًا عن أي مستخدم آخر</div>
-        </div>
-        <button class="btn btn-au" style="padding:7px 13px;font-size:11.5px;" onclick="portAddAssetFocus()">＋ إضافة أصل</button>
-      </div>
-    </div>`:""}
-    ${portfolio.length?portKpis(st):""}
-    ${isEmpty?`
-    <div class="vbox bl">
-      <div style="text-align:center;padding:18px 0 14px;"><div style="font-size:30px;">💼</div><div style="color:var(--t1);font-weight:800;font-size:14px;margin-top:7px;">مركز محفظتك فارغ</div><div style="color:var(--t5);font-size:10.5px;margin-top:5px;line-height:1.8;max-width:420px;margin-left:auto;margin-right:auto;">سجّل أول عملية شراء أو بيع (الكمية والسعر والعمولة والتاريخ) وسيُبنى كل شيء تلقائيًا: متوسط التكلفة، الربح المحقّق وغير المحقّق، السيولة، التركيز والتقارير. الأسعار والقيمة تُحتسب في الخادم من مصادر موثّقة فقط.</div><button class="btn btn-au" style="margin-top:11px;padding:8px 16px;font-size:12px;" onclick="portAddAssetFocus()">＋ إضافة أصل</button></div>
-    </div>`:""}
-    ${portfolio.length?`<div id="port-analytics">${portAnalyticsBody()}</div>`:""}
-    ${portfolio.length?portInsights(st):""}
-    ${portfolio.length?portPositionsTable():""}
-    <div id="port-tx-sec">${portTransactionsSection()}</div>
-    ${hasTrades?portReportSection():""}
-    <div id="port-palerts-sec">${portPortfolioAlertsSection()}</div>
-    ${portfolio.length||hasTrades?portSettingsSection():""}
-    ${portGlossarySection()}
-    <div id="port-ai-sec">
-      ${portfolio.some(p=>p.qty>0)?`<button class="btn btn-bl btn-full" style="margin-top:2px;padding:9px;font-size:12.5px;border-radius:9px;" id="port-ai-btn" onclick="analyzePort()">🤖 ملخص محفظتي التعليمي</button>
-      <div id="port-ai-res" style="display:none;margin-top:10px;color:var(--t2);font-size:13px;line-height:1.85;direction:rtl;white-space:pre-line;"></div>`:""}
-    </div>
-    ${vSect("📅","أحداث قادمة تؤثر على محفظتك","mkt")}
-    ${(liveCalendar||[]).length?`<div class="vbox" style="padding:0;overflow:hidden;">${liveCalendar.slice(0,3).map(ev=>`
-      <div class="vnews-row" style="cursor:default;"><div style="font-size:15px;">${sanitize(ev.flag||"🌐")}</div>
-      <div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;font-weight:600;">${sanitize(ev.ev||ev.evEn||"")}</div><div style="color:var(--t5);font-size:9px;">${sanitize(ev.t||"")}</div></div>
-      <span class="vimp" style="color:${safeColor(ev.c)};background:${safeColor(ev.c)}18;">${sanitize(ev.imp||"")}</span></div>`).join("")}</div>`:vEmpty("📅",calendarFreshness.loading?"التقويم قيد التحميل...":"التقويم غير متاح حاليًا")}
-    ${vSect("🔔","تنبيهات المحفظة","alerts")}
-    ${(()=>{const s=getNotifsStore();const rel=s.items.filter(n=>n.type==="opps"||portfolio.some(p=>(n.title+n.body).toUpperCase().includes(p.sym))).slice(0,3);return rel.length?`<div class="vbox" style="padding:0;overflow:hidden;">${rel.map(n=>`<div class="vnews-row" onclick='openVipAlert(${safeJsArg(n.link||"")})'><div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11px;">${sanitize(n.icon)} ${sanitize(n.title)}</div><div style="color:var(--t5);font-size:9px;">${vTime(n.ts)}</div></div></div>`).join("")}</div>`:vEmpty("🔕","لا تنبيهات متعلقة بمحفظتك");})()}`;
-  if(portReport.status==="idle"&&hasTrades)portReportInit();
-  if(!(priceAlertsState.loaded||priceAlertsState.loading)&&U&&U.plan!=="admin")void loadServerPriceAlerts();
-  vaBindCharts(b);
-  if(portfolio.some(p=>p.qty>0)&&portHistory.status==="idle")void ensurePortfolioHistory();
+  if(err==="server_error"||err){
+    const keepNote=portfolio.length?`<div style="color:var(--t5);font-size:10px;margin-top:10px;">آخر بيانات محفظتك المعروفة معروضة أدناه — لم يتم تعديلها أو حذفها.</div>`:"";
+    host.innerHTML=`<div class="nfp-card" style="text-align:center;padding:26px 16px;"><div style="font-size:30px;">${err==="server_error"?"⚠️":"📡"}</div>
+      <div style="color:var(--t1);font-weight:800;font-size:13.5px;margin-top:8px;">${err==="server_error"?"تعذّر التحقق من الخادم الآن":sanitize(err)}</div>
+      <div style="color:var(--t5);font-size:10.5px;margin-top:5px;line-height:1.7;">${err==="server_error"?"خطأ مؤقت في الخادم وليس نهاية اشتراكك — أعد المحاولة بعد لحظات.":"تعذر الوصول إلى بيانات محفظتك."}</div>
+      <button class="btn btn-ghost" style="margin-top:12px;padding:8px 14px;font-size:11.5px;" onclick="nfpRetryLoad()">↻ إعادة المحاولة</button>
+      ${keepNote}</div>
+      ${err!=="server_error"&&portfolio.length?nfpPageHtml():""}`;
+    return;
+  }
+  if(!portfolioState.loaded||portfolioState.loading){
+    host.innerHTML=`<div class="nfp-card nfp-loading">💼 جارٍ تحميل محفظتك من الخادم...</div>`;
+    if(!portfolioState.loading&&!portfolioState.loaded)void loadServerPortfolio();
+    return;
+  }
+  host.innerHTML=nfpPageHtml();
 }
+function nfpRetryLoad(){portfolioState={...portfolioState,error:"",loaded:false};void loadServerPortfolio(true);}
+function nfpPageHtml(){
+  const s=portfolioData.summary||{};
+  const held=portfolio.filter(p=>p.qty>0);
+  const txs=portfolioData.transactions||[];
+  const hasCash=(portfolioData.cashEvents||[]).length>0;
+  const isEmpty=!portfolio.length&&!txs.length&&!hasCash;
+  return `
+    ${nfpHeroHtml(s,held)}
+    ${isEmpty?nfpEmptyHtml():""}
+    ${nfpGridHtml()}
+    ${held.length?nfpAllocHtml(held,s):""}
+    ${portfolio.length?nfpTableHtml():""}
+    ${txs.length?nfpTxLogHtml():""}
+    <div class="nfp-foot">بيانات محفظتك محفوظة على الخادم باسمك ومفصولة تمامًا عن أي مستخدم آخر · كل سعر معروض من مصدر موثّق مع وقته؛ ما لا يتوفر له سعر موثّق يظهر «بلا سعر» ولا نعتمد عليه في الإجماليات · الخدمات معلوماتية وليست توصية استثمارية.</div>`;
+}
+function nfpHeroHtml(s,held){
+  const total=s.totalValue;
+  const priced=s.totalValuePriced;
+  const cash=s.cash;
+  const mv=s.marketValue;
+  const un=s.unrealizedPnl;
+  const cost=s.investedCost;
+  const missing=s.missingPriceSymbols||[];
+  const pct=(un!==null&&cost>0)?(un/cost*100):null;
+  const up=un!==null&&un>=0;
+  const totalHtml=total!==null
+    ?`<div class="nfp-total" style="color:${totalValueColor(total)};">${vaFmt(total,0)} <span class="nfp-cash-cur">ج.م</span></div>`
+    :`<div class="nfp-total dim">${priced!==null?vaFmt(priced,0)+' <span class="nfp-partial">+ بلا سعر</span>':'—'}</div>
+      ${priced!==null?`<div class="nfp-total-sub">الجزء المسعّر فقط — مراكز بلا سعر موثّق (${missing.slice(0,3).map(x=>sanitize(String(x))).join("، ")||"…"}) ليست محتسبة في الإجمالي</div>`:""}`;
+  const plHtml=un===null
+    ?`<div class="nfp-pl muted">${held.length?"الربح/الخسارة يظهر عندما يتوفر سعر موثّق لكل مركز قائم":"لا يوجد ربح/خسارة بعد"}</div>`
+    :`<div class="nfp-pl" style="color:${up?"var(--g)":"var(--dn)"};">${up?"▲":"▼"} ${nfpMoneySigned(un)}${pct!==null?` <span class="nfp-pl-pct">(${pct>=0?"+":""}${pct.toFixed(2)}%)</span>`:""}</div>`;
+  return `<div class="nfp-hero">
+    <div class="nfp-hero-h">
+      <div><div class="nfp-hero-t">💼 محفظتي</div><div class="nfp-hero-d">قيمك وحصيلة استثمارك في مكان واحد</div></div>
+      <button class="nfp-refresh" onclick="nfpRefresh()" title="تحديث البيانات من الخادم">↻ تحديث</button>
+    </div>
+    <div class="nfp-hero-total-wrap"><div class="nfp-hero-total-label">قيمة المحفظة</div>${totalHtml}${plHtml}</div>
+    <div class="nfp-chips">
+      <span class="nfp-chip">💵 النقدية <b>${cash===null?"—":portMoney(cash)}</b></span>
+      <span class="nfp-chip">📈 قيمة الأصول <b>${mv===null?(s.pricedMarketValue===null?"—":portMoney(s.pricedMarketValue)+"*"):portMoney(mv)}</b></span>
+      <span class="nfp-chip">📋 الأصول <b>${held.length}</b></span>
+      ${missing.length?`<span class="nfp-chip nfp-chip-warn">بلا سعر <b>${missing.length}</b></span>`:""}
+    </div>
+    ${mv===null&&s.pricedMarketValue!==null?`<div class="nfp-src">* بالجزء المسعّر فقط · </div>`:""}
+    <div class="nfp-src">${heroSourceLine()}${portfolioState.marketAvailable===false?" · مصدر الأسعار غير متاح حاليًا — الأسعار الموثّقة تظهر عندما يتوفر":""}</div>
+  </div>`;
+}
+function nfpGridHtml(){
+  return `<div class="nfp-grid">${nfpAddCardHtml()}${nfpCashCardHtml()}</div>`;
+}
+function nfpEmptyHtml(){
+  return `<div class="nfp-card nfp-empty">
+    <div class="nfp-empty-em">💼</div>
+    <div class="nfp-empty-t">أهلًا! محفظتك جاهزة — ابدأ في خطوتين</div>
+    <div class="nfp-empty-d">1) أضف رصيدك النقدي (الإيداع) — 2) أضف أول سهم تملكه: الرمز، الكمية، ومتوسط سعر الشراء. تُحفظ كل البيانات على الخادم باسمك وتُحدَّث الأسعار تلقائيًا.</div>
+  </div>`;
+}
+function nfpAddCardHtml(){
+  return `<div class="nfp-card" id="nfp-add-card">
+    <div class="nfp-card-h"><span class="nfp-card-t">＋ إضافة سهم</span><span class="nfp-card-d">أضف ما تملكه: الرمز، الكمية، ومتوسط سعر شرائك</span></div>
+    <div class="nfp-field">
+      <label for="nfp-sym">السهم</label>
+      <div class="pf-suggest-wrap">
+        <input class="nfp-in" id="nfp-sym" placeholder="ابحث بالاسم أو الرمز (مثل: COMI أو المصرية للإسمنت)" autocomplete="off"
+          oninput="this.value=this.value.toUpperCase().slice(0,16);nfpStockSuggest(this.value);nfpStockHint(this.value)"
+          onfocus="nfpStockSuggest(this.value)"
+          onblur="setTimeout(function(){var b=document.getElementById('nfp-suggest');if(b)b.classList.remove('open');},180)"
+          onkeydown="nfpSuggestKey(event)"/>
+        <div class="pf-suggest" id="nfp-suggest"></div>
+      </div>
+      <div class="nfp-hint" id="nfp-stock-hint"></div>
+    </div>
+    <div class="nfp-2col">
+      <div class="nfp-field"><label for="nfp-qty">الكمية (عدد الأسهم)</label><input class="nfp-in" id="nfp-qty" type="number" min="1" step="1" inputmode="numeric" placeholder="مثال: 100"/></div>
+      <div class="nfp-field"><label for="nfp-cost">متوسط سعر الشراء (ج.م)</label><input class="nfp-in" id="nfp-cost" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="مثال: 10.50"/></div>
+    </div>
+    <div class="nfp-err" id="nfp-add-err" style="display:none;"></div>
+    <button class="btn btn-au nfp-submit" id="nfp-add-btn" onclick="nfpAddSubmit()">إضافة إلى محفظتي</button>
+    <div class="nfp-note">يُضاف السهم مرة واحدة فقط؛ لتغيير الكمية أو السعر استخدم زر التعديل ✏️ في الجدول.</div>
+  </div>`;
+}
+function nfpCashCardHtml(){
+  const s=portfolioData.summary||{};
+  const events=(portfolioData.cashEvents||[]).slice(0,5);
+  const kindMeta={deposit:{ic:"＋",c:"var(--g)",l:"إيداع"},withdrawal:{ic:"－",c:"var(--dn)",l:"سحب"},dividend:{ic:"٪",c:"var(--au)",l:"توزيع"}};
+  return `<div class="nfp-card" id="nfp-cash-card">
+    <div class="nfp-card-h"><span class="nfp-card-t">💵 النقدية</span><span class="nfp-card-d">السيولة النقدية في محفظتك (منفصلة عن الأسهم)</span></div>
+    <div class="nfp-cash-bal">${s.cash===null?"—":vaFmt(s.cash,0)} <span class="nfp-cash-cur">ج.م</span></div>
+    <div class="nfp-field" style="margin-top:10px;"><label for="nfp-cash-amt">المبلغ (ج.م)</label><input class="nfp-in" id="nfp-cash-amt" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="المبلغ"/></div>
+    <div class="nfp-field"><label for="nfp-cash-note">ملاحظة (اختياري)</label><input class="nfp-in" id="nfp-cash-note" maxlength="200" placeholder="مثال: راتب شهر أكتوبر"/></div>
+    <div class="nfp-2col" style="margin-top:9px;">
+      <button class="btn btn-au nfp-cash-btn" id="nfp-cash-dep-btn" onclick="nfpCashSubmit('deposit')">＋ إيداع</button>
+      <button class="btn btn-ghost nfp-cash-btn" id="nfp-cash-wd-btn" onclick="nfpCashSubmit('withdrawal')">－ سحب</button>
+    </div>
+    <div class="nfp-err" id="nfp-cash-err" style="display:none;"></div>
+    ${events.length?`<div class="nfp-ev-h">آخر الحركات</div><div class="nfp-evs">${events.map(e=>{
+      const m=kindMeta[e.kind]||kindMeta.deposit;
+      const sign=e.kind==="withdrawal"?"−":"+";
+      return `<div class="nfp-ev">
+        <span style="color:${m.c};font-weight:800;">${m.ic}</span>
+        <span style="color:var(--t2);font-size:10.5px;font-weight:700;">${m.l}${e.symbol?` <span style="font-family:var(--mono);color:var(--t4);font-size:9.5px;">${sanitize(String(e.symbol))}</span>`:""}</span>
+        <span style="color:var(--t5);font-size:9px;">${sanitize(String(e.tradeDate||""))}</span>
+        <span style="font-family:var(--mono);color:${e.kind==="withdrawal"?"var(--dn)":"var(--g)"};font-size:11px;">${sign}${portMoney(Number(e.amount)||0)}</span>
+        <button class="nfp-ev-del" title="إلغاء هذه الحركة" onclick='nfpDeleteCash(${safeJsArg(e.id)})'>✕</button>
+      </div>`;}).join("")}</div>`:""}
+  </div>`;
+}
+const NFP_ALLOC_COLORS=["#60A5FA","#F59E0B","#10B981","#F87171","#A78BFA","#22D3EE","#F472B6","#A3E635"];
+function nfpAllocHtml(held,s){
+  /* Visual aid only, on one clearly-labeled base: priced positions use the
+   * server's verified market value; positions without a verified quote are
+   * drawn at their recorded cost (qty × average cost) and flagged as such;
+   * cash comes from the server summary. */
+  const cash=Number.isFinite(Number(s.cash))?Number(s.cash):0;
+  const rows=held.map(p=>{
+    const pr=p.market&&Number.isFinite(p.market.price)&&p.market.source?p.market:null;
+    return {p,pr,cost:p.price*p.qty,val:pr?pr.price*p.qty:p.price*p.qty,priced:!!pr};
+  });
+  const total=cash+rows.reduce((a,r)=>a+r.val,0);
+  if(total<=0)return"";
+  let ci=0;
+  const segs=rows.map(r=>({label:r.p.name||r.p.sym,val:r.val,color:NFP_ALLOC_COLORS[ci++%NFP_ALLOC_COLORS.length],priced:r.priced}));
+  if(cash>0)segs.push({label:"النقدية",val:cash,color:"var(--g)",priced:true});
+  const bar=segs.map(x=>`<div class="nfp-alloc-seg${x.priced?"":" nfp-alloc-cost"}" style="width:${Math.max(1.2,x.val/total*100).toFixed(2)}%;background:${x.color};"></div>`).join("");
+  const legend=segs.map(x=>`<div class="nfp-alloc-lg">
+      <span class="nfp-dot" style="background:${x.color};"></span>
+      <span class="nfp-alloc-name">${sanitize(x.label)}</span>
+      ${x.priced?"":`<span class="nfp-badge">بلا سعر — معروض بالتكلفة</span>`}
+      <span class="nfp-alloc-val">${portMoney(x.val)}</span>
+      <span class="nfp-alloc-pct">${(x.val/total*100).toFixed(1)}%</span>
+    </div>`).join("");
+  return `<div class="nfp-card">
+    <div class="nfp-card-h"><span class="nfp-card-t">📊 توزيع المحفظة</span><span class="nfp-card-d">حصة كل جزء من محفظتك (${nfpMoney(total)})</span></div>
+    <div class="nfp-alloc-bar">${bar}</div>
+    <div class="nfp-alloc-lgd">${legend}</div>
+    ${rows.some(r=>!r.priced)?`<div class="nfp-note">المراكز بلا سعر موثّق معروضة هنا بتكلفتها (سعر الشراء × الكمية) للعرض فقط، وتدخل في قيمة المحفظة الإجمالية بسعرها الموثّق عندما يتوفر.</div>`:""}
+  </div>`;
+}
+function nfpTableBase(s){
+  const base=(Number.isFinite(Number(s.totalValue))?Number(s.totalValue):null);
+  if(base!==null&&base>0)return base;
+  let t=Number.isFinite(Number(s.cash))?Number(s.cash):0;
+  portfolio.forEach(p=>{
+    if(p.qty<=0)return;
+    const pr=p.market&&Number.isFinite(p.market.price)&&p.market.source?p.market:null;
+    t+=pr?pr.price*p.qty:p.price*p.qty;
+  });
+  return t>0?t:0;
+}
+function nfpTableHtml(){
+  const s=portfolioData.summary||{};
+  const base=nfpTableBase(s);
+  return `<div class="nfp-card">
+    <div class="nfp-card-h nfp-table-h"><span class="nfp-card-t">📋 أصولي (${portfolio.length})</span>
+      <button class="btn btn-ghost nfp-addjump" onclick="nfpFocusAdd()">＋ إضافة أصل</button></div>
+    <div class="nfp-table-wrap">
+      <table class="nfp-table">
+        <thead><tr><th>الأصل</th><th>الكمية</th><th>متوسط الشراء</th><th>السعر الحالي</th><th>القيمة</th><th>% من المحفظة</th><th>ربح/خسارة</th><th></th></tr></thead>
+        <tbody>${portfolio.map(p=>nfpRowHtml(p,base)).join("")}</tbody>
+      </table>
+    </div>
+    <div class="nfp-table-note">القيمة والربح/الخسارة تُحتسب في الخادم من الأسعار الموثّقة فقط؛ المركز بلا سعر يظهر «—» حتى يتوفر سعر موثّق، ولا يُعرض سعر قديم أو تقدير.</div>
+  </div>`;
+}
+function nfpRowHtml(p,base){
+  const ledger=String(p.id||"").indexOf("pos:")===0;
+  const editing=nfpEditPos===p.id;
+  const pr=p.market&&Number.isFinite(p.market.price)&&p.market.source?p.market:null;
+  const closed=p.qty===0||p.closed===true;
+  const val=p.marketValue;
+  const pnl=p.unrealizedPnl;
+  const pnlPct=p.unrealizedPnlPct;
+  const allocVal=p.qty>0?(pr?pr.price*p.qty:p.price*p.qty):0;
+  const weight=p.weightPct!==null?p.weightPct:(!closed&&base>0?(allocVal/base*100):null);
+  const nameHtml=`<div class="nfp-row-name">${sanitize(p.name||p.sym)}</div><div class="nfp-row-sym">${sanitize(p.sym)}${p.sector?` · ${sanitize(p.sector)}`:""}${closed?` · <span style="color:var(--au);">مغلق</span>`:""}${ledger&&!closed?` · <span style="color:#93c5fd;">من سجل الصفقات</span>`:""}</div>`;
+  const priceHtml=closed
+    ?`<div class="nfp-noprice" style="color:var(--t5);">مغلق</div>`
+    :pr?`<div class="nfp-row-price">${Number(pr.price).toFixed(2)}</div><div class="nfp-row-src">${sanitize(pr.source)}${pr.asOf?` · ${cairoTimestampLabel(pr.asOf)}`:""}</div>`
+    :`<div class="nfp-noprice">— بلا سعر</div>`;
+  const qtyCostCells=editing
+    ?`<td data-l="الكمية"><input class="nfp-in nfp-in-mini" id="nfp-e-qty" type="number" min="1" step="1" value="${sanitize(String(p.qty))}"/></td>
+       <td data-l="متوسط الشراء"><input class="nfp-in nfp-in-mini" id="nfp-e-cost" type="number" min="0.01" step="0.01" value="${sanitize(String(p.price))}"/></td>`
+    :`<td data-l="الكمية">${closed?"0":ltrChange(String(p.qty))}</td><td data-l="متوسط الشراء">${Number(p.price).toFixed(2)}</td>`;
+  const plCell=pnl===null
+    ?(closed&&p.realizedPnl!==null?`<span style="color:${portPlColor(p.realizedPnl)};font-family:var(--mono);">${portSigned(p.realizedPnl)}</span> <span style="color:var(--t5);font-size:9px;">محققة</span>`:`<span class="nfp-dash">—</span>`)
+    :`<span style="color:${portPlColor(pnl)};font-family:var(--mono);">${portSigned(pnl)}</span>${pnlPct!==null?` <span style="color:${portPlColor(pnlPct)};font-size:10px;">(${pnlPct>=0?"+":""}${pnlPct.toFixed(1)}%)</span>`:""}`;
+  const actions=editing
+    ?`<button class="nfp-btn-au" onclick="nfpEditSave(${safeJsArg(p.id)})">💾 حفظ</button><button class="nfp-btn-ghost" onclick="nfpEditCancel()">إلغاء</button>`
+    :ledger
+    ?`<button class="nfp-btn-ghost" title="هذا المركز مبني من صفقاتك — يُعدَّل ويُحذف من سجل الصفقات" onclick="nfpOpenTxLog()">📋 الصفقات</button>`
+    :`<button class="nfp-btn-ghost" title="تعديل الكمية أو متوسط السعر" onclick="nfpEditStart(${safeJsArg(p.id)})">✏️</button>
+       <button class="nfp-btn-danger" title="حذف من المحفظة" onclick='nfpDeletePos(${safeJsArg(p.id)},${safeJsArg(p.sym)})'>🗑</button>`;
+  return `<tr class="nfp-row">
+    <td data-l="الأصل">${nameHtml}</td>
+    ${qtyCostCells}
+    <td data-l="السعر الحالي">${priceHtml}</td>
+    <td data-l="القيمة">${val===null?`<span class="nfp-dash">—</span>`:portMoney(val)}</td>
+    <td data-l="% من المحفظة">${weight===null?`<span class="nfp-dash">—</span>`:ltrChange(weight.toFixed(1)+"%")}</td>
+    <td data-l="ربح/خسارة">${plCell}</td>
+    <td class="nfp-actions" data-l="إجراءات">${actions}</td>
+  </tr>`;
+}
+function nfpTxLogHtml(){
+  const n=(portfolioData.transactions||[]).length;
+  return `<details class="nfp-tx" id="nfp-tx-wrap">
+    <summary class="nfp-tx-sum">📝 سجل الصفقات (${n}) <span class="nfp-tx-hint">المراكز المبنية من صفقات تُدار من هنا (تعديل وحذف)</span></summary>
+    <div id="port-tx-sec">${portTransactionsSection()}</div>
+  </details>`;
+}
+/* ── Add-position form: candidates come ONLY from the server's stock list
+ * (liveStocks). Picking a candidate fills the SYMBOL field only — the cost
+ * field is always the user's real average buy price, never a market quote. */
+function nfpStockSuggest(q){
+  const box=document.getElementById("nfp-suggest");if(!box)return;
+  const raw=String(q||"").trim();
+  if(!raw){box.classList.remove("open");box.innerHTML="";return;}
+  const query=raw.toUpperCase();
+  const scored=(liveStocks||[]).map(s=>{
+    const sym=String(s.sym||"").toUpperCase();
+    const score=sym===query?0:sym.startsWith(query)?1:sym.includes(query)?2:
+      String(s.name||"").includes(raw)?3:String(s.sector||"").includes(raw)?4:99;
+    return {s,score};
+  }).filter(x=>x.score<99)
+   .sort((a,b)=>a.score-b.score||String(a.s.sym).localeCompare(String(b.s.sym)))
+   .slice(0,8);
+  if(!scored.length){box.classList.remove("open");box.innerHTML="";return;}
+  box.innerHTML=scored.map((x,i)=>`<div class="pf-sg${i===0?" active":""}" onmousedown="nfpPickStock(${safeJsArg(x.s.sym)})">
+      <span class="sym">${sanitize(x.s.sym)}</span>
+      <span class="nm">${sanitize(x.s.name||"")}${x.s.sector?` · ${sanitize(x.s.sector)}`:""}</span>
+      ${x.s.noData||!Number.isFinite(x.s.price)?`<span class="px">بلا سعر الآن</span>`:`<span class="px">${Number(x.s.price).toFixed(2)} ج</span>`}
+    </div>`).join("");
+  box.classList.add("open");
+}
+function nfpPickStock(sym){
+  const el=document.getElementById("nfp-sym");
+  if(el)el.value=String(sym).toUpperCase().slice(0,16);
+  const box=document.getElementById("nfp-suggest");
+  if(box){box.classList.remove("open");box.innerHTML="";}
+  nfpStockHint(String(sym).toUpperCase());
+  const qty=document.getElementById("nfp-qty");if(qty)qty.focus();
+}
+function nfpStockHint(sym){
+  const el=document.getElementById("nfp-stock-hint");if(!el)return;
+  const key=String(sym||"").trim().toUpperCase();
+  if(!key){el.innerHTML="";return;}
+  const s=(liveStocks||[]).find(x=>String(x.sym||"").toUpperCase()===key);
+  if(!s){el.innerHTML="";return;}
+  const priceNote=Number.isFinite(s.price)
+    ?` · السعر الموثّق الآن (مرجع فقط): ${Number(s.price).toFixed(2)} ج (${sanitize(s.source||"مصدر غير متاح")}) — أدخل متوسط سعر شرائك أنت`
+    :" · بلا سعر موثّق الآن";
+  el.innerHTML=`${sanitize(s.name)}${s.sector?` · ${sanitize(s.sector)}`:""}${priceNote}`;
+}
+function nfpSuggestKey(e){
+  if(e.key!=="Enter")return;
+  const box=document.getElementById("nfp-suggest");
+  if(box&&box.classList.contains("open")){
+    const first=box.querySelector(".pf-sg");
+    if(first){e.preventDefault();if(first.onmousedown)first.onmousedown();}
+  }
+}
+async function nfpAddSubmit(){
+  if(nfpBusy.add)return;
+  const sym=(document.getElementById("nfp-sym")?.value||"").trim().toUpperCase();
+  const qty=Number(document.getElementById("nfp-qty")?.value||0);
+  const cost=Number(document.getElementById("nfp-cost")?.value||0);
+  const errEl=document.getElementById("nfp-add-err");
+  const btn=document.getElementById("nfp-add-btn");
+  const setErr=m=>{if(errEl){errEl.textContent=m;errEl.style.display=m?"block":"none";}};
+  setErr("");
+  if(!/^[A-Z0-9._-]{1,16}$/.test(sym)){setErr("أدخل رمز السهم بشكل صحيح — اختر من القائمة أو اكتب الرمز كما هو (مثل COMI).");return;}
+  if(!Number.isInteger(qty)||qty<1||qty>1_000_000_000){setErr("أدخل كمية صحيحة (عدد صحيح ≥ 1).");return;}
+  if(!Number.isFinite(cost)||cost<=0||cost>1_000_000_000){setErr("أدخل متوسط سعر شراء صحيحًا أكبر من صفر.");return;}
+  const heldLedger=portfolio.find(p=>p.sym===sym&&p.qty>0&&String(p.id||"").indexOf("pos:")===0);
+  if(heldLedger){setErr("هذا السهم قائم بالفعل في محفظتك عبر سجل الصفقات — استخدم زر 📋 في الجدول لتعديله بدلًا من إضافته مرة أخرى.");return;}
+  nfpBusy.add=true;if(btn){btn.disabled=true;btn.textContent="جارٍ الإضافة...";}
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch("/api/portfolio/positions",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbol:sym,quantity:qty,averageCost:cost}),signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||(r.status===409?"هذا السهم موجود بالفعل؛ حدّث الكمية أو متوسط التكلفة بدلًا من إضافته مرة أخرى":"تعذر الحفظ"));
+    showToast(`✅ أُضيف ${sym} إلى محفظتك`);
+    nfpEditPos=null;
+    nfpAfterMutation();
+  }catch(e){setErr(String(e?.message||"تعذر الإضافة — أعد المحاولة."));}
+  finally{clearTimeout(timer);nfpBusy.add=false;if(btn){btn.disabled=false;btn.textContent="إضافة إلى محفظتي";}}
+}
+/* ── Edit (inline) — only rows stored in the positions table (not the
+ * ledger-derived ones, whose id is "pos:<SYMBOL>" and which are managed via
+ * the trade log). The server re-validates and re-prices on reload. */
+function nfpEditStart(id){nfpEditPos=id;nfpRerenderHost();
+  const el=document.getElementById("nfp-e-qty");if(el)el.focus();}
+function nfpEditCancel(){nfpEditPos=null;nfpRerenderHost();}
+async function nfpEditSave(id){
+  const p=portfolio.find(x=>x.id===id);
+  if(!p){nfpEditPos=null;return;}
+  const qty=Number(document.getElementById("nfp-e-qty")?.value||0);
+  const cost=Number(document.getElementById("nfp-e-cost")?.value||0);
+  if(!Number.isInteger(qty)||qty<1||qty>1_000_000_000){showToast("⚠️ أدخل كمية صحيحة (عدد صحيح ≥ 1).");return;}
+  if(!Number.isFinite(cost)||cost<=0||cost>1_000_000_000){showToast("⚠️ أدخل متوسط تكلفة صحيحًا أكبر من صفر.");return;}
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch(`/api/portfolio/positions/${encodeURIComponent(id)}`,{method:"PUT",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbol:p.sym,quantity:qty,averageCost:cost}),signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر التحديث");
+    showToast("✅ تم حفظ التعديل وإعادة احتساب المحفظة");
+    nfpEditPos=null;
+    nfpAfterMutation();
+  }catch(e){showToast("⚠️ "+String(e?.message||"تعذر التحديث"));nfpRerenderHost();}
+  finally{clearTimeout(timer);}
+}
+/* ── Delete with confirmation (soft-archive on the server; the row stays in
+ * the audit trail). Ledger-derived rows never reach here. */
+async function nfpDeletePos(id,sym){
+  if(!id||!confirm(`هل تريد حذف ${sym} من محفظتك؟ ستبقى أي صفقات مسجّلة له في سجل الصفقات.`))return;
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch(`/api/portfolio/positions/${encodeURIComponent(id)}`,{method:"DELETE",credentials:"same-origin",signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر الحذف");
+    showToast("✅ تم حذف المركز");
+    nfpAfterMutation();
+  }catch(e){showToast("⚠️ "+String(e?.message||"تعذر الحذف"));}
+  finally{clearTimeout(timer);}
+}
+/* ── Cash: deposits/withdrawals round-trip through the server; the exact
+ * temporal insufficient_cash error is surfaced verbatim. */
+async function nfpCashSubmit(kind){
+  if(nfpBusy.cash)return;
+  const amt=Number(document.getElementById("nfp-cash-amt")?.value||0);
+  const note=(document.getElementById("nfp-cash-note")?.value||"").trim().slice(0,200);
+  const errEl=document.getElementById("nfp-cash-err");
+  const setErr=m=>{if(errEl){errEl.textContent=m;errEl.style.display=m?"block":"none";}};
+  setErr("");
+  if(!Number.isFinite(amt)||amt<0.01||amt>1_000_000_000){setErr("أدخل مبلغًا صحيحًا أكبر من صفر.");return;}
+  const btn=document.getElementById(kind==="deposit"?"nfp-cash-dep-btn":"nfp-cash-wd-btn");
+  nfpBusy.cash=true;if(btn)btn.disabled=true;
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch("/api/portfolio/cash",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind,amount:amt,note:note||null}),signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر تسجيل الحركة");
+    showToast(kind==="deposit"?"✅ سُجّل الإيداع":"✅ سُجّل السحب");
+    const amtEl=document.getElementById("nfp-cash-amt");if(amtEl)amtEl.value="";
+    const noteEl=document.getElementById("nfp-cash-note");if(noteEl)noteEl.value="";
+    nfpAfterMutation();
+  }catch(e){setErr(String(e?.message||"تعذر تسجيل الحركة — أعد المحاولة."));}
+  finally{clearTimeout(timer);nfpBusy.cash=false;if(btn)btn.disabled=false;}
+}
+async function nfpDeleteCash(id){
+  if(!id||!confirm("إلغاء هذه الحركة النقدية؟ سيُعاد احتساب الرصيد على الخادم."))return;
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const r=await fetch(`/api/portfolio/cash/${encodeURIComponent(id)}`,{method:"DELETE",credentials:"same-origin",signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر الإلغاء");
+    showToast("✅ أُلغيّت الحركة وأُعيد احتساب الرصيد");
+    nfpAfterMutation();
+  }catch(e){showToast("⚠️ "+String(e?.message||"تعذر الإلغاء"));}
+  finally{clearTimeout(timer);}
+}
+
 
 /* ══════════════ PORTFOLIO — first-class page (nav item) ══════════════
  * The server-side VIP gate (requireVipFeature) is the only real protection;
  * the client view is UX: not logged in / non-VIP see a professional intro
  * with a clear upsell, VIP users land straight in the dashboard. */
-let pfpSeries={range:"1M",status:"idle",data:null,error:"",seq:0};
-const PFP_RANGES=["1D","1W","1M","3M","6M","1Y","ALL"];
-const PFP_RANGE_LABELS={ "1D":"يوم","1W":"أسبوع","1M":"شهر","3M":"3 أشهر","6M":"6 أشهر","1Y":"سنة","ALL":"الكل" };
-
 function pfpVisible(){
   const page=document.getElementById("page-portfolio");
   return Boolean(page)&&!page.classList.contains("hidden");
@@ -9014,9 +8811,11 @@ function renderPortfolioPage(){
   }
   /* Same live symbol universe as every other surface: load the licensed
      stock scan if this page was reached before the markets page did, so the
-     symbol autocomplete/hints work identically here and in the VIP center. */
+     symbol autocomplete works identically here and in the VIP center. */
   if(!liveStocks.length&&!egxStocksFreshness.loading)fetchStocksData();
-  pfpRenderDashboard();
+  nfpRender(host);
+  nfpEnsureTimer();
+  if(!portfolioState.loaded&&!portfolioState.loading&&!portfolioState.error)void loadServerPortfolio();
 }
 
 function pfpIntro({loggedOut}){
@@ -9044,83 +8843,9 @@ function pfpIntro({loggedOut}){
   </div>`;
 }
 
-function pfpRenderDashboard(){
-  const host=pfpHost();
-  if(!host)return;
-  const err=portfolioState.error;
-  const shell=(body)=>`
-    <div class="pfp-hero" id="pfp-hero">${pfpHeroHtml()}</div>
-    <div class="pfp-cards" id="pfp-kpis">${pfpKpiStripHtml()}</div>
-    ${body}`;
-  if(err==="login_required"&&!portfolio.length){
-    host.innerHTML=shell(`<div class="pfp-sec"><div class="pfp-sec-b" style="text-align:center;padding:26px 14px;">${authGateHtml("login",loadServerPortfolio.bind(null,true))}</div></div>`);
-    return;
-  }
-  if(err==="vip_required"&&!portfolio.length){
-    host.innerHTML=shell(`<div class="pfp-sec"><div class="pfp-sec-b" style="text-align:center;padding:22px 14px;">${authGateHtml("vip",null)}</div></div>`);
-    return;
-  }
-  const hasTrades=(portfolioData.transactions||[]).length>0;
-  const isEmpty=!portfolio.length&&!hasTrades;
-  let body="";
-  if(err&&portfolio.length){
-    body+=`<div class="pfp-note ${err==="server_error"?"info":"danger"}">${err==="server_error"?"⚠️ تعذّر التحقق من الخادم الآن — آخر بياناتك المعروفة معروضة أدناه ولم تُعدَّل أو تُحذف.":"⚠️ تعذّر مزامنة محفظتك الآن — آخر بياناتك المعروفة معروضة أدناه ولم تُعدَّل أو تُحذف."}</div>`;
-  }
-  if(isEmpty){
-    body+=pfpOnboardingHtml();
-  } else {
-    body+=`
-    <div class="pfp-sec">
-      <div class="pfp-sec-h">
-        <div class="pfp-sec-t"><svg class="et-icon"><use href="#i-pulse"></use></svg> قيمة المحفظة عبر الوقت</div>
-        <div class="pfp-ranges" id="pfp-ranges">
-          ${PFP_RANGES.map(r=>`<button class="pfp-range ${r===pfpSeries.range?"on":""}" type="button" onclick="pfpSetRange('${r}')">${PFP_RANGE_LABELS[r]}</button>`).join("")}
-        </div>
-      </div>
-      <div class="pfp-sec-b">
-        <div class="pfp-chart-wrap" id="pfp-chart">${pfpSeries.status==="loading"?'<div style="padding:26px;text-align:center;color:var(--t5);font-size:11px;">جارٍ تحميل السلسلة من الخادم...</div>':""}</div>
-        <div id="pfp-chart-notes"></div>
-      </div>
-    </div>
-    <div class="pfp-sec">
-      <div class="pfp-sec-h"><div class="pfp-sec-t"><svg class="et-icon"><use href="#i-card"></use></svg> النقد: إيداع وسحب وتوزيعات</div><div class="pfp-sec-s">تُحتسب الحركات في السيولة الفعلية بتاريخها، ولا يُسمح بسحب يتجاوز رصيد ذلك التاريخ</div></div>
-      <div class="pfp-sec-b" id="pfp-cash">${pfpCashHtml()}</div>
-    </div>
-    <div id="pfp-alerts-sec">${pfpConcentrationAlertsHtml()}</div>`;
-  }
-  host.innerHTML=shell(body);
-  const vBody=document.createElement("div");
-  vBody.id="port-page-body";
-  if(!isEmpty)vBody.style.marginTop="10px";
-  host.appendChild(vBody);
-  vBuildPort(vBody);
-  /* Series load is decoupled from the tab (the page drives it). */
-  if(!isEmpty&&pfpSeries.status==="idle")pfpLoadSeries(pfpSeries.range,true);
-}
 
-function pfpHeroHtml(){
-  const s=portfolioData.summary;
-  const total=s?nOrNull(s.totalValue):null;
-  const totalPriced=s?nOrNull(s.totalValuePriced):null;
-  const daily=pfpSeries.data&&pfpSeries.data.dailyChangePct;
-  let chg="";
-  if(typeof daily==="number"){
-    const up=daily>0,down=daily<0;
-    chg=`<span class="pfp-chg ${up?"up":down?"dn":"flat"}" title="التغير منذ آخر قيمة مسجّلة">${up?"▲":down?"▼":"•"} ${Math.abs(daily).toFixed(1)}%</span>`;
-  } else {
-    chg=`<span class="pfp-chg flat" title="يتطلب نقطتي إغلاق مسجّلتين">التغير اليومي: —</span>`;
-  }
-  const srcLine=heroSourceLine();
-  const totalHtml=total!==null
-    ?`<div class="pfp-hero-total" style="color:${totalValueColor(total)};">${portMoney(total)}</div>`
-    :`<div class="pfp-hero-total dim">${totalPriced!==null?portMoney(totalPriced)+" + بلا سعر":"—"} <span style="font-size:9px;color:var(--t5);font-weight:700;">${totalPriced!==null?"(الجزء المسعّر فقط)":"يلزم سعر موثّق لكل مركز"}</span></div>`;
-  return `<div class="pfp-hero-top">
-      <div class="pfp-hero-title"><svg class="et-icon"><use href="#i-card"></use></svg> محفظتي</div>
-      ${chg}
-    </div>
-    ${totalHtml}
-    <div class="pfp-hero-sub">${srcLine} · بيانات محفوظة في الخادم ومفصولة عن أي مستخدم آخر</div>`;
-}
+
+
 function nOrNull(v){const x=Number(v);return Number.isFinite(x)?x:null;}
 function totalValueColor(total){
   const s=portfolioData.summary;
@@ -9137,321 +8862,32 @@ function heroSourceLine(){
   return `مصدر الأسعار: ${sanitize(sources)}${asOf?` · ${cairoTimestampLabel(asOf)}`:""}`;
 }
 
-function pfpKpiStripHtml(){
-  const s=portfolioData.summary;
-  const held=portfolio.filter(p=>Number(p.quantity)>0);
-  const totalAssets=held.length;
-  const realized=s?nOrNull(s.realizedPnl):null;
-  const unrealized=s?nOrNull(s.unrealizedPnl):null;
-  const totalPnl=(realized!==null&&unrealized!==null)?realized+unrealized:null;
-  const cash=s?nOrNull(s.cash):null;
-  const eventsIn=s&&Number.isFinite(Number(s.cashEventsIn))?Number(s.cashEventsIn):0;
-  const eventsOut=s&&Number.isFinite(Number(s.cashEventsOut))?Number(s.cashEventsOut):0;
-  const cards=[
-    {l:"السيولة النقدية",v:cash!==null?portMoney(cash):"—",h:(cash!==null&&cash<0)?"أقل من صفر: مشتريات تتجاوز النقد المعلن":(eventsIn||eventsOut)?`منها ${portMoney(eventsIn)} إيداعات/توزيعات و${portMoney(eventsOut)} سحوبات`:"رصيد البداية + مبيعات − مشتريات",c:cash!==null&&cash<0?"var(--dn)":"var(--t1)"},
-    {l:"عدد الأصول",v:String(totalAssets),h:totalAssets?`${totalAssets} مركز قائم بمراكز مسجّلة`:"لا مراكز قائمة حاليًا",c:"var(--t1)"},
-    {l:"إجمالي الربح/الخسارة",v:totalPnl!==null?portSigned(totalPnl):"—",h:totalPnl!==null?"المحقّق + غير المحقّق (شامل العمولات)":"يتطلب سعرًا موثّقًا لكل مركز قائم",c:totalPnl!==null?portPlColor(totalPnl):"var(--t4)"},
-    {l:"عائد التكلفة المنصرفة",v:portPct(portReturnPct()),h:"(المحقّق + غير المحقّق) ÷ إجمالي ما صُرف على الشراء",c:portPlColor(portReturnPct())},
-  ];
-  return cards.map(c=>`<div class="pfp-card"><div class="pfp-card-l">${c.l}</div><div class="pfp-card-v" style="color:${c.c};">${c.v}</div><div class="pfp-card-h">${sanitize(c.h)}</div></div>`).join("");
-}
 
-function pfpOnboardingHtml(){
-  const steps=[
-    {t:"سجّل أول عملية شراء",d:"الكمية والسعر والتاريخ والعمولة — وسيُشتق متوسط التكلفة والقيمة تلقائيًا من الخادم."},
-    {t:"حدّث رصيدك النقدي",d:"أضف رصيد البداية وإيداعاتك وسحوباتك لتعكس السيولة الحقيقية."},
-    {t:"تابع القيمة والأداء",d:"لوحات ورسوم من بياناتك الفعلية؛ وستكتمل السلاسل الزمنية مع تراكب إغلاقات السوق المسجّلة."},
-  ];
-  return `<div class="pfp-sec"><div class="pfp-sec-h"><div class="pfp-sec-t"><svg class="et-icon"><use href="#i-spark"></use></svg> ابدأ محفظتك في ثلاث خطوات</div></div>
-    <div class="pfp-sec-b">
-      <div class="pfp-steps">${steps.map((s,i)=>`<div class="pfp-step"><div class="pfp-step-n">${i+1}</div><div><div class="pfp-step-t">${s.t}</div><div class="pfp-step-d">${s.d}</div></div></div>`).join("")}</div>
-      <div style="text-align:center;margin-top:12px;"><button class="btn btn-au" style="padding:9px 18px;font-size:12px;" onclick="portAddAssetFocus()">＋ سجّل أول صفقة الآن</button></div>
-    </div></div>`;
-}
+
+
 
 /* ── Cash management (deposits / withdrawals / dividends) ──────────────── */
-function pfpCashHtml(){
-  const events=(portfolioData.cashEvents||[]);
-  const kinds=[
-    {v:"deposit",l:"إيداع نقد",ic:"⬇️"},
-    {v:"withdrawal",l:"سحب نقد",ic:"⬆️"},
-    {v:"dividend",l:"توزيعات أرباح",ic:"🎁"},
-  ];
-  const today=cairoTodayStr();
-  return `<div class="pfp-form">
-      <div class="pfp-field"><label for="pfp-cash-kind">النوع</label>
-        <select id="pfp-cash-kind">${kinds.map(k=>`<option value="${k.v}">${k.ic} ${k.l}</option>`).join("")}</select></div>
-      <div class="pfp-field"><label for="pfp-cash-amount">المبلغ (ج.م)</label>
-        <input id="pfp-cash-amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00"></div>
-      <div class="pfp-field"><label for="pfp-cash-date">التاريخ</label>
-        <input id="pfp-cash-date" type="date" max="${today}" value="${today}"></div>
-      <div class="pfp-field" id="pfp-cash-symbol-wrap" style="display:none;"><label for="pfp-cash-symbol">السهم (اختياري للتوزيع)</label>
-        <input id="pfp-cash-symbol" type="text" placeholder="COMI" maxlength="16"></div>
-    </div>
-    <div id="pfp-cash-msg"></div>
-    <div style="margin-top:9px;"><button class="btn btn-au" style="padding:8px 16px;font-size:11.5px;" onclick="pfpSubmitCash()">＋ تسجيل الحركة</button></div>
-    <div class="pfp-rows" id="pfp-cash-rows">${events.length?events.map(pfpCashRowHtml).join(""):`<div style="color:var(--t5);font-size:10px;padding:6px 0;">لا حركات نقد مسجّلة بعد — الرصيد الحالي مبني من رصيد البداية وصفقاتك فقط.</div>`}</div>`;
-}
+
 function cairoTodayStr(){
   try{
     return new Intl.DateTimeFormat("en-CA",{timeZone:"Africa/Cairo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   }catch{return new Date().toISOString().slice(0,10);}
 }
-function pfpCashRowHtml(e){
-  const kindMeta={deposit:{l:"إيداع نقد",ic:"⬇️",c:"var(--g)"},withdrawal:{l:"سحب نقد",ic:"⬆️",c:"var(--dn)"},dividend:{l:"توزيعات",ic:"🎁",c:"var(--au)"}}[e.kind]||{l:sanitize(String(e.kind)),ic:"•",c:"var(--t4)"};
-  const sign=e.kind==="withdrawal"?"−":"＋";
-  return `<div class="pfp-row">
-    <div class="pfp-row-ic" style="background:var(--s2);">${kindMeta.ic}</div>
-    <div class="pfp-row-main"><div class="pfp-row-t">${kindMeta.l}${e.symbol?` — ${sanitize(String(e.symbol))}`:""}${e.note?` <span style="color:var(--t5);font-weight:400;">· ${sanitize(String(e.note))}</span>`:""}</div>
-    <div class="pfp-row-d">${sanitize(String(e.tradeDate||""))}</div></div>
-    <div class="pfp-row-v" style="color:${kindMeta.c};">${sign} ${portMoney(Number(e.amount)||0)}</div>
-    <button class="pfp-row-x" type="button" onclick="pfpDeleteCash('${sanitize(String(e.id))}')" title="إزالة الحركة (تُحذف أرشيفيًا مع الحفاظ على السجل)">✕</button>
-  </div>`;
-}
-async function pfpSubmitCash(){
-  const kind=String(document.getElementById("pfp-cash-kind")?.value||"deposit");
-  const amount=Number(document.getElementById("pfp-cash-amount")?.value);
-  const date=String(document.getElementById("pfp-cash-date")?.value||"");
-  const symbol=document.getElementById("pfp-cash-symbol")?.value?.trim().toUpperCase()||"";
-  const msg=document.getElementById("pfp-cash-msg");
-  if(!Number.isFinite(amount)||amount<=0){
-    if(msg)msg.innerHTML=`<div class="pfp-note danger">أدخل مبلغًا موجبًا صحيحًا.</div>`;
-    return;
-  }
-  if(msg)msg.innerHTML="";
-  const body={kind,amount,tradeDate:date};
-  if(kind==="dividend"&&symbol)body.symbol=symbol;
-  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
-  let r,j;
-  try{
-    r=await fetch("/api/portfolio/cash",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:ctrl.signal});
-    j=await r.json().catch(()=>null);
-  }catch{
-    if(msg)msg.innerHTML=`<div class="pfp-note danger">تعذّر الاتصال بالخادم — أعد المحاولة.</div>`;
-    return;
-  }finally{clearTimeout(timer);}
-  if(r.status===400&&j&&j.code==="insufficient_cash"){
-    if(msg)msg.innerHTML=`<div class="pfp-note danger">⚠️ السحب يتجاوز الرصيد المعروف بتاريخ ${sanitize(String(j.tradeDate||date))}: المتاح ${portMoney(Number(j.cashAvailable)||0)} ج.م فقط.</div>`;
-    return;
-  }
-  if(!r.ok||!j||j.status!=="ok"){
-    if(msg)msg.innerHTML=`<div class="pfp-note danger">${sanitize(j?.message||"تعذّر تسجيل الحركة.")}</div>`;
-    return;
-  }
-  showToast("✅ سُجّلت الحركة في الخادم");
-  await loadServerPortfolio(true);
-  pfpRenderDashboard();
-}
-async function pfpDeleteCash(id){
-  if(!id||!/^[a-z0-9-]{20,80}$/i.test(id))return;
-  if(!confirm("إزالة هذه الحركة من السيولة؟ (تُحفظ في أرشيف الخادم ولا تُحذف نهائيًا)"))return;
-  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
-  let r;
-  try{
-    r=await fetch(`/api/portfolio/cash/${encodeURIComponent(id)}`,{method:"DELETE",credentials:"same-origin",signal:ctrl.signal});
-  }catch{
-    showToast("تعذّر الاتصال بالخادم");
-    return;
-  }finally{clearTimeout(timer);}
-  if(r.ok){
-    showToast("✅ أُزيلت الحركة");
-    await loadServerPortfolio(true);
-    pfpRenderDashboard();
-  } else {
-    showToast("تعذّرت إزالة الحركة");
-  }
-}
+
+
+
 
 /* ── Concentration alerts (informational, server-derived weights) ──────── */
-function pfpConcentrationAlertsHtml(){
-  const s=portfolioData.summary;
-  const held=portfolio.filter(p=>Number(p.quantity)>0&&p.weightPct!==null&&p.weightPct!==undefined&&Number.isFinite(Number(p.weightPct)));
-  if(!held.length)return"";
-  const alerts=[];
-  const top=held.slice().sort((a,b)=>Number(b.weightPct)-Number(a.weightPct))[0];
-  if(top){
-    const w=Number(top.weightPct);
-    if(w>=50)alerts.push({high:true,ic:"🔴",t:`تركيز مرتفع في ${top.sym}`,d:`سهم واحد يمثّل ${w.toFixed(1)}% من قيمة المحفظة — أي تقلب فيه يحرّك المحفظة بأكملها. التنويع يقلّل هذا الحذر.`});
-    else if(w>=35)alerts.push({high:false,ic:"🟠",t:`تركيز ملحوظ في ${top.sym}`,d:`${w.toFixed(1)}% من المحفظة في سهم واحد — راقب حجمه مقارنة بأهدافك الشخصية.`});
-  }
-  /* Sector aggregation from server weights. */
-  const bySector={};
-  held.forEach(p=>{
-    const key=p.sector?String(p.sector):"غير مصنّف";
-    bySector[key]=(bySector[key]||0)+Number(p.weightPct);
-  });
-  const topSector=Object.entries(bySector).sort((a,b)=>b[1]-a[1])[0];
-  if(topSector&&topSector[1]>=60)alerts.push({high:false,ic:"🟡",t:`تخصص قطاعي: ${topSector[0]}`,d:`${topSector[1].toFixed(1)}% من المحفظة في قطاع واحد — أحداث القطاع الواحد تؤثر على معظم مراكزك معًا.`});
-  if(!alerts.length&&s&&Number.isFinite(Number(s.topConcentrationPct))){
-    return `<div class="pfp-sec"><div class="pfp-sec-h"><div class="pfp-sec-t"><svg class="et-icon"><use href="#i-pulse"></use></svg> الرصد والتحليل</div></div>
-    <div class="pfp-sec-b"><div class="pfp-note info">✅ لا يوجد تركيز مرتفع حاليًا: أعلى وزن فردي ${Number(s.topConcentrationPct).toFixed(1)}% وأعلى قطاع دون عتبة التنبيه. هذه ملاحظات وصفية على بياناتك، وليست توصية استثمارية.</div></div></div>`;
-  }
-  if(!alerts.length)return"";
-  return `<div class="pfp-sec"><div class="pfp-sec-h"><div class="pfp-sec-t"><svg class="et-icon"><use href="#i-alert"></use></svg> تنبيهات التركيز</div><div class="pfp-sec-s">عتبات وصفية (50% سهم / 60% قطاع) — معلوماتية وليست توصية</div></div>
-    <div class="pfp-sec-b">${alerts.map(a=>`<div class="pfp-alert ${a.high?"high":""}"><div class="pfp-alert-ic">${a.ic}</div><div><strong>${sanitize(a.t)}</strong><br>${sanitize(a.d)}</div></div>`).join("")}</div></div>`;
-}
+
 
 /* ── Value-over-time chart (SVG, real stored closes, honest gaps) ───────── */
-function pfpSetRange(range){
-  if(!PFP_RANGES.includes(range))range="1M";
-  pfpSeries.range=range;
-  const rangesEl=document.getElementById("pfp-ranges");
-  if(rangesEl)[...rangesEl.querySelectorAll(".pfp-range")].forEach(b=>b.classList.toggle("on",b.textContent===PFP_RANGE_LABELS[range]));
-  pfpLoadSeries(range,true);
-}
-async function pfpLoadSeries(range,force){
-  const seq=++pfpSeries.seq;
-  if(!force&&pfpSeries.status==="loading")return;
-  pfpSeries={range,status:"loading",data:pfpSeries.data,error:"",seq};
-  const wrap=document.getElementById("pfp-chart");
-  const notes=document.getElementById("pfp-chart-notes");
-  if(wrap)wrap.innerHTML='<div style="padding:26px;text-align:center;color:var(--t5);font-size:11px;">جارٍ تحميل السلسلة من الخادم...</div>';
-  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
-  let r,j;
-  try{
-    r=await fetch(`/api/portfolio/series?range=${encodeURIComponent(range)}`,{credentials:"same-origin",cache:"no-store",signal:ctrl.signal});
-    j=await r.json().catch(()=>null);
-  }catch{
-    r=null;j=null;
-  }finally{clearTimeout(timer);}
-  if(seq!==pfpSeries.seq)return; /* a newer request superseded this one */
-  if(!r||!r.ok||!j||j.status!=="ok"){
-    pfpSeries={range,status:"error",data:pfpSeries.data,error:"تعذّر تحميل السلسلة — أعد المحاولة.",seq};
-    if(wrap)wrap.innerHTML=`<div class="pfp-note danger" style="margin-top:0;">${pfpSeries.error} <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="pfpLoadSeries('${range}',true)">↻ إعادة المحاولة</button></div>`;
-    return;
-  }
-  pfpSeries={range,status:"ready",data:j,error:"",seq};
-  if(wrap){
-    wrap.innerHTML=pfpLineChartSvg(j);
-    pfpBindChartHover(wrap,j);
-  }
-  if(notes)notes.innerHTML=pfpChartNotesHtml(j);
-}
-function pfpChartNotesHtml(d){
-  const notes=[];
-  if(d.missingSymbols&&d.missingSymbols.length){
-    notes.push(`<div class="pfp-note">⚠️ بلا تاريخ إغلاق مسجّل في هذه الفترة: ${d.missingSymbols.slice(0,6).map(sanitize).join(" · ")} — الأيام الناقصة تُترك فراغًا صادقًا بدل اختلاق أرقام.</div>`);
-  }
-  if(d.basis==="cash-only"){
-    notes.push(`<div class="pfp-note info">📌 لا توجد مراكز قائمة في هذه الفترة: السلسلة تعرض خط النقد فقط (رصيد البداية + الصفقات + حركات النقد).</div>`);
-  } else if(!d.hasPriceHistory){
-    notes.push(`<div class="pfp-note info">📌 لا تتوفر بعد إغلاقات يومية مسجّلة في الخادم لهذه الأصول — ستكتمل السلاسل الزمنية مع تراكب البيانات اليومية (لا نرسم أبدًا من أسعار تقديرية).</div>`);
-  }
-  if(d.benchmark&&d.benchmark.points&&d.benchmark.points.length>=2){
-    const src=d.benchmark.source?` · المصدر: ${sanitize(String(d.benchmark.source.name))}`:"";
-    notes.push(`<div class="pfp-note info">📊 EGX30 مقيّس على 100 عند أول نقطة مشتركة للمقارنة النسبية${src}. هو مرجع عام للمقارنة، وليس سعرًا مرخّصًا فوريًا.</div>`);
-  }
-  return notes.join("");
-}
-function pfpChartGeom(d){
-  const points=d.points||[];
-  const W=640,H=230,PL=52,PR=12,PT=14,PB=26;
-  const iw=W-PL-PR,ih=H-PT-PB;
-  let min=Infinity,max=-Infinity;
-  points.forEach(p=>{
-    if(typeof p.cash==="number"){min=Math.min(min,p.cash);max=Math.max(max,p.cash);}
-    if(typeof p.value==="number"){min=Math.min(min,p.value);max=Math.max(max,p.value);}
-  });
-  if(!Number.isFinite(min)){min=0;max=1;}
-  if(min===max){min-=1;max+=1;}
-  const pad=(max-min)*0.08;
-  min-=pad;max+=pad;
-  /* Benchmark normalization: 100 at the first valued portfolio point at/after
-   * the first stored benchmark close — a shared window, never extrapolated. */
-  let benchPts=[];
-  const bench=d.benchmark&&Array.isArray(d.benchmark.points)?d.benchmark.points:[];
-  if(bench.length>=2&&points.length){
-    const firstB=bench[0].date;
-    const lastD=points[points.length-1].date;
-    const firstValued=points.find(p=>typeof p.value==="number"&&p.value!==0&&p.date>=firstB&&p.date<=lastD);
-    if(firstValued){
-      benchPts=bench
-        .filter(b=>b.date>=firstValued.date&&b.date<=lastD)
-        .map(b=>({date:b.date,v:100*(b.close/firstValued.value)}));
-    }
-  }
-  let cMin=min,cMax=max;
-  if(benchPts.length){
-    benchPts.forEach(b=>{cMin=Math.min(cMin,b.v);cMax=Math.max(cMax,b.v);});
-    const bp=(cMax-cMin)*0.08;cMin-=bp;cMax+=bp;
-  }
-  return {points,W,H,PL,PR,PT,PB,iw,ih,cMin,cMax,benchPts,n:points.length};
-}
-function pfpLineChartSvg(d){
-  const g=pfpChartGeom(d);
-  const points=g.points;
-  if(!points.length)return'<div style="padding:26px;text-align:center;color:var(--t5);font-size:11px;">لا توجد نقاط في هذه الفترة.</div>';
-  const x=i=>g.PL+(g.n===1?g.iw/2:(i/(g.n-1))*g.iw);
-  const cp=v=>g.PT+g.ih-((v-g.cMin)/(g.cMax-g.cMin))*g.ih;
-  const xOf=date=>{const idx=points.findIndex(p=>p.date===date);return idx<0?null:x(idx);};
-  /* Value line: segments broken at gaps (value null = honest missing day). */
-  const valSegs=[];let seg=[];
-  points.forEach((p,i)=>{
-    if(typeof p.value==="number")seg.push({x:x(i),y:cp(p.value)});
-    else{if(seg.length)valSegs.push(seg);seg=[];}
-  });
-  if(seg.length)valSegs.push(seg);
-  const cashPts=points.map((p,i)=>({x:x(i),y:cp(p.cash)})).filter(pt=>Number.isFinite(pt.y));
-  const benchSegs=[];let bseg=[];
-  g.benchPts.forEach(b=>{const px=xOf(b.date);if(px===null){if(bseg.length){benchSegs.push(bseg);bseg=[];}return;}bseg.push({x:px,y:cp(b.v)});});
-  if(bseg.length)benchSegs.push(bseg);
-  const pathFrom=(pts,close)=>pts.map((pt,i)=>`${i?"L":"M"}${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(" ")+(close&&pts.length>1?` L${pts[pts.length-1].x.toFixed(1)},${(g.PT+g.ih).toFixed(1)} L${pts[0].x.toFixed(1)},${(g.PT+g.ih).toFixed(1)} Z`:"");
-  const ticks=[];
-  for(let t=0;t<=3;t++){const v=g.cMin+(g.cMax-g.cMin)*(t/3);ticks.push({v,yy:cp(v)});}
-  const xIdx=[0,Math.floor((g.n-1)/4),Math.floor((g.n-1)/2),Math.floor(3*(g.n-1)/4),g.n-1].filter((v,i,a)=>a.indexOf(v)===i);
-  const xLabels=xIdx.map(i=>({xx:x(i),label:fmtDayShort(points[i].date)}));
-  const fmtMoney=v=>Math.abs(v)>=1e6?(v/1e6).toFixed(2)+"م":Math.abs(v)>=1e4?(v/1e3).toFixed(0)+"أ":v.toFixed(0);
-  const grid=ticks.map(t=>`<line x1="${g.PL}" x2="${g.W-g.PR}" y1="${t.yy.toFixed(1)}" y2="${t.yy.toFixed(1)}" stroke="rgba(148,163,184,.10)" stroke-width="1"/><text x="${g.PL-6}" y="${(t.yy+3).toFixed(1)}" text-anchor="end" font-size="8.5" fill="rgba(148,163,184,.75)" font-family="var(--mono)">${fmtMoney(t.v)}</text>`).join("");
-  const xgrid=xLabels.map(l=>`<text x="${l.xx.toFixed(1)}" y="${g.H-8}" text-anchor="middle" font-size="8.5" fill="rgba(148,163,184,.75)">${l.label}</text>`).join("");
-  const area=valSegs.filter(s=>s.length>1).map(s=>`<path d="${pathFrom(s,true)}" fill="rgba(16,185,129,.10)" stroke="none"/>`).join("");
-  const valuePaths=valSegs.map(s=>`<path d="${pathFrom(s,false)}" fill="none" stroke="#10b981" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`).join("");
-  const cashPath=cashPts.length>1?`<path d="${pathFrom(cashPts,false)}" fill="none" stroke="rgba(148,163,184,.65)" stroke-width="1.4" stroke-dasharray="5 4"/>`:"";
-  const benchPaths=benchSegs.map(s=>`<path d="${pathFrom(s,false)}" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-dasharray="6 3" opacity=".9"/>`).join("");
-  const lastSeg=valSegs[valSegs.length-1];
-  const dot=lastSeg&&lastSeg.length?`<circle cx="${lastSeg[lastSeg.length-1].x.toFixed(1)}" cy="${lastSeg[lastSeg.length-1].y.toFixed(1)}" r="3.4" fill="#10b981" stroke="#07140f" stroke-width="1.5"/>`:"";
-  const legend=`<div class="pfp-legend">
-      <span><i style="background:#10b981;"></i> قيمة المحفظة</span>
-      <span><i style="background:rgba(148,163,184,.8);"></i> النقد</span>
-      ${g.benchPts.length?`<span><i style="background:#fbbf24;"></i> EGX30 (مقياس 100)</span>`:""}
-    </div>`;
-  return `<svg viewBox="0 0 ${g.W} ${g.H}" role="img" aria-label="منحنى قيمة المحفظة عبر الوقت">${grid}${xgrid}${area}${cashPath}${benchPaths}${valuePaths}${dot}</svg>${legend}<div class="pfp-tooltip" id="pfp-tip"></div>`;
-}
-function fmtDayShort(date){
-  const m=String(date||"").slice(5,7),d=String(date||"").slice(8,10);
-  return `${d}/${m}`;
-}
-function pfpBindChartHover(wrap,d){
-  const tip=document.getElementById("pfp-tip");
-  const svg=wrap.querySelector("svg");
-  if(!svg||!tip)return;
-  const g=pfpChartGeom(d);
-  const points=g.points;
-  if(!points.length)return;
-  const cp=v=>g.PT+g.ih-((v-g.cMin)/(g.cMax-g.cMin))*g.ih;
-  const move=(evt)=>{
-    const rect=svg.getBoundingClientRect();
-    const cx=(evt.touches?evt.touches[0].clientX:evt.clientX)-rect.left;
-    const px=cx*(g.W/rect.width);
-    let idx=Math.round(((px-g.PL)/g.iw)*(g.n-1));
-    idx=Math.max(0,Math.min(g.n-1,idx));
-    const p=points[idx];
-    const valLine=typeof p.value==="number"?`<div>القيمة: <strong style="font-family:var(--mono);">${portMoney(p.value)}</strong></div>`:`<div>القيمة: <span style="color:var(--au);">فراغ (سعر ناقص)</span></div>`;
-    tip.innerHTML=`<div style="color:var(--t5);font-weight:700;">${sanitize(String(p.date))}</div>${valLine}<div>النقد: <span style="font-family:var(--mono);">${portMoney(Number(p.cash)||0)}</span></div>`;
-    const scale=rect.width/g.W;
-    const xx=(g.PL+(g.n===1?g.iw/2:(idx/(g.n-1))*g.iw))*scale;
-    const v=(typeof p.value==="number")?p.value:p.cash;
-    const yy=cp(v)*scale;
-    tip.style.display="block";
-    tip.style.left=Math.max(70,Math.min(rect.width-70,xx))+"px";
-    tip.style.top=Math.max(44,yy)+"px";
-  };
-  const leave=()=>{tip.style.display="none";};
-  svg.addEventListener("mousemove",move);
-  svg.addEventListener("mouseleave",leave);
-  svg.addEventListener("touchstart",move,{passive:true});
-  svg.addEventListener("touchmove",move,{passive:true});
-  svg.addEventListener("touchend",leave);
-}
+
+
+
+
+
+
+
 
 /* ── Targeted re-renders (no full tab rebuild → no lost input focus) ─────── */
 function portRenderTxList(){
@@ -9462,11 +8898,7 @@ function portRenderPositions(){
   /* Positions are inlined in the tab; a filter change only affects the
    * transactions list, so this is a no-op placeholder kept for callers. */
 }
-function portRenderSettings(){
-  const sec=document.querySelector("#vip-body .vbox.bl:last-of-type");
-  void sec; /* settings re-render through the full tab (rare, user-initiated) */
-  if(vipTab==="port"){const b=document.getElementById("vip-body");if(b)vBuildPort(b);}
-}
+
 
 /* ══════════════ TAB 9 — التقارير ══════════════ */
 function hasVerifiedMarketRows(){
@@ -10261,25 +9693,9 @@ async function portDelTx(id){
     showToast("⚠️ "+String(e?.message||"تعذر حذف العملية"));
   }
 }
-function portTxFormInit(sym){
-  portTxEditId=null;
-  portAddAssetPrefill=sym?String(sym).toUpperCase().slice(0,16):null;
-  const sec=document.getElementById("port-tx-sec");
-  if(sec)sec.innerHTML=portTransactionsSection();
-  portAddAssetPrefill=null;
-  const el=document.getElementById("ptx-sym");
-  if(el&&sym){el.value=String(sym).slice(0,16);el.focus();}
-  if(sym)portStockHint(String(sym).toUpperCase());
-}
+
 /* ── "إضافة أصل": jump to the trade form and focus the stock search ── */
-function portAddAssetFocus(){
-  const sec=document.getElementById("port-tx-sec");
-  if(sec)sec.scrollIntoView({behavior:"smooth",block:"start"});
-  setTimeout(()=>{
-    const el=document.getElementById("ptx-sym");
-    if(el){el.focus();if(el.select)el.select();}
-  },380);
-}
+
 /* Stock picker for the form: candidates come ONLY from the server's stock
  * list (liveStocks, loaded from /api/markets/stocks). Selecting a candidate
  * fills the SYMBOL field only — the price field is always the user's real
@@ -10334,81 +9750,17 @@ function portSuggestKey(e){
     if(first){e.preventDefault();if(first.onmousedown)first.onmousedown();}
   }
 }
-async function delPort(id){
-  if(!id||!confirm("أرشفة هذا المركز من محفظتك؟ يمكنك إضافته مرة أخرى لاحقًا."))return;
-  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
-  try{
-    const r=await fetch(`/api/portfolio/positions/${encodeURIComponent(id)}`,{method:"DELETE",credentials:"same-origin",signal:ctrl.signal});
-    const j=await r.json().catch(()=>null);
-    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر الأرشفة");
-    resetPortHistory();
-    portfolioState={...portfolioState,loaded:false,error:""};await loadServerPortfolio(true);showToast("✅ تمت أرشفة المركز");
-  }catch(e){showToast("⚠️ "+String(e?.message||"تعذر الأرشفة"));}
-  finally{clearTimeout(timer);}
-}
-/* The old aggregated "add position" UI was replaced by the transaction
- * ledger; renderPortList remains only as a compatibility no-op. */
-function renderPortList(){}
+
+
 
 /* ── Portfolio settings (starting cash) ─────────────────────────────────── */
-async function portSetCash(){
-  const v=Number(document.getElementById("port-cash-in")?.value||0);
-  if(!Number.isFinite(v)||v<0||v>1_000_000_000){showToast("⚠️ أدخل رصيدًا صحيحًا (0 أو أكثر)");return;}
-  try{
-    const r=await fetch("/api/portfolio/settings",{method:"PUT",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({startingCash:v})});
-    const j=await r.json().catch(()=>null);
-    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر الحفظ");
-    portCashEdit=null;
-    portAfterMutation();
-    showToast("✅ تم حفظ رصيد البداية");
-  }catch(e){showToast("⚠️ "+String(e?.message||"تعذر حفظ الإعدادات"));}
-}
+
 
 /* ── Period reports (day/week/month/custom) ──────────────────────────────── */
-function portReportRangeDates(range){
-  const today=cairoTodayStr();
-  const d=new Date(Date.parse(`${today}T00:00:00Z`));
-  if(range==="day")return{from:today,to:today};
-  if(range==="week"){d.setUTCDate(d.getUTCDate()-6);return{from:d.toISOString().slice(0,10),to:today};}
-  if(range==="month"){d.setUTCDate(d.getUTCDate()-29);return{from:d.toISOString().slice(0,10),to:today};}
-  return null;
-}
-function portReportSetRange(range){
-  const d=portReportRangeDates(range);
-  portReport={...portReport,range,from:d?d.from:portReport.from,to:d?d.to:portReport.to};
-  if(d)void portReportApply();
-  else if(vipTab==="port"){const b=document.getElementById("vip-body");if(b)vBuildPort(b);}
-}
-function portReportInit(){
-  const d=portReportRangeDates("month");
-  portReport={status:"idle",data:null,from:d.from,to:d.to,range:"month"};
-  void portReportApply();
-}
-async function portReportApply(){
-  const from=(document.getElementById("port-rep-from")?.value||portReport.from||"").trim();
-  const to=(document.getElementById("port-rep-to")?.value||portReport.to||"").trim();
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to){showToast("⚠️ اختر فترة صحيحة (الأول قبل الثاني)");return;}
-  portReport={...portReport,from,to,status:"loading"};
-  if(vipTab==="port"){const b=document.getElementById("vip-body");if(b)vBuildPort(b);}
-  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
-  try{
-    const r=await fetch(`/api/portfolio/report?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,{credentials:"same-origin",signal:ctrl.signal});
-    const j=await r.json().catch(()=>null);
-    if(!r.ok||!j||j.status!=="ok")throw new Error(j?.message||"تعذر إعداد التقرير");
-    portReport={...portReport,status:"ready",data:{
-      realizedPnl:Number(j.realizedPnl)||0,fees:Number(j.fees)||0,
-      buyCount:Number(j.buyCount)||0,sellCount:Number(j.sellCount)||0,
-      buyValue:Number(j.buyValue)||0,sellValue:Number(j.sellValue)||0,
-      byDay:Array.isArray(j.byDay)?j.byDay.slice(0,400):[],
-      allTime:j.allTime&&typeof j.allTime==="object"?{realizedPnl:Number(j.allTime.realizedPnl)||0,fees:Number(j.allTime.fees)||0,buyCount:Number(j.allTime.buyCount)||0,sellCount:Number(j.allTime.sellCount)||0}:null,
-    }};
-  }catch(e){
-    portReport={...portReport,status:"error",error:String(e?.message||"تعذر الاتصال بالخادم")};
-  }finally{
-    clearTimeout(timer);
-    if(vipTab==="port"){const b=document.getElementById("vip-body");if(b)vBuildPort(b);}
-  }
-}
+
+
+
+
 
 /* ── Portfolio-level alerts (reuse the existing price-alert system) ──────── */
 async function portAlertAdd(){
@@ -10438,10 +9790,7 @@ async function portAlertDel(id){
     showToast("✅ تم حذف التنبيه");
   }catch(e){showToast("⚠️ "+String(e?.message||"تعذر حذف التنبيه"));}
 }
-function portGlossaryToggle(){
-  portGlossaryOpen=!portGlossaryOpen;
-  const b=document.getElementById("vip-body");if(b&&vipTab==="port")vBuildPort(b);
-}
+
 function portOpenSymbolAlert(sym){
   if(!sym)return;
   vipTab="alerts";
@@ -10449,34 +9798,7 @@ function portOpenSymbolAlert(sym){
   const el=document.getElementById("pa-sym");
   if(el){el.value=String(sym).slice(0,16);el.focus();}
 }
-async function analyzePort(){
-  if(!portfolio.length)return;
-  const btn=document.getElementById("port-ai-btn");
-  const res=document.getElementById("port-ai-res");
-  if(!btn||!res)return;
-  if(!portfolio.some(item=>item.market&&Number.isFinite(item.market.price)&&item.market.source)){
-    res.textContent="📡 لا توجد أسعار سوق موثّقة لمراكز محفظتك الآن. لن نستخدم أسعارًا بديلة أو توصيات.";res.style.display="block";return;
-  }
-  btn.innerHTML='<div class="sp sp-bl sp-sm"></div> جارٍ إعداد الملخص...';btn.disabled=true;
-  res.style.display="none";
-  try{
-    const hl=allArts.slice(0,5).map(a=>a.title).join("\n")||"لا توجد عناوين مرخّصة متاحة";
-    const portLines=portfolio.map(item=>{
-      const market=item.market;
-      const curPrice=market?.price;
-      const pnl=Number.isFinite(curPrice)?((curPrice-item.price)/item.price*100):null;
-      return `${item.sym}: ${item.qty} سهم × سعر إدخال المستخدم ${item.price.toFixed(2)} ج${Number.isFinite(curPrice)?` | السعر المتاح: ${curPrice.toFixed(2)} ج | الفرق الحسابي: ${pnl>=0?"+":""}${pnl.toFixed(2)}% | المصدر: ${market.source||"غير متاح"} | وقت المصدر: ${cairoTimestampLabel(market.asOf)}`:" | السعر المتاح: غير متاح"}`;
-    }).join("\n");
-    const txt = await callAI({
-      max_tokens:1800,
-      feature:"portfolio_summary",
-      system:"أنت محرر ملخص محفظة تعليمي بالعربية. استخدم البيانات الواردة فقط. ممنوع أن توصي بشراء أو بيع أو احتفاظ أو زيادة/تخفيض مركز أو إعادة موازنة، وممنوع توقع العائد. سعر الإدخال بيانات أدخلها المستخدم؛ صف أي فرق حسابي بأنه حساب وصفي لا نتيجة استثمارية. اذكر حدود البيانات والمخاطر العامة دون توجيه قرار.",
-      messages:[{role:"user",content:`أنشئ ملخصًا وصفيًا للمحفظة بالترتيب:\n1. المراكز والأسعار المتاحة ومصادرها\n2. الفرق الحسابي الظاهر لكل مركز عند وجوده\n3. ملاحظة عن تنوع الرموز/القطاعات بناءً على القائمة فقط\n4. البيانات الناقصة أو المتأخرة\n5. المخاطر العامة التي ينبغي فهمها قبل أي قرار شخصي، بلا توصية.\n\nبيانات المحفظة:\n${portLines}\n\nعناوين سوق مرخّصة متاحة:\n${hl}`}]
-    });
-    res.textContent=txt;res.style.display="block";
-  }catch(e){res.textContent=aiErrMsg(e);res.style.display="block";}
-  btn.innerHTML="🤖 تحديث ملخص المحفظة";btn.disabled=false;
-}
+
 
 /* ═══════════ SUB MODAL (server-configured payment only) ═══════════ */
 let SUB_PLANS=null;       /* live plans from /api/payments/config (admin-editable) */
