@@ -228,6 +228,16 @@ export async function buildDividendsResponse(
 
 const EGX_PE_URL = "https://www.egx.com.eg/ar/MarketPECompanies.aspx";
 
+/** The EGX site rejects the backend's bot user agent (the request must look
+ * like a normal browser, exactly like the Yahoo path above); a 403 here
+ * used to surface as the screener's P/E column and P/E + dividend filters
+ * being dead. */
+const EGX_BROWSER_HEADERS = {
+  Accept: "text/html",
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+};
+
 export type EgxValuationRow = {
   name: string;
   /** مضاعف الربحية (P/E); 0 means the company reported no positive earnings. */
@@ -509,7 +519,7 @@ export async function buildValuationsResponse(
         timeoutMs: 10_000,
         attempts: 2,
         minIntervalMs: 1_000,
-        headers: { Accept: "text/html" },
+        headers: EGX_BROWSER_HEADERS,
       });
       const rows = parseEgxPeTable(html);
       if (!rows.length) throw new Error("egx pe page parsed to zero rows");

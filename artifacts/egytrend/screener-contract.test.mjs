@@ -229,3 +229,60 @@ test("the screener excludes no-data rows and discloses the exclusion", () => {
   const norm = functionBody("normalizeStockList");
   assert.match(norm, /const noData=s\.noData===true;/, "normalization still preserves no-data rows");
 });
+
+/* ─── TASK H: the screener filter layer must actually filter (2026-10-31) ───
+ * Prod audit found: the P/E + dividend filters were dead (the /valuations
+ * upstream 503'd and the scanner publishes no fundamentals for EGX), sorting
+ * by P/E / dividend % was a silent no-op (raw scan fields, always absent),
+ * the sort direction was inverted from its ▼/▲ labels, the EPS "loser"
+ * filter claimed the whole market (unknown treated as negative), and saved
+ * filters lost the advanced values. These tests pin the repaired contract. */
+
+test("sorting P/E, dividend % and EPS uses the merged values, not the raw scan fields", () => {
+  const filtered = functionBody("scrComputeFiltered");
+  assert.match(filtered, /if\(scrFilters\.sortBy==="pe"\)\{av=scrPe\(a\);bv=scrPe\(b\);\}/, "P/E sorts on the merged value");
+  assert.match(filtered, /else if\(scrFilters\.sortBy==="divYield"\)\{av=scrDy\(a\);bv=scrDy\(b\);\}/, "dividend % sorts on the merged value");
+  assert.match(filtered, /else if\(scrFilters\.sortBy==="eps"\)\{av=knownStockNumber\(a\.eps\);bv=knownStockNumber\(b\.eps\);\}/, "EPS sorts on the real value");
+  assert.ok(!/sortDir\*\(bv-av\)/.test(filtered), "the inverted comparator is gone");
+});
+
+test("the sort direction matches the ▼/▲ labels (desc first click)", () => {
+  const filtered = functionBody("scrComputeFiltered");
+  assert.match(filtered, /return scrFilters\.sortDir\*\(av-bv\);/, "sortDir -1 now sorts numerically descending");
+});
+
+test("the EPS filter is strict: unknown EPS matches neither pos nor neg", () => {
+  const filtered = functionBody("scrComputeFiltered");
+  assert.match(filtered, /e!==null&&e>0/, "pos requires a real positive EPS");
+  assert.match(filtered, /e!==null&&e<0/, "neg requires a real negative EPS");
+  assert.ok(!/!s\.eps\|\|s\.eps<=0/.test(filtered), "unknown EPS can no longer claim every row as a loser");
+});
+
+test("the dividend pays filter honors the real TTM dividend, not only the page yield", () => {
+  const filtered = functionBody("scrComputeFiltered");
+  assert.match(filtered, /const t=scrDivTtm\(s\);return \(d&&d>0\)\|\|\(t&&t\.ttm>0\);/, "TTM dividend from Yahoo counts as real payment");
+});
+
+test("the footer discloses EPS when the sources never publish it", () => {
+  const missing = functionBody("scrMissingColumns");
+  assert.match(missing, /missing\.push\("EPS"\)/, "EPS joins the honest missing-columns list");
+});
+
+test("the footer states the secondary layer's source, nature and loading state", () => {
+  const results = functionBody("renderScrResults");
+  assert.match(results, /الصفحة الرسمية للبورصة/, "the EGX official page is named as the P/E + coupon-yield source");
+  assert.match(results, /Yahoo \(آخر 12 شهرًا\)/, "the TTM dividend source and window are stated");
+  assert.match(results, /جارٍ تحميل P\/E/, "the loading state is visible, not a silent empty column");
+});
+
+test("saved filters persist and restore the advanced DOM values", () => {
+  const save = functionBody("saveScrFilter");
+  assert.match(save, /adv:scrAdvValues\(\)/, "the saved record carries the advanced filter values");
+  const load = functionBody("loadScrFilter");
+  assert.match(load, /adv\[key\]!==undefined&&adv\[key\]!==""/, "loading writes the advanced values back into the DOM");
+});
+
+test("reset restores the honest default sort indicator (chgPct ▼)", () => {
+  const reset = functionBody("resetScrFilters");
+  assert.match(reset, /scrSortBy\('chgPct'\)"\)th\.classList\.add\("sort-desc"\);/, "the default desc indicator returns with the data");
+});

@@ -176,7 +176,7 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
       pricingToken: await paymentPricingToken(userJar, "synthetic-vip"),
       method: "vodafone",
       tx: "synthetic-transfer-001",
-      proofImage: "data:image/png;base64,iVBORw0KGgo=",
+      proofImage: "data:image/png;base64,AAAAB3NzaC1yc2EAAAAAAAAA",
       proofName: "synthetic-proof.png",
     }),
   });
@@ -305,7 +305,7 @@ test("isolated synthetic user payment lifecycle is server-authorized end to end"
       pricingToken: await paymentPricingToken(userJar, "synthetic-vip"),
       method: "vodafone",
       tx: "synthetic-transfer-002",
-      proofImage: "data:image/png;base64,iVBORw0KGgo=",
+      proofImage: "data:image/png;base64,BBB4c2VyLXJlbmV3YWwAAAAA",
     }),
   });
   assert.equal(renewalWhileVip.response.status, 200);
@@ -678,7 +678,7 @@ test("subscription price policy schedules, targets, snapshots and authorizes edi
       method: "vodafone",
       price: 1,
       tx: "pricing-snapshot-transfer-001",
-      proofImage: "data:image/png;base64,iVBORw0KGgo=",
+      proofImage: "data:image/png;base64,EEEAc3VzcGVuZGVkLWF0dGVtcHQ=",
       proofName: "pricing-proof.png",
     }),
   });
@@ -714,7 +714,7 @@ test("subscription price policy schedules, targets, snapshots and authorizes edi
       pricingToken: initialPricingToken,
       method: "vodafone",
       tx: "pricing-stale-display-002",
-      proofImage: "data:image/png;base64,iVBORw0KGgo=",
+      proofImage: "data:image/png;base64,GGH3BheW1lbnQtcmFjZS1wcm9vZg==",
     }),
   });
   assert.equal(staleDisplayAttempt.response.status, 409);
@@ -1145,7 +1145,7 @@ test("payment routes reject a suspended account and a disabled collection method
       pricingToken: suspendedToken,
       method: "vodafone",
       tx: "suspended-payment-attempt",
-      proofImage: "data:image/png;base64,iVBORw0KGgo=",
+      proofImage: "data:image/png;base64,FFFkaXNhYmxlZC1tZXRob2Qta2V5",
     }),
   });
   assert.equal(suspendedSubmission.response.status, 401, "a banned user cannot submit a payment through an old session");
@@ -1172,7 +1172,7 @@ test("payment routes reject a suspended account and a disabled collection method
         pricingToken: activeToken,
         method: "vodafone",
         tx: "disabled-method-attempt",
-        proofImage: "data:image/png;base64,iVBORw0KGgo=",
+        proofImage: "data:image/png;base64,DDDcHJpY2luZy1zdGFsZS0wMDI=",
       }),
     });
     assert.equal(disabledMethod.response.status, 400, "a wallet disabled after rendering cannot accept a stale client form");
@@ -1202,7 +1202,7 @@ test("payment transaction references are idempotent across concurrent requests",
       pricingToken,
       method: "vodafone",
       tx,
-      proofImage: "data:image/png;base64,iVBORw0KGgo=",
+      proofImage: "data:image/png;base64,CCCcHJpY2luZy1pbml0aWFsAA==",
     }),
   });
   const [first, second] = await Promise.all([request("PAYMENT-RACE-001"), request("payment-race-001")]);

@@ -12,6 +12,8 @@ import { getMarketDataService } from "../lib/market-data/service";
 import { DrizzleMarketHistoryReadRepository, type MarketHistoryReadRepository, type StoredMarketOhlc } from "../lib/market-data/history";
 import { buildOppSignal, type OpportunitySignal, type OppNewsHit } from "../lib/opp-signals";
 import { evaluateOppLifecycle } from "../lib/opp-lifecycle";
+import { notifyNewOpportunities } from "../lib/notifications";
+import { buildOppExplanation } from "../lib/opp-explain";
 type StockT = OppCandidate extends never ? never : Parameters<typeof buildLocalOpportunities>[1][number];
 type NewsSnap = Awaited<ReturnType<typeof getNewsSnapshot>>;
 
@@ -349,6 +351,8 @@ type GenerationSummary = {
   signals: number;
   descriptive: number;
   closedLegacy: number;
+  /** In-platform notifications created for active VIP users (center hook). */
+  notified?: number;
   lifecycle: { realized: number; expired: number };
   skipped: { noHistory: number; noSignal: number; duplicate: number; noQuote: number };
   noteAr: string;
@@ -550,6 +554,17 @@ async function runGenerationPipeline(): Promise<GenerationSummary> {
   summary.descriptive = descriptiveRows.length;
   summary.closedLegacy = (newSignalRows.length || descriptiveRows.length) ? legacyIds.length : 0;
   summary.inserted = summary.signals + summary.descriptive;
+  /* Notification-center hook: freshly persisted cards become an in-platform
+   * notification for active VIP users (deduped per opportunity row). Failure
+   * is non-fatal — the cycle's insert is already durable above. */
+  if (summary.inserted > 0) {
+    try {
+      summary.notified = await notifyNewOpportunities([...newSignalRows, ...descriptiveRows]);
+    } catch (error) {
+      logger.warn({ err: (error as Error).message }, "opportunity notification cycle failed");
+      summary.notified = 0;
+    }
+  }
   if (newSignalRows.length) {
     summary.noteAr = "تم توليد بطاقات إشارات مبنية على سجل التداول الموثق والأسعار الحية الموثقة.";
   }
@@ -751,6 +766,58 @@ router.post("/opportunities/cron", (req: Request, res: any) => {
     return;
   }
   void runCronJob(req, res);
+});
+
+/* ─── GET /api/opportunities/:id ─────────────────────────────
+   The detail page's single source of truth: the stored row (terminal cards
+   stay readable — an outcome is history, not noise) or, ONLY while the DB
+   holds no opportunities at all, the same read-only live set the list falls
+   back to. An unknown id is a 404 — the detail page never fabricates
+   content for an opportunity that does not exist. The row is masked exactly
+   like the list (non-VIP readers lose details/signal/liveUpdate), and the
+   returned `explanation` is built from the masked row so a non-VIP reader
+   cannot recover hidden data through the explanation.
+   Registered AFTER the /opportunities/cron GET so "cron" is never captured
+   as an id. */
+router.get("/opportunities/:id", async (req, res) => {
+  const id = String(req.params["id"] || "").trim();
+  if (!OPP_ID_RX.test(id)) return res.status(400).json({ status: "error", message: "invalid opportunity id" });
+  const admin = await isAdmin(req);
+  let vip = false;
+  try { vip = await hasVipFeature(currentUser(req), "opportunities"); } catch { /* treat as non-vip */ }
+  const mask = (o: any) => (admin || vip || !o.vipOnly ? o : { ...o, details: null, signal: null, liveUpdate: null });
+
+  let row: Record<string, any> | null = null;
+  let origin: "db" | "live" = "db";
+  try {
+    const found = await db.select().from(opportunities).where(eq(opportunities.id, id)).limit(1);
+    if (found.length) row = found[0] as Record<string, any>;
+  } catch (e) {
+    logger.warn({ err: (e as Error)?.message }, "opportunity detail DB read failed");
+  }
+  if (!row) {
+    try {
+      const anyStored = await db.select({ id: opportunities.id }).from(opportunities).limit(1);
+      if (!anyStored.length) {
+        const live = await buildLiveOpportunityRows();
+        const hit = live.find((r) => String(r.id) === id);
+        if (hit) { row = hit as Record<string, any>; origin = "live"; }
+      }
+    } catch (e) {
+      logger.warn({ err: (e as Error)?.message }, "opportunity detail live fallback failed");
+    }
+  }
+  if (!row) return res.status(404).json({ status: "error", message: "opportunity not found" });
+
+  try { await enrichWithLiveUpdates([row]); } catch (e) {
+    logger.warn({ err: (e as Error)?.message }, "opportunity detail live status skipped");
+  }
+  const maskedRow = mask(row);
+  const explanation = buildOppExplanation(maskedRow, {
+    liveUpdate: (maskedRow as any).liveUpdate ?? null,
+    origin,
+  });
+  return res.json({ status: "ok", origin, opportunity: maskedRow, explanation });
 });
 
 /* ─── POST /api/opportunities/seed ───────────────────────────

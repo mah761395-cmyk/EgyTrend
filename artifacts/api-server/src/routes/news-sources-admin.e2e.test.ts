@@ -3,8 +3,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
+import { getDataDir } from "../lib/dataStore";
 import { createMemoryDatabase } from "../test-support/memory-db";
 import { __newsTest } from "./news";
 
@@ -21,11 +21,27 @@ let memory: MemoryDatabase;
 let server: http.Server;
 let baseUrl = "";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const SOURCES_FILE = path.resolve(here, "../../data/sources.json");
-const ARTICLES_FILE = path.resolve(here, "../../data/articles.json");
-let sourcesBackup = "";
-let articlesBackup = "";
+/* Snapshot/restore whatever directory the dataStore actually uses (the test
+ * harness points EGYTREND_DATA_DIR at a per-run scratch dir; this keeps the
+ * repo's tracked data files untouched in either mode). */
+const SOURCES_FILE = path.join(getDataDir(), "sources.json");
+const ARTICLES_FILE = path.join(getDataDir(), "articles.json");
+let sourcesBackup: string | null = null;
+let articlesBackup: string | null = null;
+
+/* The store's own saves are atomic (tmp + rename); mirror that idiom for the
+ * test restore so a concurrent reader can never observe a torn file. null
+ * means the file did not exist before this run (fresh scratch dir) and must
+ * not be (re)created on restore. */
+function restoreAtomically(file: string, backup: string | null): void {
+  if (backup === null) {
+    if (fs.existsSync(file)) fs.rmSync(file);
+    return;
+  }
+  const tmp = `${file}.e2e-restore-${process.pid}`;
+  fs.writeFileSync(tmp, backup, "utf8");
+  fs.renameSync(tmp, file);
+}
 
 function employeePasswordHash(password: string): string {
   const salt = "00112233445566778899aabbccddeeff";
@@ -74,8 +90,8 @@ function inventoryIds(body: Record<string, unknown> | null): string[] {
 }
 
 before(async () => {
-  sourcesBackup = fs.readFileSync(SOURCES_FILE, "utf8");
-  articlesBackup = fs.readFileSync(ARTICLES_FILE, "utf8");
+  sourcesBackup = fs.existsSync(SOURCES_FILE) ? fs.readFileSync(SOURCES_FILE, "utf8") : null;
+  articlesBackup = fs.existsSync(ARTICLES_FILE) ? fs.readFileSync(ARTICLES_FILE, "utf8") : null;
 
   memory = await createMemoryDatabase();
   (globalThis as typeof globalThis & { __egytrendTestDatabase?: typeof memory.db }).__egytrendTestDatabase = memory.db;
@@ -105,8 +121,8 @@ before(async () => {
 
 after(async () => {
   __newsTest.resetFeedFetcherForTest();
-  fs.writeFileSync(SOURCES_FILE, sourcesBackup, "utf8");
-  fs.writeFileSync(ARTICLES_FILE, articlesBackup, "utf8");
+  restoreAtomically(SOURCES_FILE, sourcesBackup);
+  restoreAtomically(ARTICLES_FILE, articlesBackup);
   await new Promise((r) => setTimeout(r, 200)); /* let the dataStore watcher settle on the restored files */
   if (server) {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

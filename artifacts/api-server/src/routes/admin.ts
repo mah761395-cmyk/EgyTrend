@@ -24,6 +24,7 @@ import {
   type SourceMeta, type CustomArticle,
 } from "../lib/dataStore";
 import { probeSourceFeed } from "./news";
+import { WALLET_TOPUP_PLAN_KEY, creditWalletInTx } from "../lib/wallet-renewals";
 import { getMarketDataService } from "../lib/market-data/service";
 import { readMarketProviderSettings, saveMarketProviderSettings } from "../lib/market-provider-settings";
 import { aiProbe, aiProvidersInfo } from "../lib/ai-engine";
@@ -54,6 +55,7 @@ import {
 import { db } from "@workspace/db";
 import {
   employeesTable, subscriptionPlansTable, couponsTable, auditLogsTable, aiConfigTable, aiUsageTable, paymentRequestsTable, appUsersTable, userNotificationsTable,
+  subscriptionRenewalsTable,
   userSubscriptionsTable, appSettingsTable, planPriceOffersTable, planPriceChangeLogsTable,
   subscriptionLifecycleEventsTable, subscriptionRemindersSentTable, trialClaimsTable,
   broadcastMessageUserStatesTable, referralAttributionsTable, referralRewardsTable, referralMessageDeliveriesTable,
@@ -2452,6 +2454,57 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
           return { expired: true as const, existing, planNameAr };
         }
 
+        /* One proof image may back at most ONE approved request. The submit
+         * time check is friendly; this in-transaction check (request row is
+         * locked) is the authoritative guard against approving the same
+         * screenshot twice. */
+        if (existing.proofHash) {
+          const [proofDup] = await tx
+            .select({ id: paymentRequestsTable.id })
+            .from(paymentRequestsTable)
+            .where(and(
+              eq(paymentRequestsTable.proofHash, existing.proofHash),
+              eq(paymentRequestsTable.status, "approved"),
+              sql`${paymentRequestsTable.id} <> ${id}`,
+            ))
+            .limit(1);
+          if (proofDup) {
+            throw new PaymentDecisionError(409, "إثبات الدفع هذا معتمد لطلب آخر بالفعل — كل إثبات لدفع واحد فقط");
+          }
+        }
+
+        /* Wallet top-up approval: the effect is a single ledger credit —
+         * no subscription is activated or extended, and no referral hook
+         * runs (approvedUserId stays null for this branch). */
+        if (existing.planKey === WALLET_TOPUP_PLAN_KEY) {
+          const [topupUser] = await tx.select({
+            id: appUsersTable.id,
+            phone: appUsersTable.phone,
+            status: appUsersTable.status,
+          }).from(appUsersTable).where(eq(appUsersTable.phone, existing.phone)).for("update").limit(1);
+          if (!topupUser || topupUser.status !== "active") {
+            throw new PaymentDecisionError(409, "تعذر شحن المحفظة؛ راجع حالة الحساب قبل الموافقة");
+          }
+          const credited = await creditWalletInTx(tx, {
+            user: { id: topupUser.id, phone: topupUser.phone },
+            amount: existing.price,
+            refKind: "payment_request",
+            refId: existing.id,
+            note: "شحن محفظة",
+          }, now);
+          if (!credited.ok) {
+            throw new PaymentDecisionError(409, "تم اعتماد هذا الطلب من قبل");
+          }
+          planNameAr = "شحن المحفظة";
+          await tx.update(paymentRequestsTable).set({
+            status: "approved",
+            notes: decisionNotes,
+            updatedAt: now,
+            decidedAt: now,
+          }).where(eq(paymentRequestsTable.id, id));
+          return { already: false as const, existing, planNameAr, userId: null };
+        }
+
         /* A payment request created by the current flow owns a complete,
          * server-authored plan snapshot. Therefore an ordinary later price,
          * name, duration or archive edit cannot change what the user bought.
@@ -2478,6 +2531,7 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
          * requests for the same user must stack rather than race. */
         const [user] = await tx.select({
           id: appUsersTable.id,
+          phone: appUsersTable.phone,
           plan: appUsersTable.plan,
           vipExpiresAt: appUsersTable.vipExpiresAt,
           status: appUsersTable.status,
@@ -2631,6 +2685,38 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
           vipExpiresAt: expires,
           updatedAt: now,
         }).where(eq(appUsersTable.id, user.id));
+
+        /* Auto-renewal consent captured explicitly at checkout is applied to
+         * the term just activated — same transaction, so consent and term
+         * never diverge. Debits happen only later, via the scheduled cycle. */
+        if ((existing.priceSnapshot as Record<string, unknown> | null)?.autoRenewConsent === true) {
+          const [planForRenewal] = await tx.select({
+            price: subscriptionPlansTable.price,
+          }).from(subscriptionPlansTable)
+            .where(and(eq(subscriptionPlansTable.key, activationPlan.key), eq(subscriptionPlansTable.isActive, true)))
+            .limit(1);
+          const displayPrice = Number.isSafeInteger(planForRenewal?.price) && (planForRenewal?.price ?? 0) > 0
+            ? planForRenewal.price
+            : existing.price;
+          const renewalSet = {
+            phone: user.phone,
+            planKey: activationPlan.key,
+            planNameAr: activationPlan.nameAr,
+            planDurationMonths: activationPlan.durationMonths,
+            /* Display snapshot only; debits use the plan's current price. */
+            lastKnownPrice: displayPrice,
+            status: "active" as const,
+            nextRenewalAt: expires,
+            consentAt: now,
+            consentSource: "checkout" as const,
+            disabledAt: null,
+            updatedAt: now,
+          };
+          /* `user_id` is the conflict target — it must stay out of SET. */
+          await tx.insert(subscriptionRenewalsTable)
+            .values({ id: `renew-${user.id}`, userId: user.id, createdAt: now, ...renewalSet })
+            .onConflictDoUpdate({ target: subscriptionRenewalsTable.userId, set: renewalSet });
+        }
       }
 
       await tx.update(paymentRequestsTable).set({
@@ -2677,7 +2763,9 @@ router.put("/requests/:id", requireAuth, requireWriteRate, requireRole("super_ad
         title: requestedStatus === "approved" ? "🎉 تم تفعيل اشتراك VIP" : requestedStatus === "refunded" || requestedStatus === "cancelled" ? "تحديث بخصوص الدفع" : "تحديث بخصوص طلب الدفع",
         body:
           requestedStatus === "approved"
-            ? `تم تأكيد دفعتك (${outcome.planNameAr}) بالقيمة المثبتة ${outcome.existing.price} جنيه وتفعيل اشتراك VIP بنجاح.`
+            ? (outcome.existing.planKey === WALLET_TOPUP_PLAN_KEY
+              ? `تم شحن محفظتك بمبلغ ${outcome.existing.price} جنيه — أصبح المبلغ متاحًا، ويُستخدم فقط بموافقتك (تجديد تلقائي مفعل أو استرداد عند الطلب).`
+              : `تم تأكيد دفعتك (${outcome.planNameAr}) بالقيمة المثبتة ${outcome.existing.price} جنيه وتفعيل اشتراك VIP بنجاح.`)
             : requestedStatus === "refunded" || requestedStatus === "cancelled"
               ? (decisionNotes || "تم تسجيل إلغاء أو استرجاع الدفع. لا تتغير الصلاحية تلقائيًا من هذا الإجراء؛ راجع الإدارة عند الحاجة.")
               : decisionNotes

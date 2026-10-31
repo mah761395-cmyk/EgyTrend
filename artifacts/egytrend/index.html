@@ -16,12 +16,13 @@
 <meta property="og:title" content="EgyTrend — البورصة المصرية وأسعار الذهب والدولار لحظة بلحظة"/>
 <meta property="og:description" content="البورصة المصرية، الذهب، الدولار، الكريبتو وأهم الأخبار في شاشة واحدة بالعربي — مع المصدر ووقت التحديث وحالة البيانات، وأدوات تعليمية بلا توصيات أو وعود بالأرباح."/>
 <meta property="og:url" content="https://egy-trend.vercel.app/"/>
-<!-- og:image متوقفة مؤقتًا: https://egy-trend.vercel.app/opengraph.jpg يعيد HTTP 500 في الإنتاج
-     (خلل serving لملفات الثابتات الثنائية — انظر تقرير Landing 2026-10-28).
-     أعيد التحقق 2026-10-30: opengraph.jpg + favicon.ico + favicon.svg ما زالوا 500 في
-     الإنتاج بينما نفس الملفات في build سليم (200 محليًا) — الخلل في طبقة خدمة Vercel
-     وليس في الملفات. أعد التفعيل بسطر:
-     <meta property="og:image" content="https://egy-trend.vercel.app/opengraph.jpg"/> -->
+<!-- og:image أُعيد تفعيلها 2026-10-31 بعد تشخيص دقيق: في نشر 349eb42 تعيد ملفات
+     opengraph.jpg + favicon.ico + favicon.svg — وهي الثلاثة المضافة في ذلك النشر فقط —
+     HTTP 500 بينما بقية ملفات الإخراج نفسه تعمل (index.html, robots.txt, sitemap.xml,
+     privacy.html = 200). الملفات موجودة في dist/public محليًا وفي build Vercel نفسه،
+     فالخلل في طبقة أصول Vercel للنشر الحالي وليس في المحتوى. الترميز سليم، وإعادة
+     نشر كاملة (Redeploy من لوحة Vercel) تعيد رفع الأصول وتصلح الثلاثة. -->
+<meta property="og:image" content="https://egy-trend.vercel.app/opengraph.jpg"/>
 <meta property="og:locale" content="ar_EG"/>
 <meta name="twitter:card" content="summary"/>
 <meta name="twitter:title" content="EgyTrend — البورصة المصرية وأسعار الذهب والدولار لحظة بلحظة"/>
@@ -2367,6 +2368,44 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
         <div><div style="color:var(--bl);font-size:20px;font-weight:900;font-family:var(--mono);" id="st-src">0</div><div style="color:var(--t4);font-size:10px;">مصادر</div></div>
       </div>
     </div>
+    <div style="margin-top:16px;background:var(--s1);border:1px solid var(--b1);border-radius:15px;padding:15px;" id="nc-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;">
+        <div style="color:var(--t3);font-size:11px;font-weight:700;white-space:nowrap;">📬 مركز الإشعارات <span id="nc-unread" style="color:var(--t5);font-weight:400;font-size:9.5px;"></span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+          <button onclick="ncMarkAllRead()" id="nc-markall" style="background:var(--gd);border:none;border-radius:7px;padding:4px 9px;color:var(--g);font-size:10px;cursor:pointer;">قراءة الكل</button>
+          <button onclick="ncSyncFollows()" id="nc-sync" style="background:var(--s2);border:none;border-radius:7px;padding:4px 9px;color:var(--t2);font-size:10px;cursor:pointer;">⟳ مزامنة متابعتي</button>
+        </div>
+      </div>
+      <div id="nc-list" style="max-height:300px;overflow-y:auto;"></div>
+      <div style="margin-top:11px;border-top:1px solid var(--b1);padding-top:9px;">
+        <div style="color:var(--t5);font-size:9.5px;margin-bottom:2px;">التحكم في أنواع الإشعارات</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--b1);">
+          <div style="color:var(--t2);font-size:11px;">🔔 تنبيهات الأسعار والمحفظة</div>
+          <label style="position:relative;width:40px;height:22px;cursor:pointer;">
+            <input type="checkbox" id="nc-pref-price" onchange="ncTogglePref('price',this.checked)" style="opacity:0;width:0;height:0;"/>
+            <span id="nc-pref-trk-price" style="position:absolute;inset:0;background:var(--s2);border-radius:11px;transition:background .2s;"></span>
+            <span id="nc-pref-knob-price" style="position:absolute;top:2px;right:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:all .2s;"></span>
+          </label>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--b1);">
+          <div style="color:var(--t2);font-size:11px;">💡 فرص استثمارية جديدة</div>
+          <label style="position:relative;width:40px;height:22px;cursor:pointer;">
+            <input type="checkbox" id="nc-pref-opps" onchange="ncTogglePref('opps',this.checked)" style="opacity:0;width:0;height:0;"/>
+            <span id="nc-pref-trk-opps" style="position:absolute;inset:0;background:var(--s2);border-radius:11px;transition:background .2s;"></span>
+            <span id="nc-pref-knob-opps" style="position:absolute;top:2px;right:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:all .2s;"></span>
+          </label>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+          <div style="color:var(--t2);font-size:11px;">📰 أخبار عن أسهم تتابعها أو قطاعاتها</div>
+          <label style="position:relative;width:40px;height:22px;cursor:pointer;">
+            <input type="checkbox" id="nc-pref-news" onchange="ncTogglePref('news',this.checked)" style="opacity:0;width:0;height:0;"/>
+            <span id="nc-pref-trk-news" style="position:absolute;inset:0;background:var(--s2);border-radius:11px;transition:background .2s;"></span>
+            <span id="nc-pref-knob-news" style="position:absolute;top:2px;right:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:all .2s;"></span>
+          </label>
+        </div>
+      </div>
+      <div style="color:var(--t5);font-size:9px;margin-top:9px;line-height:1.6;">إشعارات الدفع وتجديد الاشتراك تصل دائمًا لأنها مرتبطة بحسابك. تُنشأ الإشعارات من الخادم من البيانات الحقيقية فقط، وتظهر مع مصدرها ووقتها، ولا يُكرر الإشعار نفسه.</div>
+    </div>
     <div id="help-tour-anchor" style="display:flex;align-items:center;gap:10px;margin-top:12px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.18);border-radius:14px;padding:13px 15px;">
       <a href="https://wa.me/201008605139" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;gap:10px;text-decoration:none;flex:1;">
       <span style="font-size:22px;color:var(--g);display:grid;place-items:center;"><svg class="et-icon"><use href="#i-megaphone"></use></svg></span>
@@ -2384,6 +2423,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
     <div class="notif-hdr">
       <div class="notif-title"><svg class="et-icon"><use href="#i-bell"></use></svg> الإشعارات</div>
       <div class="notif-acts">
+        <button onclick="openNotifCenter()" style="background:none;border:none;color:var(--bl);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--sans);">مركز الإشعارات</button>
         <button onclick="markAllNotifsRead()" style="background:none;border:none;color:var(--g);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--sans);">قراءة الكل</button>
         <button type="button" onclick="openNotifSettings()" style="background:none;border:none;color:var(--t4);cursor:pointer;" aria-label="إعدادات الإشعارات"><svg class="et-icon"><use href="#i-settings"></use></svg></button>
         <button type="button" onclick="toggleNotifPanel()" style="background:none;border:none;color:var(--t3);cursor:pointer;" aria-label="إغلاق"><svg class="et-icon"><use href="#i-close"></use></svg></button>
@@ -3901,7 +3941,7 @@ function goNav(id,options={}){
     document.getElementById(`nb-${n}`)?.classList.toggle("active",n===target);
   });
   if(target==="vip")renderVIP();
-  if(target==="profile")renderProfile();
+  if(target==="profile"){renderProfile();ncLoad();}
   if(target==="markets"){buildMarkets();buildCalendar();}
   if(target==="home") clearNotifs();
   if(target==="opps") loadOpps();
@@ -3971,7 +4011,10 @@ function addNotif(type,title,body,link="",icon="🔔",actionUrl="",actionLabel="
 function updateBellBadge(){
   const store=getNotifsStore();
   const b=document.getElementById("bell-badge");if(!b)return;
-  if(store.unread>0){b.textContent=store.unread>9?"9+":store.unread;b.classList.add("show");}
+  /* Local ambient unread + server (per-account) unread; the server count is
+   * only counted while a session exists. */
+  const unread=store.unread+(U?ncServerUnread:0);
+  if(unread>0){b.textContent=unread>9?"9+":unread;b.classList.add("show");}
   else{b.classList.remove("show");}
 }
 
@@ -4064,7 +4107,7 @@ async function pollPayNotifs(){
           showPlatNotif(n.icon|| (kind==="price"?"🔔":"💰"),n.title,n.body,action?.url||"",n.actionLabel||"جدّد الآن");
         }
         markPayNotifsSeen(j.notifications.map(n=>n.id));
-        loadPayStatus();
+        loadPayStatus();loadWalletCard();
       }
     }
   }catch(e){}
@@ -4072,6 +4115,139 @@ async function pollPayNotifs(){
 function startPayNotifPolling(){
   if(payNotifTimer)return;
   pollPayNotifs().finally(()=>{payNotifTimer=setInterval(pollPayNotifs,15000);});
+}
+
+/* ═══════════════════ NOTIFICATION CENTER (server, per-account) ═══════════════════
+   The full feed lives server-side (user_notifications, per phone): price and
+   portfolio alerts, new server-evaluated opportunities, and news stories that
+   match the user's followed stocks or their sectors. Read state, deletion and
+   per-type delivery preferences are owned by the account — every request is
+   scoped by the verified session, never by client-supplied identity. */
+let ncServerUnread=0, ncPollTimer=null, ncBusy=false;
+const ncState={prefs:null,follows:null};
+const NC_KIND_ICON={price_alert:"🔔",opportunity:"💡",news:"📰",subscription:"⏰",payment_approved:"🎉",payment_rejected:"📋",info:"🔔"};
+function ncKindIcon(kind){return NC_KIND_ICON[kind]||"🔔";}
+async function ncFetch(path,opts){
+  try{
+    const r=await fetch("/api/notifications"+path,{credentials:"same-origin",cache:"no-store",...opts});
+    if(r.status===401){stopNcPolling();return null;}
+    if(!r.ok)return null;
+    return await r.json();
+  }catch(e){return null;}
+}
+function ncStopPolling(){if(ncPollTimer){clearInterval(ncPollTimer);ncPollTimer=null;}}
+function ncPollTick(){
+  if(!U)return;
+  ncFetch("").then(f=>{
+    if(!f||f.status!=="ok")return;
+    const changed=ncServerUnread!==f.unread;
+    ncServerUnread=f.unread;
+    if(changed)updateBellBadge();
+    if(!document.getElementById("page-profile")?.classList.contains("hidden"))ncRenderFeed(f);
+  }).catch(()=>{});
+}
+function startNcPolling(){
+  if(ncPollTimer||!U)return;
+  ncPollTick();
+  ncPollTimer=setInterval(ncPollTick,30000);
+}
+function ncApplyPrefs(prefs){
+  const p=prefs&&typeof prefs==="object"?prefs:{};
+  ["price","opps","news"].forEach(k=>{
+    const on=p[k]!==false;
+    const cb=document.getElementById("nc-pref-"+k);if(cb)cb.checked=on;
+    const trk=document.getElementById("nc-pref-trk-"+k);if(trk)trk.style.background=on?"var(--g)":"var(--s2)";
+    const knob=document.getElementById("nc-pref-knob-"+k);if(knob)knob.style[on?"left":"right"]="2px";
+  });
+}
+function ncRenderFeed(feed){
+  const listEl=document.getElementById("nc-list");
+  const unreadEl=document.getElementById("nc-unread");
+  if(!listEl)return;
+  if(!U){
+    ncServerUnread=0;updateBellBadge();
+    listEl.innerHTML=`<div style="color:var(--t5);font-size:10.5px;text-align:center;padding:14px;">سجّل الدخول لعرض مركز إشعاراتك — تنبيهاتك وفرصك وأخبار متابعتك في مكان واحد.</div>`;
+    if(unreadEl)unreadEl.textContent="";
+    return;
+  }
+  if(!feed||feed.status!=="ok"){
+    listEl.innerHTML=`<div style="color:var(--t5);font-size:10.5px;text-align:center;padding:14px;">تعذر تحميل الإشعارات حاليًا — أعد المحاولة لاحقًا.</div>`;
+    return;
+  }
+  if(unreadEl)unreadEl.textContent=feed.unread>0?`· ${feed.unread} غير مقروء`:"";
+  if(!feed.notifications.length){
+    listEl.innerHTML=`<div style="color:var(--t5);font-size:10.5px;text-align:center;padding:14px;">📭 لا توجد إشعارات بعد — أنشئ تنبيه سعر من التبويب 🔔، أو مزامنة متابعتك لتصلك أخبارها هنا.</div>`;
+    return;
+  }
+  listEl.innerHTML=feed.notifications.map(n=>`
+    <div style="padding:9px 2px;border-bottom:1px solid var(--b1);display:flex;gap:8px;align-items:flex-start;${n.read?"":"background:rgba(16,185,129,.04);border-radius:8px;"}`+`">
+      <div style="font-size:16px;line-height:1.3;flex-shrink:0;">${ncKindIcon(n.kind)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="color:var(--t1);font-size:11.5px;font-weight:700;line-height:1.45;word-break:break-word;">${sanitize(n.title)}</div>
+        <div style="color:var(--t4);font-size:10px;line-height:1.55;margin-top:2px;white-space:pre-line;word-break:break-word;">${sanitize(n.body)}</div>
+        <div style="color:var(--t5);font-size:9px;margin-top:3px;font-family:var(--mono);display:flex;gap:6px;align-items:center;">${timeAgoNotif(new Date(n.createdAt).getTime())}${n.read?"":"<span style='width:6px;height:6px;border-radius:50%;background:var(--g);display:inline-block;'></span>"}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+        ${n.read?"":`<button title="تحديد كمقروء" onclick="ncMarkRead(${safeJsArg(n.id)})" style="background:var(--gd);border:none;border-radius:6px;padding:3px 7px;color:var(--g);font-size:10px;cursor:pointer;">✓</button>`}
+        <button title="حذف الإشعار" onclick="ncDelete(${safeJsArg(n.id)})" style="background:var(--dnd);border:none;border-radius:6px;padding:3px 7px;color:var(--dn);font-size:10px;cursor:pointer;">🗑</button>
+      </div>
+    </div>`).join("");
+}
+function ncLoad(){
+  if(!U){
+    const listEl=document.getElementById("nc-list");
+    if(listEl)listEl.innerHTML=`<div style="color:var(--t5);font-size:10.5px;text-align:center;padding:14px;">سجّل الدخول لعرض مركز إشعاراتك — تنبيهاتك وفرصك وأخبار متابعتك في مكان واحد.</div>`;
+    return;
+  }
+  if(ncBusy)return;
+  ncBusy=true;
+  const listEl=document.getElementById("nc-list");
+  if(listEl)listEl.innerHTML=`<div style="color:var(--t5);font-size:10.5px;text-align:center;padding:14px;">جارِ التحميل…</div>`;
+  Promise.all([ncFetch(""),ncFetch("/prefs"),ncFetch("/follows")]).then(([feed,prefs,follows])=>{
+    ncState.prefs=prefs&&prefs.status==="ok"?prefs.prefs:ncState.prefs;
+    ncState.follows=follows&&follows.status==="ok"?follows.follows:ncState.follows;
+    if(ncState.prefs)ncApplyPrefs(ncState.prefs);
+    ncRenderFeed(feed);
+  }).finally(()=>{ncBusy=false;});
+}
+async function ncMarkRead(id){
+  const j=await ncFetch("/"+encodeURIComponent(id)+"/read",{method:"POST"});
+  if(j&&j.status==="ok"){ncServerUnread=Math.max(0,ncServerUnread-1);updateBellBadge();ncLoad();}
+}
+async function ncDelete(id){
+  const j=await ncFetch("/"+encodeURIComponent(id),{method:"DELETE"});
+  if(j&&j.status==="ok"){showToast("🗑 تم حذف الإشعار");ncLoad();}
+}
+async function ncMarkAllRead(){
+  const j=await ncFetch("/read-all",{method:"POST"});
+  if(j&&j.status==="ok"){showToast("✓ تم تحديد الكل كمقروء");ncServerUnread=0;updateBellBadge();ncLoad();}
+}
+async function ncTogglePref(kind,on){
+  const j=await ncFetch("/prefs",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({[kind]:on})});
+  if(j&&j.status==="ok"){ncState.prefs=j.prefs;ncApplyPrefs(j.prefs);showToast(on?"🔔 تم تفعيل النوع":"🔕 تم إيقاف النوع");}
+  else showToast("تعذر حفظ التفضيل حاليًا");
+}
+function ncEgxFollows(){
+  return wl.filter(s=>liveStocks&&liveStocks.some(x=>x.sym===s));
+}
+async function ncSyncFollows(){
+  const j=await ncFetch("/follows",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({follows:ncEgxFollows()})});
+  if(j&&j.status==="ok"){ncState.follows=j.follows;showToast("⟳ تم مزامنة متابعتك — أخبار هذه الأسهم وقطاعاتها ستصلك هنا");}
+  else showToast(j&&j.message?sanitize(j.message):"تعذر المزامنة حاليًا");
+}
+/* Fire-and-forget mirror of the watchlist after any local change, so the
+ * server-side news matching stays current without a manual sync. EGX-only:
+ * the server validates against the EGX catalog. */
+function ncFollowsAutoSync(){
+  if(!U)return;
+  const egx=ncEgxFollows();
+  fetch("/api/notifications/follows",{method:"PUT",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({follows:egx})}).catch(()=>{});
+}
+function openNotifCenter(){
+  closeNotifPanel();
+  goNav("profile");
+  setTimeout(()=>{document.getElementById("nc-card")?.scrollIntoView({behavior:"smooth",block:"start"});},250);
+  setTimeout(()=>ncLoad(),300);
 }
 function showPlatNotif(icon,title,body,actionUrl="",actionLabel="جدّد الآن"){
   try{
@@ -4520,99 +4696,236 @@ function toggleSaveOpp(id,btn){
   DB.s("saved_opps",saved);
 }
 
-/* TASK M: the structured body of a signal card — every number below comes
- * from the server's whitelisted payload; nothing is computed client-side.
- * The closing line is mandatory: levels are conditions, never a promise. */
-function signalDetailBody(o){
+function isActiveStatus(o){return o.status==="active"||o.status==="coming";}
+
+/* ══════════════ OPPORTUNITY DETAIL PAGE ══════════════
+   Server-first: the page loads GET /api/opportunities/:id — the STORED row
+   plus the server-built explanation — so every number on the page is a
+   stored value (or explicitly "غير متاحة"). If the server is unreachable it
+   degrades to the last list load with a visible note; an unknown id gets an
+   honest not-found state, never invented details. */
+const OPP_DETAIL_MISSING="غير متاحة";
+function oppDetailSection(icon,title,inner){
+  return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:14px;margin-bottom:12px;">
+    <div style="color:var(--g);font-size:11px;font-weight:700;margin-bottom:9px;">${icon} ${title}</div>${inner}
+  </div>`;
+}
+function oppDetailMissing(title){
+  return `<div style="background:var(--s1);border:1px dashed var(--b2);border-radius:13px;padding:12px;margin-bottom:12px;color:var(--t4);font-size:11.5px;text-align:center;">${title}: ${OPP_DETAIL_MISSING} — لا توجد بيانات محفوظة ضمن هذه الفرصة</div>`;
+}
+function oppFmtDateTimeCairo(iso){
+  if(!iso)return"غير متاح";
+  const t=new Date(iso);if(!Number.isFinite(t.getTime()))return"غير متاح";
+  return new Intl.DateTimeFormat("ar-EG",{timeZone:"Africa/Cairo",year:"numeric",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit",hour12:false}).format(t);
+}
+function oppPriceFmt(v){return Number(v).toLocaleString("en-US",{maximumFractionDigits:4});}
+function oppPriceLine(label,val,asOf,basis){
+  if(!Number.isFinite(val))return"";
+  return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;border-bottom:1px solid var(--b1);">
+    <span style="color:var(--t4);font-size:10.5px;white-space:nowrap;">${label}</span>
+    <span style="color:var(--t1);font-weight:800;font-size:13px;font-family:var(--mono);">${oppPriceFmt(val)}${Number.isFinite(asOf)?`<span style="color:var(--t5);font-size:9px;font-weight:400;margin-right:6px;">${oppFmtTime(asOf,basis||"source")}</span>`:""}</span>
+  </div>`;
+}
+/* Fallback explanation built from the (already whitelisted) last list load —
+   used only when the detail fetch fails; the server explanation is the
+   canonical one. */
+function localExplain(o){
   const s=o.signal;
+  const lu=o.liveUpdate;
+  return {
+    masked:false,
+    reason:null,
+    narrative:s?[`نمط «${s.signalTypeAr}» — قوة ${s.strength}/100 (${s.strengthLabelAr||"بدون تصنيف"}).`,o.summary||""].filter(Boolean):[o.summary||""],
+    identity:{
+      name:null,symbol:null,
+      sector:o.sector?String(o.sector).replace(/^\[(?:AUTO|AI|SIGNAL)\]\s*/,"")||null:null,
+      market:o.market,
+      currentPrice:Number.isFinite(lu?.price)?lu.price:null,
+      currentPriceAsOf:Number.isFinite(lu?.priceAsOf)?lu.priceAsOf:null,
+      currentPriceBasis:lu?.priceTimeBasis||null,
+      createdPrice:Number.isFinite(s?.price)?s.price:null,
+      createdPriceAsOf:Number.isFinite(s?.priceAsOf)?s.priceAsOf:null,
+      createdPriceBasis:s?.priceTimeBasis||null,
+      changePercent:Number.isFinite(s?.changePercent)?s.changePercent:null,
+    },
+    technical:{present:!!s,strength:s?.strength??null,strengthLabelAr:s?.strengthLabelAr??null,factors:s?.factors??[],entryLow:s?.entryLow??null,entryHigh:s?.entryHigh??null,entryNoteAr:s?.entryNoteAr??null,stopLoss:s?.stopLoss??null,target1:s?.target1??null,target2:s?.target2??null,rewardRisk:s?.rewardRisk??null,timeframeAr:s?.timeframeAr??null},
+    fundamental:{present:false,note:"لا توجد بيانات أساسية (أرباح أو تقييم) محفوظة ضمن هذه الفرصة حاليًا."},
+    news:{present:false,items:[],note:"لا توجد أخبار مرتبطة محفوظة ضمن هذه الفرصة."},
+    risks:{riskLevel:o.riskLevel||3,scenarioNegativeAr:s?.scenarioNegativeAr||null},
+    scenarios:{positive:s?.scenarioPositiveAr||null,negative:s?.scenarioNegativeAr||null},
+    sources:{present:!!(s&&s.dataSources.length),items:s?.dataSources??[],liveAsOf:Number.isFinite(lu?.priceAsOf)?lu.priceAsOf:null,liveBasis:lu?.priceTimeBasis||null,savedAt:o.createdAt||null,note:""},
+    disclaimer:"هذه قراءة تحليلية مشروطة بالمستويات الموضحة — ليست توصية استثمارية ولا ضمانًا لأي ربح.",
+  };
+}
+function oppDetailSections(o,ex,origin){
+  const rColor=RISK_COLORS[(o.riskLevel||3)-1]||RISK_COLORS[2];
+  const rLabel=RISK_LABELS[o.riskLevel||3]||RISK_LABELS[3];
+  /* 1 — instrument + price */
+  const identName=ex.identity.name||o.title;
+  const identBits=[
+    ex.identity.symbol?`<span class="opp-type-badge" style="color:var(--bl);background:rgba(59,130,246,.12);font-family:var(--mono);">${sanitize(ex.identity.symbol)}</span>`:"",
+    ex.identity.sector?`<span class="opp-type-badge" style="background:var(--s2);color:var(--t3);">${sanitize(ex.identity.sector)}</span>`:"",
+  ].join("");
+  const curPrice=ex.identity.currentPrice;
+  const chg=ex.identity.changePercent;
+  const instrument=oppDetailSection("📈 الأداة والسعر",`
+    <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:8px;">
+      <span style="color:var(--t1);font-weight:800;font-size:14px;">${sanitize(identName)}</span>${identBits}
+    </div>
+    ${Number.isFinite(curPrice)?oppPriceLine("السعر الحالي (موثق)",curPrice,ex.identity.currentPriceAsOf,ex.identity.currentPriceBasis):`<div style="color:var(--t4);font-size:11px;padding:6px 0;border-bottom:1px solid var(--b1);">السعر الحالي: لا يوجد سعر حية موثق الآن</div>`}
+    ${oppPriceLine("سعر الإشارة عند الإنشاء",ex.identity.createdPrice,ex.identity.createdPriceAsOf,ex.identity.createdPriceBasis)}
+    ${Number.isFinite(chg)?`<div style="font-size:10.5px;margin-top:7px;color:${chg>=0?"#22c55e":"#ef4444"};font-weight:700;">${chg>=0?"▲":"▼"} ${Math.abs(chg).toFixed(2)}% عند الإنشاء</div>`:""}`);
+  /* 2 — creation */
+  const creation=oppDetailSection("🕐 الإنشاء",`
+    <div style="color:var(--t2);font-size:11.5px;line-height:2;">
+      تاريخ ووقت الإنشاء: <b>${sanitize(oppFmtDateTimeCairo(o.createdAt))}</b><br/>
+      ${origin==="live"?"النوع: لقطة حية غير محفوظة — تُعاد بناؤها من بيانات السوق وقت الطلب":"النوع: فرصة محفوظة في النظام"}
+    </div>`);
+  /* 3 — why it appeared */
+  const reasonSec=ex.technical.present
+    ?oppDetailSection("🧠 لماذا ظهرت هذه الفرصة",`
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+        <span class="opp-type-badge" style="color:#c084fc;background:rgba(192,132,252,.12);">⚡ ${sanitize(String(o.signal?.signalTypeAr||"إشارة"))}</span>
+        ${ex.technical.strength!=null?`<span style="color:var(--t4);font-size:10.5px;">القوة: ${ex.technical.strength}/100 · ${sanitize(String(ex.technical.strengthLabelAr||"—"))}</span>`:""}
+      </div>
+      ${ex.reason?`<div style="color:var(--t2);font-size:12px;line-height:1.9;">${sanitize(ex.reason)}</div>`:oppDetailMissing("السبب المحفوظ")}
+      ${o.signal?`<div style="margin-top:8px;">${signalStrengthDots(o.signal.strength)}</div>`:""}`)
+    :oppDetailSection("🧠 لماذا ظهرت هذه الفرصة",`
+      <div style="color:var(--t2);font-size:12px;line-height:1.9;">${sanitize(o.summary||"لا يوجد ملخص محفوظ.")}</div>
+      ${ex.technical.present?"":`<div style="color:var(--t4);font-size:10.5px;margin-top:7px;">هذا العنصر لقطة وصفية — لا توجد إشارة منظمة (مستويات/مؤشرات) محفوظة له.</div>`}`);
+  /* 4 — simplified explanation */
+  const narrative=Array.isArray(ex.narrative)&&ex.narrative.length
+    ?oppDetailSection("💬 الشرح المبسط (مبني على البيانات المحفوظة فقط)",`
+      ${ex.narrative.map(s=>`<div style="color:var(--t2);font-size:12px;line-height:1.95;margin-bottom:6px;">• ${sanitize(s)}</div>`).join("")}
+      <div style="color:var(--t5);font-size:9.5px;margin-top:8px;padding-top:8px;border-top:1px solid var(--b1);">يولَّد تلقائيًا من الحقول الفعلية المحفوظة للفرصة — لا يحتوي على أرقام غير محفوظة.</div>`)
+    :oppDetailMissing("الشرح");
+  /* 5 — technical analysis & indicators */
+  const technical=ex.technical.present&&ex.technical.factors.length
+    ?oppDetailSection("📊 التحليل الفني والمؤشرات (قيم فعلية محفوظة)",`
+      ${ex.technical.factors.map(f=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--t2);margin-bottom:7px;line-height:1.6;align-items:baseline;"><span>${sanitize(f.labelAr)}</span><b style="color:${f.points>=0?"#22c55e":"#ef4444"};white-space:nowrap;">${f.points>=0?"+":""}${f.points}</b></div>`).join("")}
+      <div style="color:var(--t5);font-size:9.5px;margin-top:6px;">القيم داخل كل عامل هي المحفوظة وقت إنشاء الإشارة — ليست إعادة حساب الآن.</div>`)
+    :oppDetailMissing("التحليل الفني والمؤشرات");
+  /* 6 — levels */
   const lv=(label,val,sub)=>`<div class="opp-meta-item"><div class="opp-meta-label">${label}</div><div class="opp-meta-val" style="font-weight:800;">${val}</div>${sub?`<div style="color:var(--t4);font-size:10px;margin-top:2px;">${sanitize(sub)}</div>`:""}</div>`;
+  const levels=ex.technical.present
+    ?oppDetailSection("🎯 المستويات (الدخول والأهداف والوقف)",`
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
+        ${lv("منطقة الدخول",`${oppPriceFmt(ex.technical.entryLow)} – ${oppPriceFmt(ex.technical.entryHigh)}`,ex.technical.entryNoteAr)}
+        ${lv("وقف الخسارة",oppPriceFmt(ex.technical.stopLoss))}
+        ${lv("الهدف الأول",oppPriceFmt(ex.technical.target1))}
+        ${lv("الهدف الثاني",oppPriceFmt(ex.technical.target2))}
+        ${lv("العائد للمخاطرة",Number.isFinite(ex.technical.rewardRisk)?`${ex.technical.rewardRisk} ريسك`:OPP_DETAIL_MISSING)}
+        ${lv("الأفق الزمني",ex.technical.timeframeAr||OPP_DETAIL_MISSING)}
+      </div>`)
+    :oppDetailMissing("المستويات (الدخول والأهداف والوقف)");
+  /* 7 — fundamental */
+  const fundamental=oppDetailSection("🏛 التحليل الأساسي",`
+    <div style="color:var(--t4);font-size:11.5px;line-height:1.8;">${sanitize(ex.fundamental?.note||OPP_DETAIL_MISSING)}</div>`);
+  /* 8 — related news */
+  const news=ex.news.present
+    ?oppDetailSection("📰 أخبار مرتبطة (محفوظة ضمن الإشارة)",`
+      ${ex.news.items.map(n=>`<div style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--b1);">
+        <span style="font-size:13px;flex-shrink:0;">${n.direction==="positive"?"🟢":"🔴"}</span>
+        <div style="flex:1;min-width:0;"><div style="color:var(--t2);font-size:11.5px;line-height:1.7;">${sanitize(n.labelAr)}</div>
+        <div style="color:${n.direction==="positive"?"#22c55e":"#ef4444"};font-size:10px;margin-top:2px;">التأثير المحفوظ: ${n.direction==="positive"?"داعم للفكرة":"ضغط على الفكرة"}</div></div>
+      </div>`).join("")}
+      <div style="color:var(--t5);font-size:9.5px;margin-top:7px;">${sanitize(ex.news.note||"")}</div>`)
+    :oppDetailSection("📰 أخبار مرتبطة",`
+      <div style="color:var(--t4);font-size:11.5px;line-height:1.8;">${sanitize(ex.news?.note||OPP_DETAIL_MISSING)}</div>`);
+  /* 9 — risks */
+  const risks=oppDetailSection("⚠️ المخاطر",`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;">
+      <div class="opp-risk">${[1,2,3,4,5].map(i=>`<div class="opp-risk-dot" style="background:${i<=(ex.risks?.riskLevel||o.riskLevel||3)?rColor:"var(--b2)"};width:10px;height:10px;"></div>`).join("")}</div>
+      <span style="color:${rColor};font-size:10.5px;font-weight:700;">${rLabel}</span>
+    </div>
+    ${ex.risks?.scenarioNegativeAr?`<div style="color:var(--t2);font-size:12px;line-height:1.9;">ما الذي يلغي الفكرة: ${sanitize(ex.risks.scenarioNegativeAr)}</div>`:oppDetailMissing("سيناريو المخاطرة")}`);
+  /* 10 — scenarios */
+  const scenarios=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
+    <div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:13px;padding:12px;">
+      <div style="color:#22c55e;font-size:11px;font-weight:700;margin-bottom:5px;">السيناريو الإيجابي (مشروط)</div>
+      <div style="color:var(--t2);font-size:11.5px;line-height:1.8;">${ex.scenarios?.positive?sanitize(ex.scenarios.positive):OPP_DETAIL_MISSING}</div>
+    </div>
+    <div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:13px;padding:12px;">
+      <div style="color:#ef4444;font-size:11px;font-weight:700;margin-bottom:5px;">السيناريو السلبي</div>
+      <div style="color:var(--t2);font-size:11.5px;line-height:1.8;">${ex.scenarios?.negative?sanitize(ex.scenarios.negative):OPP_DETAIL_MISSING}</div>
+    </div>
+  </div>`;
+  /* 11 — sources & last update */
+  const srcItems=(ex.sources?.items||[]).map(d=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--b1);font-size:11px;">
+    <span style="color:var(--t2);">${sanitize(d.name)}</span>
+    <span style="color:var(--t4);white-space:nowrap;">${oppFmtTime(d.asOf,d.basis||"source")}</span>
+  </div>`).join("");
+  const sources=oppDetailSection("📡 مصدر البيانات وآخر تحديث",`
+    ${srcItems}
+    ${Number.isFinite(ex.sources?.liveAsOf)?`<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--b1);font-size:11px;"><span style="color:var(--t2);">آخر قراءة حية موثقة</span><span style="color:var(--t4);white-space:nowrap;">${oppFmtTime(ex.sources.liveAsOf,ex.sources.liveBasis||"source")}</span></div>`:""}
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:11px;"><span style="color:var(--t2);">حفظت الفرصة</span><span style="color:var(--t4);white-space:nowrap;">${sanitize(oppFmtDateTimeCairo(o.createdAt))}</span></div>
+    ${ex.sources?.note?`<div style="color:var(--t5);font-size:9.5px;margin-top:7px;">${sanitize(ex.sources.note)}</div>`:""}`);
+  /* 12 — outcome (history cards) */
   const status=!isActiveStatus(o)?OPP_STATUS_BADGES[o.status]:null;
   const resultBox=(status&&o.result&&OPP_RESULT_AR[o.result])?`
-    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:13px;margin-bottom:14px;">
+    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:13px;margin-bottom:12px;">
       <div style="color:var(--t1);font-size:12px;font-weight:800;margin-bottom:5px;">${status.l} — النتيجة</div>
       <div style="color:var(--t2);font-size:12px;line-height:1.8;">${OPP_RESULT_AR[o.result]}</div>
       ${Number.isFinite(o.realizedAt)?`<div style="color:var(--t4);font-size:10.5px;margin-top:5px;">🕐 ${oppFmtTime(o.realizedAt,"source")}</div>`:""}
     </div>`:"";
-  const liveBox=o.liveUpdate?`
-    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:13px;margin-bottom:14px;">
-      <div style="color:var(--t1);font-size:12px;font-weight:800;margin-bottom:5px;">الحالة الآن (قراءة حية غير محفوظة)</div>
-      <div style="color:var(--t2);font-size:12px;line-height:1.8;">
-        ${o.liveUpdate.statusNow==="active"?"النموذج ساري":o.liveUpdate.statusNow==="realized"?"تحقق الهدف":"انتهت الفكرة"}
-        ${Number.isFinite(o.liveUpdate.price)?` — السعر الحالي <b>${Number(o.liveUpdate.price).toLocaleString("en-US")}</b> (${oppFmtTime(o.liveUpdate.priceAsOf,o.liveUpdate.priceTimeBasis)})`:""}
-      </div>
-      ${o.liveUpdate.noteAr?`<div style="color:var(--t4);font-size:11px;margin-top:4px;">${sanitize(o.liveUpdate.noteAr)}</div>`:""}
-    </div>`:"";
-  const factors=s.factors.length?`
-    <div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:13px;margin-bottom:14px;">
-      <div style="color:var(--g);font-size:11px;font-weight:700;margin-bottom:8px;">⚖️ العوامل (${s.strength}/100 · ${sanitize(s.strengthLabelAr)})</div>
-      ${s.factors.map(f=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--t2);margin-bottom:6px;line-height:1.6;"><span>${sanitize(f.labelAr)}</span><b style="color:${f.points>=0?"#22c55e":"#ef4444"};white-space:nowrap;">${f.points>=0?"+":""}${f.points}</b></div>`).join("")}
-    </div>`:"";
-  return `${resultBox}${liveBox}${factors}
-  <div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:15px;margin-bottom:14px;">
-    <div style="color:var(--g);font-size:11px;font-weight:700;margin-bottom:10px;">🎯 المستويات (مشتقة من بنية السعر)</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
-      ${lv("منطقة الدخول",`${Number(s.entryLow).toLocaleString("en-US")} – ${Number(s.entryHigh).toLocaleString("en-US")}`,s.entryNoteAr)}
-      ${lv("وقف الخسارة",Number(s.stopLoss).toLocaleString("en-US"))}
-      ${lv("الهدف الأول",Number(s.target1).toLocaleString("en-US"))}
-      ${lv("الهدف الثاني",Number(s.target2).toLocaleString("en-US"))}
-      ${lv("العائد للمخاطرة",Number.isFinite(s.rewardRisk)?`${s.rewardRisk} ريسك`:"—")}
-      ${lv("الأفق الزمني",s.timeframeAr||"—")}
-    </div>
-  </div>
-  ${s.scenarioPositiveAr?`<div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:13px;padding:13px;margin-bottom:12px;"><div style="color:#22c55e;font-size:11px;font-weight:700;margin-bottom:5px;">السيناريو الإيجابي (مشروط)</div><div style="color:var(--t2);font-size:12px;line-height:1.8;">${sanitize(s.scenarioPositiveAr)}</div></div>`:""}
-  ${s.scenarioNegativeAr?`<div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:13px;padding:13px;margin-bottom:14px;"><div style="color:#ef4444;font-size:11px;font-weight:700;margin-bottom:5px;">السيناريو السلبي</div><div style="color:var(--t2);font-size:12px;line-height:1.8;">${sanitize(s.scenarioNegativeAr)}</div></div>`:""}
-  <div style="background:var(--s1);border:1px dashed var(--b2);border-radius:13px;padding:11px;margin-bottom:14px;color:var(--t4);font-size:10.5px;line-height:1.8;">⚖️ تنويه: هذه قراءة تحليلية مشروطة بالمستويات الموضحة أعلاه — ليست توصية استثمارية، ولا ضمان لأي نتيجة. تداول الأسهم والكريبتو ينطوي على مخاطر حقيقية.</div>
-  ${signalSourceMeta(o)}`;
+  return `${resultBox}${instrument}${creation}${reasonSec}${narrative}${technical}${levels}${fundamental}${news}${risks}${oppDetailSection("🎬 السيناريوهات",scenarios)}${sources}
+  <div style="background:var(--s1);border:1px dashed var(--b2);border-radius:13px;padding:11px;margin-bottom:14px;color:var(--t4);font-size:10.5px;line-height:1.8;">⚖️ ${sanitize(ex.disclaimer||"هذه قراءة تحليلية مشروطة بالمستويات الموضحة — ليست توصية استثمارية ولا ضمانًا لأي ربح.")}</div>`;
 }
-function isActiveStatus(o){return o.status==="active"||o.status==="coming";}
-
-function openOppDetail(id){
-  const o=oppsData.find(x=>x.id===id);if(!o)return;
+async function openOppDetail(id){
+  const local=oppsData.find(x=>x.id===id);
   const isVip=U?.plan==="vip"||U?.plan==="admin";
-  const locked=o.vipOnly&&!isVip;
-  const t=OPP_TYPES[o.type]||OPP_TYPES.stock;
-  const rColor=RISK_COLORS[(o.riskLevel||3)-1]||RISK_COLORS[2];
-  const rLabel=RISK_LABELS[o.riskLevel||3]||RISK_LABELS[3];
-  const autoObservation=o.autoObservation===true;
-  const isSignal=o.isSignalCard===true&&!!o.signal;
-  const sectorClean=String(o.sector||"").replace(/^\[(?:AUTO|AI)\]\s*/,"");
-  const daysLeft=o.deadline?Math.ceil((new Date(o.deadline)-new Date())/(1000*60*60*24)):null;
-  const idArg=safeJsArg(o.id);
   const ov=document.createElement("div");ov.id="opp-detail-ov";
   ov.style.cssText="position:fixed;inset:0;z-index:650;background:rgba(3,7,18,.95);overflow-y:auto;";
   ov.innerHTML=`<div style="max-width:430px;margin:0 auto;padding:20px 16px 60px;">
-    <button onclick="document.getElementById('opp-detail-ov').remove()" style="background:none;border:none;color:var(--t3);font-size:14px;cursor:pointer;margin-bottom:16px;display:flex;align-items:center;gap:5px;font-family:var(--sans);">← رجوع</button>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-      <span class="opp-type-badge" style="color:${t.c};background:${t.bg};font-size:11px;padding:3px 10px;">${sanitize(t.l)}</span>
-      ${o.vipOnly?`<span class="opp-type-badge" style="color:#a78bfa;background:rgba(139,92,246,.12);font-size:11px;padding:3px 10px;">VIP فقط</span>`:""}
-      ${!autoObservation&&o.featured?`<span class="opp-type-badge" style="color:#f59e0b;background:rgba(245,158,11,.12);font-size:11px;padding:3px 10px;">⭐ مميزة</span>`:""}
-      ${isSignal?`<span class="opp-type-badge" style="color:#c084fc;background:rgba(192,132,252,.12);font-size:11px;padding:3px 10px;">⚡ إشارة</span>`:""}
-      ${!isActiveStatus(o)&&OPP_STATUS_BADGES[o.status]?`<span class="opp-type-badge" style="color:${OPP_STATUS_BADGES[o.status].c};background:${OPP_STATUS_BADGES[o.status].bg};font-size:11px;padding:3px 10px;">${OPP_STATUS_BADGES[o.status].l}</span>`:""}
-      ${autoObservation?`<span class="opp-type-badge" style="color:#93c5fd;background:rgba(59,130,246,.12);font-size:11px;padding:3px 10px;">لقطة وصفية</span>`:""}
-    </div>
-    <h2 style="color:var(--t1);font-size:20px;font-weight:900;line-height:1.4;margin-bottom:12px;">${sanitize(o.title)}</h2>
-    ${locked?`<div style="text-align:center;padding:30px;background:var(--aud);border-radius:16px;cursor:pointer;" onclick="document.getElementById('opp-detail-ov').remove();goNav('vip')"><div style="font-size:40px;margin-bottom:8px;">⭐</div><div style="color:var(--au);font-weight:800;font-size:15px;">${autoObservation?"هذا العنصر الوصفي لأعضاء VIP فقط":"هذا العنصر لأعضاء VIP فقط"}</div><div style="color:var(--t4);font-size:12px;margin-top:5px;">اشترك الآن للوصول الكامل</div></div>`
-    :(isSignal?`<p style="color:var(--t2);font-size:13.5px;line-height:1.8;margin-bottom:18px;direction:rtl;">${sanitize(o.summary)}</p>
-    ${signalDetailBody(o)}`:`<p style="color:var(--t2);font-size:13.5px;line-height:1.8;margin-bottom:18px;direction:rtl;">${sanitize(o.summary)}</p>
-    ${autoObservation?`${sectorClean?`<div style="display:grid;grid-template-columns:1fr;gap:9px;margin-bottom:10px;"><div class="opp-meta-item"><div class="opp-meta-label">الفئة</div><div class="opp-meta-val">${sanitize(sectorClean)}</div></div></div>`:""}${opportunitySourceMeta(o)}`:`<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px;">
-      ${o.sector?`<div class="opp-meta-item"><div class="opp-meta-label">القطاع</div><div class="opp-meta-val">${sanitize(o.sector.replace(/^\[AI\]\s*/,""))}</div></div>`:""}
-      ${o.duration?`<div class="opp-meta-item"><div class="opp-meta-label">المدة المعلنة</div><div class="opp-meta-val">${sanitize(o.duration)}</div></div>`:""}
-      <div class="opp-meta-item">
-        <div class="opp-meta-label">درجة المخاطرة المعلنة</div>
-        <div><div class="opp-risk">${[1,2,3,4,5].map(i=>`<div class="opp-risk-dot" style="background:${i<=(o.riskLevel||3)?rColor:"var(--b2)"};width:10px;height:10px;"></div>`).join("")}</div>
-        <div style="color:${rColor};font-size:10px;margin-top:3px;">${rLabel}</div></div>
-      </div>
-    </div>
-    ${daysLeft!==null&&Number.isFinite(daysLeft)?`<div style="background:var(--dnd);border:1px solid rgba(239,68,68,.2);border-radius:11px;padding:11px;margin-bottom:14px;display:flex;align-items:center;gap:8px;"><span style="font-size:18px;">⏰</span><div><div style="color:var(--dn);font-weight:700;font-size:12.5px;">${daysLeft<=0?"آخر يوم للاكتتاب":daysLeft===1?"غداً آخر يوم":`متبقٍ ${daysLeft} يوم`}</div>${o.deadline?`<div style="color:var(--t4);font-size:10.5px;">الموعد النهائي: ${sanitize(o.deadline)}</div>`:""}</div></div>`:""}`}
-    ${!isSignal&&o.details?`<div style="background:var(--s1);border:1px solid var(--b1);border-radius:13px;padding:15px;margin-bottom:16px;"><div style="color:var(--g);font-size:11px;font-weight:700;margin-bottom:8px;">📋 تفاصيل إضافية</div><div style="color:var(--t2);font-size:12.5px;line-height:1.9;direction:rtl;white-space:pre-line;">${sanitize(o.details)}</div></div>`:""}
-    <div style="display:flex;gap:8px;margin-top:6px;">
-      <button class="btn btn-g btn-full" style="padding:13px;" onclick='toggleSaveOppFromDetail(${idArg},this)'>📌 حفظ الفرصة</button>
-      <a class="btn btn-full" href="https://wa.me/201008605139" target="_blank" rel="noopener noreferrer" style="padding:13px;background:rgba(148,163,184,.08);border:1px solid rgba(52,211,153,.2);color:var(--g);text-align:center;justify-content:center;">💬 استفسر على واتساب</a>
-    </div>`)}
+    <button onclick="closeOppDetail()" style="background:none;border:none;color:var(--t3);font-size:13px;cursor:pointer;margin-bottom:16px;display:flex;align-items:center;gap:5px;font-family:var(--sans);">← الرجوع لقائمة الفرص</button>
+    <div id="opp-detail-body"><div class="vloading v-skeleton" role="status" aria-label="جارِ تحميل تفاصيل الفرصة"><span class="sk sk-line lg"></span><span class="sk sk-line md"></span><span class="sk sk-line"></span></div></div>
   </div>`;
   document.body.appendChild(ov);
+  /* Server-first: the stored row + explanation are the page's source of truth. */
+  let row=null,explain=null,origin=null,serverOk=false;
+  try{
+    const r=await fetch("/api/opportunities/"+encodeURIComponent(id),{credentials:"same-origin",cache:"no-store"});
+    const d=await r.json().catch(()=>null);
+    if(r.ok&&d&&d.status==="ok"){
+      row=normalizeOpportunity(d.opportunity);
+      explain=(d.explanation&&typeof d.explanation==="object")?d.explanation:null;
+      origin=d.origin==="live"?"live":"db";
+      serverOk=Boolean(row);
+    }
+  }catch(e){/* fall through to the last list load below */}
+  const body=ov.querySelector("#opp-detail-body");if(!body)return;
+  if(!row&&local){row=normalizeOpportunity(local);if(row)explain=localExplain(row);}
+  if(!row){
+    body.innerHTML=`<div class="notif-empty">🔍<br/>تعذر تحميل تفاصيل هذه الفرصة<br/><button class="btn btn-g btn-sm" style="margin-top:10px;" onclick="closeOppDetail();loadOpps(true)">إعادة المحاولة</button></div>`;
+    return;
+  }
+  const locked=row.vipOnly&&!isVip;
+  const t=OPP_TYPES[row.type]||OPP_TYPES.stock;
+  /* Visible honesty: when the server could not be reached, the page renders
+   * the last list load and says so instead of pretending it is fresh. */
+  const fallbackNote=serverOk?"":`<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:11px;padding:9px 11px;margin-bottom:12px;color:#fcd34d;font-size:10.5px;line-height:1.6;">⚠️ تعذر الوصول إلى الخادم الآن — تُعرض البيانات من آخر تحميل للقائمة وقد تكون أقدم.</div>`;
+  body.innerHTML=`${fallbackNote}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+      <span class="opp-type-badge" style="color:${t.c};background:${t.bg};font-size:11px;padding:3px 10px;">${sanitize(t.l)}</span>
+      ${row.vipOnly?`<span class="opp-type-badge" style="color:#a78bfa;background:rgba(139,92,246,.12);font-size:11px;padding:3px 10px;">VIP فقط</span>`:""}
+      ${!row.autoObservation&&row.featured?`<span class="opp-type-badge" style="color:#f59e0b;background:rgba(245,158,11,.12);font-size:11px;padding:3px 10px;">⭐ مميزة</span>`:""}
+      ${row.isSignalCard&&row.signal?`<span class="opp-type-badge" style="color:#c084fc;background:rgba(192,132,252,.12);font-size:11px;padding:3px 10px;">⚡ إشارة</span>`:""}
+      ${!isActiveStatus(row)&&OPP_STATUS_BADGES[row.status]?`<span class="opp-type-badge" style="color:${OPP_STATUS_BADGES[row.status].c};background:${OPP_STATUS_BADGES[row.status].bg};font-size:11px;padding:3px 10px;">${OPP_STATUS_BADGES[row.status].l}</span>`:""}
+      ${row.autoObservation?`<span class="opp-type-badge" style="color:#93c5fd;background:rgba(59,130,246,.12);font-size:11px;padding:3px 10px;">لقطة وصفية</span>`:""}
+    </div>
+    <h2 style="color:var(--t1);font-size:20px;font-weight:900;line-height:1.4;margin-bottom:14px;">${sanitize(row.title)}</h2>
+    ${locked?`<div style="text-align:center;padding:30px;background:var(--aud);border-radius:16px;cursor:pointer;" onclick="document.getElementById('opp-detail-ov').remove();goNav('vip')"><div style="font-size:40px;margin-bottom:8px;">⭐</div><div style="color:var(--au);font-weight:800;font-size:15px;">${row.autoObservation?"هذا العنصر الوصفي لأعضاء VIP فقط":"هذا العنصر لأعضاء VIP فقط"}</div><div style="color:var(--t4);font-size:12px;margin-top:5px;">اشترك الآن للوصول الكامل</div></div>`
+    :`${oppDetailSections(row,explain,origin)}
+    <div style="display:flex;gap:8px;margin-top:6px;">
+      <button class="btn btn-g btn-full" style="padding:13px;" onclick='toggleSaveOppFromDetail(${safeJsArg(id)},this)'>📌 حفظ الفرصة</button>
+      <a class="btn btn-full" href="https://wa.me/201008605139" target="_blank" rel="noopener noreferrer" style="padding:13px;background:rgba(148,163,184,.08);border:1px solid rgba(52,211,153,.2);color:var(--g);text-align:center;justify-content:center;">💬 استفسر على واتساب</a>
+    </div>`}`;
 }
-
+function closeOppDetail(){
+  const ov=document.getElementById("opp-detail-ov");
+  if(ov)ov.remove();
+  if(typeof closeNotifPanel==="function")closeNotifPanel();
+}
 function toggleSaveOppFromDetail(id,btn){
   const saved=DB.g("saved_opps",[]);
   const idx=saved.indexOf(id);
@@ -4670,6 +4983,7 @@ function bootApp(){
   updateBellBadge();
   checkAutoNotifs();
   startPayNotifPolling();
+  startNcPolling();
   loadSubscriptionBanner();
   openSubscriptionDeepLink();
   queueBroadcastMessage();
@@ -4955,14 +5269,16 @@ async function fetchScreenerExtras(){
       divSyms.length?fetchJsonWithTimeout(`${DIVIDENDS_API}?symbols=${encodeURIComponent(divSyms.join(","))}`,30000):Promise.resolve(null),
       valSyms.length?fetchJsonWithTimeout(`${VALUATIONS_API}?symbols=${encodeURIComponent(valSyms.join(","))}`,30000):Promise.resolve(null),
     ]);
-    const nf={...egxFundamentals,loading:false,loaded:true,fetchedAt:Date.now(),stale:false,valuations:new Map(),dividends:new Map()};
-    if(valJ.status==="fulfilled"&&valJ.value?.status==="ok"&&Array.isArray(valJ.value.rows)){
+    const valOk=valJ.status==="fulfilled"&&valJ.value?.status==="ok"&&Array.isArray(valJ.value.rows);
+    const divOk=divJ.status==="fulfilled"&&divJ.value?.status==="ok"&&Array.isArray(divJ.value.dividends);
+    const nf={...egxFundamentals,loading:false,loaded:true,fetchedAt:Date.now(),stale:false,valuations:new Map(),dividends:new Map(),valOk,divOk};
+    if(valOk){
       nf.stale=valJ.value.stale===true;
       for(const r of valJ.value.rows){
         if(r&&r.sym&&Number.isFinite(r.pe)&&Number.isFinite(r.dy))nf.valuations.set(r.sym,{pe:r.pe,dy:r.dy,egxName:r.egxName||"",match:r.match});
       }
     }
-    if(divJ.status==="fulfilled"&&divJ.value?.status==="ok"&&Array.isArray(divJ.value.dividends)){
+    if(divOk){
       for(const d of divJ.value.dividends){
         if(d&&d.sym&&d.status==="ok")nf.dividends.set(d.sym,d);
       }
@@ -5070,6 +5386,7 @@ function scrMissingColumns(stocks){
   if(!has("amount"))missing.push("قيمة التداول");
   if(!priced.some(s=>scrPe(s)!==null))missing.push("P/E");
   if(!priced.some(s=>scrDy(s)!==null))missing.push("العائد التوزيعي");
+  if(!has("eps"))missing.push("EPS");
   if(!(has("high52w")&&has("low52w")))missing.push("52 أسبوع");
   return missing;
 }
@@ -6678,7 +6995,7 @@ function openMarketSources(){
 
 function toggleWL(n){
   const i=wl.indexOf(n);if(i>=0)wl.splice(i,1);else wl.push(n);
-  DB.s("wl",wl);buildMarkets();showToast(wl.includes(n)?`⭐ تمت إضافة ${n}`:`تمت إزالة ${n}`);updateStats();
+  DB.s("wl",wl);ncFollowsAutoSync();buildMarkets();showToast(wl.includes(n)?`⭐ تمت إضافة ${n}`:`تمت إزالة ${n}`);updateStats();
   void firstUseReport("watchlist_progress",{count:wl.length});
 }
 
@@ -6987,7 +7304,7 @@ function openMarketDetail(sec,idx){
 }
 function toggleWLDetail(name){
   const i=wl.indexOf(name);if(i>=0)wl.splice(i,1);else wl.push(name);
-  DB.s("wl",wl);
+  DB.s("wl",wl);ncFollowsAutoSync();
   const btn=document.getElementById("wl-toggle-btn");
   if(btn)btn.textContent=wl.includes(name)?"⭐ في المفضلة":"☆ أضف للمفضلة";
   showToast(wl.includes(name)?`⭐ تمت إضافة ${name}`:`تمت إزالة ${name}`);
@@ -7196,6 +7513,7 @@ function renderVIP(){
       </div>
 
       <div id="pay-status-card" style="margin-bottom:12px;"></div>
+      <div id="wallet-card"></div>
       <div id="vip-plan-comparison" style="margin-bottom:12px;"></div>
       <button class="btn btn-ghost btn-full" style="padding:11px;font-size:12px;margin:0 0 12px;" onclick="goNav('calculators')">🧮 شاهد معاينة حاسبات المستثمر</button>
 
@@ -7238,7 +7556,7 @@ function renderVIP(){
       </button>
       <button class="btn btn-ghost btn-full" style="padding:10px;font-size:12px;margin-top:8px;" onclick="openMySubscription()">📋 متابعة طلباتي واشتراكي</button>
       <div style="text-align:center;color:var(--t5);font-size:10px;margin-top:8px;">يُفعّل بعد مراجعة إثبات الدفع من الخادم.</div>`;
-    loadPayStatus();loadVipPlanComparison();
+    loadPayStatus();loadWalletCard();loadVipPlanComparison();
     return;
   }
 
@@ -9180,11 +9498,11 @@ function vAddWl(){
   const sym=inp.value.trim().toUpperCase().slice(0,10);
   if(!sym)return;
   if(!liveStocks.some(x=>x.sym===sym)&&!usStocks.some(x=>x.sym===sym)){showToast("❌ الرمز غير موجود في بيانات السوق المتاحة");return;}
-  if(!wl.includes(sym)){wl.push(sym);DB.s("wl",wl);updateStats();showToast("⭐ تمت متابعة "+sym);renderVipTab();}
+  if(!wl.includes(sym)){wl.push(sym);DB.s("wl",wl);ncFollowsAutoSync();updateStats();showToast("⭐ تمت متابعة "+sym);renderVipTab();}
   else showToast("السهم متابع بالفعل");
   inp.value="";
 }
-function vRmWl(n){wl=wl.filter(x=>x!==n);DB.s("wl",wl);updateStats();renderVipTab();showToast("تمت إزالة "+n);}
+function vRmWl(n){wl=wl.filter(x=>x!==n);DB.s("wl",wl);ncFollowsAutoSync();updateStats();renderVipTab();showToast("تمت إزالة "+n);}
 function vToggleMktPref(k,btn){
   let p=DB.g("vip_mkt_pref",["eg","gl","cm","cr"]);
   p=p.includes(k)?p.filter(x=>x!==k):[...p,k];
@@ -9307,14 +9625,20 @@ function scrComputeFiltered(stocks_src){
   else if(peFilter==="neg")   stocks=stocks.filter(s=>{const p=scrPe(s);return p===null||p<=0;});
   // Dividend (merged: price scan, else EGX official coupon yield)
   const divFilter=document.getElementById("scr-div")?.value||"all";
-  if(divFilter==="any")  stocks=stocks.filter(s=>{const d=scrDy(s);return d&&d>0;});
+  /* "Pays dividends": a positive coupon yield on the EGX page OR a real
+     trailing-12-month cash dividend from Yahoo — both are source data. */
+  if(divFilter==="any")  stocks=stocks.filter(s=>{const d=scrDy(s);const t=scrDivTtm(s);return (d&&d>0)||(t&&t.ttm>0);});
   else if(divFilter==="2+") stocks=stocks.filter(s=>{const d=scrDy(s);return d&&d>=2;});
   else if(divFilter==="4+") stocks=stocks.filter(s=>{const d=scrDy(s);return d&&d>=4;});
   else if(divFilter==="6+") stocks=stocks.filter(s=>{const d=scrDy(s);return d&&d>=6;});
   // EPS
   const epsFilter=document.getElementById("scr-eps")?.value||"all";
-  if(epsFilter==="pos") stocks=stocks.filter(s=>s.eps&&s.eps>0);
-  else if(epsFilter==="neg") stocks=stocks.filter(s=>!s.eps||s.eps<=0);
+  /* EPS semantics are strict: only a real source value counts. "Unknown"
+     (no EPS published for this market) matches neither filter — the footer
+     discloses the absence instead of the "neg" filter claiming the whole
+     market as losers. */
+  if(epsFilter==="pos") stocks=stocks.filter(s=>{const e=knownStockNumber(s.eps);return e!==null&&e>0;});
+  else if(epsFilter==="neg") stocks=stocks.filter(s=>{const e=knownStockNumber(s.eps);return e!==null&&e<0;});
   // Market Cap
   if(scrMktCap==="mega")  stocks=stocks.filter(s=>s.mktCapM&&s.mktCapM>=100000);
   else if(scrMktCap==="large") stocks=stocks.filter(s=>s.mktCapM&&s.mktCapM>=10000&&s.mktCapM<100000);
@@ -9322,12 +9646,20 @@ function scrComputeFiltered(stocks_src){
   else if(scrMktCap==="small") stocks=stocks.filter(s=>Number.isFinite(s.mktCapM)&&s.mktCapM<1000);
   // Sort
   stocks.sort((a,b)=>{
-    let av=a[scrFilters.sortBy],bv=b[scrFilters.sortBy];
+    let av,bv;
     if(scrFilters.sortBy==="name"){
       return scrFilters.sortDir*(a.name||"").localeCompare(b.name||"");
     }
+    /* P/E, dividend yield and EPS sort on the MERGED values (price scan +
+       secondary EGX/Yahoo layers): the raw scan fields are absent for this
+       market, so sorting on them was a silent no-op. */
+    if(scrFilters.sortBy==="pe"){av=scrPe(a);bv=scrPe(b);}
+    else if(scrFilters.sortBy==="divYield"){av=scrDy(a);bv=scrDy(b);}
+    else if(scrFilters.sortBy==="eps"){av=knownStockNumber(a.eps);bv=knownStockNumber(b.eps);}
+    else{av=a[scrFilters.sortBy];bv=b[scrFilters.sortBy];}
     av=av??-Infinity; bv=bv??-Infinity;
-    return scrFilters.sortDir*(bv-av);
+    /* sortDir -1 = descending — the ▼ header indicator matches the data. */
+    return scrFilters.sortDir*(av-bv);
   });
   return stocks;
 }
@@ -9369,6 +9701,16 @@ function renderScrResults(){
     if(meta.stateLabel) text+=` · ${meta.stateLabel}`;
     text+=` · المصدر: ${meta.source||"غير متاح"}`;
     if(meta.sourceNote) text+=` · ${meta.sourceNote}`;
+    /* Secondary fundamentals layer (P/E + coupon yield from the official
+       EGX page, TTM dividends from Yahoo): its source and nature are stated
+       next to the price-scan source so daily page data is never read as
+       live quotes. */
+    if(egxFundamentals.loading) text+=` · جارٍ تحميل P/E والعائد من البورصة...`;
+    else if(egxFundamentals.loaded){
+      if(egxFundamentals.valuations.size) text+=` · P/E والعائد: الصفحة الرسمية للبورصة (يومية · تغطية جزئية لـ${egxFundamentals.valuations.size} شركة)`;
+      else if(egxFundamentals.valOk===false) text+=` · P/E والعائد: مصدر البورصة غير متاح حاليًا`;
+      if(egxFundamentals.dividends.size) text+=` · التوزيعات: Yahoo (آخر 12 شهرًا)`;
+    }
     if(excludedNoData) text+=` · تم استبعاد ${excludedNoData} سهم بدون بيانات من المصدر`;
     if(missingCols.length) text+=` · غير متاحة من المصدر: ${missingCols.join("، ")}`;
     footer.textContent=text;
@@ -9431,7 +9773,10 @@ function resetScrFilters(){
   document.querySelectorAll("[id^='scrf-cap-']").forEach(b=>b.classList.toggle("active",b.id==="scrf-cap-all"));
   document.querySelectorAll("#scr-sector-row .scr-f").forEach((b,i)=>b.classList.toggle("active",i===0));
   document.querySelectorAll("#scr-perf-row .scr-f").forEach((b,i)=>b.classList.toggle("active",i===0));
-  document.querySelectorAll(".scr-th").forEach(th=>th.classList.remove("sort-asc","sort-desc"));
+  document.querySelectorAll(".scr-th").forEach(th=>{
+    th.classList.remove("sort-asc","sort-desc");
+    if(th.getAttribute("onclick")==="scrSortBy('chgPct')")th.classList.add("sort-desc");
+  });
   renderScrResults();
   showToast("✅ تم إعادة ضبط الفلاتر");
 }
@@ -9457,11 +9802,18 @@ function exportScrCSV(){
 }
 
 /* ─── Saved Filters ─── */
+/* The advanced filter values live in the DOM (price/volume/P-E/dividend/
+ * EPS), not in scrFilters — a saved filter must persist them explicitly,
+ * or loading it would silently ignore half the filter. */
+function scrAdvValues(){
+  const g=id=>{const el=document.getElementById(id);return el?el.value:"";};
+  return {priceMin:g("scr-pr-min"),priceMax:g("scr-pr-max"),volMin:g("scr-vol-min"),peFilter:g("scr-pe"),divFilter:g("scr-div"),epsFilter:g("scr-eps")};
+}
 function saveScrFilter(){
   const name=prompt("اسم الفلتر:");
   if(!name) return;
   const saved=DB.g("scr_saved",[]);
-  saved.push({name,filters:{...scrFilters},mktCap:scrMktCap,market:scrMarket,ts:Date.now()});
+  saved.push({name,filters:{...scrFilters},adv:scrAdvValues(),mktCap:scrMktCap,market:scrMarket,ts:Date.now()});
   DB.s("scr_saved",saved);
   renderSavedFilters();
   showToast("✅ تم حفظ الفلتر: "+name);
@@ -9485,6 +9837,11 @@ function loadScrFilter(i){
   if(!saved[i]) return;
   Object.assign(scrFilters,saved[i].filters);
   scrMktCap=saved[i].mktCap||"all";
+  const adv=saved[i].adv||{};
+  [["scr-pr-min","priceMin"],["scr-pr-max","priceMax"],["scr-vol-min","volMin"],["scr-pe","peFilter"],["scr-div","divFilter"],["scr-eps","epsFilter"]].forEach(([id,key])=>{
+    const el=document.getElementById(id);
+    if(el&&adv[key]!==undefined&&adv[key]!=="")el.value=adv[key];
+  });
   renderScrSectorPills();
   renderScrResults();
   showToast("✅ تم تحميل الفلتر: "+saved[i].name);
@@ -10052,7 +10409,7 @@ function renderSub(){
       <div style="color:var(--t4);font-size:10.5px;line-height:1.75;background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:9px 10px;margin:11px 0;">بعد اختيار الباقة، تظهر وسائل الدفع المفعّلة من الخادم. لا يُفعّل الاشتراك إلا بعد مراجعة إثبات الدفع.</div>
       ${planComparisonHtml(P)}
       ${subscriptionPolicyHtml(true)}
-      <div style="margin-top:10px;"><details class="faq-item"><summary class="faq-q">متى يتفعّل الاشتراك؟<span style="color:var(--g);">+</span></summary><div class="faq-a">بعد اعتماد الإدارة لطلب الدفع فقط؛ إرسال الصورة أو رقم العملية لا يفعّل الاشتراك تلقائيًا.</div></details></div>
+      <div style="margin-top:10px;"><details class="faq-item"><summary class="faq-q">متى يتفعّل الاشتراك؟<span style="color:var(--g);">+</span></summary><div class="faq-a">بعد اعتماد الإدارة لطلب الدفع فقط؛ إرسال صورة الإثبات لا يفعّل الاشتراك تلقائيًا.</div></details></div>
       <button class="btn btn-au btn-full" style="padding:13px;font-size:14px;margin-top:11px;" onclick="subToPayment()">متابعة إلى وسيلة الدفع</button>`;
   } else if(subStep===2){
     const selectedPlan=P[selPlan];
@@ -10069,13 +10426,16 @@ function renderSub(){
         <button class="btn btn-g icon-label" style="padding:8px 24px;font-size:12px;margin-top:9px;" onclick="copyWallet()">${uiIcon("source")} نسخ الرقم</button>
       </div>
       ${method.instructions?`<div style="color:var(--t4);font-size:10.5px;line-height:1.8;margin-bottom:11px;background:var(--s1);border-radius:9px;padding:8px 10px;">${sanitize(method.instructions)}</div>`:""}
-      <div style="color:var(--t4);font-size:10.5px;line-height:1.8;margin-bottom:11px;background:var(--s1);border-radius:9px;padding:8px 10px;">1. حوّل القيمة للرقم أعلاه<br/>2. خذ Screenshot لتأكيد التحويل<br/>3. أدخل رقم العملية وارفع الصورة هنا</div>
-      <input class="tx-in" id="tx-in" placeholder="رقم عملية التحويل" maxlength="100"/>
+      <div style="color:var(--t4);font-size:10.5px;line-height:1.8;margin-bottom:11px;background:var(--s1);border-radius:9px;padding:8px 10px;">1. حوّل القيمة للرقم أعلاه<br/>2. خذ Screenshot لتأكيد التحويل<br/>3. ارفع صورة الإثبات هنا</div>
       <input class="tx-in" id="sender-phone-in" placeholder="رقم هاتف المُحوِّل (اختياري للمراجعة)" maxlength="20" inputmode="tel" dir="ltr" style="margin-top:7px;"/>
       <div style="color:var(--t5);font-size:9.5px;line-height:1.55;margin-top:4px;">يُستخدم فقط كإشارة مراجعة عادلة للإحالات، ولا يرفض الدفع تلقائيًا.</div>
       <label id="proof-lbl" for="proof-in" class="icon-label" style="justify-content:center;background:var(--s1);border:1px dashed var(--b1);border-radius:11px;padding:11px;margin-top:8px;color:var(--t3);font-size:12px;cursor:pointer;font-family:var(--sans);">${uiIcon("source")} ارفع Screenshot إثبات الدفع</label>
       <input type="file" id="proof-in" accept="image/*" style="display:none" onchange="onProofPick(this)"/>
       <img id="proof-prev" alt="" style="display:none;width:100%;max-height:170px;object-fit:contain;border-radius:10px;margin-top:8px;background:rgba(0,0,0,.25);"/>
+      <label style="display:flex;gap:9px;align-items:flex-start;background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:11px 12px;margin-top:9px;cursor:pointer;font-size:11.5px;line-height:1.7;color:var(--t2);">
+        <input type="checkbox" id="autorenew-chk" style="margin-top:2px;accent-color:var(--au);width:16px;height:16px;flex:none;"/>
+        <span><b>تفعيل التجديد التلقائي من المحفظة</b> (موافقة صريحة) — عند انتهاء المدة الحالية يُخصم سعر الباقة من رصيد محفظتك ليُجدَّد الاشتراك تلقائيًا، مع إشعار قبل ٣ أيام بالمبلغ وموعد الخصم. يمكنك الإيقاف في أي وقت، وإيقافه لا يلغي المدة الحالية.&nbsp;<span style="color:var(--t5);font-size:9.5px;">لا يوجد أي خصم خارج هذه الموافقة، ولا يُشحن الرصيد إلا بتحويل يدوي معتمد من الإدارة.</span></span>
+      </label>
       <button class="btn btn-g btn-full icon-label" id="pay-submit" style="padding:12px;font-size:14px;margin-top:10px;" onclick="submitPay()">${uiIcon("lock")} تأكيد الاشتراك</button>
       <button onclick="subStep=1;renderSub();" style="width:100%;margin-top:7px;background:none;border:none;color:var(--t4);font-size:12px;cursor:pointer;font-family:var(--sans);">← رجوع</button>`;
   } else {
@@ -10130,15 +10490,14 @@ async function submitPay(){
   if(!U){showToast("⚠️ سجّل الدخول أولًا");return;}
   const method=SUB_M();
   if(SUB_CONFIG_STATE!=="ready"||!subPlans()[selPlan]||!subPlans()[selPlan].pricingToken||!method){showToast("⚠️ إعدادات الدفع غير متاحة حاليًا — أعد تحميل الخيارات");return;}
-  const tx=(document.getElementById("tx-in")&&document.getElementById("tx-in").value||"").trim().slice(0,100);
   const senderPhone=(document.getElementById("sender-phone-in")&&document.getElementById("sender-phone-in").value||"").trim().slice(0,20);
-  if(!tx){showToast("⚠️ أدخل رقم عملية التحويل");return;}
+  const autoRenew=!!(document.getElementById("autorenew-chk")&&document.getElementById("autorenew-chk").checked);
   if(!payProofData){showToast("⚠️ ارفع صورة إثبات الدفع");return;}
   const btn=document.getElementById("pay-submit");
   if(btn){btn.disabled=true;btn.textContent="⏳ جارٍ الإرسال...";}
   try{
     const headers={"Content-Type":"application/json"};
-    const response=await fetch("/api/payments",{method:"POST",headers,credentials:"same-origin",body:JSON.stringify({planKey:selPlan,pricingToken:subPlans()[selPlan].pricingToken,method:method.id,tx,senderPhone:senderPhone||undefined,proofImage:payProofData,proofName:payProofName})});
+    const response=await fetch("/api/payments",{method:"POST",headers,credentials:"same-origin",body:JSON.stringify({planKey:selPlan,pricingToken:subPlans()[selPlan].pricingToken,method:method.id,autoRenew,senderPhone:senderPhone||undefined,proofImage:payProofData,proofName:payProofName})});
     const result=await response.json().catch(()=>null);
     if(!response.ok||!result||result.status!=="ok"){
       const msg=(result&&result.message)||"تعذر إرسال الطلب";
@@ -10165,12 +10524,19 @@ async function loadPayStatus(){
     const reqs=j.requests||[];
     const pen=reqs.find(q=>q.status==="pending");
     const last=reqs[0];
+    const ap=reqs.find(q=>q.status==="approved");
     if(pen){
       const meta=SUB_METHOD_META[pen.method]||{emoji:"💳",label:pen.method||""};
       el.innerHTML=`<div style="background:var(--aud);border:1px solid rgba(245,158,11,.3);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
         <div><div class="pay-pulse" style="color:var(--au);font-weight:800;font-size:12.5px;">⏳ جاري مراجعة الدفع</div>
-        <div style="color:var(--t4);font-size:10.5px;margin-top:3px;font-family:var(--mono);">عملية ${sanitize(String(pen.tx))} · ${pen.price} ج</div>${pen.priceLockedUntil?`<div style="color:var(--t5);font-size:9px;margin-top:3px;">السعر المثبّت صالح حتى ${sanitize(new Date(pen.priceLockedUntil).toLocaleString("ar-EG",{timeZone:"Africa/Cairo",dateStyle:"medium",timeStyle:"short"}))}</div>`:""}</div>
+        <div style="color:var(--t4);font-size:10.5px;margin-top:3px;font-family:var(--mono);">${pen.price} ج</div>${pen.priceLockedUntil?`<div style="color:var(--t5);font-size:9px;margin-top:3px;">السعر المثبّت صالح حتى ${sanitize(new Date(pen.priceLockedUntil).toLocaleString("ar-EG",{timeZone:"Africa/Cairo",dateStyle:"medium",timeStyle:"short"}))}</div>`:""}</div>
         <span class="bdg" style="background:rgba(245,158,11,.12);color:var(--au);">قيد المراجعة</span></div>`;
+    }else if(ap){
+      const endTxt=U&&U.exp?` · ساري حتى ${sanitize(new Date(U.exp).toLocaleDateString("ar-EG"))}`:"";
+      el.innerHTML=`<div style="background:var(--gd);border:1px solid rgba(16,185,129,.35);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div><div style="color:var(--g);font-weight:800;font-size:12.5px;">✓ تم اعتماد الدفع — اشتراكك مفعّل</div>
+        <div style="color:var(--t4);font-size:10.5px;margin-top:3px;">${sanitize(String(ap.planName||""))}${endTxt}</div></div>
+        <span class="bdg" style="background:var(--gd);color:var(--g);">مقبول</span></div>`;
     }else if(last&&last.status==="rejected"){
       el.innerHTML=`<div style="background:var(--dnd);border:1px solid rgba(239,68,68,.3);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
         <div><div style="color:var(--dn);font-weight:800;font-size:12.5px;">✕ تم رفض طلب الدفع</div>
@@ -10180,6 +10546,131 @@ async function loadPayStatus(){
       el.innerHTML=`<div style="background:#2e1f47;border:1px solid rgba(192,132,252,.35);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><div><div style="color:#c4b5fd;font-weight:800;font-size:12.5px;">⌛ انتهت مدة تثبيت سعر الطلب</div><div style="color:var(--t4);font-size:10.5px;margin-top:3px;">أنشئ طلباً جديداً بالسعر الحالي قبل التحويل.</div></div><button class="btn btn-au" style="padding:7px 14px;font-size:11px;" onclick="openSub()">عرض السعر الحالي</button></div>`;
     }else el.innerHTML="";
   }catch(e){el.innerHTML="";}
+}
+/* ─── محفظة المستخدم: رصيد + شحن + تجديد تلقائي (بيانات الخادم فقط) ─── */
+let walletState=null;
+let walletTopupAmount=null;
+let walletTopupMethodId=null;
+let walletTopupProof=null;
+function walletFmt(v){const n=Number(v);return Number.isFinite(n)?n.toLocaleString("en-US",{maximumFractionDigits:2}):"—";}
+async function loadWalletCard(){
+  const el=document.getElementById("wallet-card");if(!el)return;
+  if(!U||U.plan==="admin"){el.innerHTML="";walletState=null;return;}
+  try{
+    const r=await fetch("/api/payments/wallet",{credentials:"same-origin",cache:"no-store"});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok"||!j.wallet){el.innerHTML="";walletState=null;return;}
+    walletState=j.wallet;
+    renderWalletCard();
+  }catch(e){el.innerHTML="";walletState=null;}
+}
+function renderWalletCard(){
+  const el=document.getElementById("wallet-card");if(!el||!walletState)return;
+  const w=walletState;
+  const bal=Number(w.balance)||0;
+  const min=Number(w.topupMin)||5;
+  const max=Number(w.topupMax)||5000;
+  const reNewal=(w.renewal&&typeof w.renewal==="object")?w.renewal:null;
+  const txs=Array.isArray(w.transactions)?w.transactions.slice(0,5):[];
+  const methods=(SUB_METHODS||[]);
+  const renewalBox=reNewal?`
+    ${reNewal.status==="active"?`
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.32);border-radius:11px;padding:9px 11px;">
+      <div><div style="color:var(--g);font-weight:800;font-size:11.5px;">🔁 التجديد التلقائي مفعّل</div>
+      <div style="color:var(--t4);font-size:9.5px;margin-top:2px;line-height:1.6;">الخصم القادم ${reNewal.nextRenewalAt?sanitize(new Date(reNewal.nextRenewalAt).toLocaleDateString("ar-EG")):"—"} · آخر سعر معروف ${walletFmt(reNewal.lastKnownPrice)} ج (يُخصم سعر الباقة وقت التجديد). إشعار قبل ٣ أيام. إيقافه لا يلغي المدة الحالية.</div></div>
+      <button class="btn btn-ghost" style="padding:7px 13px;font-size:11px;flex:none;" onclick="walletToggleRenewal(false)">إيقاف</button>
+    </div>`:reNewal.status==="disabled"?`
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:9px 11px;">
+      <div><div style="color:var(--t2);font-weight:800;font-size:11.5px;">⏸ التجديد التلقائي متوقف</div>
+      <div style="color:var(--t4);font-size:9.5px;margin-top:2px;">المدة الحالية سارية حتى نهايتها بلا أي خصم.</div></div>
+      <button class="btn btn-au" style="padding:7px 13px;font-size:11px;flex:none;" onclick="walletToggleRenewal(true)">تفعيل</button>
+    </div>`:""}`:"";
+  const proofBox=walletTopupAmount?`
+    <div style="margin-top:8px;background:var(--s1);border:1px dashed var(--b1);border-radius:11px;padding:10px 11px;">
+      <div style="color:var(--t3);font-size:11px;margin-bottom:7px;">حوّل ${walletFmt(walletTopupAmount)} ج وأرفق صورة الإثبات — الرصيد يُضاف بعد اعتماد الإدارة.</div>
+      <label id="wallet-proof-lbl" for="wallet-proof-in" class="icon-label" style="justify-content:center;display:flex;background:var(--s1);border:1px dashed var(--b1);border-radius:11px;padding:10px;color:var(--t3);font-size:11.5px;cursor:pointer;font-family:var(--sans);">${uiIcon("source")} ارفع صورة إثبات التحويل</label>
+      <input type="file" id="wallet-proof-in" accept="image/*" style="display:none" onchange="onWalletProofPick(this)"/>
+      <img id="wallet-proof-prev" alt="" style="display:none;width:100%;max-height:150px;object-fit:contain;border-radius:9px;margin-top:7px;background:rgba(0,0,0,.25);"/>
+      <div style="display:flex;gap:7px;margin-top:8px;flex-wrap:wrap;">
+        <button class="btn btn-g" style="flex:1;padding:9px;font-size:12px;" onclick="submitWalletTopup()">إرسال طلب الشحن</button>
+        <button class="btn btn-ghost" style="padding:9px 14px;font-size:12px;" onclick="walletTopupAmount=null;renderWalletCard();">إلغاء</button>
+      </div>
+    </div>`:"";
+  el.innerHTML=`
+  <div style="background:linear-gradient(135deg,rgba(245,158,11,.13),rgba(245,158,11,.04));border:1px solid rgba(245,158,11,.35);border-radius:16px;padding:15px 16px;margin-bottom:12px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:19px;">💰</span><div><div style="font-weight:900;font-size:14px;color:var(--au);">محفظتك</div><div style="color:var(--t5);font-size:9.5px;">الرصيد والتجديد التلقائي — من الخادم</div></div></div>
+      <div style="text-align:left;"><div style="font-size:20px;font-weight:900;font-family:var(--mono);direction:ltr;">${walletFmt(bal)} ج</div><div style="color:var(--t5);font-size:9px;">شحن من ${walletFmt(min)} إلى ${walletFmt(max)} ج</div></div>
+    </div>
+    ${renewalBox}
+    <div style="display:flex;gap:7px;margin-top:10px;flex-wrap:wrap;">
+      <input type="number" id="wallet-topup-amt" min="${min}" max="${max}" step="1" placeholder="المبلغ بالجنيه" style="flex:1;min-width:110px;background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:9px 12px;color:var(--t1);font-size:12px;outline:none;"/>
+      <select id="wallet-topup-method" style="flex:1;min-width:120px;background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:9px 12px;color:var(--t1);font-size:12px;outline:none;">${methods.map(m=>`<option value="${sanitize(m.id)}">${sanitize(m.label)}</option>`).join("")}</select>
+      <button class="btn btn-au" style="padding:9px 15px;font-size:12px;flex:none;" onclick="walletTopupStart()">شحن المحفظة</button>
+    </div>
+    ${proofBox}
+    ${txs.length?`<div style="margin-top:11px;border-top:1px solid rgba(245,158,11,.25);padding-top:9px;">
+      <div style="color:var(--t5);font-size:9.5px;margin-bottom:5px;">آخر الحركات المسجّلة</div>
+      ${txs.map(t=>{const a=Number(t.amount)||0;return `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;font-size:11px;padding:3px 0;flex-wrap:wrap;">
+        <span style="font-family:var(--mono);direction:ltr;color:${a>=0?"var(--g)":"var(--dn)"};">${a>=0?"+":""}${walletFmt(a)} → ${walletFmt(t.balanceAfter)} ج</span>
+        <span style="color:var(--t4);font-size:10.5px;">${t.kind==="topup"?"شحن محفظة":"خصم تجديد تلقائي"}</span>
+        <span style="color:var(--t5);font-size:9.5px;">${new Date(t.createdAt).toLocaleDateString("ar-EG")}</span></div>`;}).join("")}
+    </div>`:""}
+  </div>`;
+}
+function walletTopupStart(){
+  if(!U){showToast("⚠️ سجّل الدخول أولًا");return;}
+  if(!walletState){showToast("⚠️ حالة المحفظة غير متاحة حاليًا");return;}
+  const min=Number(walletState.topupMin)||5,max=Number(walletState.topupMax)||5000;
+  const amtEl=document.getElementById("wallet-topup-amt");
+  const amt=Number(amtEl&&amtEl.value);
+  if(!Number.isFinite(amt)||amt!==Math.floor(amt)||amt<min||amt>max){showToast(`⚠️ أدخل مبلغًا صحيحًا بين ${min} و${max} جنيه`);return;}
+  const mEl=document.getElementById("wallet-topup-method");
+  const mId=mEl&&mEl.value;
+  if(!mId||!(SUB_METHODS||[]).some(m=>m.id===mId)){showToast("⚠️ اختر وسيلة الدفع");return;}
+  walletTopupAmount=amt;walletTopupMethodId=mId;
+  renderWalletCard();
+  const f=document.getElementById("wallet-proof-in");
+  if(f)f.click();
+}
+async function onWalletProofPick(inp){
+  const f=inp.files&&inp.files[0];if(!f)return;
+  if(!/^image\//.test(f.type)){showToast("⚠️ اختر صورة (PNG أو JPG)");inp.value="";return;}
+  try{
+    const data=await compressImage(f,1280,0.72);
+    const pv=document.getElementById("wallet-proof-prev");
+    if(pv){pv.src=data;pv.style.display="block";}
+    const lb=document.getElementById("wallet-proof-lbl");
+    if(lb)lb.textContent="✅ تم إرفاق الصورة — اضغط للتغيير";
+    walletTopupProof=data;
+  }catch(e){showToast("⚠️ تعذر قراءة الصورة، جرّب صورة أخرى");inp.value="";}
+}
+async function submitWalletTopup(){
+  if(!U||!walletTopupAmount||!walletTopupMethodId){showToast("⚠️ أكمل خطوات الشحن أولًا");return;}
+  if(!walletTopupProof){showToast("⚠️ ارفع صورة إثبات التحويل");return;}
+  try{
+    const r=await fetch("/api/payments/wallet/topup",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({amount:walletTopupAmount,method:walletTopupMethodId,proofImage:walletTopupProof,proofName:"screenshot"})});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok"){
+      showToast("⚠️ "+((j&&j.message)||"تعذر إرسال طلب الشحن"));
+      if(r.status===409&&j&&String(j.message).includes("طلب")){walletTopupAmount=null;walletTopupMethodId=null;walletTopupProof=null;loadWalletCard();}
+      return;
+    }
+    walletTopupAmount=null;walletTopupMethodId=null;walletTopupProof=null;
+    showToast("⏳ تم تسجيل طلب الشحن — يُضاف الرصيد بعد اعتماد الإدارة");
+    loadWalletCard();loadPayStatus();
+  }catch(e){showToast("⚠️ تعذر الاتصال بالخادم");}
+}
+async function walletToggleRenewal(enabled){
+  if(!U){showToast("⚠️ سجّل الدخول أولًا");return;}
+  try{
+    const r=await fetch("/api/payments/wallet/auto-renew",{method:"PUT",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled})});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||j.status!=="ok"){showToast("⚠️ "+((j&&j.message)||"تعذر التحديث"));return;}
+    walletState.renewal=j.renewal||null;
+    renderWalletCard();
+    showToast(enabled?"✅ تم تفعيل التجديد التلقائي — ستصلك إشعارات قبل الخصم":"⏸ تم إيقاف التجديد التلقائي — اشتراكك الحالي ساري حتى نهايته");
+  }catch(e){showToast("⚠️ تعذر الاتصال بالخادم");}
 }
 /* ─── Free VIP trial: server-sourced status only ─────────────────────── */
 function trialState(){return U&&U.trial&&typeof U.trial==="object"?U.trial:null;}
@@ -10417,6 +10908,7 @@ function renderProfile(){
   btns+=`<button class="prof-btn out" onclick="logout()">تسجيل الخروج</button>`;
   document.getElementById("pbtns").innerHTML=btns;
   updateStats();
+  ncLoad();
 }
 
 function openChangePass(){
