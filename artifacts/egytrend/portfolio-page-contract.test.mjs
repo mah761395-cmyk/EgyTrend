@@ -64,6 +64,23 @@ test("nav: a «المحفظة» item with a small VIP badge sits next to «فر�
   /* The grid gained a column; the item label is present. */
   assert.match(button, /المحفظة/);
   assert.match(html, /grid-template-columns:repeat\(7,1fr\)/, "bottom nav grid accounts for 7 items");
+  /* Badge parity with the server-side truth: every /api/calculators route is
+     VIP-gated, so its nav item carries the same small badge. الفرص is free
+     (public read API) and must NOT carry one. */
+  const calcButton = html.slice(html.lastIndexOf("<button", calculators), html.indexOf("</button>", calculators));
+  assert.match(calcButton, /n-vip-chip/, "calculators nav carries the small VIP badge");
+  assert.match(calcButton, />VIP</);
+  const oppsButton = html.slice(html.lastIndexOf("<button", opps), html.indexOf("</button>", opps));
+  assert.doesNotMatch(oppsButton, /n-vip-chip/, "فرص is free — no VIP badge");
+});
+
+test("data: the page loads the same licensed stock universe as every other surface", () => {
+  const render = functionBody("renderPortfolioPage");
+  assert.match(
+    render,
+    /if\(!liveStocks\.length&&!egxStocksFreshness\.loading\)fetchStocksData\(\);/,
+    "the licensed scan is loaded on demand so symbol autocomplete/hints work identically on this page and in the VIP center",
+  );
 });
 
 test("page wiring: goNav recognizes portfolio and renders it", () => {

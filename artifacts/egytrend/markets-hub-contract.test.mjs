@@ -66,7 +66,14 @@ test("forex is its own server section on the client (EG section: indices only)",
   const staticBlock = html.slice(html.indexOf("const MARKET_STATIC = {"), html.indexOf("const TICKS_STATIC"));
   assert.ok(staticBlock.includes("fx:["), "static catalog has an fx section");
   const egBlock = staticBlock.slice(staticBlock.indexOf("eg:["), staticBlock.indexOf("gl:["));
-  assert.ok(egBlock.includes("EGX30") && egBlock.includes("EGX70") && egBlock.includes("EGX100"), "eg keeps the three headline indices");
+  assert.ok(egBlock.includes("EGX30"), "eg keeps the EGX30 headline index");
+  assert.doesNotMatch(egBlock, /EGX70|EGX100/, "EGX70/EGX100 have no reliable data source — no loading placeholders either");
+  /* Rows still sent by the shared server API are dropped client-side so they
+   * never re-enter lists or the ticker. */
+  const removed = html.indexOf("const REMOVED_MARKETS = new Set(");
+  assert.ok(removed !== -1, "REMOVED_MARKETS filter exists");
+  const removedSet = html.slice(removed, html.indexOf("];", removed));
+  assert.ok(removedSet.includes('"EGX70"') && removedSet.includes('"EGX100"'), "filter still drops EGX70/EGX100 from any payload");
   assert.doesNotMatch(egBlock, /EGP/, "no FX pairs remain in the Egyptian static section");
   for (const name of ["USD/EGP", "EUR/EGP", "GBP/EGP", "SAR/EGP", "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "مؤشر الدولار"]) {
     assert.ok(staticBlock.includes(`n:"${name}"`), `fx static section carries ${name}`);

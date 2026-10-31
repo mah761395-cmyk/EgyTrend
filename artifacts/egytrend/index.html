@@ -2283,7 +2283,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       <button class="n-btn" type="button" onclick="goNav('vip')" id="nb-vip"><span class="n-icon nav-vip-icon"><svg class="et-icon"><use href="#i-star"></use></svg></span><span class="n-label">VIP</span></button>
       <button class="n-btn" type="button" onclick="goNav('opps')" id="nb-opps"><span class="n-icon" style="position:relative;"><svg class="et-icon"><use href="#i-bulb"></use></svg><span id="nb-opps-badge" class="nb-badge" style="display:none;">0</span></span><span class="n-label">فرص</span></button>
       <button class="n-btn" type="button" onclick="goNav('portfolio')" id="nb-portfolio"><span class="n-icon"><svg class="et-icon"><use href="#i-card"></use></svg></span><span class="n-label">المحفظة</span><span class="n-vip-chip">VIP</span></button>
-      <button class="n-btn" type="button" onclick="goNav('calculators')" id="nb-calculators"><span class="n-icon"><svg class="et-icon"><use href="#i-calculator"></use></svg></span><span class="n-label">الحاسبات</span></button>
+      <button class="n-btn" type="button" onclick="goNav('calculators')" id="nb-calculators"><span class="n-icon"><svg class="et-icon"><use href="#i-calculator"></use></svg></span><span class="n-label">الحاسبات</span><span class="n-vip-chip">VIP</span></button>
       <button class="n-btn" type="button" onclick="goNav('profile')" id="nb-profile"><span class="n-icon"><svg class="et-icon"><use href="#i-user"></use></svg></span><span class="n-label">حسابي</span></button>
     </div>
   </div>
@@ -2678,11 +2678,12 @@ const CATS = [
  * by the shared server API are dropped here so they never re-enter the lists
  * or the ticker; the backend catalog, endpoints and history data are untouched. */
 const REMOVED_MARKETS = new Set(["EGX70", "EGX100"]);
+/* EGX70/EGX100 have no reliable data source, so they do not appear in the
+ * loading placeholders either (previously they flashed during hydration).
+ * The REMOVED_MARKETS filter below keeps dropping them from any payload. */
 const MARKET_STATIC = {
   eg:[
     {n:"EGX30",  v:"",c:"",up:true,s:"مؤشر رئيسي",clickable:true},
-    {n:"EGX70",  v:"",c:"",up:true,s:"مؤشر السبعين"},
-    {n:"EGX100", v:"",c:"",up:true,s:"مؤشر المائة"},
   ],
   gl:[
     {n:"S&P 500",v:"",c:"",up:true,s:"أمريكي"},
@@ -8802,6 +8803,10 @@ function renderPortfolioPage(){
     host.innerHTML=pfpIntro({loggedOut:false});
     return;
   }
+  /* Same live symbol universe as every other surface: load the licensed
+     stock scan if this page was reached before the markets page did, so the
+     symbol autocomplete/hints work identically here and in the VIP center. */
+  if(!liveStocks.length&&!egxStocksFreshness.loading)fetchStocksData();
   pfpRenderDashboard();
 }
 
