@@ -1539,7 +1539,10 @@ function normalizeMarketRows(raw){
     const m=item&&typeof item==="object"?item:{};
     const n=String(m.n||"").trim().slice(0,80);
     if(!n||REMOVED_MARKETS.has(n))return [];
-    return [{instrumentId:canonicalInstrumentId(m.id),n,v:String(m.v??"").slice(0,80),c:String(m.c??"").slice(0,80),s:String(m.s??"").slice(0,120),source:String(m.source??"").slice(0,160),up:m.up===true,clickable:m.clickable===true,asOf:finiteNumber(m.asOf,0)}];
+        /* Same field set as the public client (index.html): `flat` marks a provider row
+     * with no numeric change (EOD "—") so no direction arrow is ever printed for it;
+     * `timeBasis`/`refTime`/`state` keep the honest time/state labels working in admin. */
+    return [{instrumentId:canonicalInstrumentId(m.id),n,v:String(m.v??"").slice(0,80),c:String(m.c??"").slice(0,80),s:String(m.s??"").slice(0,120),source:String(m.source??"").slice(0,160),up:m.up===true,flat:m.flat===true,clickable:m.clickable===true,asOf:finiteNumber(m.asOf,0),refTime:finiteNumber(m.refTime,0),timeBasis:String(m.timeBasis??"").slice(0,10),state:String(m.state??"").slice(0,20),stateLabel:String(m.stateLabel??"").slice(0,40),freshness:String(m.freshness??"").slice(0,20)}];
   }).slice(0,100);
 }
 function normalizeMarketFreshness(raw,topLevelStale){
