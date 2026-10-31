@@ -23,8 +23,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(here, "index.html"), "utf8");
 
 function functionBody(name) {
-  const start = html.indexOf(`function ${name}(`);
+  let start = html.indexOf(`function ${name}(`);
   assert.ok(start !== -1, `index.html must define ${name}`);
+  /* Keep an `async` prefix — dropping it turns the inner `await` into a
+   * syntax error in the eval'd copy. */
+  if (html.slice(Math.max(0, start - 6), start) === "async ") start -= 6;
   let i = html.indexOf("(", start);
   let pd = 0;
   for (; i < html.length; i += 1) {
@@ -63,9 +66,11 @@ function makeAuthHandlers(meSequence) {
     calls.me += 1;
     return typeof next === "function" ? next() : next;
   };
-  const setCurrentUser = () => {};
-  const renderHdrVip = () => { calls.hdr += 1; };
   const U = { plan: "free", phone: "0101234567" };
+  /* The real app's setCurrentUser rebinds the same U the handler reads below;
+     mutate the shared object so the eval'd copy sees the server's fresh plan. */
+  const setCurrentUser = (freshUser) => { Object.assign(U, freshUser); };
+  const renderHdrVip = () => { calls.hdr += 1; };
   const factory = new Function(
     "fetch",
     "setCurrentUser",

@@ -234,3 +234,86 @@ test("forex section metadata survives client normalization (currency cards stay 
   assert.equal(dead.sections.fx.unavailable, true, "an unsourced fx section stays honestly unavailable");
   assert.equal(dead.stale, true);
 });
+
+
+test("«الكل» pane: top gainers / top losers section over the priced stocks of both exchanges", () => {
+  assert.match(html, /<div class="mkt-tab-pane on" id="mkt-all-pane">\s*<div id="mkt-all-movers"><\/div>/, "movers section exists at the top of the unified pane");
+  const allPane = html.slice(html.indexOf('id="mkt-all-pane"'), html.indexOf('id="mkt-eg-pane"'));
+  const moversIdx = allPane.indexOf('id="mkt-all-movers"');
+  const filtersIdx = allPane.indexOf('id="mkt-all-filters"');
+  assert.ok(moversIdx !== -1 && filtersIdx !== -1 && moversIdx < filtersIdx, "movers come before the type filters (a section, not a filter)");
+  assert.match(html, /\.mkt-all-movers-h\{/, "section header styling");
+  assert.match(html, /\.mkt-mover \.mm-tag\{/, "per-row market tag styling (مصر / أمريكا)");
+  const renderAll = functionBody("renderMktAll");
+  assert.match(renderAll, /renderMktAllMovers\(\);/, "the section recomputes on every unified-list render (tab switch + both stock refreshes)");
+  const renderMovers = functionBody("renderMktAllMovers");
+  assert.match(renderMovers, /openStockDetail\(/, "rows open the real stock detail view");
+  assert.match(renderMovers, /mktPricedAllStocks\(\)/, "rows come from the priced-only source list");
+});
+
+test("«الكل» movers: ranking computed from real priced rows only — sorted, tagged, bounded, honest when empty", () => {
+  const code = functionBody("mktPricedAllStocks") + "\n" + functionBody("renderMktAllMovers") + "\nreturn {mktPricedAllStocks, renderMktAllMovers};";
+  const makeApi = (egx, us, egxFresh, usFresh) => {
+    const el = { value: "" };
+    const node = { set innerHTML(v) { el.value = v; }, get innerHTML() { return el.value; } };
+    const document = { getElementById: (id) => (id === "mkt-all-movers" ? node : null) };
+    const calls = [];
+    const api = new Function("document", "liveStocks", "usStocks", "egxStocksFreshness", "usStocksFreshness", "safeJsArg", "sanitize", "cairoTimestampLabel", "openStockDetail", code)(
+      document, egx, us, egxFresh, usFresh, (v) => JSON.stringify(String(v)), (v) => String(v), (ts) => `T${ts}`, (sym) => calls.push(sym),
+    );
+    return { ...api, el, calls };
+  };
+  const TS_EGX = 1_793_408_827_000;
+  const TS_US = 1_793_390_401_000;
+  const egx = [
+    { sym: "COMI", name: "البنك التجاري الدولي", price: 55.2, chgPct: 3.42, ts: TS_EGX, state: "closed", stateLabel: "إغلاق" },
+    { sym: "HERS", name: "هيرمس", price: 12.1, chgPct: 5.1, ts: TS_EGX, state: "closed", stateLabel: "إغلاق" },
+    { sym: "SBY", name: "إي شل", price: 41.7, chgPct: -2.85, ts: TS_EGX, state: "closed", stateLabel: "إغلاق" },
+    { sym: "TAAM", name: "تعاملة", price: 0, chgPct: 1.0, ts: TS_EGX, state: "closed", stateLabel: "إغلاق" },
+    { sym: "ASWD", name: "أسوان", noData: true, price: 9.9, chgPct: 4.4, ts: TS_EGX, state: "closed", stateLabel: "إغلاق" },
+    { sym: "ETON", name: "إي تون", price: 10, chgPct: NaN, ts: TS_EGX, state: "closed", stateLabel: "إغلاق" },
+  ];
+  const us = [
+    { sym: "AAPL", name: "Apple", price: 344.63, chgPct: -1.23, ts: TS_US, state: "closed", stateLabel: "إغلاق" },
+    { sym: "TSLA", name: "Tesla", price: 399.81, chgPct: 2.74, ts: TS_US, state: "closed", stateLabel: "إغلاق" },
+    { sym: "NVDA", name: "NVIDIA", price: 204.64, chgPct: 4.91, ts: TS_US, state: "closed", stateLabel: "إغلاق" },
+    { sym: "INTC", name: "Intel", price: 65.76, chgPct: -9.8, ts: TS_US, state: "stale", stateLabel: "بيانات قديمة" },
+    { sym: "MSFT", name: "Microsoft", price: 521.91, chgPct: -0.55, ts: TS_US, state: "closed", stateLabel: "إغلاق" },
+  ];
+  const api = makeApi(egx, us, { fetchedAt: TS_EGX, loading: false }, { fetchedAt: TS_US, loading: false });
+  assert.equal(api.mktPricedAllStocks().length, 8, "only priced rows with a real change qualify (6 EGX in, 3 out; 5 US in, 5 out)");
+  api.renderMktAllMovers();
+  const out = api.el.value;
+  assert.ok(out.includes("أعلى الرابحين") && out.includes("أعلى الخاسرين"), "both sections render");
+  /* Winners desc: HERS 5.10 > NVDA 4.91 > COMI 3.42 > TSLA 2.74 > MSFT -0.55 */
+  /* Losers asc:  INTC -9.80 < SBY -2.85 < AAPL -1.23 < MSFT -0.55 < TSLA 2.74 */
+  /* Rows can appear in both boxes (5th place each way) — compare inside each box. */
+  const winBox = out.slice(out.indexOf("أعلى الرابحين"), out.indexOf("أعلى الخاسرين"));
+  const loseBox = out.slice(out.indexOf("أعلى الخاسرين"));
+  const wIdx = (sym) => winBox.indexOf(`openStockDetail("${sym}")`);
+  const lIdx = (sym) => loseBox.indexOf(`openStockDetail("${sym}")`);
+  const winners = ["HERS", "NVDA", "COMI", "TSLA", "MSFT"];
+  const losers = ["INTC", "SBY", "AAPL", "MSFT", "TSLA"];
+  for (let i = 0; i < winners.length - 1; i += 1) assert.ok(wIdx(winners[i]) < wIdx(winners[i + 1]), `winners order: ${winners[i]} before ${winners[i + 1]}`);
+  for (let i = 0; i < losers.length - 1; i += 1) assert.ok(lIdx(losers[i]) < lIdx(losers[i + 1]), `losers order: ${losers[i]} before ${losers[i + 1]}`);
+  assert.equal((out.match(/class="mkt-mover"/g) || []).length, 10, "exactly 5 + 5 rows — a compact section");
+  assert.ok(out.includes("مصر · COMI"), "EGX rows tagged مصر");
+  assert.ok(out.includes("أمريكا · NVDA"), "US rows tagged أمريكا");
+  assert.ok(out.includes("55.20 ج"), "EGX price in EGP");
+  assert.ok(out.includes("$204.64"), "US price in USD");
+  assert.ok(out.includes("⚠️ بيانات قديمة"), "a stale row flags the section honestly");
+  assert.ok(out.includes(`T${TS_EGX}`), "meta line shows the newest real data timestamp");
+  for (const dead of ["TAAM", "ASWD", "ETON"]) assert.ok(!out.includes(dead), `unreliable row excluded: ${dead}`);
+  /* Loading → nothing rendered (no invented ranking before data exists). */
+  const loading = makeApi([], [], { fetchedAt: 0, loading: true }, { fetchedAt: 0, loading: true });
+  loading.renderMktAllMovers();
+  assert.equal(loading.el.value, "", "loading state renders nothing");
+  /* Fetched but nothing priced → an honest note, not an empty box. */
+  const dead = makeApi(
+    [{ sym: "X", name: "إكس", noData: true, price: 1, chgPct: 1, ts: 1, state: "closed" }],
+    [{ sym: "Y", name: "واي", noData: true, price: 1, chgPct: 1, ts: 1, state: "closed" }],
+    { fetchedAt: 1, loading: false }, { fetchedAt: 1, loading: false },
+  );
+  dead.renderMktAllMovers();
+  assert.ok(dead.el.value.includes("لا تتوفر أسعار موثقة"), "fetched-but-unpriced renders the honest empty note");
+});

@@ -336,6 +336,10 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .mkt-mover .mm-sym{color:var(--t1);font-size:11px;font-weight:800;font-family:var(--mono);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .mkt-mover .mm-price{color:var(--t5);font-size:9px;font-family:var(--mono);}
 .mkt-mover .mm-pct{font-size:10.5px;font-weight:700;font-family:var(--mono);}
+.mkt-mover .mm-tag{font-size:8px;color:var(--t5);font-weight:700;font-family:var(--sans);white-space:nowrap;margin-right:5px;}
+.mkt-all-movers-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:7px;flex-wrap:wrap;}
+.mkt-all-movers-h .mmh-t{color:var(--t2);font-size:11px;font-weight:800;}
+.mkt-all-movers-meta{color:var(--t5);font-size:9px;}
 .mkt-stbl-wrap{margin-bottom:18px;}
 .mkt-stbl-h{display:flex;align-items:flex-end;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
 .mkt-stbl-title{color:var(--t1);font-size:13px;font-weight:800;}
@@ -1845,6 +1849,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
         <p class="lnd-kicker2">الأسعار</p>
         <h2 id="lnd-pricing-title">اختر الباقة المناسبة لك.</h2>
         <p class="lnd-sec-sub">أسعار رسمية من مصدر واحد، وطرق دفع موثّقة — لا نسخة ثابتة ولا تخمين، وأي تعديل من الإدارة يظهر تلقائيًا.</p>
+        <p class="lnd-sec-sub" style="margin-top:-4px;">جميع الباقات المدفوعة تمنح كل مميزات VIP خلال مدة الباقة — الفرق بينها هو المدة والسعر فقط.</p>
       </div>
       <div class="lnd-plans lnd-plans-new">
         <div id="lnd-vip-plans" class="lnd-vip-plans" role="status" aria-label="جارٍ تحميل الباقات من الخادم"><span class="sk sk-line lg"></span><span class="sk sk-line"></span><span class="sk sk-line md"></span></div>
@@ -2127,6 +2132,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
     </div>
     <!-- Tab panes -->
     <div class="mkt-tab-pane on" id="mkt-all-pane">
+      <div id="mkt-all-movers"></div>
       <div class="mkt-sector-pills" id="mkt-all-filters"></div>
       <div class="mkt-grid" id="mkt-all"></div>
     </div>
@@ -5947,6 +5953,7 @@ function renderMktAll(){
   const grid=document.getElementById("mkt-all");
   const chipsEl=document.getElementById("mkt-all-filters");
   if(!grid)return;
+  renderMktAllMovers();
   /* Self-sufficient data: the unified list shows both stock universes, so it
      loads whichever one this page was reached before any other surface did
      (the fetch tails re-render this list when the rows arrive). */
@@ -6022,6 +6029,54 @@ function renderMktTabContent(){
  * rank. No change value = out of the ranking, never zero. */
 function mktPricedEgx(){
   return liveStocks.filter(s=>s.noData!==true&&typeof s.price==="number"&&s.price>0&&typeof s.chgPct==="number"&&Number.isFinite(s.chgPct));
+}
+
+/* Priced stock rows (EGX + US) with a real session change — the only rows
+ * that may feed the all-market gainers/losers ranking. No price or no change
+ * value = out of the ranking, never zero. Each row keeps its own market tag
+ * (مصر / أمريكا) so the two exchanges are never presented as one blend. */
+function mktPricedAllStocks(){
+  const out=[];
+  const push=(arr,mkt)=>{for(const s of arr){
+    if(s.noData===true)continue;
+    if(typeof s.price!=="number"||!(s.price>0))continue;
+    if(typeof s.chgPct!=="number"||!Number.isFinite(s.chgPct))continue;
+    out.push({sym:s.sym,name:s.name||s.sym,price:s.price,chgPct:s.chgPct,ts:Number(s.ts)||0,state:s.state,mkt});
+  }};
+  push(liveStocks,"eg");
+  push(usStocks,"us");
+  return out;
+}
+
+/* Compact Top Gainers / Top Losers over the priced stocks of both exchanges —
+ * same design language as the EGX movers, real numbers only, recomputed on
+ * every markets data refresh (renderMktAll runs at both fetch tails). */
+function renderMktAllMovers(){
+  const el=document.getElementById("mkt-all-movers");
+  if(!el)return;
+  const rows=mktPricedAllStocks();
+  const anyFetched=(Number(egxStocksFreshness.fetchedAt)||Number(usStocksFreshness.fetchedAt))>0;
+  if(!rows.length){
+    el.innerHTML=anyFetched?`<div class="mkt-mover-box" style="margin-bottom:14px"><div class="mkt-mover-h">📊 أعلى الرابحين والخاسرين — الأسهم</div><div class="mkt-stbl-sub">لا تتوفر أسعار موثقة حاليًا لترتيب الرابحين والخاسرين.</div></div>`:"";
+    return;
+  }
+  const winners=[...rows].sort((a,b)=>b.chgPct-a.chgPct).slice(0,5);
+  const losers=[...rows].sort((a,b)=>a.chgPct-b.chgPct).slice(0,5);
+  const lastTs=Math.max(...rows.map(r=>r.ts));
+  const hasStale=rows.some(r=>String(r.state).toLowerCase()==="stale");
+  const chip=r=>{
+    const isUs=r.mkt==="us";
+    return `<div class="mkt-mover" onclick='openStockDetail(${safeJsArg(r.sym)})'>
+      <span class="mm-sym">${sanitize(r.name)}<span class="mm-tag">${isUs?"أمريكا":"مصر"} · ${sanitize(r.sym)}</span></span>
+      <span class="mm-price">${isUs?"$":""}${r.price.toFixed(2)}${isUs?"":" ج"}</span>
+      <span class="mm-pct" style="color:${r.chgPct>=0?"var(--up)":"var(--dn)"}">${r.chgPct>=0?"+":""}${r.chgPct.toFixed(2)}%</span>
+    </div>`;
+  };
+  el.innerHTML=`<div class="mkt-all-movers-h"><span class="mmh-t">📊 أعلى الرابحين والخاسرين — الأسهم</span><span class="mkt-all-movers-meta">${lastTs?"آخر تحديث "+sanitize(cairoTimestampLabel(lastTs)):""} · الجلسة الأخيرة لكل سوق${hasStale?" · ⚠️ بيانات قديمة":""}</span></div>
+    <div class="mkt-movers">
+      <div class="mkt-mover-box"><div class="mkt-mover-h" style="color:var(--up)">📈 أعلى الرابحين</div>${winners.map(chip).join("")}</div>
+      <div class="mkt-mover-box"><div class="mkt-mover-h" style="color:var(--dn)">📉 أعلى الخاسرين</div>${losers.map(chip).join("")}</div>
+    </div>`;
 }
 
 function renderMktMovers(){
@@ -10531,6 +10586,23 @@ function updateSubscriptionCountdowns(){
     setTimeout(async()=>{try{await Promise.all([loadVipPlanComparison(),document.getElementById("sub-ov")?.classList.contains("open")?loadSubConfig():Promise.resolve()]);}finally{SUB_COUNTDOWN_REFRESHING=false;}},350);
   }
 }
+/* One VIP product, one entitlement: every paid plan grants the same full VIP
+ * access — the server gates key on the active subscription
+ * (getVipEntitlement/resolveVipFeature), never on the plan key. The displayed
+ * feature list is therefore unified for all paid plans; only duration and
+ * price differ between them. The list is the app's actual VIP feature set —
+ * every item is a real, server-gated feature. */
+const VIP_FEATURES_UNIFIED=[
+  "المحفظة الكاملة",
+  "التنبيهات السعرية",
+  "الفرص وإشارات التداول",
+  "Screener",
+  "مستشار AI وتحليل الأخبار",
+  "الحاسبات المتقدمة",
+  "تقارير الصباح ومنتصف اليوم والإغلاق",
+  "MA(20) وRSI(14) على الشارت",
+  "الأخبار العاجلة"
+];
 function normalizeSubscriptionPlans(raw){
   if(!Array.isArray(raw))return {};
   return raw.reduce((out,item)=>{
@@ -10538,14 +10610,16 @@ function normalizeSubscriptionPlans(raw){
     const key=String(p.key||"").trim();
     const price=Number(p.price),months=Number(p.durationMonths),oldPrice=Number(p.oldPrice);
     if(!/^[a-z0-9_-]{1,40}$/i.test(key)||!Number.isFinite(price)||price<=0||price>1e7||!Number.isInteger(months)||months<1||months>120)return out;
-    const features=Array.isArray(p.features)?p.features.map(x=>String(x||"").trim().slice(0,160)).filter(Boolean).slice(0,12):[];
+    /* Per-plan `features` text from the plan config is intentionally NOT
+     * displayed (it varies by plan and would imply different entitlements);
+     * every paid plan shows VIP_FEATURES_UNIFIED instead. */
     const endsAt=typeof p.endsAt==="string"&&Number.isFinite(Date.parse(p.endsAt))?p.endsAt:null;
     out[key]={
       l:String(p.nameAr||key).slice(0,100),p:price,per:months===1?"شهر":months===3?"٣ شهور":months===12?"سنة":`${months} شهر`,m:months,
       badge:String(p.badge||"").slice(0,50),priceBadge:String(p.priceBadge||"").slice(0,50),
       oldPrice:Number.isFinite(oldPrice)&&oldPrice>price?oldPrice:null,
       discountPercent:Number.isFinite(Number(p.discountPercent))?Number(p.discountPercent):null,
-      showCountdown:Boolean(p.showCountdown)&&Boolean(endsAt),endsAt,pricingToken:String(p.pricingToken||"").slice(0,1000),features
+      showCountdown:Boolean(p.showCountdown)&&Boolean(endsAt),endsAt,pricingToken:String(p.pricingToken||"").slice(0,1000),features:VIP_FEATURES_UNIFIED
     };
     return out;
   },{});
@@ -10561,7 +10635,8 @@ function planComparisonHtml(plans){
   const entries=Object.entries(plans||{});
   if(!entries.length)return `<div class="empty" style="padding:15px;"><div>لا توجد باقات منشورة من الخادم حاليًا.</div></div>`;
   return `<div style="background:var(--s1);border:1px solid var(--b1);border-radius:16px;padding:13px;margin-top:13px;">
-    <div style="color:var(--t2);font-weight:900;font-size:13px;margin-bottom:9px;">مقارنة المجاني وVIP</div>
+    <div style="color:var(--t2);font-weight:900;font-size:13px;margin-bottom:3px;">مقارنة المجاني وVIP</div>
+    <div style="color:var(--t4);font-size:9.5px;margin-bottom:9px;">كل الباقات المدفوعة تمنح كل مميزات VIP — الفرق بين الباقات هو المدة والسعر فقط، وتُتحقق صلاحية كل ميزة من الخادم.</div>
     <div style="display:grid;grid-template-columns:repeat(${Math.min(entries.length+1,3)},minmax(0,1fr));gap:7px;overflow:auto;">
       <div style="min-width:120px;background:var(--ink);border:1px solid var(--b1);border-radius:11px;padding:9px;">
         <div style="color:var(--t2);font-weight:800;font-size:11px;">مجاني</div>
