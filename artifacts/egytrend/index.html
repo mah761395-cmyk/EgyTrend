@@ -298,7 +298,6 @@ body{background:var(--ink);color:var(--t1);font-family:var(--sans);min-height:10
 .mc-state{margin-inline-start:auto;font-size:8px;font-weight:800;padding:1.5px 7px;border-radius:var(--r-full);border:1px solid transparent;white-space:nowrap;}
 .mc-state.live{color:var(--gl);background:rgba(16,185,129,.12);border-color:var(--gb);}
 .mc-state.closed{color:var(--t2);background:var(--s2);border-color:var(--b1);}
-.mc-state.stale{color:var(--dn);background:rgba(248,113,113,.10);border-color:rgba(248,113,113,.3);}
 .mc-state.off{color:var(--t3);border-color:var(--b1);}
 .mc-loading{color:var(--t5);font-size:11px;animation:pulse .8s infinite;font-family:var(--mono);}
 .cal-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--b1);}
@@ -5982,7 +5981,7 @@ function renderMktAll(){
       const stateChip=!priced
         ?`<span class="mc-state off">غير متاح</span>`
         :String(row.state||"").toLowerCase()==="stale"
-          ?`<span class="mc-state stale">⚠️ بيانات قديمة</span>`
+          ?``
           :row.state==="live"
             ?`<span class="mc-state live">مباشر</span>`
             :`<span class="mc-state closed">${sanitize(row.stateLabel||"إغلاق السوق")}</span>`;
@@ -6003,7 +6002,7 @@ function renderMktAll(){
     const stateChip=unavailable
       ?`<span class="mc-state off">غير متاح</span>`
       :rowState==="stale"
-        ?`<span class="mc-state stale">⚠️ بيانات قديمة</span>`
+        ?``
         :rowState==="live"
           ?`<span class="mc-state live">مباشر</span>`
           :`<span class="mc-state closed">${sanitize(row.stateLabel||"إغلاق السوق")}</span>`;
@@ -6507,7 +6506,7 @@ function buildMarkets(){
       const stateChip=unavailable
         ? `<span class="mc-state off">غير متاح</span>`
         : rowState==="stale"
-          ? `<span class="mc-state stale">⚠️ بيانات قديمة</span>`
+          ? ``
           : rowState==="live"
             ? `<span class="mc-state live">مباشر</span>`
             : `<span class="mc-state closed">${sanitize(m.stateLabel||"إغلاق السوق")}</span>`;
