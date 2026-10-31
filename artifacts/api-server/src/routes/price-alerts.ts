@@ -10,6 +10,7 @@ import { attachMarketValue, computePortfolio } from "../lib/portfolio-accounting
 import { logger } from "../lib/logger";
 import { getStocksSnapshot, type StockQuote } from "./markets";
 import { loadUserLedger } from "./portfolio";
+import { notifPrefEnabled } from "../lib/notifications";
 
 const router = Router();
 const SYMBOL_RX = /^[A-Z0-9._-]{1,16}$/;
@@ -454,7 +455,14 @@ async function triggerAlert(candidate: TriggerCandidate, actual: number, source:
   return transitioned.length > 0;
 }
 
-async function insertAlertNotification(candidate: TriggerCandidate, target: number, actual: number, now: Date): Promise<void> {
+/**
+ * Exported for unit tests. The in-platform row respects the user's
+ * notification-center preference ("price" family) — the alert itself has
+ * already transitioned to triggered (and e-mail is a separate, per-alert
+ * choice), so disabling the feed never swallows a user-requested trigger.
+ */
+export async function insertAlertNotification(candidate: TriggerCandidate, target: number, actual: number, now: Date): Promise<void> {
+  if (!(await notifPrefEnabled(candidate.phone, "price"))) return;
   const unit = isPercentCondition(candidate.condition) ? "%" : " ج";
   const title = isPortfolioCondition(candidate.condition) ? "🔔 تنبيه المحفظة" : `🔔 تنبيه ${candidate.symbol}`;
   await db.insert(userNotificationsTable).values({
@@ -475,12 +483,18 @@ function cronAuthorized(req: Request): boolean {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-router.post("/internal/price-alerts/run", async (req: Request, res: Response) => {
+function vercelCronAuthorized(req: Request): boolean {
+  const userAgent = String(req.get("user-agent") || "").toLowerCase();
+  const schedule = String(req.get("x-vercel-cron-schedule") || "").trim();
+  return userAgent.startsWith("vercel-cron") && schedule.length > 0;
+}
+
+async function runPriceAlertsCronHandler(req: Request, res: Response): Promise<void> {
   if (!process.env["CRON_SECRET"]) {
     res.status(503).json({ status: "error", message: "price alert scheduler is not configured" });
     return;
   }
-  if (!cronAuthorized(req)) {
+  if (!cronAuthorized(req) && !vercelCronAuthorized(req)) {
     res.status(403).json({ status: "error", message: "forbidden" });
     return;
   }
@@ -493,6 +507,20 @@ router.post("/internal/price-alerts/run", async (req: Request, res: Response) =>
     logger.error({ err: error }, "price alert evaluation failed");
     res.status(503).json({ status: "error", message: "price alert evaluation unavailable" });
   }
+}
+
+router.post("/internal/price-alerts/run", (req: Request, res: Response) => {
+  void runPriceAlertsCronHandler(req, res);
+});
+
+/* Vercel's scheduler issues a plain GET (it cannot attach custom headers) —
+   the same platform-marker pattern as the opportunities/backups crons. */
+router.get("/internal/price-alerts/run", (req: Request, res: Response) => {
+  if (!vercelCronAuthorized(req)) {
+    res.status(404).json({ status: "error", message: "not found" });
+    return;
+  }
+  void runPriceAlertsCronHandler(req, res);
 });
 
 export default router;

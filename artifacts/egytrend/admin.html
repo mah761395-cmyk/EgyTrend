@@ -5366,7 +5366,7 @@ function renderSub(){
       <div style="color:var(--t4);font-size:10.5px;line-height:1.75;background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:9px 10px;margin:11px 0;">بعد اختيار الباقة، تظهر وسائل الدفع المفعّلة من الخادم. لا يُفعّل الاشتراك إلا بعد مراجعة إثبات الدفع.</div>
       ${planComparisonHtml(P)}
       ${subscriptionPolicyHtml(true)}
-      <div style="margin-top:10px;"><details class="faq-item"><summary class="faq-q">متى يتفعّل الاشتراك؟<span style="color:var(--g);">+</span></summary><div class="faq-a">بعد اعتماد الإدارة لطلب الدفع فقط؛ إرسال الصورة أو رقم العملية لا يفعّل الاشتراك تلقائيًا.</div></details></div>
+      <div style="margin-top:10px;"><details class="faq-item"><summary class="faq-q">متى يتفعّل الاشتراك؟<span style="color:var(--g);">+</span></summary><div class="faq-a">بعد اعتماد الإدارة لطلب الدفع فقط؛ إرسال صورة الإثبات لا يفعّل الاشتراك تلقائيًا.</div></details></div>
       <button class="btn btn-au btn-full" style="padding:13px;font-size:14px;margin-top:11px;" onclick="subToPayment()">متابعة إلى وسيلة الدفع</button>`;
   } else if(subStep===2){
     const selectedPlan=P[selPlan];
@@ -5383,13 +5383,16 @@ function renderSub(){
         <button class="btn btn-g icon-label" style="padding:8px 24px;font-size:12px;margin-top:9px;" onclick="copyWallet()">${uiIcon("source")} نسخ الرقم</button>
       </div>
       ${method.instructions?`<div style="color:var(--t4);font-size:10.5px;line-height:1.8;margin-bottom:11px;background:var(--s1);border-radius:9px;padding:8px 10px;">${sanitize(method.instructions)}</div>`:""}
-      <div style="color:var(--t4);font-size:10.5px;line-height:1.8;margin-bottom:11px;background:var(--s1);border-radius:9px;padding:8px 10px;">1. حوّل القيمة للرقم أعلاه<br/>2. خذ Screenshot لتأكيد التحويل<br/>3. أدخل رقم العملية وارفع الصورة هنا</div>
-      <input class="tx-in" id="tx-in" placeholder="رقم عملية التحويل" maxlength="100"/>
+      <div style="color:var(--t4);font-size:10.5px;line-height:1.8;margin-bottom:11px;background:var(--s1);border-radius:9px;padding:8px 10px;">1. حوّل القيمة للرقم أعلاه<br/>2. خذ Screenshot لتأكيد التحويل<br/>3. ارفع صورة الإثبات هنا</div>
       <input class="tx-in" id="sender-phone-in" placeholder="رقم هاتف المُحوِّل (اختياري للمراجعة)" maxlength="20" inputmode="tel" dir="ltr" style="margin-top:7px;"/>
       <div style="color:var(--t5);font-size:9.5px;line-height:1.55;margin-top:4px;">يُستخدم فقط كإشارة مراجعة عادلة للإحالات، ولا يرفض الدفع تلقائيًا.</div>
       <label id="proof-lbl" for="proof-in" class="icon-label" style="justify-content:center;background:var(--s1);border:1px dashed var(--b1);border-radius:11px;padding:11px;margin-top:8px;color:var(--t3);font-size:12px;cursor:pointer;font-family:var(--sans);">${uiIcon("source")} ارفع Screenshot إثبات الدفع</label>
       <input type="file" id="proof-in" accept="image/*" style="display:none" onchange="onProofPick(this)"/>
       <img id="proof-prev" alt="" style="display:none;width:100%;max-height:170px;object-fit:contain;border-radius:10px;margin-top:8px;background:rgba(0,0,0,.25);"/>
+      <label style="display:flex;gap:9px;align-items:flex-start;background:var(--s1);border:1px solid var(--b1);border-radius:11px;padding:11px 12px;margin-top:9px;cursor:pointer;font-size:11.5px;line-height:1.7;color:var(--t2);">
+        <input type="checkbox" id="autorenew-chk" style="margin-top:2px;accent-color:var(--au);width:16px;height:16px;flex:none;"/>
+        <span><b>تفعيل التجديد التلقائي من المحفظة</b> (موافقة صريحة) — عند انتهاء المدة الحالية يُخصم سعر الباقة من رصيد محفظتك ليُجدَّد الاشتراك تلقائيًا، مع إشعار قبل ٣ أيام بالمبلغ وموعد الخصم. يمكنك الإيقاف في أي وقت، وإيقافه لا يلغي المدة الحالية.&nbsp;<span style="color:var(--t5);font-size:9.5px;">لا يوجد أي خصم خارج هذه الموافقة، ولا يُشحن الرصيد إلا بتحويل يدوي معتمد من الإدارة.</span></span>
+      </label>
       <button class="btn btn-g btn-full icon-label" id="pay-submit" style="padding:12px;font-size:14px;margin-top:10px;" onclick="submitPay()">${uiIcon("lock")} تأكيد الاشتراك</button>
       <button onclick="subStep=1;renderSub();" style="width:100%;margin-top:7px;background:none;border:none;color:var(--t4);font-size:12px;cursor:pointer;font-family:var(--sans);">← رجوع</button>`;
   } else {
@@ -5444,15 +5447,14 @@ async function submitPay(){
   if(!U){showToast("⚠️ سجّل الدخول أولًا");return;}
   const method=SUB_M();
   if(SUB_CONFIG_STATE!=="ready"||!subPlans()[selPlan]||!subPlans()[selPlan].pricingToken||!method){showToast("⚠️ إعدادات الدفع غير متاحة حاليًا — أعد تحميل الخيارات");return;}
-  const tx=(document.getElementById("tx-in")&&document.getElementById("tx-in").value||"").trim().slice(0,100);
   const senderPhone=(document.getElementById("sender-phone-in")&&document.getElementById("sender-phone-in").value||"").trim().slice(0,20);
-  if(!tx){showToast("⚠️ أدخل رقم عملية التحويل");return;}
+  const autoRenew=!!(document.getElementById("autorenew-chk")&&document.getElementById("autorenew-chk").checked);
   if(!payProofData){showToast("⚠️ ارفع صورة إثبات الدفع");return;}
   const btn=document.getElementById("pay-submit");
   if(btn){btn.disabled=true;btn.textContent="⏳ جارٍ الإرسال...";}
   try{
     const headers={"Content-Type":"application/json"};
-    const response=await fetch("/api/payments",{method:"POST",headers,credentials:"same-origin",body:JSON.stringify({planKey:selPlan,pricingToken:subPlans()[selPlan].pricingToken,method:method.id,tx,senderPhone:senderPhone||undefined,proofImage:payProofData,proofName:payProofName})});
+    const response=await fetch("/api/payments",{method:"POST",headers,credentials:"same-origin",body:JSON.stringify({planKey:selPlan,pricingToken:subPlans()[selPlan].pricingToken,method:method.id,autoRenew,senderPhone:senderPhone||undefined,proofImage:payProofData,proofName:payProofName})});
     const result=await response.json().catch(()=>null);
     if(!response.ok||!result||result.status!=="ok"){
       const msg=(result&&result.message)||"تعذر إرسال الطلب";
@@ -5479,12 +5481,19 @@ async function loadPayStatus(){
     const reqs=j.requests||[];
     const pen=reqs.find(q=>q.status==="pending");
     const last=reqs[0];
+    const ap=reqs.find(q=>q.status==="approved");
     if(pen){
       const meta=SUB_METHOD_META[pen.method]||{emoji:"💳",label:pen.method||""};
       el.innerHTML=`<div style="background:var(--aud);border:1px solid rgba(245,158,11,.3);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
         <div><div class="pay-pulse" style="color:var(--au);font-weight:800;font-size:12.5px;">⏳ جاري مراجعة الدفع</div>
-        <div style="color:var(--t4);font-size:10.5px;margin-top:3px;font-family:var(--mono);">عملية ${sanitize(String(pen.tx))} · ${pen.price} ج</div>${pen.priceLockedUntil?`<div style="color:var(--t5);font-size:9px;margin-top:3px;">السعر المثبّت صالح حتى ${sanitize(new Date(pen.priceLockedUntil).toLocaleString("ar-EG",{timeZone:"Africa/Cairo",dateStyle:"medium",timeStyle:"short"}))}</div>`:""}</div>
+        <div style="color:var(--t4);font-size:10.5px;margin-top:3px;font-family:var(--mono);">${pen.price} ج</div>${pen.priceLockedUntil?`<div style="color:var(--t5);font-size:9px;margin-top:3px;">السعر المثبّت صالح حتى ${sanitize(new Date(pen.priceLockedUntil).toLocaleString("ar-EG",{timeZone:"Africa/Cairo",dateStyle:"medium",timeStyle:"short"}))}</div>`:""}</div>
         <span class="bdg" style="background:rgba(245,158,11,.12);color:var(--au);">قيد المراجعة</span></div>`;
+    }else if(ap){
+      const endTxt=U&&U.exp?` · ساري حتى ${sanitize(new Date(U.exp).toLocaleDateString("ar-EG"))}`:"";
+      el.innerHTML=`<div style="background:var(--gd);border:1px solid rgba(16,185,129,.35);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div><div style="color:var(--g);font-weight:800;font-size:12.5px;">✓ تم اعتماد الدفع — اشتراكك مفعّل</div>
+        <div style="color:var(--t4);font-size:10.5px;margin-top:3px;">${sanitize(String(ap.planName||""))}${endTxt}</div></div>
+        <span class="bdg" style="background:var(--gd);color:var(--g);">مقبول</span></div>`;
     }else if(last&&last.status==="rejected"){
       el.innerHTML=`<div style="background:var(--dnd);border:1px solid rgba(239,68,68,.3);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
         <div><div style="color:var(--dn);font-weight:800;font-size:12.5px;">✕ تم رفض طلب الدفع</div>
@@ -6197,9 +6206,9 @@ async function renderAdmReqs(el){
           <div style="color:var(--t2);font-weight:700;font-size:13px;">${sanitize(req.name)}</div>
           <div style="color:var(--t4);font-size:10.5px;font-family:var(--mono);">${sanitize(req.phone)}</div>
           <div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;">
-            <span class="bdg" style="background:var(--aud);color:var(--au);">${sanitize(req.planKey||"غير متاح")} — ${Number.isFinite(Number(req.price))?Number(req.price):"—"} ج</span>
+            <span class="bdg" style="background:var(--aud);color:var(--au);">${req.planKey==="wallet_topup"?"💰 شحن المحفظة":sanitize(req.planKey||"غير متاح")} — ${Number.isFinite(Number(req.price))?Number(req.price):"—"} ج</span>
             <span class="bdg" style="background:var(--bld);color:#93c5fd;">${methodBadges[req.payMethod]||sanitize(req.payMethod||"")}</span>
-            <span class="bdg" style="background:var(--s1);color:var(--t4);font-family:var(--mono);font-size:9px;">TX:${sanitize(req.tx)}</span>
+            ${req.tx?`<span class="bdg" style="background:var(--s1);color:var(--t4);font-family:var(--mono);font-size:9px;">TX:${sanitize(req.tx)}</span>`:""}
             ${req.status==="pending"?`<span class="bdg ${isOld?"pay-pulse":""}" style="background:${isOld?"rgba(239,68,68,.12)":"rgba(245,158,11,.1)"};color:${isOld?"var(--dn)":"var(--au)"};">⏱ ${waitTxt}</span>`:""}
           </div>
           ${req.senderPhone?`<div style="color:var(--t5);font-size:9.5px;margin-top:3px;">هاتف المُحوِّل للمراجعة: <span style="font-family:var(--mono);">${sanitize(req.senderPhone)}</span></div>`:""}

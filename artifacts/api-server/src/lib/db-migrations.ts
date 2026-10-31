@@ -49,6 +49,8 @@ import up0021 from "../../../../lib/db/migrations/0021_ai_usage_metering.up.sql"
 import up0022 from "../../../../lib/db/migrations/0022_db_backups.up.sql";
 import up0023 from "../../../../lib/db/migrations/0023_opportunity_signals.up.sql";
 import up0024 from "../../../../lib/db/migrations/0024_portfolio_cash_events.up.sql";
+import up0025 from "../../../../lib/db/migrations/0025_user_notification_center.up.sql";
+import up0026 from "../../../../lib/db/migrations/0026_user_wallet_autorenew.up.sql";
 
 export type SqlMigration = { id: string; sql: string };
 
@@ -76,6 +78,8 @@ const SQL_BY_ID: Record<string, string> = {
   "0022_db_backups": up0022,
   "0023_opportunity_signals": up0023,
   "0024_portfolio_cash_events": up0024,
+  "0025_user_notification_center": up0025,
+  "0026_user_wallet_autorenew": up0026,
 };
 
 export const SQL_MIGRATIONS: readonly SqlMigration[] = MIGRATION_IDS.map((id) => {

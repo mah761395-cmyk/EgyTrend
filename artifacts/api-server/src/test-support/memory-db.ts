@@ -358,6 +358,68 @@ export async function createMemoryDatabase(): Promise<{
       read_at timestamp,
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE user_notification_prefs (
+      phone text NOT NULL,
+      kind text NOT NULL,
+      enabled boolean NOT NULL DEFAULT true,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT user_notification_prefs_pk PRIMARY KEY (phone, kind),
+      CONSTRAINT user_notification_prefs_kind_check CHECK (kind IN ('price', 'opps', 'news'))
+    );
+    CREATE TABLE user_follows (
+      phone text NOT NULL,
+      symbol text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT user_follows_pk PRIMARY KEY (phone, symbol)
+    );
+    CREATE INDEX user_follows_phone_idx ON user_follows(phone);
+    CREATE TABLE user_wallets (
+      user_id integer PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
+      phone text NOT NULL,
+      balance integer NOT NULL DEFAULT 0,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT user_wallets_balance_nonnegative CHECK (balance >= 0)
+    );
+    CREATE TABLE wallet_transactions (
+      id text PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+      phone text NOT NULL,
+      kind text NOT NULL,
+      amount integer NOT NULL,
+      balance_after integer NOT NULL,
+      ref_kind text NOT NULL,
+      ref_id text NOT NULL,
+      note text,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT wallet_transactions_kind_check CHECK (kind IN ('topup', 'renewal_debit')),
+      CONSTRAINT wallet_transactions_amount_positive CHECK (amount > 0)
+    );
+    CREATE UNIQUE INDEX wallet_transactions_ref_uidx ON wallet_transactions (ref_kind, ref_id);
+    CREATE INDEX wallet_transactions_user_idx ON wallet_transactions (user_id, created_at DESC);
+    CREATE TABLE subscription_renewals (
+      id text PRIMARY KEY,
+      user_id integer NOT NULL UNIQUE REFERENCES app_users(id) ON DELETE CASCADE,
+      phone text NOT NULL,
+      plan_key text NOT NULL,
+      plan_name_ar text NOT NULL,
+      plan_duration_months integer NOT NULL,
+      last_known_price integer NOT NULL DEFAULT 0,
+      status text NOT NULL DEFAULT 'active',
+      next_renewal_at timestamp with time zone,
+      last_renewed_at timestamp with time zone,
+      last_renewal_ref text,
+      last_attempt_at timestamp with time zone,
+      last_attempt_result text,
+      consent_at timestamp NOT NULL,
+      consent_source text NOT NULL,
+      disabled_at timestamp with time zone,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT subscription_renewals_status_check CHECK (status IN ('active', 'disabled', 'expired')),
+      CONSTRAINT subscription_renewals_consent_source_check CHECK (consent_source IN ('checkout', 'settings'))
+    );
+    CREATE UNIQUE INDEX subscription_renewals_user_uidx ON subscription_renewals (user_id);
     CREATE TABLE reminders_sent (
       id text PRIMARY KEY,
       subscription_id text NOT NULL REFERENCES user_subscriptions(id),

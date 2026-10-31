@@ -178,14 +178,19 @@ test("the list renders a kept outcome-history section; resolved rows are dimmed,
   assert.ok(render.includes(`statusBadge?" dimmed":""`), "terminal cards are visually marked as results");
 });
 
-test("the signal detail body states no-guarantee wording and the time-basis labels", () => {
-  const body = functionBody("signalDetailBody");
-  assert.ok(body.includes("المستويات (مشتقة من بنية السعر)"), "levels are labelled as price-structure derivations");
-  assert.ok(body.includes("الحالة الآن (قراءة حية غير محفوظة)"), "the live update is labelled as an unsaved live read");
+test("the opportunity detail page states no-guarantee wording and the time-basis labels", () => {
+  /* The detail page is now section-based (oppDetailSections): stored levels,
+   * stored indicators, and the mandatory disclaimer. */
+  const sections = functionBody("oppDetailSections");
+  assert.ok(sections.includes("المستويات (الدخول والأهداف والوقف)"), "the levels section exists (entry/stop/targets)");
+  assert.ok(sections.includes("التحليل الفني والمؤشرات (قيم فعلية محفوظة)"), "indicators are labelled as stored actual values");
+  assert.ok(sections.includes("السعر الحالي (موثق)"), "the current price line is marked as verified");
+  assert.ok(sections.includes("تُعاد بناؤها من بيانات السوق وقت الطلب"), "a live-origin row is labelled as rebuilt from market data");
   const fmt = functionBody("oppFmtTime");
   assert.ok(fmt.includes('basis==="fetch"?"وقت الجلب":"وقت المصدر"'), "a timestamp is always labelled source-vs-fetch time");
-  /* The no-guarantee line rides in the server scenario AND is pinned here. */
-  assert.ok(html.includes("لا ضمان لأي نتيجة"), "the UI copy carries the no-guarantee wording");
+  /* The no-guarantee line rides in the server explanation AND is pinned here. */
+  assert.ok(html.includes("لا ضمانًا لأي ربح"), "the UI copy carries the no-guarantee wording");
+  assert.ok(sections.includes("ex.disclaimer"), "the server-built disclaimer is rendered");
 });
 
 test("VIP masking is a server concern: the renderer consumes null payloads without inventing content", () => {

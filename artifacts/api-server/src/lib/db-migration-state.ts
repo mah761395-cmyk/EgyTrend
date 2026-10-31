@@ -58,6 +58,8 @@ export const MIGRATION_IDS: readonly string[] = [
   "0022_db_backups",
   "0023_opportunity_signals",
   "0024_portfolio_cash_events",
+  "0025_user_notification_center",
+  "0026_user_wallet_autorenew",
 ];
 
 /** Set once the boot runner has checked the database. */
