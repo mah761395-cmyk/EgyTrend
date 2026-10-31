@@ -4955,14 +4955,16 @@ async function fetchScreenerExtras(){
       divSyms.length?fetchJsonWithTimeout(`${DIVIDENDS_API}?symbols=${encodeURIComponent(divSyms.join(","))}`,30000):Promise.resolve(null),
       valSyms.length?fetchJsonWithTimeout(`${VALUATIONS_API}?symbols=${encodeURIComponent(valSyms.join(","))}`,30000):Promise.resolve(null),
     ]);
-    const nf={...egxFundamentals,loading:false,loaded:true,fetchedAt:Date.now(),stale:false,valuations:new Map(),dividends:new Map()};
-    if(valJ.status==="fulfilled"&&valJ.value?.status==="ok"&&Array.isArray(valJ.value.rows)){
+    const valOk=valJ.status==="fulfilled"&&valJ.value?.status==="ok"&&Array.isArray(valJ.value.rows);
+    const divOk=divJ.status==="fulfilled"&&divJ.value?.status==="ok"&&Array.isArray(divJ.value.dividends);
+    const nf={...egxFundamentals,loading:false,loaded:true,fetchedAt:Date.now(),stale:false,valuations:new Map(),dividends:new Map(),valOk,divOk};
+    if(valOk){
       nf.stale=valJ.value.stale===true;
       for(const r of valJ.value.rows){
         if(r&&r.sym&&Number.isFinite(r.pe)&&Number.isFinite(r.dy))nf.valuations.set(r.sym,{pe:r.pe,dy:r.dy,egxName:r.egxName||"",match:r.match});
       }
     }
-    if(divJ.status==="fulfilled"&&divJ.value?.status==="ok"&&Array.isArray(divJ.value.dividends)){
+    if(divOk){
       for(const d of divJ.value.dividends){
         if(d&&d.sym&&d.status==="ok")nf.dividends.set(d.sym,d);
       }
@@ -5070,6 +5072,7 @@ function scrMissingColumns(stocks){
   if(!has("amount"))missing.push("قيمة التداول");
   if(!priced.some(s=>scrPe(s)!==null))missing.push("P/E");
   if(!priced.some(s=>scrDy(s)!==null))missing.push("العائد التوزيعي");
+  if(!has("eps"))missing.push("EPS");
   if(!(has("high52w")&&has("low52w")))missing.push("52 أسبوع");
   return missing;
 }
@@ -9307,14 +9310,20 @@ function scrComputeFiltered(stocks_src){
   else if(peFilter==="neg")   stocks=stocks.filter(s=>{const p=scrPe(s);return p===null||p<=0;});
   // Dividend (merged: price scan, else EGX official coupon yield)
   const divFilter=document.getElementById("scr-div")?.value||"all";
-  if(divFilter==="any")  stocks=stocks.filter(s=>{const d=scrDy(s);return d&&d>0;});
+  /* "Pays dividends": a positive coupon yield on the EGX page OR a real
+     trailing-12-month cash dividend from Yahoo — both are source data. */
+  if(divFilter==="any")  stocks=stocks.filter(s=>{const d=scrDy(s);const t=scrDivTtm(s);return (d&&d>0)||(t&&t.ttm>0);});
   else if(divFilter==="2+") stocks=stocks.filter(s=>{const d=scrDy(s);return d&&d>=2;});
   else if(divFilter==="4+") stocks=stocks.filter(s=>{const d=scrDy(s);return d&&d>=4;});
   else if(divFilter==="6+") stocks=stocks.filter(s=>{const d=scrDy(s);return d&&d>=6;});
   // EPS
   const epsFilter=document.getElementById("scr-eps")?.value||"all";
-  if(epsFilter==="pos") stocks=stocks.filter(s=>s.eps&&s.eps>0);
-  else if(epsFilter==="neg") stocks=stocks.filter(s=>!s.eps||s.eps<=0);
+  /* EPS semantics are strict: only a real source value counts. "Unknown"
+     (no EPS published for this market) matches neither filter — the footer
+     discloses the absence instead of the "neg" filter claiming the whole
+     market as losers. */
+  if(epsFilter==="pos") stocks=stocks.filter(s=>{const e=knownStockNumber(s.eps);return e!==null&&e>0;});
+  else if(epsFilter==="neg") stocks=stocks.filter(s=>{const e=knownStockNumber(s.eps);return e!==null&&e<0;});
   // Market Cap
   if(scrMktCap==="mega")  stocks=stocks.filter(s=>s.mktCapM&&s.mktCapM>=100000);
   else if(scrMktCap==="large") stocks=stocks.filter(s=>s.mktCapM&&s.mktCapM>=10000&&s.mktCapM<100000);
@@ -9322,12 +9331,20 @@ function scrComputeFiltered(stocks_src){
   else if(scrMktCap==="small") stocks=stocks.filter(s=>Number.isFinite(s.mktCapM)&&s.mktCapM<1000);
   // Sort
   stocks.sort((a,b)=>{
-    let av=a[scrFilters.sortBy],bv=b[scrFilters.sortBy];
+    let av,bv;
     if(scrFilters.sortBy==="name"){
       return scrFilters.sortDir*(a.name||"").localeCompare(b.name||"");
     }
+    /* P/E, dividend yield and EPS sort on the MERGED values (price scan +
+       secondary EGX/Yahoo layers): the raw scan fields are absent for this
+       market, so sorting on them was a silent no-op. */
+    if(scrFilters.sortBy==="pe"){av=scrPe(a);bv=scrPe(b);}
+    else if(scrFilters.sortBy==="divYield"){av=scrDy(a);bv=scrDy(b);}
+    else if(scrFilters.sortBy==="eps"){av=knownStockNumber(a.eps);bv=knownStockNumber(b.eps);}
+    else{av=a[scrFilters.sortBy];bv=b[scrFilters.sortBy];}
     av=av??-Infinity; bv=bv??-Infinity;
-    return scrFilters.sortDir*(bv-av);
+    /* sortDir -1 = descending — the ▼ header indicator matches the data. */
+    return scrFilters.sortDir*(av-bv);
   });
   return stocks;
 }
@@ -9369,6 +9386,16 @@ function renderScrResults(){
     if(meta.stateLabel) text+=` · ${meta.stateLabel}`;
     text+=` · المصدر: ${meta.source||"غير متاح"}`;
     if(meta.sourceNote) text+=` · ${meta.sourceNote}`;
+    /* Secondary fundamentals layer (P/E + coupon yield from the official
+       EGX page, TTM dividends from Yahoo): its source and nature are stated
+       next to the price-scan source so daily page data is never read as
+       live quotes. */
+    if(egxFundamentals.loading) text+=` · جارٍ تحميل P/E والعائد من البورصة...`;
+    else if(egxFundamentals.loaded){
+      if(egxFundamentals.valuations.size) text+=` · P/E والعائد: الصفحة الرسمية للبورصة (يومية · تغطية جزئية لـ${egxFundamentals.valuations.size} شركة)`;
+      else if(egxFundamentals.valOk===false) text+=` · P/E والعائد: مصدر البورصة غير متاح حاليًا`;
+      if(egxFundamentals.dividends.size) text+=` · التوزيعات: Yahoo (آخر 12 شهرًا)`;
+    }
     if(excludedNoData) text+=` · تم استبعاد ${excludedNoData} سهم بدون بيانات من المصدر`;
     if(missingCols.length) text+=` · غير متاحة من المصدر: ${missingCols.join("، ")}`;
     footer.textContent=text;
@@ -9431,7 +9458,10 @@ function resetScrFilters(){
   document.querySelectorAll("[id^='scrf-cap-']").forEach(b=>b.classList.toggle("active",b.id==="scrf-cap-all"));
   document.querySelectorAll("#scr-sector-row .scr-f").forEach((b,i)=>b.classList.toggle("active",i===0));
   document.querySelectorAll("#scr-perf-row .scr-f").forEach((b,i)=>b.classList.toggle("active",i===0));
-  document.querySelectorAll(".scr-th").forEach(th=>th.classList.remove("sort-asc","sort-desc"));
+  document.querySelectorAll(".scr-th").forEach(th=>{
+    th.classList.remove("sort-asc","sort-desc");
+    if(th.getAttribute("onclick")==="scrSortBy('chgPct')")th.classList.add("sort-desc");
+  });
   renderScrResults();
   showToast("✅ تم إعادة ضبط الفلاتر");
 }
@@ -9457,11 +9487,18 @@ function exportScrCSV(){
 }
 
 /* ─── Saved Filters ─── */
+/* The advanced filter values live in the DOM (price/volume/P-E/dividend/
+ * EPS), not in scrFilters — a saved filter must persist them explicitly,
+ * or loading it would silently ignore half the filter. */
+function scrAdvValues(){
+  const g=id=>{const el=document.getElementById(id);return el?el.value:"";};
+  return {priceMin:g("scr-pr-min"),priceMax:g("scr-pr-max"),volMin:g("scr-vol-min"),peFilter:g("scr-pe"),divFilter:g("scr-div"),epsFilter:g("scr-eps")};
+}
 function saveScrFilter(){
   const name=prompt("اسم الفلتر:");
   if(!name) return;
   const saved=DB.g("scr_saved",[]);
-  saved.push({name,filters:{...scrFilters},mktCap:scrMktCap,market:scrMarket,ts:Date.now()});
+  saved.push({name,filters:{...scrFilters},adv:scrAdvValues(),mktCap:scrMktCap,market:scrMarket,ts:Date.now()});
   DB.s("scr_saved",saved);
   renderSavedFilters();
   showToast("✅ تم حفظ الفلتر: "+name);
@@ -9485,6 +9522,11 @@ function loadScrFilter(i){
   if(!saved[i]) return;
   Object.assign(scrFilters,saved[i].filters);
   scrMktCap=saved[i].mktCap||"all";
+  const adv=saved[i].adv||{};
+  [["scr-pr-min","priceMin"],["scr-pr-max","priceMax"],["scr-vol-min","volMin"],["scr-pe","peFilter"],["scr-div","divFilter"],["scr-eps","epsFilter"]].forEach(([id,key])=>{
+    const el=document.getElementById(id);
+    if(el&&adv[key]!==undefined&&adv[key]!=="")el.value=adv[key];
+  });
   renderScrSectorPills();
   renderScrResults();
   showToast("✅ تم تحميل الفلتر: "+saved[i].name);

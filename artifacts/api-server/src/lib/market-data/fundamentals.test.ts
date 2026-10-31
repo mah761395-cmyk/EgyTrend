@@ -137,7 +137,12 @@ test("parseYahooDividends: unusable payloads (error bodies, garbage) return null
 
 /* ── buildDividendsResponse ── */
 
-type FakeHttpCalls = Array<{ method: "getJson" | "getText"; url: string }>;
+type FakeHttpCalls = Array<{
+  method: "getJson" | "getText";
+  url: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  opts?: any;
+}>;
 
 /* Handlers may return a value or an Error (simulating a vendor failure). */
 function fakeHttp(handlers: {
@@ -149,14 +154,14 @@ function fakeHttp(handlers: {
   const calls: FakeHttpCalls = [];
   return {
     calls,
-    async getJson(url: string): Promise<unknown> {
-      calls.push({ method: "getJson", url });
+    async getJson(url: string, opts?: unknown): Promise<unknown> {
+      calls.push({ method: "getJson", url, opts });
       const value = handlers.getJson?.(url);
       if (value instanceof Error) throw value;
       return value;
     },
-    async getText(url: string): Promise<string> {
-      calls.push({ method: "getText", url });
+    async getText(url: string, opts?: unknown): Promise<string> {
+      calls.push({ method: "getText", url, opts });
       const value = handlers.getText?.(url);
       if (value instanceof Error) throw value;
       return value as string;
@@ -499,4 +504,28 @@ test("buildValuationsResponse: zero parsed rows is a failure (never an empty suc
   await assert.rejects(
     () => buildValuationsResponse([], { http: http as never, cache: new MemoryJsonCache(), now: () => NOW }),
   );
+});
+
+/* The browser UA both vendor paths must send (the EGX site rejects the
+ * backend's bot UA — the prod symptom was the whole /valuations endpoint
+ * 503'ing while every other upstream worked). */
+const BROWSER_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36";
+
+test("buildValuationsResponse: the EGX page request carries a browser user agent", async () => {
+  const http = fakeHttp({ getText: () => EGX_PE_HTML });
+  await buildValuationsResponse([], { http: http as never, cache: new MemoryJsonCache(), now: () => NOW });
+  const egxCall = http.calls.find((call) => call.url.includes("egx.com.eg"))!;
+  assert.ok(egxCall, "the EGX page is fetched");
+  const headers = egxCall.opts!.headers as Record<string, string>;
+  assert.equal(headers["User-Agent"], BROWSER_UA, "a browser UA, not the backend bot UA");
+  assert.equal(headers["Accept"], "text/html");
+});
+
+test("buildDividendsResponse: the Yahoo request keeps its own browser user agent", async () => {
+  const http = fakeHttp({ getJson: () => COMI_PAYLOAD });
+  await buildDividendsResponse(["COMI"], { http: http as never, cache: new MemoryJsonCache(), now: () => NOW });
+  const yahooCall = http.calls.find((call) => call.url.includes("yahoo"))!;
+  const headers = yahooCall.opts!.headers as Record<string, string>;
+  assert.equal(headers["User-Agent"], BROWSER_UA);
 });
