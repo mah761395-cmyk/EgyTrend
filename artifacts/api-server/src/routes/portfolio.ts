@@ -16,7 +16,7 @@ import {
   type TradeEvent,
   type TradeSide,
 } from "../lib/portfolio-accounting";
-import { EGX_STOCKS } from "../lib/market-data/catalog";
+import { EGX_STOCKS, type StockDefinition } from "../lib/market-data/catalog";
 import {
   resolveMarketHistoryReadRepository,
   selectOneSource,
@@ -119,6 +119,25 @@ function parseTransactionInput(raw: unknown): TransactionInput | null {
 
 function canonicalInstrument(symbol: string) {
   return EGX_STOCKS.find((definition) => definition.sym.toUpperCase() === symbol) ?? null;
+}
+
+/** A symbol outside the curated catalog is accepted only when the licensed
+ *  scanner currently prices it — the same list /api/markets/stocks serves to
+ *  the UI (296 listed EGX equities, not the curated subset). Name and sector
+ *  then come from that live, sourced row — never invented. If the scan is
+ *  unavailable the curated catalog alone decides, and a symbol that can be
+ *  verified by neither is refused, exactly like before. */
+async function resolveInstrumentSymbol(symbol: string): Promise<StockDefinition | null> {
+  const curated = canonicalInstrument(symbol);
+  if (curated) return curated;
+  try {
+    const quotes = await withTimeout(getStocksSnapshot(), 4_000, null);
+    const live = (quotes || []).find((quote) => quoteVerified(quote) && quote.sym.toUpperCase() === symbol);
+    if (!live) return null;
+    return { id: `stock:egx:${symbol}`, sym: symbol, name: live.name || symbol, sector: live.sector || "غير محدد" };
+  } catch {
+    return null;
+  }
 }
 
 function publicMarket(quote: StockQuote | undefined) {
@@ -371,7 +390,7 @@ router.post("/portfolio/transactions", requireVipFeature("portfolio"), async (re
     res.status(400).json({ status: "error", message: "أدخل بيانات العملية بشكل صحيح (الرمز، الاتجاه، الكمية، السعر، العمولة، التاريخ)" });
     return;
   }
-  const definition = canonicalInstrument(input.symbol);
+  const definition = await resolveInstrumentSymbol(input.symbol);
   if (!definition) {
     res.status(400).json({ status: "error", message: "رمز السهم غير مدعوم في محفظة EGX حاليًا" });
     return;
@@ -455,7 +474,7 @@ router.put("/portfolio/transactions/:id", requireVipFeature("portfolio"), async 
     res.status(400).json({ status: "error", message: "بيانات العملية غير صحيحة" });
     return;
   }
-  const definition = canonicalInstrument(input.symbol);
+  const definition = await resolveInstrumentSymbol(input.symbol);
   if (!definition) {
     res.status(400).json({ status: "error", message: "رمز السهم غير مدعوم في محفظة EGX حاليًا" });
     return;
@@ -886,7 +905,7 @@ router.post("/portfolio/positions", requireVipFeature("portfolio"), async (req: 
     res.status(400).json({ status: "error", message: "أدخل رمزًا صحيحًا وكمية صحيحة ومتوسط تكلفة أكبر من صفر" });
     return;
   }
-  const definition = canonicalInstrument(input.symbol);
+  const definition = await resolveInstrumentSymbol(input.symbol);
   if (!definition) {
     res.status(400).json({ status: "error", message: "رمز السهم غير مدعوم في محفظة EGX حاليًا" });
     return;
@@ -946,7 +965,7 @@ router.put("/portfolio/positions/:id", requireVipFeature("portfolio"), async (re
     res.status(400).json({ status: "error", message: "بيانات المركز غير صحيحة" });
     return;
   }
-  const definition = canonicalInstrument(input.symbol);
+  const definition = await resolveInstrumentSymbol(input.symbol);
   if (!definition) {
     res.status(400).json({ status: "error", message: "رمز السهم غير مدعوم في محفظة EGX حاليًا" });
     return;

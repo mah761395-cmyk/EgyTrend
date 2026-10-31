@@ -256,6 +256,22 @@ const YAHOO_CHART_SYMBOLS: Record<string, string> = {
   "fx:AUD-USD": "AUDUSD=X",
 };
 
+/**
+ * Chart symbol for an instrument: the curated map first; US equities then
+ * map 1:1 from the platform's stable id (stock:us:AAPL → AAPL). Only
+ * well-formed plain tickers are mapped — anything else stays unmapped so no
+ * instrument can silently point at the wrong symbol.
+ */
+function yahooChartSymbol(instrumentId: string): string | undefined {
+  const mapped = YAHOO_CHART_SYMBOLS[instrumentId];
+  if (mapped) return mapped;
+  if (instrumentId.startsWith("stock:us:")) {
+    const symbol = instrumentId.slice("stock:us:".length);
+    if (/^[A-Z][A-Z.]{0,5}$/.test(symbol)) return symbol;
+  }
+  return undefined;
+}
+
 type YahooChartPayload = {
   chart?: {
     result?: Array<{ meta?: Record<string, unknown> }>;
@@ -280,13 +296,13 @@ export class YahooChartProvider implements MarketDataProvider {
       name: this.name,
       state: this.disabled ? "not_configured" : "configured",
       note: "مرجع عام مجاني للمؤشرات والسلع العالمية؛ يُعرض بذكر المصدر ووقت التحديث من المصدر، وليس سعرًا مرخّصًا فوريًا.",
-      coverage: ["index", "commodity"],
+      coverage: ["index", "commodity", "equity"],
       externalDisplayConfirmed: !this.disabled,
     };
   }
 
   canServe(instrument: MarketInstrument): boolean {
-    return !this.disabled && YAHOO_CHART_SYMBOLS[instrument.id] !== undefined;
+    return !this.disabled && yahooChartSymbol(instrument.id) !== undefined;
   }
 
   async getQuotes(instruments: MarketInstrument[]): Promise<ProviderQuoteResult> {
@@ -295,7 +311,9 @@ export class YahooChartProvider implements MarketDataProvider {
     const quotes: CanonicalQuote[] = [];
     /* Sequential pacing: one free endpoint, no bursts. */
     for (const instrument of supported) {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(YAHOO_CHART_SYMBOLS[instrument.id])}?interval=1d&range=1d`;
+      const chartSymbol = yahooChartSymbol(instrument.id);
+      if (!chartSymbol) continue;
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(chartSymbol)}?interval=1d&range=1d`;
       const payload = await this.http.getJson<YahooChartPayload>(url, {
         providerId: this.id,
         timeoutMs: 10_000,
@@ -336,7 +354,9 @@ export class YahooChartProvider implements MarketDataProvider {
     const supported = instruments.filter((instrument) => this.canServe(instrument));
     const results: DailyOhlc[] = [];
     for (const instrument of supported) {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(YAHOO_CHART_SYMBOLS[instrument.id])}?interval=1d&range=5d`;
+      const chartSymbol = yahooChartSymbol(instrument.id);
+      if (!chartSymbol) continue;
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(chartSymbol)}?interval=1d&range=5d`;
       let payload: YahooChartOhlcPayload;
       try {
         /* The cron runs inside the platform function's 60s budget for all

@@ -880,3 +880,57 @@ test("series data is isolated between users", async () => {
     assert.equal(point.heldSymbols, 0);
   }
 });
+test("a listed EGX symbol outside the curated catalog is accepted when the licensed scanner prices it", async () => {
+  const { MarketDataService, setMarketDataServiceForTest, resetMarketDataServiceForTest } = await import("../lib/market-data/service");
+
+  /* A synthetic stand-in for the licensed Egypt scan: it prices a curated
+   * symbol (COMI) and a listed symbol that is NOT in the curated catalog
+   * (QNBE) — exactly the shape of the real scanner's full equity list, and
+   * the regression that used to 400 ("رمز السهم غير مدعوم") such symbols. */
+  const scanRow = (sym: string, description: string, close: number, sector: string) => ({
+    type: "stock", sym, description, close,
+    change: -0.5, changeAbs: -0.3, open: close + 0.5, high: close + 1, low: close - 1,
+    volume: 1_000_000, marketCap: 100_000, sector,
+    amount: undefined, pe: undefined, divYield: undefined, eps: undefined, high52w: undefined, low52w: undefined,
+  });
+  const fakeScanner = {
+    id: "tradingview-scanner",
+    name: "TradingView Scanner",
+    descriptor: () => ({
+      id: "tradingview-scanner", name: "TradingView Scanner", state: "configured" as const,
+      note: "test-only", coverage: ["stock"] as const, externalDisplayConfirmed: true,
+    }),
+    canServe: () => false,
+    getQuotes: async () => ({ quotes: [] }),
+    getDailyOhlc: async () => [],
+    getEgxFullScan: async () => [
+      scanRow("COMI", "البنك التجاري الدولي", 120.47, "بنوك"),
+      scanRow("QNBE", "Qatar National Bank", 53.01, "Finance"),
+    ],
+  };
+  setMarketDataServiceForTest(new MarketDataService([fakeScanner as never], []));
+  try {
+    /* Pre-warm the route-level snapshot cache so the write handlers resolve
+     * symbols from cache — the 4s production timeout must never be what
+     * decides a test outcome. */
+    const { getStocksSnapshot } = await import("./markets");
+    const warm = await getStocksSnapshot();
+    assert.ok(Array.isArray(warm) && warm.some((row) => row.sym === "QNBE"), "the scan is cached before the requests");
+
+    const { jar } = await registerVipUser("01099990013", "Live Symbol User");
+
+    const qnbe = await api("/api/portfolio/transactions", jar, addTxInit("QNBE", "buy", 10, 53, {}));
+    assert.equal(qnbe.response.status, 201, "a listed, priced symbol outside the curated catalog must be accepted");
+    const tx = (qnbe.body as Record<string, unknown>).transaction as Record<string, unknown>;
+    assert.equal(tx.symbol, "QNBE");
+
+    const comi = await api("/api/portfolio/transactions", jar, addTxInit("COMI", "buy", 10, 120, {}));
+    assert.equal(comi.response.status, 201, "curated catalog symbols keep working");
+
+    const unknown = await api("/api/portfolio/transactions", jar, addTxInit("ZZZZ", "buy", 10, 1, {}));
+    assert.equal(unknown.response.status, 400, "a symbol that is neither curated nor priced stays refused");
+    assert.match(String((unknown.body as Record<string, unknown>)?.message), /غير مدعوم/);
+  } finally {
+    resetMarketDataServiceForTest();
+  }
+});
