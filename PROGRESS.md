@@ -1032,3 +1032,29 @@ AI الفعلية (المساعد الذكي، تحليل الأخبار، تق�
 - `pnpm -r test` (root) + `pnpm run build` (typecheck + كل البنايات): exit 0.
 - فحص runtime مباشر للقائمة الموحدة (DOM stub): 9/9 أصول في «الكل»، الفلاتر 2/3/1/2/1، أسعار العملات ظاهرة بمصادرها، سهم بلا سعر يظهر «غير متاح حاليًا» بصدق.
 - **لم يُنشر** (بانتظار الموافقة). التحقق الحي على الإنتاج (بما فيه أسعار FX الحقيقية في فلتر العملات) سيُنجز بعد النشر.
+
+## جلسة 2026-10-31 — تهيئة SEO / فهرسة Google (PR #25 → main `349eb42`)
+
+**المطلوب:** سبب عدم الظهور في بحث Google + robots/sitemap + noindex/canonical + عناوين + تسجيل Search Console + إرسال sitemap + إصلاحات آمنة فقط.
+
+### التشخيص
+1. **السبب الأول:** الموقع ما اتسجلش مطلقًا في Google Search Console (لا property) — Google حتى ما تعرفش إنه موجود. → خطوة المستخدم (مفيش حساب Google في بيئة العمل).
+2. **Soft-404:** catch-all rewrite كان بيرجع `index.html` بـ 200 لأي مسار مجهول → آلاف النسخ المكررة من الرئيسية. (اتصلح في PR #25)
+3. **og:image / favicons = 500 في الإنتاج** (موجود من 2026-10-28): `opengraph.jpg` + `favicon.ico` + `favicon.svg` بيدوا 500 بينما كل ملفات النصوص 200. **جرى تحقق شامل:** الملفات سليمة في git والـ build (JPEG magic ✓)، النشر الجديد منفرده (349eb42) ما صلحهاش، `/OPENGRAph.JPG` (حالة مختلفة) بيرجع 200 catch-all يعني الملفات موجودة في artifact ومحاوله تقديمها هي اللي بتفشل. **التشخيص: خلل طبقة خدمة Vercel في ملفات المحتوى-المرئي (image/*) تحديداً** — مش في الكود. **القرار:** og:image بقى متوقف (حالة قائمة) + الفايكونز شغالة أصلاً بـ data-URI مضمّن في كل الصفحات — مفيش تأثير على الفهرسة (social cards بس). يتطلب تذاكر دعم Vercel.
+4. النطاق Vercel مؤقت — عامل ثقة أبطأ (معلومة).
+- **القاعدة التقنية سليمة كانت:** robots.txt (Allow / + Disallow /vip و/admin + Sitemap) · sitemap.xml (3 URLs عامة) · `robots index,follow` + canonical + `lang=ar` + description + FAQ JSON-LD في index.html · noindex,nofollow في admin.html · محتوى اللاندينج **HTML ساكن** (بيتقرأ من غير JS rendering).
+
+### ما اتعدل (3 ملفات / 17 سطر)
+- **vercel.json:** شيل الـ catch-all → rewrite صريحين للمسارين اللي العميل بيعتمد عليهم فقط (`/calculators`، `/r/:code`) — تحقق من `goNav` + `initReferralLanding` في الكود إنهم هما المسارين الوحيدين. غير المعروف = **404 حقيقي**. (ملاحظة: vercel.json ما يقبleshootش تعليقات — اتعلمت بالاختبار.)
+- **index.html:** العنوان «EgyTrend — البورصة المصرية وأسعار الذهب والدولار لحظة بلحظة» (+ og/twitter) — «أسعار» = مصطلح البحث الفعلي.
+- **sitemap.xml:** lastmod الرئيسية = 2026-10-31.
+
+### الاختبارات والتحقق الحي
+- محاكاة مسارات Vercel: 22/22 (404 للمجهول، 200 للملفات والمسارين، /api/* سليمة) · عميل 129/129 · بناء exit 0 · CI (نظيف: install+test+build) success.
+- **حي بعد النشر (349eb42):** العنوان الجديد ظاهر · `/does-not-exist-xyz123` = **404 NOT_FOUND** (كان 200) · `/calculators` = 200 · `/r/ABCD1234` = 200 والعميل مشى لـ `/?referral=1` (السير المرجعي شغال) · sitemap/robots/privacy/terms/admin 200 · `/api/markets/stocks` 296/296 · `/opengraph.jpg` **لسه 500** (مستثنى من الإصلاح — موثق أعلاه).
+
+### خطوات المستخدم المتبقية (Search Console)
+1. حساب Google → [Search Console](https://search.google.com/search-console) → Add property → `egy-trend.vercel.app` (URL prefix).
+2. تحقق بـ **HTML tag**: هديني كود التحقق الحرفي → أضيفه في `<head>` بنشر (بدون اختراع أي قيم). أو بـ Google Tag لو عندك GA4.
+3. Sitemaps → أرسل `https://egy-trend.vercel.app/sitemap.xml`.
+4. URL Inspection للرئيسية + privacy + terms → Request Indexing. (الفهرسة الفعلية: أيام–أسابيع، مش فورية.)
