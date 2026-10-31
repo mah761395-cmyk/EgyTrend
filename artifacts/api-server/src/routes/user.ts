@@ -14,6 +14,7 @@ import {
   USER_SESSION_COOKIE,
   sessionCookieOptions,
   getVipEntitlement,
+  SERVER_ERROR_BODY,
   type VipEntitlement,
 } from "../lib/userAuth";
 import { escapeHtml, isSmtpConfigured, resetEmailHtml, sendMail } from "../lib/mailer";
@@ -264,16 +265,34 @@ router.get("/me", async (req: Request, res: Response) => {
     res.status(401).json({ status: "error", message: "login required" });
     return;
   }
-  const [user] = await db.select().from(appUsersTable)
-    .where(and(eq(appUsersTable.id, claims.sub), eq(appUsersTable.status, "active"))).limit(1);
+  let user;
+  try {
+    [user] = await db.select().from(appUsersTable)
+      .where(and(eq(appUsersTable.id, claims.sub), eq(appUsersTable.status, "active"))).limit(1);
+  } catch (error) {
+    /* 401/403/503 gate contract: a transient store failure is a 503 "retry",
+     * never a 401 that reads as "your session ended" — the token is still
+     * valid, and the client keeps the login on 503. */
+    logger.error({ err: error }, "/me: session row read failed");
+    res.status(503).json(SERVER_ERROR_BODY);
+    return;
+  }
   if (!user) {
     res.status(401).json({ status: "error", message: "user not found" });
     return;
   }
-  const [entitlement, trial] = await Promise.all([
-    getVipEntitlement({ sub: user.id }),
-    freeTrialAccountStatus(user.id),
-  ]);
+  let entitlement: VipEntitlement;
+  let trial: Awaited<ReturnType<typeof freeTrialAccountStatus>>;
+  try {
+    [entitlement, trial] = await Promise.all([
+      getVipEntitlement({ sub: user.id }),
+      freeTrialAccountStatus(user.id),
+    ]);
+  } catch (error) {
+    logger.error({ err: error }, "/me: entitlement read failed");
+    res.status(503).json(SERVER_ERROR_BODY);
+    return;
+  }
   const normalized = publicUser(user, entitlement);
   /* Sliding refresh: an active session with under 24h left gets a fresh
    * 7-day cookie, so an all-day market screen does not die mid-use. This does

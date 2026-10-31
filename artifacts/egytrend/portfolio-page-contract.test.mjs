@@ -64,14 +64,23 @@ test("nav: a «المحفظة» item with a small VIP badge sits next to «فر�
   /* The grid gained a column; the item label is present. */
   assert.match(button, /المحفظة/);
   assert.match(html, /grid-template-columns:repeat\(7,1fr\)/, "bottom nav grid accounts for 7 items");
-  /* Badge parity with the server-side truth: every /api/calculators route is
-     VIP-gated, so its nav item carries the same small badge. الفرص is free
-     (public read API) and must NOT carry one. */
+  /* Badge parity with the real access rights: the calculators are fully
+     VIP-gated server-side, الفرص is VIP-paywalled in the product (the page
+     is gated for non-VIP and the landing labels it «فرص VIP»), and المحفظة
+     is VIP-gated — all three carry the same small badge. */
   const calcButton = html.slice(html.lastIndexOf("<button", calculators), html.indexOf("</button>", calculators));
   assert.match(calcButton, /n-vip-chip/, "calculators nav carries the small VIP badge");
   assert.match(calcButton, />VIP</);
   const oppsButton = html.slice(html.lastIndexOf("<button", opps), html.indexOf("</button>", opps));
-  assert.doesNotMatch(oppsButton, /n-vip-chip/, "فرص is free — no VIP badge");
+  assert.match(oppsButton, /n-vip-chip/, "فرص nav carries the small VIP badge (paid service)");
+  assert.match(oppsButton, />VIP</);
+  /* Free services stay unbadged: home, markets and the account page. */
+  for (const id of ["nb-home", "nb-markets", "nb-profile"]) {
+    const start = html.indexOf(`id="${id}"`);
+    assert.ok(start !== -1, `${id} exists`);
+    const btn = html.slice(html.lastIndexOf("<button", start), html.indexOf("</button>", start));
+    assert.doesNotMatch(btn, /n-vip-chip/, `${id} is free — no VIP badge`);
+  }
 });
 
 test("data: the page loads the same licensed stock universe as every other surface", () => {
