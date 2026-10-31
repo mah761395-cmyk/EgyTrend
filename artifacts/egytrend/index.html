@@ -2116,7 +2116,8 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
     <div class="mkt-compare-bar" id="mkt-compare-bar" style="display:none;" role="toolbar" aria-label="قائمة المقارنة"></div>
     <!-- Category tabs -->
     <div class="mkt-tabs" id="mkt-tabs" role="tablist">
-      <button class="mkt-tab on" type="button" role="tab" data-mkt-tab="eg" onclick="switchMktTab('eg')"><svg class="et-icon tab-ic" aria-hidden="true"><use href="#i-chart"></use></svg> البورصة المصرية</button>
+      <button class="mkt-tab on" type="button" role="tab" data-mkt-tab="all" onclick="switchMktTab('all')"><svg class="et-icon tab-ic" aria-hidden="true"><use href="#i-pulse"></use></svg> الكل</button>
+      <button class="mkt-tab" type="button" role="tab" data-mkt-tab="eg" onclick="switchMktTab('eg')"><svg class="et-icon tab-ic" aria-hidden="true"><use href="#i-chart"></use></svg> البورصة المصرية</button>
       <button class="mkt-tab" type="button" role="tab" data-mkt-tab="gl" onclick="switchMktTab('gl')"><svg class="et-icon tab-ic" aria-hidden="true"><use href="#i-compass"></use></svg> عالمي</button>
       <button class="mkt-tab" type="button" role="tab" data-mkt-tab="cm" onclick="switchMktTab('cm')"><svg class="et-icon tab-ic" aria-hidden="true"><use href="#i-star"></use></svg> سلع ومعادن</button>
       <button class="mkt-tab" type="button" role="tab" data-mkt-tab="cr" onclick="switchMktTab('cr')">₿ كريبتو</button>
@@ -2125,7 +2126,11 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       <button class="mkt-tab" type="button" role="tab" data-mkt-tab="wl" onclick="switchMktTab('wl')"><svg class="et-icon tab-ic" aria-hidden="true"><use href="#i-star"></use></svg> متابعتي <span class="tab-count" id="mkt-wl-count" hidden></span></button>
     </div>
     <!-- Tab panes -->
-    <div class="mkt-tab-pane on" id="mkt-eg-pane">
+    <div class="mkt-tab-pane on" id="mkt-all-pane">
+      <div class="mkt-sector-pills" id="mkt-all-filters"></div>
+      <div class="mkt-grid" id="mkt-all"></div>
+    </div>
+    <div class="mkt-tab-pane" id="mkt-eg-pane">
       <div class="mkt-grid" id="mkt-eg"></div>
       <div id="mkt-egx-movers"></div>
       <div class="mkt-sector-pills" id="mkt-egx-sectors-row"></div>
@@ -2281,7 +2286,7 @@ button{min-height:44px;}button:disabled{cursor:not-allowed;}[data-et-clickable]{
       <button class="n-btn active" type="button" onclick="goNav('home')" id="nb-home"><span class="n-icon" style="position:relative;"><svg class="et-icon"><use href="#i-home"></use></svg><span id="nb-news-badge" class="nb-badge" style="display:none;">0</span></span><span class="n-label">الرئيسية</span></button>
       <button class="n-btn" type="button" onclick="goNav('markets')" id="nb-markets"><span class="n-icon"><svg class="et-icon"><use href="#i-chart"></use></svg></span><span class="n-label">الأسواق</span></button>
       <button class="n-btn" type="button" onclick="goNav('vip')" id="nb-vip"><span class="n-icon nav-vip-icon"><svg class="et-icon"><use href="#i-star"></use></svg></span><span class="n-label">VIP</span></button>
-      <button class="n-btn" type="button" onclick="goNav('opps')" id="nb-opps"><span class="n-icon" style="position:relative;"><svg class="et-icon"><use href="#i-bulb"></use></svg><span id="nb-opps-badge" class="nb-badge" style="display:none;">0</span></span><span class="n-label">فرص</span></button>
+      <button class="n-btn" type="button" onclick="goNav('opps')" id="nb-opps"><span class="n-icon" style="position:relative;"><svg class="et-icon"><use href="#i-bulb"></use></svg><span id="nb-opps-badge" class="nb-badge" style="display:none;">0</span></span><span class="n-label">فرص</span><span class="n-vip-chip">VIP</span></button>
       <button class="n-btn" type="button" onclick="goNav('portfolio')" id="nb-portfolio"><span class="n-icon"><svg class="et-icon"><use href="#i-card"></use></svg></span><span class="n-label">المحفظة</span><span class="n-vip-chip">VIP</span></button>
       <button class="n-btn" type="button" onclick="goNav('calculators')" id="nb-calculators"><span class="n-icon"><svg class="et-icon"><use href="#i-calculator"></use></svg></span><span class="n-label">الحاسبات</span><span class="n-vip-chip">VIP</span></button>
       <button class="n-btn" type="button" onclick="goNav('profile')" id="nb-profile"><span class="n-icon"><svg class="et-icon"><use href="#i-user"></use></svg></span><span class="n-label">حسابي</span></button>
@@ -2575,7 +2580,10 @@ function normalizeMarketFreshness(raw,topLevelStale){
   const ts=finiteNumber(f.fetchedAt,0);
   const incoming=f.sections&&typeof f.sections==="object"?f.sections:{};
   const sections={};
-  ["eg","gl","cm","cr"].forEach(key=>{
+  /* fx included: dropping it made the forex pane's section metadata fall
+     back to "unavailable", so every currency card read «غير متاح» although
+     the server had priced the rows (verified in production, 2026-10-31). */
+  ["eg","gl","cm","cr","fx"].forEach(key=>{
     const sec=incoming[key]&&typeof incoming[key]==="object"?incoming[key]:{};
     const sources=String(sec.sources||"غير متاح").slice(0,200);
     const delayedMinutes=finiteNumber(sec.delayedMinutes,NaN);
@@ -2811,6 +2819,19 @@ function setCurrentUser(user){
  * the fresh user (or null). onAuthFailure maps a 401/403/503 to exactly one
  * of: "login" | "vip" | "server" — and authGateHtml renders that truth with
  * the matching CTA, so a lapsed session never reads as a broken feature. */
+/* /me with bounded retries for transient server errors (5xx): a valid
+   session must survive a cold-start hiccup instead of reading as "logout".
+   A 401 is definitive (no valid session) and stops the loop immediately. */
+async function fetchUserMeWithRetry(){
+  let last=null;
+  for(let i=0;i<3;i++){
+    if(i>0)await new Promise(r=>setTimeout(r,1200));
+    const r=await fetch("/api/user/me",{credentials:"same-origin"});
+    last=r;
+    if(r.ok||r.status===401)return r;
+  }
+  return last;
+}
 async function syncUserFromServer(){
   try{
     const r=await fetch("/api/user/me",{credentials:"same-origin"});
@@ -2824,7 +2845,14 @@ async function onAuthFailure(status){
     if(status===503)return "server";
     if(status===401||status===403){
       const fresh=await syncUserFromServer();
-      if(fresh&&(fresh.plan==="vip"||fresh.plan==="admin"))return "server"; /* deny + valid VIP = transient server denial */
+      if(status===401&&fresh){
+        /* /me just re-verified this very session — the 401 was a transient
+           store hiccup mid-request, not a dead session. Keep U, say server.
+           (Separates "login session ended" from "server hiccup" and from
+           "VIP subscription ended", which is the 403 branch below.) */
+        return "server";
+      }
+      if(fresh&&(fresh.plan==="vip"||fresh.plan==="admin"))return "server"; /* 403 + valid VIP = transient server denial */
       if(status===401){
         /* An admin (panel) session is a different identity from a user
            session — and app VIP features now accept it server-side, so a 401
@@ -4496,7 +4524,10 @@ document.addEventListener("DOMContentLoaded",async()=>{
    * cookie. Local storage remains for non-sensitive UI preferences only. */
   loadUserScopedData();
   try{
-    const r=await fetch("/api/user/me",{credentials:"same-origin"});
+    /* A one-off store hiccup (serverless cold start, pool warm-up) must not
+       read as "logged out": transient 5xx on /me gets short retries, and
+       only a definitive 401 falls through to the guest/admin path. */
+    const r=await fetchUserMeWithRetry();
     const d=await r.json().catch(()=>({}));
     if(r.ok&&d.status==="ok"&&d.user){setCurrentUser({...d.user,trial:d.trial||null,subscription:d.subscription||null});bootApp();}
     else{
@@ -4795,6 +4826,7 @@ async function fetchStocksData(){
   /* Markets hub: the EGX tab and watchlist read these rows. */
   renderMktEgTab();
   renderMktWatchlist();
+  if(mktActiveTab==="all")renderMktAll();
 }
 
 /* Priced, source-backed rows for the EGX screener. noData rows (curated
@@ -4899,6 +4931,7 @@ async function fetchUsStocksData(){
   if(scrMarket==="us")renderScrResults();
   /* Markets hub: the global tab's US table reads these rows. */
   renderMktUsTable();
+  if(mktActiveTab==="all")renderMktAll();
 }
 
 /* ─── Helpers for stocks ─── */
@@ -5835,17 +5868,33 @@ function ensureTvQuotes(key,gridEl,groups){
  * watchlist ═══════════
  * Presentation/filters only. Every price, change and timestamp is the
  * server's; a row the server did not price is never filled in here. */
-const MKT_HUB_TABS=["eg","gl","cm","cr","fx","ind","wl"];
-let mktActiveTab="eg";
+const MKT_HUB_TABS=["all","eg","gl","cm","cr","fx","ind","wl"];
+let mktActiveTab="all";
+/* Unified «الكل» list: every asset in one list, narrowed by type. The type
+ * of a row is fixed by where the server prices it — never by the UI. */
+let mktAllFilter="all";
+const MKT_ALL_FILTERS=[
+  {id:"all",label:"الكل"},
+  {id:"stocks",label:"الأسهم"},
+  {id:"currencies",label:"العملات"},
+  {id:"gold",label:"الذهب"},
+  {id:"indices",label:"المؤشرات"},
+  {id:"crypto",label:"العملات الرقمية"},
+];
 let mktBoardLookup=new Map(); // name -> {sec,idx}, rebuilt on every board render
 let mktEgxTable={q:"",sector:"all",sort:"cap"};
 let mktUsTable={q:"",sort:"chg"};
 
 function switchMktTab(tab){
-  mktActiveTab=MKT_HUB_TABS.includes(tab)?tab:"eg";
+  mktActiveTab=MKT_HUB_TABS.includes(tab)?tab:"all";
   document.querySelectorAll("#mkt-tabs .mkt-tab").forEach(b=>b.classList.toggle("on",b.dataset.mktTab===mktActiveTab));
   document.querySelectorAll(".mkt-tab-pane").forEach(p=>p.classList.toggle("on",p.id==="mkt-"+mktActiveTab+"-pane"));
-  if(mktActiveTab==="eg"){
+  if(mktActiveTab==="all"){
+    /* The unified list needs both stock universes as well as the board. */
+    if(!liveStocks.length&&!egxStocksFreshness.loading)fetchStocksData();
+    if(!usStocks.length&&!usStocksFreshness.loading)fetchUsStocksData();
+    renderMktAll();
+  }else if(mktActiveTab==="eg"){
     if(!liveStocks.length&&!egxStocksFreshness.loading)fetchStocksData();
     renderMktEgTab();
   }else if(mktActiveTab==="gl"){
@@ -5857,7 +5906,113 @@ function switchMktTab(tab){
   }
 }
 
+/* One unified, de-duplicated list of every asset the app can show: board
+ * rows keep their section lookup (openMarketDetail), equity rows open the
+ * existing stock detail. Nothing is invented here — a row the server did not
+ * price stays visible as «غير متاح», exactly like its category card. */
+function mktAllAssets(){
+  const out=[];
+  const seenIds=new Set();
+  const seenNames=new Set();
+  const add=(row)=>{
+    const id=row.instrumentId||("name:"+row.n);
+    const key=String(row.n).toLowerCase();
+    if(seenIds.has(id)||seenNames.has(key))return; // same asset listed twice = one card
+    seenIds.add(id);seenNames.add(key);
+    out.push(row);
+  };
+  [
+    ...liveMarkets.eg.map(m=>({...m,mktAllType:"indices",mktSec:"eg"})),
+    ...liveMarkets.gl.map(m=>({...m,mktAllType:"indices",mktSec:"gl"})),
+    ...liveStocks.map(s=>({
+      instrumentId:s.instrumentId||("stock:egx:"+s.sym),n:s.name||s.sym,sym:s.sym,
+      s:s.sector?`${s.sym} · ${s.sector}`:s.sym,price:s.price,noData:s.noData,
+      chgPct:s.chgPct,source:s.source,ts:s.ts,state:s.state,stateLabel:s.stateLabel,
+      mktAllType:"stocks",mktSec:"egx-stock",
+    })),
+    ...usStocks.map(s=>({
+      instrumentId:s.instrumentId||("stock:us:"+s.sym),n:s.name||s.sym,sym:s.sym,
+      s:s.sector?`${s.sym} · ${s.sector}`:s.sym,price:s.price,noData:s.noData,
+      chgPct:s.chgPct,source:s.source,ts:s.ts,state:s.state,stateLabel:s.stateLabel,
+      mktAllType:"stocks",mktSec:"us-stock",
+    })),
+    ...liveMarkets.cm.map(m=>({...m,mktAllType:m.n==="ذهب"?"gold":"commodity",mktSec:"cm"})),
+    ...liveMarkets.cr.map(m=>({...m,mktAllType:"crypto",mktSec:"cr"})),
+    ...liveMarkets.fx.map(m=>({...m,mktAllType:"currencies",mktSec:"fx"})),
+  ].forEach(add);
+  return out;
+}
+
+function renderMktAll(){
+  const grid=document.getElementById("mkt-all");
+  const chipsEl=document.getElementById("mkt-all-filters");
+  if(!grid)return;
+  /* Self-sufficient data: the unified list shows both stock universes, so it
+     loads whichever one this page was reached before any other surface did
+     (the fetch tails re-render this list when the rows arrive). */
+  if(!liveStocks.length&&!egxStocksFreshness.loading)fetchStocksData();
+  if(!usStocks.length&&!usStocksFreshness.loading)fetchUsStocksData();
+  if(chipsEl){
+    chipsEl.innerHTML=MKT_ALL_FILTERS.map(f=>
+      `<button class="mkt-sector-pill${mktAllFilter===f.id?" on":""}" type="button" onclick="mktAllFilter='${f.id}';renderMktAll()">${f.label}</button>`
+    ).join("");
+  }
+  if(marketFreshness.loading&&!liveStocks.length){
+    grid.innerHTML=marketSkeletonRows("gl");
+    return;
+  }
+  const assets=mktAllAssets();
+  const shown=mktAllFilter==="all"?assets:assets.filter(a=>a.mktAllType===mktAllFilter);
+  if(!shown.length){grid.innerHTML=`<div class="mkt-empty">📋 لا توجد أصول في هذه الفئة حاليًا</div>`;return;}
+  grid.innerHTML=shown.map(row=>{
+    if(row.mktSec==="egx-stock"||row.mktSec==="us-stock"){
+      /* Equity row: the same card shell as the board, the same detail view
+         the tables and movers already use, and the source's own numbers. */
+      const isUs=row.mktSec==="us-stock";
+      const priced=row.noData!==true&&typeof row.price==="number"&&row.price>0;
+      const up=stockChangeUp(row.chgPct);
+      const ts=Number(row.ts);
+      const stateChip=!priced
+        ?`<span class="mc-state off">غير متاح</span>`
+        :String(row.state||"").toLowerCase()==="stale"
+          ?`<span class="mc-state stale">⚠️ بيانات قديمة</span>`
+          :row.state==="live"
+            ?`<span class="mc-state live">مباشر</span>`
+            :`<span class="mc-state closed">${sanitize(row.stateLabel||"إغلاق السوق")}</span>`;
+      return `<div class="mc clickable" onclick='openStockDetail(${safeJsArg(row.sym)})'>
+        <div class="mc-hdr"><div class="mc-name">${sanitize(row.n)}${row.s?`<span class="mc-desc">${sanitize(row.s)}</span>`:""}</div></div>
+        <div class="mc-val${priced?"":" missing"}">${priced?sanitize(row.price.toFixed(2)+(isUs?" $":" ج")):"غير متاح حاليًا"}</div>
+        ${priced&&up!==null?`<div class="mc-chg ${up?"up":"dn"}">${ltrChange((up?"▲ ":"▼ ")+stockChangeText(row.chgPct))}</div>`:""}
+        <div class="mc-meta"><span class="mc-src">${sanitize(row.source||"غير متاح")}</span>${ts?`<span class="mc-time">وقت الجلب ${sanitize(cairoTimestampLabel(ts))}</span>`:""}${stateChip}</div>
+      </div>`;
+    }
+    const key=row.mktSec;
+    const idx=liveMarkets[key]?.findIndex(m=>m.n===row.n);
+    const secMeta=marketFreshness.sections?.[key]||{sources:"غير متاح",unavailable:true};
+    const unavailable=secMeta.unavailable===true||row.source==="غير متاح"||row.v==="غير متاح حاليًا";
+    const hasChange=!unavailable&&row.c&&row.c!=="—";
+    const asOf=Number(row.asOf);
+    const rowState=String(row.state||"").toLowerCase();
+    const stateChip=unavailable
+      ?`<span class="mc-state off">غير متاح</span>`
+      :rowState==="stale"
+        ?`<span class="mc-state stale">⚠️ بيانات قديمة</span>`
+        :rowState==="live"
+          ?`<span class="mc-state live">مباشر</span>`
+          :`<span class="mc-state closed">${sanitize(row.stateLabel||"إغلاق السوق")}</span>`;
+    const timePart=asOf?`<span class="mc-time">${row.timeBasis==="fetch"?"وقت الجلب":"وقت المصدر"} ${sanitize(cairoTimestampLabel(asOf))}</span>`:"";
+    return `<div class="mc clickable${wl.includes(row.n)?" wl":""}" onclick="openMarketDetail('${key}',${idx})">
+      <div class="mc-hdr"><div class="mc-name">${sanitize(row.n)}${row.s?`<span class="mc-desc">${sanitize(row.s)}</span>`:""}</div><button class="wl-btn" onclick='event.stopPropagation();toggleWL(${safeJsArg(row.n)})'>${wl.includes(row.n)?"⭐":"☆"}</button></div>
+      <div class="mc-val${unavailable?" missing":""}">${sanitize(unavailable?"غير متاح حاليًا":row.v)}</div>
+      ${hasChange?`<div class="mc-chg ${row.up?"up":"dn"}">${ltrChange((row.up?"▲ ":"▼ ")+sanitize(row.c))}</div>`:""}
+      ${unavailable?"":sparklineMarkup(row.instrumentId)}
+      <div class="mc-meta"><span class="mc-src">${sanitize(row.source||secMeta.sources||"غير متاح")}</span>${timePart}${stateChip}</div>
+    </div>`;
+  }).join("");
+}
+
 function renderMktTabContent(){
+  renderMktAll();
   renderMktEgTab();
   renderMktGlTab();
   renderMktWatchlist();

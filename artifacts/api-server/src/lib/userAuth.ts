@@ -525,7 +525,7 @@ export async function hasVipFeature(claims: Pick<UserClaims, "sub"> | null, feat
  *   403 — signed in, entitlement not active    -> "subscription over / renew"
  *   503 — entitlement store unreachable        -> "server hiccup, retry"
  * All three DENY access (fail closed); they only differ in the truth told. */
-const SERVER_ERROR_BODY = { status: "error", message: "server_error", detail: "تعذر التحقق من اشتراكك الآن — أعد المحاولة" } as const;
+export const SERVER_ERROR_BODY = { status: "error", message: "server_error", detail: "تعذر التحقق من اشتراكك الآن — أعد المحاولة" } as const;
 
 /* A customer session always wins (same priority the client boot uses). Only
  * when no user session exists does a verified, active, privileged staff

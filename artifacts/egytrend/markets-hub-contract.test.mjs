@@ -49,12 +49,18 @@ function functionBody(name) {
   throw new Error(`unbalanced braces in ${name}`);
 }
 
-test("tabs: the six coverage families are first-class tabs, in the brief's order", () => {
+test("tabs: «الكل» is the first tab and the default view; the category tabs keep their order", () => {
   const order = [...html.matchAll(/data-mkt-tab="([a-z]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(order, ["eg", "gl", "cm", "cr", "fx", "ind", "wl"], "tab order: EGX, global, commodities, crypto, forex, indicators, watchlist");
-  for (const pane of ["mkt-eg-pane", "mkt-gl-pane", "mkt-cm-pane", "mkt-cr-pane", "mkt-fx-pane", "mkt-ind-pane", "mkt-wl-pane"]) {
+  assert.deepEqual(order, ["all", "eg", "gl", "cm", "cr", "fx", "ind", "wl"], "tab order: all (default), EGX, global, commodities, crypto, forex, indicators, watchlist");
+  assert.match(html, /<button class="mkt-tab on" type="button" role="tab" data-mkt-tab="all"/, "«الكل» tab exists and is active by default");
+  const egBtn = html.slice(html.lastIndexOf("<button", html.indexOf("data-mkt-tab=\"eg\"")), html.indexOf("</button>", html.indexOf("data-mkt-tab=\"eg\"")));
+  assert.match(egBtn, /class="mkt-tab"/, "the EGX tab is not the default anymore");
+  for (const pane of ["mkt-all-pane", "mkt-eg-pane", "mkt-gl-pane", "mkt-cm-pane", "mkt-cr-pane", "mkt-fx-pane", "mkt-ind-pane", "mkt-wl-pane"]) {
     assert.ok(html.includes(`id="${pane}"`), `pane ${pane} exists`);
   }
+  assert.match(html, /<div class="mkt-tab-pane on" id="mkt-all-pane">/, "unified list pane is the default pane");
+  assert.ok(html.includes(`id="mkt-all"`), "the unified list has its grid");
+  assert.ok(html.includes(`id="mkt-all-filters"`), "the unified list has its type-filter row");
   assert.match(html, /البورصة المصرية/, "Egyptian tab label");
   assert.match(html, /عالمي/, "global tab label");
   assert.match(html, /سلع ومعادن/, "commodities tab label");
@@ -153,4 +159,78 @@ test("new board instruments all have detail-overlay context entries", () => {
   ]) {
     assert.ok(ctx.includes(`"${name}":{`), `MKT_CTX entry for ${name}`);
   }
+});
+test("unified «الكل» list: filters, dedupe and type mapping are computed from the real sources", () => {
+  assert.match(html, /const MKT_HUB_TABS=\["all","eg","gl","cm","cr","fx","ind","wl"\];/, "«الكل» leads the tab list");
+  assert.match(html, /let mktActiveTab="all";/, "«الكل» is the default tab");
+  const ids = [...html.matchAll(/\{id:"([a-z]+)",label:"[^"]+"\},/g)].map((m) => m[1]);
+  for (const wanted of ["all", "stocks", "currencies", "gold", "indices", "crypto"]) {
+    assert.ok(ids.includes(wanted), `type filter ${wanted} exists`);
+  }
+  const render = functionBody("renderMktAll");
+  assert.match(render, /mktAllFilter==="all"/, "«الكل» filter shows every category");
+  assert.match(render, /mktAllType===mktAllFilter/, "a chosen filter shows only its type");
+  assert.match(render, /if\(!liveStocks\.length&&!egxStocksFreshness\.loading\)fetchStocksData\(\);/, "EGX universe loads on demand");
+  assert.match(render, /if\(!usStocks\.length&&!usStocksFreshness\.loading\)fetchUsStocksData\(\);/, "US universe loads on demand");
+  assert.match(render, /غير متاح حاليًا/, "unpriced rows stay visible as unavailable — never invented");
+  const merged = functionBody("renderMktTabContent");
+  assert.match(merged, /renderMktAll\(\);/, "board refreshes re-render the unified list");
+  assert.match(html, /renderMktUsTable\(\);\s*if\(mktActiveTab==="all"\)renderMktAll\(\);/, "US data refresh re-renders the unified list");
+  assert.match(html, /renderMktWatchlist\(\);\s*if\(mktActiveTab==="all"\)renderMktAll\(\);/, "EGX data refresh re-renders the unified list");
+});
+
+test("unified «الكل» list: one card per asset, type fixed by where the server prices it", () => {
+  const body = functionBody("mktAllAssets");
+  const run = new Function("liveMarkets", "liveStocks", "usStocks", body + "\nreturn mktAllAssets();");
+  const boardRow = (n, sec, id) => ({ instrumentId: id, n, v: "100", c: "1%", up: true, source: "Source", asOf: 0, state: "closed", stateLabel: "إغلاق" });
+  const egxStock = { instrumentId: "stock:egx:COMI", sym: "COMI", name: "البنك التجاري الدولي", sector: "بنوك", price: 120, chgPct: -1.2, source: "TradingView Scanner", ts: 1, state: "closed", stateLabel: "إغلاق" };
+  const usStock = { instrumentId: "stock:us:AAPL", sym: "AAPL", name: "Apple", sector: "Technology", price: 300, chgPct: 0.5, source: "Yahoo Finance", ts: 1, state: "closed", stateLabel: "إغلاق" };
+  const rows = run(
+    {
+      eg: [boardRow("EGX30", "eg", "egx:EGX30")],
+      gl: [boardRow("S&P 500", "gl", "index:SPX"), boardRow("EGX30", "gl", "egx:EGX30")], /* duplicate name from another section */
+      cm: [boardRow("ذهب", "cm", "commodity:XAU"), boardRow("فضة", "cm", "commodity:XAG"), boardRow("نفط برنت", "cm", "commodity:BRN")],
+      cr: [boardRow("BTC", "cr", "crypto:BTC")],
+      fx: [boardRow("USD/EGP", "fx", "fx:USD-EGP"), boardRow("EUR/EGP", "fx", "fx:EUR-EGP")],
+    },
+    [egxStock, { ...egxStock, instrumentId: "stock:egx:COMI" }], /* same equity twice */
+    [usStock],
+  );
+  const byName = new Map(rows.map((r) => [r.n, r]));
+  assert.equal(rows.length, 10, "duplicates collapse: 12 rows in, 10 assets out");
+  assert.equal(byName.get("EGX30").mktAllType, "indices", "EGX30 is an index");
+  assert.equal(byName.get("EGX30").mktSec, "eg", "the first (Egyptian) row wins the duplicate");
+  assert.equal(byName.get("S&P 500").mktAllType, "indices", "global board rows are indices");
+  assert.equal(byName.get("البنك التجاري الدولي").mktAllType, "stocks", "EGX listed equity is a stock (card name = the source's name)");
+  assert.equal(byName.get("البنك التجاري الدولي").sym, "COMI", "the listing symbol is kept for the detail view");
+  assert.equal(byName.get("Apple").mktAllType, "stocks", "US listed equity is a stock");
+  assert.equal(byName.get("ذهب").mktAllType, "gold", "gold has its own filter");
+  assert.equal(byName.get("فضة").mktAllType, "commodity", "other metals are visible under «الكل» only");
+  assert.equal(byName.get("BTC").mktAllType, "crypto", "crypto rows");
+  assert.equal(byName.get("USD/EGP").mktAllType, "currencies", "forex rows");
+  assert.equal(byName.get("EUR/EGP").mktAllType, "currencies", "forex rows");
+});
+
+test("forex section metadata survives client normalization (currency cards stay priced)", () => {
+  /* Regression: normalizeMarketFreshness used to build sections for
+   * eg/gl/cm/cr only — the missing fx section made the forex pane fall back
+   * to «unavailable», so every currency card read «غير متاح» while the
+   * server had priced the rows. */
+  /* Same semantics as the app helper (const arrow — passed in, not extracted). */
+  const finiteNumber = (value, fallback = 0) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  };
+  const code = functionBody("normalizeMarketFreshness");
+  const normalizeMarketFreshness = new Function("finiteNumber", code + "\nreturn normalizeMarketFreshness;")(finiteNumber);
+  const out = normalizeMarketFreshness(
+    { fetchedAt: 1_793_400_000_000, sections: { eg: { sources: "Trading Economics" }, gl: { sources: "Yahoo Finance" }, cm: { sources: "TradingView" }, cr: { sources: "CoinGecko" }, fx: { sources: "ExchangeRate-API, Yahoo Finance" } } },
+    false,
+  );
+  assert.ok(out.sections.fx, "fx section metadata is normalized");
+  assert.equal(out.sections.fx.sources, "ExchangeRate-API, Yahoo Finance");
+  assert.equal(out.sections.fx.unavailable, false, "a sourced fx section is available");
+  const dead = normalizeMarketFreshness({ fetchedAt: 0, sections: { fx: { sources: "غير متاح" } } }, true);
+  assert.equal(dead.sections.fx.unavailable, true, "an unsourced fx section stays honestly unavailable");
+  assert.equal(dead.stale, true);
 });
