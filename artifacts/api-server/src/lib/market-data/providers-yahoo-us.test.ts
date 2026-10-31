@@ -54,9 +54,15 @@ function yahooMeta(price: number, time: number, prevClose: number) {
   return { chart: { result: [{ meta: { regularMarketPrice: price, regularMarketTime: time, chartPreviousClose: prevClose } }] } };
 }
 
+/* These tests pin the ENABLED behavior, so they force the kill switch off
+ * explicitly: under the offline harness (LEGACY_MARKET_FEEDS_DISABLED=true,
+ * which the no-network sandbox needs) the ambient env would disable the
+ * provider and make these assertions fail. The last test pins the switch. */
+const ENABLED_ENV = { ...process.env, LEGACY_MARKET_FEEDS_DISABLED: "false" } as NodeJS.ProcessEnv;
+
 test("canServe: US equity ids map 1:1 to their Yahoo ticker; curated ids unchanged", () => {
   const calls: string[] = [];
-  const provider = new YahooChartProvider(process.env, {
+  const provider = new YahooChartProvider(ENABLED_ENV, {
     async getJson(url: string) {
       calls.push(url);
       return yahooMeta(212.5, 1_793_390_400, 215.1);
@@ -74,7 +80,7 @@ test("canServe: US equity ids map 1:1 to their Yahoo ticker; curated ids unchang
 
 test("getQuotes: a US equity quote is parsed from the same v8 meta as the board", async () => {
   const calls: string[] = [];
-  const provider = new YahooChartProvider(process.env, {
+  const provider = new YahooChartProvider(ENABLED_ENV, {
     async getJson(url: string) {
       calls.push(url);
       return yahooMeta(212.5, 1_793_390_400, 215.1);

@@ -8,7 +8,7 @@
     "build": "node ./build.mjs || bun ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs || bun ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test $(find src -type f -name '*.test.ts' -print)"
+    "test": "EGYTREND_DATA_DIR=$(mktemp -d) tsx --test $(find src -type f -name '*.test.ts' -print)"
   },
   "dependencies": {
     "@types/jsonwebtoken": "^9.0.10",

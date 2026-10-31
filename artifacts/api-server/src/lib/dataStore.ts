@@ -27,7 +27,18 @@ const dataDirCandidates = [
   path.resolve(moduleDir, "..", "data"),
   path.resolve(moduleDir, "..", "..", "data"),
 ];
-const DATA_DIR = dataDirCandidates.find((candidate) => fsSync.existsSync(candidate)) || dataDirCandidates[0]!;
+/* Test isolation: EGYTREND_DATA_DIR points the store at a scratch directory
+ * (the test suite sets a fresh mktemp dir per run) so concurrent test
+ * processes never touch — or dirty — the repo's tracked data files, and a
+ * fire-and-forget health write landing after a test's restore cannot pollute
+ * them. Unset in production, where the candidate logic below applies. */
+const envDataDir = process.env.EGYTREND_DATA_DIR
+  ? path.resolve(process.env.EGYTREND_DATA_DIR)
+  : null;
+const DATA_DIR =
+  envDataDir ??
+  dataDirCandidates.find((candidate) => fsSync.existsSync(candidate)) ??
+  dataDirCandidates[0]!;
 import embeddedSources from "../../data/sources.json" with { type: "json" };
 import embeddedArticles from "../../data/articles.json" with { type: "json" };
 

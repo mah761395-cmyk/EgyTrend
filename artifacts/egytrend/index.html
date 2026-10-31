@@ -16,12 +16,13 @@
 <meta property="og:title" content="EgyTrend — البورصة المصرية وأسعار الذهب والدولار لحظة بلحظة"/>
 <meta property="og:description" content="البورصة المصرية، الذهب، الدولار، الكريبتو وأهم الأخبار في شاشة واحدة بالعربي — مع المصدر ووقت التحديث وحالة البيانات، وأدوات تعليمية بلا توصيات أو وعود بالأرباح."/>
 <meta property="og:url" content="https://egy-trend.vercel.app/"/>
-<!-- og:image متوقفة مؤقتًا: https://egy-trend.vercel.app/opengraph.jpg يعيد HTTP 500 في الإنتاج
-     (خلل serving لملفات الثابتات الثنائية — انظر تقرير Landing 2026-10-28).
-     أعيد التحقق 2026-10-30: opengraph.jpg + favicon.ico + favicon.svg ما زالوا 500 في
-     الإنتاج بينما نفس الملفات في build سليم (200 محليًا) — الخلل في طبقة خدمة Vercel
-     وليس في الملفات. أعد التفعيل بسطر:
-     <meta property="og:image" content="https://egy-trend.vercel.app/opengraph.jpg"/> -->
+<!-- og:image أُعيد تفعيلها 2026-10-31 بعد تشخيص دقيق: في نشر 349eb42 تعيد ملفات
+     opengraph.jpg + favicon.ico + favicon.svg — وهي الثلاثة المضافة في ذلك النشر فقط —
+     HTTP 500 بينما بقية ملفات الإخراج نفسه تعمل (index.html, robots.txt, sitemap.xml,
+     privacy.html = 200). الملفات موجودة في dist/public محليًا وفي build Vercel نفسه،
+     فالخلل في طبقة أصول Vercel للنشر الحالي وليس في المحتوى. الترميز سليم، وإعادة
+     نشر كاملة (Redeploy من لوحة Vercel) تعيد رفع الأصول وتصلح الثلاثة. -->
+<meta property="og:image" content="https://egy-trend.vercel.app/opengraph.jpg"/>
 <meta property="og:locale" content="ar_EG"/>
 <meta name="twitter:card" content="summary"/>
 <meta name="twitter:title" content="EgyTrend — البورصة المصرية وأسعار الذهب والدولار لحظة بلحظة"/>
