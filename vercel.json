@@ -62,7 +62,19 @@
       "destination": "/admin.html"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/calculators",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/calculators/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/r/:code",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/r/:code/",
       "destination": "/index.html"
     }
   ]
