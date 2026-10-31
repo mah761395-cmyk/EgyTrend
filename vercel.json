@@ -32,15 +32,15 @@
     },
     {
       "path": "/api/internal/price-alerts/run",
-      "schedule": "*/10 9-15 * * 0-4"
+      "schedule": "30 10 * * 0-4"
     },
     {
       "path": "/api/notifications/internal/run",
-      "schedule": "*/30 8-23 * * *"
+      "schedule": "0 13 * * *"
     },
     {
       "path": "/api/subscriptions/internal/renewals/run",
-      "schedule": "15 */6 * * *"
+      "schedule": "15 9 * * *"
     }
   ],
   "headers": [
